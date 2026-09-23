@@ -2883,7 +2883,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_media`
 
-visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. generate-image {prompt, path}: a raster illustration from the configured image API. Architecture diagrams are editable draw.io; result plots come from scripts and real data.
+visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. generate-image {prompt, path, size?, quality?, background?, references?}: a raster image from the configured image API (gpt-image-2 by default); references are project images sent as style or layout references; the prompt is saved beside the image. Use it for artwork and for the visual draft of a method diagram, then redraw the diagram as an editable draw.io or SVG figure; result plots come from scripts and real data. fetch-reference-figures {arxivIds, label}: overview figures of published papers (ar5iv) saved under figures/refs/ to study, never to copy into the paper.
 
 ```json
 {
@@ -2894,7 +2894,8 @@ visual-review {artifactId}: send rendered pages to a separate vision model — o
       "enum": [
         "visual-review",
         "complete-visual-review",
-        "generate-image"
+        "generate-image",
+        "fetch-reference-figures"
       ]
     },
     "projectId": {
@@ -2919,11 +2920,52 @@ visual-review {artifactId}: send rendered pages to a separate vision model — o
     },
     "prompt": {
       "type": "string",
-      "description": "generate-image"
+      "description": "generate-image: what to draw, with exact labels and layout; keep private material out"
     },
     "path": {
       "type": "string",
       "description": "generate-image: new .png/.jpg/.webp path"
+    },
+    "size": {
+      "type": "string",
+      "description": "generate-image: e.g. 1536x1024 (landscape), 1024x1536, 1024x1024, or auto; the configured size when omitted"
+    },
+    "quality": {
+      "type": "string",
+      "description": "generate-image: low for a rough composition check, high for a final draft",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "auto"
+      ]
+    },
+    "background": {
+      "type": "string",
+      "description": "generate-image",
+      "enum": [
+        "transparent",
+        "opaque",
+        "auto"
+      ]
+    },
+    "references": {
+      "type": "array",
+      "description": "generate-image: up to 4 project image paths used as style or layout references",
+      "items": {
+        "type": "string"
+      }
+    },
+    "arxivIds": {
+      "type": "array",
+      "description": "fetch-reference-figures: new-style arXiv ids, at most 6",
+      "items": {
+        "type": "string"
+      }
+    },
+    "label": {
+      "type": "string",
+      "description": "fetch-reference-figures: the figure these references are for, e.g. method-overview"
     }
   },
   "required": [

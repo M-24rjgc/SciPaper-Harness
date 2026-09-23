@@ -17,9 +17,31 @@ interface RoleFields {
   model: ResearchKey
 }
 
+/** The image endpoint a fresh configuration starts from (OpenAI, gpt-image-2); the person only adds the key. */
+const IMAGE_START = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', size: '1536x1024', quality: 'high', apiStyle: 'images' } as const
+const IMAGE_QUALITIES = ['low', 'medium', 'high', 'auto'] as const
+const IMAGE_STYLES = ['images', 'chat'] as const
+
 function text(form: FormData, name: string): string {
   const value = form.get(name)
   return typeof value === 'string' ? value.trim() : ''
+}
+
+/** A choice among fixed values, each named by its own dictionary entry. */
+function Choice<V extends string>(props: {
+  label: string
+  name: string
+  value: V
+  options: readonly V[]
+  optionKey: (value: V) => ResearchKey
+  t: WorkbenchProps['t']
+}): ReactNode {
+  return <label className={styles.field}>
+    <span className={styles.fieldLabel}>{props.label}</span>
+    <select className={styles.input} name={props.name} defaultValue={props.value}>
+      {props.options.map(option => <option key={option} value={option}>{props.t(props.optionKey(option))}</option>)}
+    </select>
+  </label>
 }
 
 function Field(props: { label: string; name: string; defaultValue?: string; type?: string }): ReactNode {
@@ -96,11 +118,19 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   const save = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
+    const endpoint = text(form, 'imageEndpoint') || (text(form, 'imageKey') ? IMAGE_START.baseUrl : '')
     const next: ResearchPreferences = {
       ...(text(form, 'mainModel') ? { main: { provider: text(form, 'mainProvider'), model: text(form, 'mainModel') } } : {}),
       ...(text(form, 'visionModel') ? { vision: { provider: text(form, 'visionProvider'), model: text(form, 'visionModel') } } : {}),
-      ...(text(form, 'imageEndpoint')
-        ? { image: { baseUrl: text(form, 'imageEndpoint'), model: text(form, 'imageModel'), size: text(form, 'imageSize') } }
+      // A key alone is enough: the endpoint then defaults to OpenAI's. An untouched form enables nothing.
+      ...(endpoint
+        ? {
+          image: {
+            baseUrl: endpoint, model: text(form, 'imageModel') || IMAGE_START.model, size: text(form, 'imageSize') || IMAGE_START.size,
+            quality: IMAGE_QUALITIES.find(item => item === text(form, 'imageQuality')) ?? IMAGE_START.quality,
+            apiStyle: IMAGE_STYLES.find(item => item === text(form, 'imageApiStyle')) ?? IMAGE_START.apiStyle,
+          },
+        }
         : {}),
       ...(text(form, 'pythonPath') ? { python: text(form, 'pythonPath') } : {}),
       ...(text(form, 'uvPath') ? { uv: text(form, 'uvPath') } : {}),
@@ -114,8 +144,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
     visionProvider: preferences.vision?.provider,
     visionModel: preferences.vision?.model,
     imageEndpoint: preferences.image?.baseUrl,
-    imageModel: preferences.image?.model,
-    imageSize: preferences.image?.size ?? '1024x1024',
+    imageModel: preferences.image?.model ?? IMAGE_START.model,
+    imageSize: preferences.image?.size ?? IMAGE_START.size,
     pythonPath: preferences.python,
     uvPath: preferences.uv,
     texPath: preferences.texBin,
@@ -156,7 +186,15 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       />
       <details><summary className={styles.groupHint}>{t('advancedSettings')}</summary>
         <div className={styles.roleFields}>
-          <Field label={t('imageSize')} name="imageSize" {...(values.imageSize ? { defaultValue: values.imageSize } : {})} />
+          <Field label={t('imageSize')} name="imageSize" defaultValue={preferences.image?.size ?? IMAGE_START.size} />
+          <Choice
+            t={t} label={t('imageQuality')} name="imageQuality" value={preferences.image?.quality ?? IMAGE_START.quality}
+            options={IMAGE_QUALITIES} optionKey={quality => `imageQuality_${quality}`}
+          />
+          <Choice
+            t={t} label={t('imageApiStyle')} name="imageApiStyle" value={preferences.image?.apiStyle ?? IMAGE_START.apiStyle}
+            options={IMAGE_STYLES} optionKey={style => `imageApiStyle_${style}`}
+          />
           <Field label={t('imageKey')} name="imageKey" type="password" />
         </div>
         <div className={styles.roleFields}>

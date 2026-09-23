@@ -66,7 +66,10 @@ const model = z.object({ provider: id, model: id })
 export const preferencesSchema = z.object({
   main: model.optional(),
   vision: model.optional(),
-  image: z.object({ baseUrl: z.url(), model: id, size: id }).optional(),
+  image: z.object({
+    baseUrl: z.url(), model: id, size: id,
+    quality: z.enum(['low', 'medium', 'high', 'auto']).optional(), apiStyle: z.enum(['images', 'chat']).optional(),
+  }).optional(),
   python: z.string().optional(),
   uv: z.string().optional(),
   texBin: z.string().optional(),
@@ -261,6 +264,17 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ ...base, action: z.literal('compile'), artifactId: id.optional(), path: id.optional(), engine: z.enum(['pdflatex', 'xelatex', 'lualatex']) }),
   z.object({ ...base, action: z.literal('render-pages'), artifactId: id.optional(), maxPages: z.number().int().min(1).max(60).optional() }),  z.object({ ...base, action: z.literal('visual-review'), artifactId: id }),
   z.object({ ...base, action: z.literal('complete-visual-review'), artifactId: id, artifactRevision: integer, sessionId: id, findings: id }),
-  z.object({ ...base, action: z.literal('generate-image'), prompt: id, path: id }),
+  z.object({
+    ...base, action: z.literal('generate-image'), prompt: id, path: id,
+    size: z.string().regex(/^(\d{3,4}x\d{3,4}|auto)$/, 'a size such as 1536x1024, or auto').optional(),
+    quality: z.enum(['low', 'medium', 'high', 'auto']).optional(),
+    background: z.enum(['transparent', 'opaque', 'auto']).optional(),
+    references: z.array(id).max(4).optional(),
+  }),
+  z.object({
+    ...base, action: z.literal('fetch-reference-figures'),
+    arxivIds: z.array(z.string().regex(/^\d{4}\.\d{4,5}(v\d+)?$/, 'a new-style arXiv identifier such as 1706.03762')).min(1).max(6),
+    label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase words joined by hyphens'),
+  }),
   z.object({ ...base, action: z.literal('export') }),
 ])

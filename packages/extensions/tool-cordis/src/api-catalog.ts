@@ -4655,7 +4655,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ImageBinding',
-    declaration: 'export interface ImageBinding {\n    baseUrl: string;\n    model: string;\n    size: string;\n}',
+    declaration: 'export interface ImageBinding {\n    baseUrl: string;\n    model: string;\n    size: string;\n    quality?: \'low\' | \'medium\' | \'high\' | \'auto\' | undefined;\n    apiStyle?: \'images\' | \'chat\' | undefined;\n}',
   },
   {
     name: 'ImageBlock',

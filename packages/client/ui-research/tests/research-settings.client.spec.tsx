@@ -81,7 +81,7 @@ function snapshotOf(parts: {
   components?: ComponentStatus[]
   projects?: ResearchProject[]
 }): ResearchSnapshot {
-  return { preferences: parts.preferences ?? {}, components: parts.components ?? [], projects: parts.projects ?? [] }
+  return { preferences: parts.preferences ?? {}, components: parts.components ?? [], projects: parts.projects ?? [], modes: [] }
 }
 
 function viewOf(snapshot: ResearchSnapshot | null, busy = false): ResearchView {
@@ -140,8 +140,12 @@ describe('research settings is the one place research is configured', () => {
     expect(input(page.getByLabelText(zh.mainProvider)).value).toBe('')
     expect(input(page.getByLabelText(zh.mainProvider)).type).toBe('text')
     expect(input(page.getByLabelText(zh.pythonPath)).value).toBe('')
-    // The one field that arrives pre-filled without a stored preference.
-    expect(input(page.getByLabelText(zh.imageSize)).value).toBe('1024x1024')
+    // The image model and size arrive pre-filled (gpt-image-2); the endpoint stays empty until a key or an endpoint is given.
+    expect(input(page.getByLabelText(zh.imageSize)).value).toBe('1536x1024')
+    expect(input(page.getByLabelText(zh.imageModel)).value).toBe('gpt-image-2')
+    expect(input(page.getByLabelText(zh.imageEndpoint)).value).toBe('')
+    expect((page.getByLabelText(zh.imageQuality) as HTMLSelectElement).value).toBe('high')
+    expect((page.getByLabelText(zh.imageApiStyle) as HTMLSelectElement).value).toBe('images')
     // The key never becomes readable text, here or in the saved record.
     expect(input(page.getByLabelText(zh.imageKey)).type).toBe('password')
   })
@@ -186,6 +190,8 @@ describe('research settings is the one place research is configured', () => {
     fireEvent.change(page.getByLabelText(zh.imageModel), { target: { value: 'flux-2' } })
     fireEvent.change(page.getByLabelText(zh.imageSize), { target: { value: '2048x2048' } })
     fireEvent.change(page.getByLabelText(zh.imageKey), { target: { value: 'sk-live-image-key' } })
+    fireEvent.change(page.getByLabelText(zh.imageQuality), { target: { value: 'medium' } })
+    fireEvent.change(page.getByLabelText(zh.imageApiStyle), { target: { value: 'chat' } })
     fireEvent.change(page.getByLabelText(zh.pythonPath), { target: { value: '/usr/bin/python3' } })
     fireEvent.change(page.getByLabelText(zh.uvPath), { target: { value: '/usr/local/bin/uv' } })
     fireEvent.change(page.getByLabelText(zh.texPath), { target: { value: '/usr/local/texlive/2025/bin' } })
@@ -197,7 +203,7 @@ describe('research settings is the one place research is configured', () => {
       vision: { provider: 'zhipu', model: 'glm-4v' },
       image: {
         baseUrl: 'https://images.example.com/v2', model: 'flux-2',
-        size: '2048x2048',
+        size: '2048x2048', quality: 'medium', apiStyle: 'chat',
       },
       python: '/usr/bin/python3',
       uv: '/usr/local/bin/uv',
@@ -227,10 +233,32 @@ describe('research settings is the one place research is configured', () => {
     expect(saved.preferences).toEqual({
       image: {
         baseUrl: 'https://images.example.com/v3', model: 'flux-3',
-        size: '1024x1024',
+        size: '1536x1024', quality: 'high', apiStyle: 'images',
       },
     })
     expect(preferencesSchema.parse(saved.preferences)).toEqual(saved.preferences)
+  })
+
+  it('turns image generation on with OpenAI and gpt-image-2 when only a key is given', async () => {
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), recorded)} />)
+    fireEvent.change(page.getByLabelText(zh.imageKey), { target: { value: 'sk-only-key' } })
+    fireEvent.change(page.getByLabelText(zh.imageModel), { target: { value: '' } })
+    fireEvent.change(page.getByLabelText(zh.imageSize), { target: { value: '' } })
+    // A value the select never offers reads as the default rather than reaching the record.
+    const quality = page.getByLabelText(zh.imageQuality) as HTMLSelectElement
+    quality.append(Object.assign(document.createElement('option'), { value: 'ultra' }))
+    fireEvent.change(quality, { target: { value: 'ultra' } })
+    const style = page.getByLabelText(zh.imageApiStyle) as HTMLSelectElement
+    style.append(Object.assign(document.createElement('option'), { value: 'grpc' }))
+    fireEvent.change(style, { target: { value: 'grpc' } })
+    fireEvent.click(page.getByRole('button', { name: zh.save }))
+    await settle()
+    expect(recorded.saves).toEqual([{
+      preferences: { image: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', size: '1536x1024', quality: 'high', apiStyle: 'images' } },
+      imageKey: 'sk-only-key',
+    }])
+    expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual(recorded.saves[0]!.preferences)
   })
 
   it('leaves the size box empty when the stored image binding carries no size', () => {

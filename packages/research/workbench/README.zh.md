@@ -72,6 +72,7 @@ kind: "package-reference"
 | [`src/artifacts.ts`](src/artifacts.ts) | 导入、文件修订、编译、页面渲染、导出 |
 | [`src/experiments.ts`](src/experiments.ts) | 运行登记、输入快照、提交、观测、输出收集 |
 | [`src/literature.ts`](src/literature.ts) | Crossref、OpenAlex 与 arXiv 元数据；开放获取 PDF 查找 |
+| [`src/images.ts`](src/images.ts) | 生图（OpenAI 图像接口，默认 gpt-image-2，带参考图时走 edits；也支持返回图片的对话接口）与来自 ar5iv 的参考图 |
 | [`src/tools.ts`](src/tools.ts) | 模型工具与审批钩子 |
 | [`runtime/experiment_runner.py`](runtime/experiment_runner.py) | 每个运行都在其下执行的标准库监督进程 |
 

@@ -2891,7 +2891,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_media`
 
-visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path}：用配置的生图 API 生成一张位图插画。架构图使用可编辑的 draw.io；结果图来自脚本与真实数据。
+visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path, size?, quality?, background?, references?}：用配置的生图 API（默认 gpt-image-2）生成一张位图；references 是作为风格或版式参考发送的项目内图片；提示词保存在图片旁边。用于插画以及方法图的视觉草稿，之后再把方法图重画成可编辑的 draw.io 或 SVG 图；结果图来自脚本与真实数据。fetch-reference-figures {arxivIds, label}：已发表论文的总览图（来自 ar5iv），保存在 figures/refs/ 下供研究参考，绝不直接放进论文。
 
 ```json
 {
@@ -2902,7 +2902,8 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
       "enum": [
         "visual-review",
         "complete-visual-review",
-        "generate-image"
+        "generate-image",
+        "fetch-reference-figures"
       ]
     },
     "projectId": {
@@ -2927,11 +2928,52 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "prompt": {
       "type": "string",
-      "description": "generate-image"
+      "description": "generate-image: what to draw, with exact labels and layout; keep private material out"
     },
     "path": {
       "type": "string",
       "description": "generate-image: new .png/.jpg/.webp path"
+    },
+    "size": {
+      "type": "string",
+      "description": "generate-image: e.g. 1536x1024 (landscape), 1024x1536, 1024x1024, or auto; the configured size when omitted"
+    },
+    "quality": {
+      "type": "string",
+      "description": "generate-image: low for a rough composition check, high for a final draft",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "auto"
+      ]
+    },
+    "background": {
+      "type": "string",
+      "description": "generate-image",
+      "enum": [
+        "transparent",
+        "opaque",
+        "auto"
+      ]
+    },
+    "references": {
+      "type": "array",
+      "description": "generate-image: up to 4 project image paths used as style or layout references",
+      "items": {
+        "type": "string"
+      }
+    },
+    "arxivIds": {
+      "type": "array",
+      "description": "fetch-reference-figures: new-style arXiv ids, at most 6",
+      "items": {
+        "type": "string"
+      }
+    },
+    "label": {
+      "type": "string",
+      "description": "fetch-reference-figures: the figure these references are for, e.g. method-overview"
     }
   },
   "required": [

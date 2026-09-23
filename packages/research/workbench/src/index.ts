@@ -22,6 +22,7 @@ import { runChecks } from './checks.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
 import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
+import { fetchReferenceFigures, generateImage } from './images.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
 import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isInside, projectPath, readText, sameDirectory, truncateBytes, writeNew } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
@@ -51,7 +52,7 @@ const ACTIVE_RUN_STATES = new Set(['queued', 'running', 'unknown'])
 const LONG_ACTIONS = new Set<ResearchCommand['action']>([
   'import', 'import-template', 'refresh-evidence', 'literature-search', 'literature-import',
   'environment', 'experiment', 'experiment-refresh', 'experiment-cancel',
-  'compile', 'render-pages', 'visual-review', 'generate-image', 'export',
+  'compile', 'render-pages', 'visual-review', 'generate-image', 'fetch-reference-figures', 'export',
 ])
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait'
@@ -564,7 +565,8 @@ export class ResearchWorkbench extends TypertRemoteService {
         }
       }
       case 'visual-review': return this.visualReview(id, request.artifactId, signal)
-      case 'generate-image': return this.generateImage(id, request.prompt, request.path, signal)
+      case 'generate-image': return this.generateImage(id, request, signal)
+      case 'fetch-reference-figures': return this.referenceFigures(id, request, signal)
       case 'export': {
         const snapshot = this.getProject(id)
         const check = await runChecks(snapshot, limit, 'all', this.modes.resolve(snapshot))
@@ -850,45 +852,68 @@ export class ResearchWorkbench extends TypertRemoteService {
     return { message: 'Visual review session started; its findings arrive through complete-visual-review', content: session.sessionId }
   }
 
-  private async generateImage(id: ProjectId, prompt: string, path: string, signal: AbortSignal): Promise<Commit> {
+  private async generateImage(id: ProjectId, request: Extract<ResearchCommand, { action: 'generate-image' }>, signal: AbortSignal): Promise<Commit> {
     const binding = this.domain.global.get().image
     if (!binding) throw new Error('Configure an image-generation provider first')
     const credential = await this.ctx.credentials.resolve(credentialRef(IMAGE_CREDENTIAL))
     if (!credential) throw new Error('The image provider credential has not been configured')
-    if (!/\.(png|jpe?g|webp)$/i.test(path)) throw new Error('Save generated images as .png, .jpg or .webp')
-    const target = await projectPath(this.record(id).root, path)
+    if (!IMAGE_FILE.test(request.path)) throw new Error('Save generated images as .png, .jpg or .webp')
+    const root = this.record(id).root
+    const target = await projectPath(root, request.path)
     const limit = this.config.maxSourceBytes
-    const response = await fetch(`${binding.baseUrl.replace(/\/$/, '')}/images/generations`, {
-      method: 'POST',
-      signal: AbortSignal.any([signal, AbortSignal.timeout(300000)]),
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${credential.value}` },
-      body: JSON.stringify({ model: binding.model, prompt, size: binding.size, n: 1 }),
-    })
-    if (!response.ok) throw new Error(`Image provider returned HTTP ${response.status}`)
-    if (Number(response.headers.get('content-length') ?? 0) > limit * 2) throw new Error('Generated image exceeds the configured size limit')
-    const [first] = z.object({ data: z.array(z.object({ b64_json: z.string().optional(), url: z.url().optional() })).min(1) })
-      .parse(await response.json()).data
-    let bytes: Uint8Array
-    if (first?.b64_json) {
-      bytes = Buffer.from(first.b64_json, 'base64')
-    } else if (first?.url) {
-      const download = await fetch(first.url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]) })
-      if (!download.ok) throw new Error('Generated image could not be retrieved')
-      if (Number(download.headers.get('content-length') ?? 0) > limit) throw new Error('Generated image exceeds the configured size limit')
-      bytes = new Uint8Array(await download.arrayBuffer())
-    } else {
-      throw new Error('The image provider returned no image')
+    const references = []
+    for (const path of request.references ?? []) {
+      if (!IMAGE_FILE.test(path)) throw new Error(`A reference image must be .png, .jpg or .webp: ${path}`)
+      const bytes = await readFile(await projectPath(root, path))
+      if (bytes.byteLength > limit) throw new Error(`Reference image exceeds the configured size limit: ${path}`)
+      references.push({ name: basename(path), type: MEDIA_TYPES[extname(path).slice(1).toLowerCase()] as string, bytes })
     }
-    if (bytes.byteLength > limit) throw new Error('Generated image exceeds the configured size limit')
+    const image = await generateImage(binding, credential.value, {
+      prompt: request.prompt, size: request.size, quality: request.quality, background: request.background, references,
+    }, signal, limit)
     await mkdir(dirname(target), { recursive: true })
     // Exclusive creation: an existing image is never overwritten, even by a concurrent write.
-    if (!await writeNew(target, bytes)) throw new Error('Choose a new image path to preserve existing artwork')
+    if (!await writeNew(target, image.bytes)) throw new Error('Choose a new image path to preserve existing artwork')
+    // The prompt beside the image, so the drawing can be regenerated, audited and explained.
+    const prompt = `${request.path.replace(/\.[^.]+$/, '')}.prompt.txt`
+    await atomicWrite(await projectPath(root, prompt), [
+      `model: ${binding.model}`, `endpoint: ${image.via}`, `size: ${request.size ?? binding.size}`,
+      ...(request.references?.length ? [`references: ${request.references.join(', ')}`] : []), '', request.prompt, '',
+    ].join('\n'))
     return async (project) => {
-      await writeArtifact(project, { action: 'register-artifact', projectId: project.id, path, kind: 'image', evidence: [], claimIds: [], inputArtifacts: [] }, 'agent', limit)
-      return { message: `Illustration generated and saved (${extname(path).slice(1)})`, path }
+      await writeArtifact(project, { action: 'register-artifact', projectId: project.id, path: request.path, kind: 'image', evidence: [], claimIds: [], inputArtifacts: [] }, 'agent', limit)
+      return {
+        message: `Image generated through ${image.via} and saved (${extname(request.path).slice(1)}); its prompt is in ${prompt}${image.note ? `. Note: ${image.note}` : ''}`,
+        path: request.path, paths: [request.path, prompt],
+      }
+    }
+  }
+
+  private async referenceFigures(id: ProjectId, request: Extract<ResearchCommand, { action: 'fetch-reference-figures' }>, signal: AbortSignal): Promise<ResearchResponse> {
+    const root = this.record(id).root
+    const { figures, skipped } = await fetchReferenceFigures(request.arxivIds, signal, this.config.maxSourceBytes)
+    const saved: { path: string; arxivId: string; caption: string }[] = []
+    const counts = new Map<string, number>()
+    for (const figure of figures) {
+      const index = (counts.get(figure.arxivId) ?? 0) + 1
+      counts.set(figure.arxivId, index)
+      const path = `figures/refs/${request.label}.ref_${figure.arxivId.replace(/v\d+$/, '')}_${index}.${figure.extension}`
+      await atomicWrite(await projectPath(root, path), figure.bytes)
+      saved.push({ path, arxivId: figure.arxivId, caption: figure.caption })
+    }
+    return {
+      message: saved.length
+        ? `${saved.length} reference figure(s) saved under figures/refs; study their layout with read_image, never copy them into the paper`
+        : 'No reference figure found; search for other papers with an overview figure',
+      paths: saved.map(item => item.path),
+      content: JSON.stringify({ figures: saved, skipped }),
     }
   }
 }
+
+/** Image files the generator writes and reads as references. */
+const IMAGE_FILE = /\.(png|jpe?g|webp)$/i
+const MEDIA_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
 
 /** Keep large source bodies out of routine desktop snapshots. */
 export function publicProject(project: ResearchProject): ResearchProject {

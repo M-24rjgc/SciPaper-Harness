@@ -14,6 +14,16 @@ The overview figure is usually the first thing a reviewer reads. It must match t
 
 Register the diagram with `research_artifact` register-artifact, kind `diagram`.
 
+## A visual draft first (when an image endpoint is configured)
+
+A generated draft settles the composition before you draw; it never goes into the paper itself.
+
+1. **Study how strong papers draw it.** `research_media` fetch-reference-figures with the arXiv ids of two to four close, well-regarded papers; look at the saved figures with `read_image`.
+2. **Write the spec**: the modules, the typed connections, the exact labels (from the notation), the reading direction and the aspect ratio the content needs — not a square by default.
+3. **Generate a draft**: `research_media` generate-image with that spec as the prompt, quality `low` for a composition check or `high` for a final draft, and the best reference figure in `references`. Keep private material out of the prompt; describe the method, not unpublished results.
+4. **Check the draft against the spec** with `read_image`: missing, invented or renamed modules, wrong arrows, unreadable labels. After two failed corrections of the same defect, change the approach instead of retrying.
+5. **Redraw it as an editable figure** (below), following the draft's layout. The generated image stays a working file.
+
 ## Drawing it well
 
 1. **List the components and edges first**: inputs → modules → outputs, with what flows along each edge (tensors, tokens, losses). Only what the method section describes.

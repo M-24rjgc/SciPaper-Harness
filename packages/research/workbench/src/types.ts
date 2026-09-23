@@ -240,6 +240,10 @@ export interface ImageBinding {
   baseUrl: string
   model: string
   size: string
+  /** Default quality for gpt-image models; a call may override it. */
+  quality?: 'low' | 'medium' | 'high' | 'auto' | undefined
+  /** `images` for the OpenAI Images API (the default); `chat` for providers that return images from chat completions. */
+  apiStyle?: 'images' | 'chat' | undefined
 }
 export interface ResearchPreferences {
   main?: ModelBinding | undefined
@@ -340,7 +344,18 @@ export type ResearchCommand =
   | { action: 'compile'; projectId: ProjectId; artifactId?: ArtifactId | undefined; path?: string | undefined; engine: CompileRecord['engine'] }
   | { action: 'render-pages'; projectId: ProjectId; artifactId?: ArtifactId | undefined; maxPages?: number | undefined }  | { action: 'visual-review'; projectId: ProjectId; artifactId: ArtifactId }
   | { action: 'complete-visual-review'; projectId: ProjectId; artifactId: ArtifactId; artifactRevision: number; sessionId: string; findings: string }
-  | { action: 'generate-image'; projectId: ProjectId; prompt: string; path: string }
+  | {
+    action: 'generate-image'
+    projectId: ProjectId
+    prompt: string
+    path: string
+    size?: string | undefined
+    quality?: 'low' | 'medium' | 'high' | 'auto' | undefined
+    background?: 'transparent' | 'opaque' | 'auto' | undefined
+    /** Project images sent as style or layout references. */
+    references?: string[] | undefined
+  }
+  | { action: 'fetch-reference-figures'; projectId: ProjectId; arxivIds: string[]; label: string }
   | { action: 'export'; projectId: ProjectId }
 
 export interface ResearchTask {

@@ -72,6 +72,7 @@ One service owns every project record in the `research_workbench` storage domain
 | [`src/artifacts.ts`](src/artifacts.ts) | Imports, file revisions, compile, page renders, export |
 | [`src/experiments.ts`](src/experiments.ts) | Run admission, input snapshots, launch, observation, output collection |
 | [`src/literature.ts`](src/literature.ts) | Crossref, OpenAlex and arXiv metadata; open-access PDF lookup |
+| [`src/images.ts`](src/images.ts) | Image generation (OpenAI Images API, gpt-image-2 by default, reference images through edits; chat-style providers) and reference figures from ar5iv |
 | [`src/tools.ts`](src/tools.ts) | The model tools and the approval hook |
 | [`runtime/experiment_runner.py`](runtime/experiment_runner.py) | The standard-library supervisor every run executes under |
 
