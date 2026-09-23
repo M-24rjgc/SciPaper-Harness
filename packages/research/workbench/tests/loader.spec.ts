@@ -384,7 +384,7 @@ describe('the research service records; it never drives the agent', () => {
     const { service } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Ledger', root: join(root, 'p'), brief: '' })
     const run = (request: Record<string, unknown>, actor: 'user' | 'agent' = 'agent') => service.execute({ projectId: p.id, ...request } as never, signal, actor)
-    const announced: { mode: string; route?: string }[] = []
+    const announced: { mode: string; route?: string | undefined }[] = []
     ctx!.on('research/mode', (event) => { announced.push(event) })
     expect((await run({ action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: 'CSV results exist' })).message)
       .toBe('Mode spark-to-paper (data): data → plan → cite → write → refine → review → figures → latex → submission')

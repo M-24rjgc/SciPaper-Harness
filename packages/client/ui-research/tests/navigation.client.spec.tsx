@@ -15,7 +15,7 @@ afterEach(cleanup)
 const project = newProject({ title: '研究乙', root: '/research/b', brief: 'test' }, 'b' as WorkspaceId)
 const other = newProject({ title: '研究甲', root: '/research/a', mode: 'spark-to-paper', brief: 'test' }, 'a' as WorkspaceId)
 function props() {
-  const view: ResearchView = { snapshot: { projects: [other, project], preferences: {}, components: [] }, tasks: [], busy: false, error: '', response: null }
+  const view: ResearchView = { snapshot: { projects: [other, project], preferences: {}, components: [], modes: [] }, tasks: [], busy: false, error: '', response: null }
   return {
     t: (key: keyof typeof zh, values?: Record<string, string | number>) =>
       zh[key].replace(/\{(\w+)\}/g, (_, k: string) => String(values?.[k] ?? k)),
@@ -106,7 +106,7 @@ it('closes when the background environment task completes, and ignores a submit 
   expect(ui.queryByRole('button', { name: zh.addEnvironment })).toBeNull()
   vi.mocked(p.run).mockClear()
   fireEvent.click(ui.getByRole('button', { name: zh.newEnvironment }))
-  view.snapshot = { projects: [], preferences: {}, components: [] }
+  view.snapshot = { projects: [], preferences: {}, components: [], modes: [] }
   ui.rerender(<EnvironmentForm {...p} />)
   fireEvent.submit(ui.getByRole('button', { name: zh.addEnvironment }).closest('form')!)
   expect(p.run).not.toHaveBeenCalled()

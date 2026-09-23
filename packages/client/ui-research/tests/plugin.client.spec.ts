@@ -54,8 +54,8 @@ const PROJECT = {
   experiments: [],
 } as unknown as ResearchProject
 
-const BLANK: ResearchSnapshot = { projects: [], preferences: {}, components: [] }
-const LOADED: ResearchSnapshot = { projects: [PROJECT], preferences: {}, components: [] }
+const BLANK: ResearchSnapshot = { projects: [], preferences: {}, components: [], modes: [] }
+const LOADED: ResearchSnapshot = { projects: [PROJECT], preferences: {}, components: [], modes: [] }
 const OUTCOME: ResearchResponse = { message: 'experiment submitted' }
 const NEW_PROJECT: CreateProjectRequest = { title: 'Sparse attention', root: '/tmp/sparse', brief: '' }
 const CHECK: ResearchCommand = { action: 'check', projectId: PROJECT.id }

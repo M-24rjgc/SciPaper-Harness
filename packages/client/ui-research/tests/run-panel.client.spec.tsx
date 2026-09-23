@@ -90,7 +90,7 @@ function mount(
   const drafts: string[] = []
   if (project) project.sessionId = SESSION
   const view = {
-    snapshot: project === null ? null : { projects: [project], preferences: {}, components: [] },
+    snapshot: project === null ? null : { projects: [project], preferences: {}, components: [], modes: [] },
     tasks: [], busy: false, error: '', response: null,
   }
   const props = {

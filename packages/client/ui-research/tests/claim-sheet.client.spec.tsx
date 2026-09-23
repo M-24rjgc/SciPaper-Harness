@@ -294,7 +294,7 @@ function propsFor(
 
 /** The snapshot the plugin publishes for one project. */
 function snapshotOf(project: ResearchProject): ResearchSnapshot {
-  return { projects: [project], preferences: {}, components: [] }
+  return { projects: [project], preferences: {}, components: [], modes: [] }
 }
 
 describe('the claim sheet shows what stands under one claim', () => {
