@@ -154,7 +154,9 @@ def vector_gate(root, _stage):
         errors = "; ".join(str(error) for error in item.get("errors", []))
         findings.append(finding("error", f"figures/{item.get('figure')}.svg is not an editable figure: {errors}", f"figures/{item.get('figure')}.svg"))
     for label in report.get("kept_png_unconverted", []):
-        findings.append(finding("warning", f"figures/{label}.png stays a raster: redraw it as an editable SVG with a vector PDF (ts-figure-svg)", f"figures/{label}.png"))
+        # The linter files every figure without an SVG here; one with its own PDF (a matplotlib plot) is already vector.
+        if not (root / "figures" / f"{label}.pdf").exists():
+            findings.append(finding("warning", f"figures/{label}.png stays a raster: redraw it as an editable SVG with a vector PDF (ts-figure-svg)", f"figures/{label}.png"))
     return findings
 
 

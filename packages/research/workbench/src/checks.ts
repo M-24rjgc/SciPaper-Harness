@@ -83,7 +83,7 @@ export async function runChecks(
     checkPlaceholders(context, paper)
     await checkFigures(context, paper)
     await checkCompile(context, paper)
-    checkStructure(context, paper)
+    checkStructure(context, paper, await listProjectFiles(project.root, path => path.endsWith('.sty'), 3))
     checkProse(context, paper)
   }
   await checkReview(context)
@@ -241,12 +241,17 @@ async function checkNumbers(context: Context, paper: FlatPaper): Promise<void> {
   if (reported > MAX_FINDINGS_PER_CHECK) add(context, 'numbers', 'error', `…and ${reported - MAX_FINDINGS_PER_CHECK} more untraced numbers`, paper.main)
 }
 
+/** Macro definitions blanked to spaces of equal length: `\providecommand{\tbd}[1]{[TBD: #1]}` defines a placeholder, it is not one. */
+function withoutDefinitions(text: string): string {
+  return text.replace(/\\(?:(?:re)?newcommand|providecommand|DeclareRobustCommand)\*?\s*\{?\\[A-Za-z]+\}?\s*(?:\[[^\]]*\]\s*)*\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}/g, m => ' '.repeat(m.length))
+}
+
 function checkPlaceholders(context: Context, paper: FlatPaper): void {
   let count = 0
   const report = (offset: number, what: string): void => {
     if (count++ < MAX_FINDINGS_PER_CHECK) addAt(context, paper, 'placeholders', 'error', `Placeholder remains: ${what}`, offset)
   }
-  for (const match of paper.text.matchAll(/\\(?:tbd|todo)\s*\{([^}]*)\}|\b(?:TODO|TBD|FIXME)\b|XX\.X+|待补|待填|实验占位/g)) {
+  for (const match of withoutDefinitions(paper.text).matchAll(/\\(?:tbd|todo)\s*\{([^}]*)\}|\b(?:TODO|TBD|FIXME)\b|XX\.X+|待补|待填|实验占位/g)) {
     report(match.index, match[1] !== undefined ? `\\tbd{${match[1]}}` : match[0])
   }
   for (const table of paper.text.matchAll(/\\begin\s*\{(tabular\*?|tabularx|longtable|tblr)\}[\s\S]*?\\end\s*\{\1\}/g)) {
@@ -309,7 +314,12 @@ function checkProse(context: Context, paper: FlatPaper): void {
   if (findings.length > MAX_FINDINGS_PER_CHECK) add(context, 'prose', 'warning', `…and ${findings.length - MAX_FINDINGS_PER_CHECK} more prose findings`, paper.main)
 }
 
-function checkStructure(context: Context, paper: FlatPaper): void {
+/**
+ * Missing inputs always; in a mode with phases, the paper's expected shape too.
+ * @param styles - project .sty files: a generic class that loads one of them is a venue kit's
+ *   (NeurIPS and ICML style an article), not an unstyled paper.
+ */
+function checkStructure(context: Context, paper: FlatPaper, styles: string[]): void {
   for (const missing of paper.missingInputs) add(context, 'structure', 'error', `\\input target not found: ${missing.name}`, missing.origin.file, missing.origin.line)
   // Without a pipeline the paper may be anything — a note, a chapter — so its shape is not judged.
   if (context.mode.phases.length === 0) return
@@ -318,7 +328,9 @@ function checkStructure(context: Context, paper: FlatPaper): void {
   for (const expected of EXPECTED_SECTIONS) {
     if (!titles.some(title => expected.pattern.test(title))) add(context, 'structure', 'warning', `No ${expected.label} section`, paper.main)
   }
-  if (['article', 'report', 'ctexart'].includes(documentClass(paper) ?? '')) {
+  const kitStyles = new Set(styles.map(path => posix.basename(path, '.sty')))
+  const loaded = [...paper.text.matchAll(/\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/g)].flatMap(match => String(match[1]).split(',').map(name => name.trim()))
+  if (['article', 'report', 'ctexart'].includes(documentClass(paper) ?? '') && !loaded.some(name => kitStyles.has(name))) {
     add(context, 'structure', 'warning', 'The paper uses a generic document class; apply the venue template (apply-template) before submission', paper.main)
   }
 }

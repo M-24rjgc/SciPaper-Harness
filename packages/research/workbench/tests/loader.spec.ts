@@ -450,7 +450,7 @@ describe('the research service records; it never drives the agent', () => {
       : { message: { items: [{ DOI: '10.1/x', title: ['Real'] }] } }))))
     expect((await run({ action: 'literature-search', provider: 'crossref', query: 'real' })).literature).toHaveLength(1)
     const imported = await run({ action: 'literature-import', item })
-    expect(imported.content).toContain('@article{crossref_10_1_x')
+    expect(imported.content).toContain('@misc{crossref_10_1_x')
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ message: { DOI: '10.2/y', title: ['T'] } }))))
     await run({ action: 'literature-import', item: { ...item, abstract: '' } })
     expect(service.getProject(p.id).evidence.filter(e => e.kind === 'literature').map(e => e.coverage)).toEqual(['abstract', 'metadata'])

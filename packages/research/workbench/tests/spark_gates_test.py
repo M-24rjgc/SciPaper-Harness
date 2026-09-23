@@ -134,6 +134,16 @@ class Figures(GateTest):
         self.assertEqual(self.run_gate("vector"), [])
         self.assertEqual(self.run_gate("critique"), [])
 
+    def test_a_raster_only_figure_is_a_warning_and_a_plot_with_its_pdf_is_vector(self):
+        self.write("figures/figures.manifest.json", {"figures": [
+            {"label": "photo", "type": "schematic", "engine": "image-model"},
+            {"label": "plot", "type": "plot", "engine": "matplotlib"},
+        ]})
+        self.write("figures/photo.png", "png")
+        self.write("figures/plot.pdf", "%PDF-1.4")
+        self.assertEqual(self.messages(self.run_gate("vector"), "warning"), [
+            "figures/photo.png stays a raster: redraw it as an editable SVG with a vector PDF (ts-figure-svg)"])
+
     def test_vector_reports_missing_files_and_critique_the_manifest(self):
         self.write("figures/figures.manifest.json", {"figures": [
             {"label": "arch", "type": "architecture", "engine": "svg-native"},

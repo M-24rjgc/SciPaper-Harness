@@ -98,6 +98,26 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(report.findings.filter(f => f.check === 'prose')).toEqual([])
   })
 
+  it('does not take the definition of a placeholder macro for a placeholder', async () => {
+    const p = await fixture('proposal')
+    const definitions = String.raw`\providecommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
+\newcommand\todo[1]{TODO #1}
+\renewcommand*{\fixme}{FIXME}
+`
+    await write(p.root, 'paper/main.tex', MAIN.replace('\\begin{document}', `${definitions}\\begin{document}`))
+    const messages = (await runChecks(p, 100000, 'placeholders')).findings.map(f => f.message)
+    expect(messages).toEqual(['Placeholder remains: \\tbd{final accuracy}', 'Placeholder remains: TODO', 'Placeholder remains: 1 empty result cell(s) "--" in a table'])
+  })
+
+  it('takes an article that loads a venue kit style from the project as templated', async () => {
+    const p = await fixture('proposal')
+    await write(p.root, 'paper/main.tex', MAIN.replace('\\graphicspath', '\\usepackage[preprint]{neurips_2026}\n\\graphicspath'))
+    const generic = (report: Awaited<ReturnType<typeof runChecks>>) => warnings(report, 'structure').filter(f => f.message.includes('generic document class'))
+    expect(generic(await runChecks(p, 100000, 'structure'))).toHaveLength(1)
+    await write(p.root, 'template/neurips/neurips_2026.sty', '% the venue kit\n')
+    expect(generic(await runChecks(p, 100000, 'structure'))).toEqual([])
+  })
+
   it('counts a review report folder as a review, and a revision ledger as none', async () => {
     const p = await fixture('proposal')
     await write(p.root, 'reviews/revision-ledger.md', '| comment_id | status | location |\n| --- | --- | --- |\n')

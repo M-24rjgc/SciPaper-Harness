@@ -22,6 +22,14 @@ const crossrefWork = {
   DOI: '10.1234/x', title: ['A <i>tagged</i>   title'], author: [{ given: 'Ada', family: 'Lovelace' }, { family: 'Solo' }],
   published: { 'date-parts': [[2024, 5]] }, abstract: '<p>Abstract & more</p>',
 }
+
+describe('provider text', () => {
+  it('drops markup, decodes entities and tidies the space markup leaves before punctuation', async () => {
+    serve({ 'https://api.crossref.org/works?': json({ message: { items: [{ ...crossrefWork, title: ['<scp>SummaC</scp>: NLI &amp; &lt;QA&gt; &quot;models&quot; &#39;&apos;'] }] } }) })
+    const [work] = await searchLiterature('crossref', 'q', signal)
+    expect(work?.title).toBe('SummaC: NLI & <QA> "models" \'\'')
+  })
+})
 const item: LiteratureItem = { id: '10.1234/x', provider: 'crossref', title: 'T', authors: [], doi: '10.1234/x', url: 'https://doi.org/10.1234/x', abstract: '', bibtex: '' }
 
 describe('scholarly metadata comes from the providers, never from the model', () => {
@@ -36,15 +44,46 @@ describe('scholarly metadata comes from the providers, never from the model', ()
     const [full, bare] = await searchLiterature('crossref', 'sparse & dense', signal)
     expect(requested[0]).toContain('query.bibliographic=sparse%20%26%20dense')
     expect(full).toMatchObject({ title: 'A tagged title', authors: ['Ada Lovelace', 'Solo'], year: 2024, abstract: 'Abstract & more', url: 'https://doi.org/10.1234/x' })
-    expect(full?.bibtex).toContain('@article{crossref_10_1234_x,')
+    // A record without a venue is a misc entry: nothing claims a journal it does not have.
+    expect(full?.bibtex).toContain('@misc{crossref_10_1234_x,')
     expect(full?.bibtex).toContain('  year={2024},\n  doi={10.1234/x},')
     expect(bare).toMatchObject({ title: '', authors: [], abstract: '' })
     expect(bare?.bibtex).not.toContain('year=')
     const [open, untitled] = await searchLiterature('openalex', 'q', signal)
     expect(open).toMatchObject({ title: 'Open {work}', doi: '10.3/z', abstract: 'first second', url: 'https://doi.org/10.3/z' })
-    expect(open?.bibtex).toContain('title={Open work}')
+    expect(open?.bibtex).toContain('title={{Open work}}')
     expect(untitled).toMatchObject({ title: '', url: 'https://openalex.org/W2', abstract: '' })
     expect(untitled && 'doi' in untitled).toBe(false)
+  })
+
+  it('names the venue each provider records, with the entry type it implies', async () => {
+    const work = (type: string | undefined, container: string[] | undefined, publisher?: string) => ({ ...crossrefWork, type, 'container-title': container, publisher })
+    serve({
+      'https://api.crossref.org/works?': json({ message: { items: [
+        work('journal-article', ['Transactions of the ACL']), work('proceedings-article', ['Proceedings of ACL & EMNLP']),
+        work('book-chapter', ['Lecture Notes']), work('posted-content', ['SSRN']), work('dataset', undefined, 'Zenodo'), work(undefined, []),
+      ] } }),
+      'https://api.openalex.org/works?': json({ results: [
+        { id: 'W1', title: 'J', doi: null, publication_year: 2023, authorships: [], primary_location: { source: { display_name: 'Nature', type: 'journal' } } },
+        { id: 'W2', title: 'C', doi: null, publication_year: 2023, authorships: [], primary_location: { source: { display_name: 'NeurIPS', type: 'conference' } } },
+        { id: 'W3', title: 'R', doi: null, publication_year: 2023, authorships: [], primary_location: { source: { display_name: 'arXiv', type: 'repository' } } },
+        { id: 'W4', title: 'N', doi: null, publication_year: 2023, authorships: [], primary_location: { source: null } },
+      ] }),
+      'https://export.arxiv.org/api/query?': xml('<feed><entry><id>http://arxiv.org/abs/2004.05150v2</id><title>Longformer</title></entry></feed>'),
+    })
+    const crossref = (await searchLiterature('crossref', 'q', signal)).map(result => result.bibtex.split('\n').filter(line => /^@|journal|booktitle|howpublished|publisher/.test(line)).join(' '))
+    expect(crossref).toEqual([
+      '@article{crossref_10_1234_x,   journal={Transactions of the ACL},',
+      '@inproceedings{crossref_10_1234_x,   booktitle={Proceedings of ACL \\& EMNLP},',
+      '@inproceedings{crossref_10_1234_x,   booktitle={Lecture Notes},',
+      '@misc{crossref_10_1234_x,   howpublished={SSRN},',
+      '@misc{crossref_10_1234_x,   publisher={Zenodo},',
+      '@misc{crossref_10_1234_x,',
+    ])
+    const openalex = (await searchLiterature('openalex', 'q', signal)).map(result => `${result.bibtex.split('\n')[0] as string}${result.bibtex.match(/ {2}(journal|booktitle|howpublished)=\{[^}]*\}/)?.[0] ?? ''}`)
+    expect(openalex).toEqual(['@article{openalex_W1,  journal={Nature}', '@inproceedings{openalex_W2,  booktitle={NeurIPS}', '@misc{openalex_W3,  howpublished={arXiv}', '@misc{openalex_W4,'])
+    const [arxiv] = await searchLiterature('arxiv', 'longformer', signal)
+    expect(arxiv?.bibtex).toContain('  howpublished={arXiv preprint arXiv:2004.05150},\n  eprint={2004.05150},\n  archivePrefix={arXiv},\n  url={https://arxiv.org/abs/2004.05150v2}')
   })
 
   it('reads arXiv feeds with one, many or no entries and authors', async () => {
@@ -71,6 +110,8 @@ describe('scholarly metadata comes from the providers, never from the model', ()
     })
     expect((await verifyLiterature(item, signal)).title).toBe('A tagged title')
     expect((await verifyLiterature({ ...item, doi: undefined, provider: 'openalex', id: 'https://openalex.org/W7' }, signal)).title).toBe('Seven')
+    // An OpenAlex work carrying arXiv's DataCite DOI is re-read from OpenAlex, never from Crossref, which does not hold it.
+    expect((await verifyLiterature({ ...item, doi: '10.48550/arxiv.2004.05150', provider: 'openalex', id: 'https://openalex.org/W7' }, signal)).title).toBe('Seven')
     const arxiv = { ...item, doi: undefined, provider: 'arxiv' as const }
     expect((await verifyLiterature({ ...arxiv, id: 'https://arxiv.org/abs/2401.00001' }, signal)).title).toBe('Found')
     await expect(verifyLiterature({ ...arxiv, id: 'https://arxiv.org/abs/9999.99999' }, signal)).rejects.toThrow(/could not be verified/)

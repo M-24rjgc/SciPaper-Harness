@@ -3,12 +3,22 @@ import { XMLParser } from 'fast-xml-parser'
 import { z } from 'zod'
 import type { LiteratureItem } from './types.ts'
 
-const clean = (value: string): string => value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+const ENTITIES: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': '\'', '&apos;': '\'' }
+/** Provider text as plain text: markup removed (JATS <scp>, <i>, <p>), entities decoded, whitespace collapsed. */
+const clean = (value: string): string => value
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/&(?:amp|lt|gt|quot|#39|apos);/g, entity => ENTITIES[entity] as string)
+  .replace(/\s+([:;,.?!])/g, '$1')
+  .replace(/\s+/g, ' ')
+  .trim()
 const bib = (value: string): string => value.replace(/[{}]/g, '').replaceAll('&', '\\&')
 const strings = z.array(z.string()).optional()
 const crossrefWork = z.object({
   DOI: z.string(),
+  type: z.string().optional(),
   title: strings,
+  'container-title': strings,
+  publisher: z.string().optional(),
   author: z.array(z.object({ given: z.string().optional(), family: z.string().optional() })).optional(),
   published: z.object({ 'date-parts': z.array(z.array(z.number())) }).optional(),
   URL: z.string().optional(),
@@ -21,7 +31,17 @@ const openalexWork = z.object({
   publication_year: z.number(),
   authorships: z.array(z.object({ author: z.object({ display_name: z.string() }) })),
   abstract_inverted_index: z.record(z.string(), z.array(z.number())).nullable().optional(),
+  primary_location: z.object({
+    source: z.object({ display_name: z.string(), type: z.string().nullable().optional() }).nullable().optional(),
+  }).nullable().optional(),
 })
+
+/** Where a work appeared, as BibTeX states it: the entry type and the field that names the venue. */
+interface Venue {
+  type: 'article' | 'inproceedings' | 'misc'
+  field: 'journal' | 'booktitle' | 'howpublished' | 'publisher'
+  name: string
+}
 
 const openAccessWork = z.object({ best_oa_location: z.object({ pdf_url: z.string().nullable().optional() }).nullable().optional() })
 const DOI = /^10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+$/
@@ -35,19 +55,35 @@ async function response(url: string, signal: AbortSignal, timeoutMs = 30000): Pr
   return result
 }
 
-function withBibtex(item: Omit<LiteratureItem, 'bibtex'>): LiteratureItem {
+/**
+ * BibTeX for a verified record. A work whose venue the provider names is an
+ * article or a proceedings paper with its journal or book title; anything else
+ * is a misc entry, so no entry claims a journal it does not have. The title is
+ * braced twice so bibliography styles keep its capitals (SummaC, BART).
+ */
+function withBibtex(item: Omit<LiteratureItem, 'bibtex'>, venue?: Venue, eprint?: string): LiteratureItem {
   const key = `${item.provider}_${item.id.replace(/[^A-Za-z0-9]/g, '_')}`
   const lines = [
-    `@article{${key},`,
-    `  title={${bib(item.title)}},`,
+    `@${venue?.type ?? 'misc'}{${key},`,
+    `  title={{${bib(item.title)}}},`,
     `  author={${item.authors.map(bib).join(' and ')}},`,
     ...(item.year ? [`  year={${item.year}},`] : []),
+    ...(venue ? [`  ${venue.field}={${bib(venue.name)}},`] : []),
     ...(item.doi ? [`  doi={${bib(item.doi)}},`] : []),
+    ...(eprint ? [`  eprint={${eprint}},`, '  archivePrefix={arXiv},'] : []),
     `  url={${item.url}}`,
     '}',
     '',
   ]
   return { ...item, bibtex: lines.join('\n') }
+}
+
+function crossrefVenue(value: z.infer<typeof crossrefWork>): Venue | undefined {
+  const container = clean(value['container-title']?.[0] ?? '')
+  if (!container) return value.publisher ? { type: 'misc', field: 'publisher', name: value.publisher } : undefined
+  if (value.type === 'journal-article') return { type: 'article', field: 'journal', name: container }
+  if (value.type === 'proceedings-article' || value.type === 'book-chapter') return { type: 'inproceedings', field: 'booktitle', name: container }
+  return { type: 'misc', field: 'howpublished', name: container }
 }
 
 function fromCrossref(value: z.infer<typeof crossrefWork>): LiteratureItem {
@@ -60,7 +96,7 @@ function fromCrossref(value: z.infer<typeof crossrefWork>): LiteratureItem {
     doi: value.DOI,
     url: `https://doi.org/${value.DOI}`,
     abstract: clean(value.abstract ?? ''),
-  })
+  }, crossrefVenue(value))
 }
 
 function fromOpenalex(value: z.infer<typeof openalexWork>): LiteratureItem {
@@ -77,7 +113,14 @@ function fromOpenalex(value: z.infer<typeof openalexWork>): LiteratureItem {
     ...(value.doi ? { doi: value.doi.replace('https://doi.org/', '') } : {}),
     url: value.doi ?? value.id,
     abstract: words.join(' '),
-  })
+  }, openalexVenue(value.primary_location?.source))
+}
+
+function openalexVenue(source: { display_name: string; type?: string | null | undefined } | null | undefined): Venue | undefined {
+  if (!source) return undefined
+  if (source.type === 'journal') return { type: 'article', field: 'journal', name: source.display_name }
+  if (source.type === 'conference') return { type: 'inproceedings', field: 'booktitle', name: source.display_name }
+  return { type: 'misc', field: 'howpublished', name: source.display_name }
 }
 
 function fromArxiv(xml: string): LiteratureItem[] {
@@ -91,15 +134,18 @@ function fromArxiv(xml: string): LiteratureItem[] {
   })
   const feed = z.object({ feed: z.object({ entry: z.union([entry, z.array(entry)]).optional() }) }).parse(parsed).feed
   const entries = feed.entry ? Array.isArray(feed.entry) ? feed.entry : [feed.entry] : []
-  return entries.map(value => withBibtex({
-    id: value.id,
-    provider: 'arxiv',
-    title: clean(value.title),
-    authors: (Array.isArray(value.author) ? value.author : value.author ? [value.author] : []).map(a => a.name),
-    ...(value.published ? { year: Number(value.published.slice(0, 4)) } : {}),
-    url: value.id.replace('http:', 'https:'),
-    abstract: clean(value.summary ?? ''),
-  }))
+  return entries.map((value) => {
+    const eprint = value.id.replace(/^.*\/abs\//, '').replace(/v\d+$/, '')
+    return withBibtex({
+      id: value.id,
+      provider: 'arxiv',
+      title: clean(value.title),
+      authors: (Array.isArray(value.author) ? value.author : value.author ? [value.author] : []).map(a => a.name),
+      ...(value.published ? { year: Number(value.published.slice(0, 4)) } : {}),
+      url: value.id.replace('http:', 'https:'),
+      abstract: clean(value.summary ?? ''),
+    }, { type: 'misc', field: 'howpublished', name: `arXiv preprint arXiv:${eprint}` }, eprint)
+  })
 }
 
 /** Search one scholarly provider without requiring a paid search service. */
@@ -118,15 +164,20 @@ export async function searchLiterature(provider: LiteratureItem['provider'], que
   return fromArxiv(await (await response(url, signal)).text())
 }
 
-/** Fetch an imported citation again by identifier; model-supplied metadata is not treated as verification. */
+/**
+ * Fetch an imported citation again by identifier from the provider that
+ * returned it; model-supplied metadata is not treated as verification. An
+ * OpenAlex work is re-read from OpenAlex because its DOI may be one Crossref
+ * does not hold (arXiv's DataCite DOIs).
+ */
 export async function verifyLiterature(item: LiteratureItem, signal: AbortSignal): Promise<LiteratureItem> {
-  if (item.doi) {
-    const result: unknown = await (await response(`https://api.crossref.org/works/${encodeURIComponent(item.doi)}`, signal)).json()
-    return fromCrossref(z.object({ message: crossrefWork }).parse(result).message)
-  }
   if (item.provider === 'openalex' && /^(https:\/\/openalex.org\/)?W\d+$/.test(item.id)) {
     const result: unknown = await (await response(`https://api.openalex.org/works/${item.id.split('/').at(-1)}`, signal)).json()
     return fromOpenalex(openalexWork.parse(result))
+  }
+  if (item.doi) {
+    const result: unknown = await (await response(`https://api.crossref.org/works/${encodeURIComponent(item.doi)}`, signal)).json()
+    return fromCrossref(z.object({ message: crossrefWork }).parse(result).message)
   }
   if (item.provider === 'arxiv') {
     const identifier = item.id.replace(/^.*\/abs\//, '')
