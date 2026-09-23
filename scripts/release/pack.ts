@@ -52,7 +52,7 @@ function parseConcurrency(raw: string | undefined): number {
 /** Pack the family named by `--family` into `--out`. */
 async function main(): Promise<void> {
   const { values } = parseArgs({
-    options: { family: { type: 'string' }, out: { type: 'string' }, concurrency: { type: 'string' } },
+    options: { family: { type: 'string' }, out: { type: 'string' }, concurrency: { type: 'string' }, 'client-profile': { type: 'string' } },
     allowPositionals: false,
   })
   if (values.family === undefined) throw new Error('usage: pack.ts --family <dsh|vendor> [--out dist/npm] [--concurrency 1]')
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   const root = process.cwd()
   const destination = resolve(root, values.out ?? DEFAULT_OUTPUT)
   const members = family.publishOrder(family.members(root)).order
-  family.verifyBuildArtifacts(root)
+  family.verifyBuildArtifacts(root, values['client-profile'])
   family.verifyVersions(members)
 
   rmSync(destination, { recursive: true, force: true })

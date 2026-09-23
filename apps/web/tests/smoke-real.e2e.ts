@@ -354,7 +354,7 @@ describe('dsh web keyless CLI smoke', () => {
         }
       })
       await page.goto(readyUrl)
-      await page.getByRole('button', { name: 'New session', exact: true }).first().waitFor({ timeout: 30_000 })
+      await page.getByRole('button', { name: 'New research', exact: true }).first().waitFor({ timeout: 30_000 })
       const batchPaths = [...new Set(pluginScripts)].sort()
       expect(batchPaths).toHaveLength(2)
       expect(batchPaths).toContainEqual(expect.stringMatching(
@@ -731,10 +731,8 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
 
   it('empty-state first send completes a real model round', async () => {
     onTestFailed(() => saveFailureShot(page, 'w5-first-round'))
-    // This scenario spawns its own server against a fresh $DSH_HOME with the
-    // DeepSeek credential inherited from the environment, so no onboarding
-    // step mounts and the page is immediately interactive.
-    // Fresh world: connect a Workspace so the composer starts live.
+    // A fresh profile shows the versioned welcome notice even with a stored key.
+    await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await connectFreshWorkspace(page, sessionsDir)
     const input = page.locator('[data-composer-input]').first()
     await input.waitFor({ timeout: 10_000 })

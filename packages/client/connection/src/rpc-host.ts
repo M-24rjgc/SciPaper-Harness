@@ -290,7 +290,19 @@ function assertChannel(channel: string): void {
 }
 
 function assertFetchRoute(route: ConnectionFetchRoute): void {
-  if (endpointFromPath(API_PATH, route.path) === undefined) {
+  // Fetch assets may have percent-encoded names; RPC endpoint identifiers remain
+  // restricted by endpointFromPath. Reject aliases that URL parsing normalizes.
+  let valid = false
+  try {
+    valid = route.path.startsWith(`${API_PATH}/`)
+      && new URL(route.path, 'https://connection.invalid').pathname === route.path
+      && !/[?#\\]|\s|[\x00-\x1f]/u.test(route.path)
+      && route.path.slice(API_PATH.length + 1).split('/').every((segment) => {
+        const decoded = decodeURIComponent(segment)
+        return decoded !== '' && decoded !== '.' && decoded !== '..' && !/[/\\\x00-\x1f]/u.test(decoded)
+      })
+  } catch { valid = false }
+  if (!valid) {
     throw new Error(`connection: invalid exact Fetch route ${JSON.stringify(route.path)}`)
   }
   if (route.methods.length === 0) {

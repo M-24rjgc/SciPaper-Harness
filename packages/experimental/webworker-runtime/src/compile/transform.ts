@@ -217,6 +217,14 @@ class Transformer {
   private exportDefault(node: Node): void {
     this.moduleSyntax = true
     const declaration = node.declaration as Node
+    if (declaration.type === 'FunctionDeclaration' || declaration.type === 'ClassDeclaration') {
+      const id = declaration.id as Node | null
+      if (id !== null) {
+        this.replace(node.start, declaration.start, '')
+        this.bindings.push({ exported: 'default', local: nameOf(id) })
+        return
+      }
+    }
     this.replace(node.start, declaration.start, 'exports.default = ')
   }
 

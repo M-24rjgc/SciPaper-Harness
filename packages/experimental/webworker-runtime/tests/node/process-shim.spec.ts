@@ -3,7 +3,7 @@
  * `getBuiltinModule` face, which must answer the loader's module proxies for
  * builtin ids and undefined for everything else — never an image resolution.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installProcessGlobal } from '../../src/node/globals/process.ts'
 import { setActiveModuleLoader, WorkerModuleLoader } from '../../src/module-system/module-loader.ts'
 import { MemoryVfs } from '../../src/storage/memory.ts'
@@ -12,12 +12,16 @@ import { spawnSync } from '../../src/node/builtin_modules/implemented/child_proc
 const realProcess = globalThis.process
 
 afterEach(() => {
+  vi.unstubAllGlobals()
   ;(globalThis as { process: unknown }).process = realProcess
 })
 
 describe('process shim', () => {
   it('publishes cwd, env, and version zero for the loader probe', () => {
+    vi.stubGlobal('global', undefined)
     const shim = installProcessGlobal({ cwd: '/dsh', env: { DSH_HOME: '/dsh/home' } })
+    expect(globalThis.global).toBe(globalThis)
+    expect(globalThis.global.process).toBe(shim)
     expect(shim.cwd()).toBe('/dsh')
     expect(shim.env.DSH_HOME).toBe('/dsh/home')
     expect(shim.title).toBe('dsh-webworker')

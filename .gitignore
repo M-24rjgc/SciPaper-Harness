@@ -44,3 +44,5 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+# tsx cache leaked by launchers that compute TEMP from an unset variable
+undefined/

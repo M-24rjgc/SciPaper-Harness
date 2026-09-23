@@ -409,7 +409,7 @@ describe('web e2e: seeded history renders through cold resume', () => {
     expect(style).toEqual({
       backgroundColor: 'rgb(249, 250, 251)',
       borderRadius: '8px',
-      color: 'rgb(129, 133, 140)',
+      color: 'rgb(145, 140, 128)',
       fontSize: '11px',
       lineHeight: '16px',
       padding: ['10px', '16px', '12px', '12px'],
@@ -444,7 +444,8 @@ describe('web e2e: seeded history renders through cold resume', () => {
     await expect.poll(() => path.textContent()).toBe(absolutePath)
     expect(await path.getAttribute('title')).toBe(absolutePath)
     await expect.poll(() => column.locator('[data-textpreview-line="1"]').textContent()).toBe('alpha\n')
-    const preview = await captureStableAria(page, '[data-textpreview-state="text"]', scaffold.workspaceCwd)
+    const preview = (await captureStableAria(page, '[data-textpreview-state="text"]', scaffold.workspaceCwd))
+      .replaceAll(join('{{cwd}}', 'a.txt'), '{{cwd}}/a.txt')
     await compareOrRefreshGolden(FILE_PREVIEW_EXPECTED, preview, MODE)
     // Put the column back so the later goldens see the default frame.
     await column.locator('[data-sidebar-right-toggle]').click()

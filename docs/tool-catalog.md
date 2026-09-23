@@ -43,6 +43,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
 
 <a id="deepseek-aidsh-mcp-resources"></a>
 
@@ -2612,3 +2613,430 @@ Search the web for current information. Provide 1–4 queries in the required qu
 Source: [`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.
+
+<a id="deepseek-aidsh-research-workbench"></a>
+
+## `@deepseek-ai/dsh-research-workbench`
+
+### `research_artifact`
+
+Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. import-template {paths}: copy a venue template into template/. export {}: zip of sources, PDF, data manifest and the check report.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "save-artifact",
+        "register-artifact",
+        "read-artifact",
+        "import-template",
+        "compile",
+        "render-pages",
+        "export"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "path": {
+      "type": "string",
+      "description": "save-artifact / register-artifact / compile: project-relative path"
+    },
+    "content": {
+      "type": "string",
+      "description": "save-artifact: full file text"
+    },
+    "kind": {
+      "type": "string",
+      "description": "save-artifact / register-artifact",
+      "enum": [
+        "manuscript",
+        "diagram",
+        "figure",
+        "code",
+        "bibliography",
+        "supplement",
+        "image"
+      ]
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "description": "save-artifact: optional optimistic revision"
+    },
+    "evidence": {
+      "description": "save/register: [{evidenceId, revision, locator, quote}]"
+    },
+    "claimIds": {
+      "type": "array",
+      "description": "save/register: claims this file states",
+      "items": {
+        "type": "string"
+      }
+    },
+    "inputArtifacts": {
+      "description": "save/register: [{id, revision}] the files this one was made from (e.g. data table and plotting script)"
+    },
+    "artifactId": {
+      "type": "string",
+      "description": "read-artifact / render-pages"
+    },
+    "paths": {
+      "type": "array",
+      "description": "import-template: template files or directories",
+      "items": {
+        "type": "string"
+      }
+    },
+    "engine": {
+      "type": "string",
+      "description": "compile (xelatex for CJK text)",
+      "enum": [
+        "pdflatex",
+        "xelatex",
+        "lualatex"
+      ]
+    },
+    "maxPages": {
+      "type": "integer",
+      "description": "render-pages: page cap"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_check`
+
+Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files. scope: all (default), a phase of the current mode, or one check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure). It reports and never blocks. Not clean means not done: fix the errors and check again.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "scope": {
+      "type": "string",
+      "description": "all, a phase id or a check id"
+    }
+  }
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_environment`
+
+Create or bind the Python environment experiments run in. environment {environment: {name, kind: uv|existing|conda, target: local|ssh, python, sshHost?, remoteRoot?, requirements: [], isDefault}}. kind uv with a blank python creates a managed 3.12 environment inside the project. Existing and conda interpreters are inspected, never modified, and binding a local one asks the user first. SSH uses an OpenSSH alias and a dedicated absolute remoteRoot.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "environment"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "environment": {
+      "description": "the environment description"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_evidence`
+
+Sources and citations. import {paths}: snapshot files (PDF, DOCX, CSV, JSON, text) as evidence with page/line locators; CSV/JSON become data evidence that result numbers can trace to. search-evidence {query}: ranked quotes with evidenceId, revision and locator. literature-search {provider: crossref|openalex|arxiv, query}; literature-import {item}: re-fetches the record by its identifier and returns verified BibTeX to put in the bibliography. claim {claim}: link a claim to exact quoted evidence. refresh-evidence {evidenceId}.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "import",
+        "refresh-evidence",
+        "search-evidence",
+        "claim",
+        "literature-search",
+        "literature-import"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "paths": {
+      "type": "array",
+      "description": "import: files, relative to the project or absolute. Paths outside the project ask the user first.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidenceId": {
+      "type": "string",
+      "description": "refresh-evidence"
+    },
+    "query": {
+      "type": "string",
+      "description": "search-evidence / literature-search"
+    },
+    "provider": {
+      "type": "string",
+      "description": "literature-search",
+      "enum": [
+        "crossref",
+        "openalex",
+        "arxiv"
+      ]
+    },
+    "item": {
+      "description": "literature-import: one item exactly as literature-search returned it"
+    },
+    "claim": {
+      "description": "claim: {id, text, kind: hypothesis|method|literature|empirical, state: proposed|supported|contradicted|stale, evidence: [{evidenceId, revision, locator, quote}], artifactIds}"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_experiment`
+
+Independent experiment runs that survive the chat and the app. experiment {requestId: a new UUID, spec: {environmentId, name, argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], metricsPath: "metrics.json"}}. The code directory (codePaths, default code/) and the selected data are snapshotted. The script writes numeric metrics as JSON to $RESEARCH_METRICS_PATH and deliverables (tables, plot data) to $RESEARCH_OUTPUT_DIR (or ./outputs); both become data evidence. Reuse the same requestId to reconcile a lost response — never resubmit with a new one. experiment-wait {runIds, timeoutSeconds ≤ 1800} blocks until a run finishes. experiment-logs / -refresh / -cancel / -dismiss {runId}; dismiss only drops a run whose state is unknown.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "experiment",
+        "experiment-refresh",
+        "experiment-cancel",
+        "experiment-dismiss",
+        "experiment-logs",
+        "experiment-wait"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "requestId": {
+      "type": "string",
+      "description": "experiment: a new UUID"
+    },
+    "spec": {
+      "description": "experiment: the run specification"
+    },
+    "runId": {
+      "type": "string",
+      "description": "refresh / cancel / dismiss / logs"
+    },
+    "runIds": {
+      "type": "array",
+      "description": "experiment-wait",
+      "items": {
+        "type": "string"
+      }
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "description": "experiment-wait"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_media`
+
+visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. generate-image {prompt, path}: a raster illustration from the configured image API. Architecture diagrams are editable draw.io; result plots come from scripts and real data.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "visual-review",
+        "complete-visual-review",
+        "generate-image"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "artifactId": {
+      "type": "string",
+      "description": "visual-review / complete-visual-review"
+    },
+    "artifactRevision": {
+      "type": "integer",
+      "description": "complete-visual-review"
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "complete-visual-review"
+    },
+    "findings": {
+      "type": "string",
+      "description": "complete-visual-review"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "generate-image"
+    },
+    "path": {
+      "type": "string",
+      "description": "generate-image: new .png/.jpg/.webp path"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_project`
+
+The research project around your working directory. current: mode, autonomy, phases, decisions, files, runs — call it when you start work. create {title, brief?, root?, mode?, autonomy?}: make the working directory (or root) a research project. list: all projects. set-mode {mode: paper-first|from-results|free, reason}: route the project. set-autonomy {autonomy: checkpoints|automatic}. record-decision {question, answer, rationale?, decidedBy?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "current",
+        "create",
+        "list",
+        "set-mode",
+        "set-autonomy",
+        "record-decision"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "title": {
+      "type": "string",
+      "description": "create"
+    },
+    "brief": {
+      "type": "string",
+      "description": "create: the idea or the material in a few sentences"
+    },
+    "root": {
+      "type": "string",
+      "description": "create: absolute directory; defaults to the working directory"
+    },
+    "mode": {
+      "type": "string",
+      "description": "create / set-mode",
+      "enum": [
+        "paper-first",
+        "from-results",
+        "free"
+      ]
+    },
+    "autonomy": {
+      "type": "string",
+      "description": "create / set-autonomy",
+      "enum": [
+        "checkpoints",
+        "automatic"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "set-mode: why this route"
+    },
+    "question": {
+      "type": "string",
+      "description": "record-decision"
+    },
+    "answer": {
+      "type": "string",
+      "description": "record-decision"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "record-decision"
+    },
+    "decidedBy": {
+      "type": "string",
+      "description": "record-decision: who made the decision",
+      "enum": [
+        "user",
+        "agent"
+      ]
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_task`
+
+Read a desktop-started research operation by jobId. A failed or interrupted task did not complete. Experiment runs are separate and reconciled by runId.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "jobId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "jobId"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory.

@@ -157,6 +157,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.composer': { kind: 'chain'; scope: 'session'; owner: ComposerChainProps }
     /** Workspace picker shown by the blank-session Hero. */
     'conversation.hero.workspace': { kind: 'single'; scope: 'root'; owner: EmptyWorkspaceOwnerProps }
+    /** Welcome content below the blank-session headline. */
+    'conversation.hero.welcome': { kind: 'list'; scope: 'root' }
+    /** Supporting content below the blank-session composer. */
+    'conversation.hero.footer': { kind: 'list'; scope: 'root' }
     /** Brand mark shown before the blank-session headline. */
     'conversation.hero.brand.mark': { kind: 'single'; scope: 'root'; owner: HeroBrandMarkOwnerProps }
     /** Agent-preset control staged for a New Session. */
@@ -165,8 +169,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.input.dock': { kind: 'list'; scope: 'session'; owner: InputZone }
     /** Floating entries rendered inside the resident composer card. */
     'conversation.input.overlay': { kind: 'list'; scope: 'session' }
-    /** Ambient entries below the composer card. */
-    'conversation.composer.dock': { kind: 'list'; scope: 'session' }
+    /** Ambient entries below the composer card, in both composer and hero postures. */
+    'conversation.composer.dock': { kind: 'list'; scope: 'session'; owner: ComposerDockOwnerProps }
     /** Compact controls at the left of the composer tool row. */
     'conversation.input.left': { kind: 'list'; scope: 'session' }
     /** Compact controls before the composer submit action. */
@@ -287,6 +291,12 @@ export interface ConversationSessionHeaderInjected {
 }
 
 /** Owner share of the resident composer bar. */
+/** Owner share of the ambient region under the composer card. */
+export interface ComposerDockOwnerProps {
+  /** The posture the composer is drawn in, so an entry can address one of them. */
+  variant: 'hero' | 'composer'
+}
+
 export interface ComposerBarOwnerProps {
   /** Hero uses centered placement; composer uses the active bottom placement. */
   variant: 'hero' | 'composer'
@@ -371,6 +381,7 @@ export type ConversationSlotProps =
     | 'conversation.session' | 'conversation.session.header'
     | 'conversation.composer' | 'conversation.composer.bar'
     | 'conversation.input.dock'
+    | 'conversation.hero.welcome' | 'conversation.hero.footer'
     | 'conversation.hero.brand.mark'
     | 'conversation.hero.workspace'
     | 'conversation.hero.agentPreset'

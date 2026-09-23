@@ -168,7 +168,7 @@ describe('web e2e: a finished turn ends with the files it produced', () => {
     await expect.poll(() => row.getByText('+ 6 files', { exact: true }).isVisible()).toBe(true)
     // Chips open in the right Sidebar's text preview, and a directory is not
     // something that preview can show, so the row offers no folder action.
-    expect(await page.getByRole('button', { name: /folder/i }).count()).toBe(0)
+    expect(await row.getByRole('button', { name: /folder/i }).count()).toBe(0)
     expect(await page.getByText('Files changed', { exact: true }).count()).toBe(1)
 
     const turnSpacing = await page.evaluate((done) => {

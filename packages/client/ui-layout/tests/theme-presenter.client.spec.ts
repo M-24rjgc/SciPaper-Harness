@@ -6,6 +6,13 @@ import { DARK_ATTRIBUTE, ThemePresenter } from '@deepseek-ai/dsh-client-ui-layou
 
 const LIGHT_THEME_COLOR = 'rgb(255, 255, 255)'
 const DARK_THEME_COLOR = 'rgb(21, 21, 23)'
+const presenters: ThemePresenter[] = []
+
+function createPresenter(): ThemePresenter {
+  const presenter = new ThemePresenter()
+  presenters.push(presenter)
+  return presenter
+}
 
 function snapshot(colorScheme: 'light' | 'dark', tokens: Record<string, string> = {}, fontSize = 14): ThemeSnapshot {
   // The presenter must key off colorScheme, not the id — keep them distinct.
@@ -31,15 +38,20 @@ beforeEach(() => {
   style.textContent = `
     body { background-color: ${LIGHT_THEME_COLOR}; }
     body[${DARK_ATTRIBUTE}] { background-color: ${DARK_THEME_COLOR}; }
+    body[data-test-palette] { background-color: rgb(250, 249, 246); }
   `
   document.head.append(style)
 })
 
-afterEach(clearThemePresentation)
+afterEach(() => {
+  presenters.splice(0).forEach((presenter) => { presenter.dispose() })
+  document.body.removeAttribute('data-test-palette')
+  clearThemePresentation()
+})
 
 describe('ThemePresenter', () => {
   it('light scheme sets root color-scheme and leaves the dark attribute absent', () => {
-    const presenter = new ThemePresenter()
+    const presenter = createPresenter()
     presenter.apply(snapshot('light'))
     expect(document.documentElement.style.colorScheme).toBe('light')
     expect(document.body.hasAttribute(DARK_ATTRIBUTE)).toBe(false)
@@ -47,7 +59,7 @@ describe('ThemePresenter', () => {
   })
 
   it('dark scheme sets root color-scheme, the attribute, and metadata; switching to light updates one node', () => {
-    const presenter = new ThemePresenter()
+    const presenter = createPresenter()
     presenter.apply(snapshot('dark'))
     const meta = themeColorMeta()
     expect(document.documentElement.style.colorScheme).toBe('dark')
@@ -62,7 +74,7 @@ describe('ThemePresenter', () => {
   })
 
   it('applies tokens as inline variables and clears the previous set on theme change', () => {
-    const presenter = new ThemePresenter()
+    const presenter = createPresenter()
     presenter.apply(snapshot('dark', { '--dsw-alias-bg': '#111', '--dsw-alias-fg': '#eee' }))
     expect(document.body.style.getPropertyValue('--dsw-alias-bg')).toBe('#111')
     expect(document.body.style.getPropertyValue('--dsw-alias-fg')).toBe('#eee')
@@ -73,7 +85,7 @@ describe('ThemePresenter', () => {
   })
 
   it('publishes the content font size and follows changes', () => {
-    const presenter = new ThemePresenter()
+    const presenter = createPresenter()
     presenter.apply(snapshot('light'))
     expect(document.body.style.getPropertyValue('--dsh-content-font-size')).toBe('14px')
     presenter.apply(snapshot('light', {}, 17))
@@ -82,7 +94,7 @@ describe('ThemePresenter', () => {
 
   it('dispose removes color-scheme, the attribute, the font-size axis, and every applied variable, sparing foreign inline styles', () => {
     document.body.style.setProperty('--foreign', 'kept')
-    const presenter = new ThemePresenter()
+    const presenter = createPresenter()
     presenter.apply(snapshot('dark', { '--dsw-alias-bg': '#111' }))
     const meta = themeColorMeta()
     presenter.dispose()
@@ -91,6 +103,23 @@ describe('ThemePresenter', () => {
     expect(document.body.style.getPropertyValue('--dsw-alias-bg')).toBe('')
     expect(document.body.style.getPropertyValue('--dsh-content-font-size')).toBe('')
     expect(document.body.style.getPropertyValue('--foreign')).toBe('kept')
+    expect(meta?.isConnected).toBe(false)
+  })
+
+  it('follows palette attributes applied and removed after the snapshot, then stops on dispose', async () => {
+    const presenter = createPresenter()
+    presenter.apply(snapshot('light'))
+    const meta = themeColorMeta()
+    document.body.setAttribute('data-test-palette', '')
+    await Promise.resolve()
+    expect(meta?.content).toBe('rgb(250, 249, 246)')
+    document.body.removeAttribute('data-test-palette')
+    await Promise.resolve()
+    expect(meta?.content).toBe(LIGHT_THEME_COLOR)
+    presenter.dispose()
+    document.body.setAttribute('data-test-palette', '')
+    await Promise.resolve()
+    expect(meta?.content).toBe(LIGHT_THEME_COLOR)
     expect(meta?.isConnected).toBe(false)
   })
 })

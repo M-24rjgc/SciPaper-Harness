@@ -1,0 +1,61 @@
+.root { display: flex; flex-direction: column; gap: 26px; }
+.subtitle { margin: 0; font-size: 12.5px; color: var(--dsw-alias-label-tertiary); }
+
+.group { display: flex; flex-direction: column; gap: 10px; }
+.groupTitle { margin: 0; font-size: 13px; font-weight: 600; }
+.groupHint { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--dsw-alias-label-tertiary); }
+
+.role { display: flex; flex-direction: column; gap: 11px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 10px; padding: 13px 15px; }
+.roleHead { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 14px; align-items: baseline; }
+.roleTitle { grid-row: 1; grid-column: 1; font-size: 12.5px; font-weight: 600; }
+.roleStanding { grid-row: 1; grid-column: 2; justify-self: end; font-size: 12px; color: var(--dsw-alias-label-primary); border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 7px; padding: 3px 10px; white-space: nowrap; }
+.roleBody { grid-row: 2; grid-column: 1; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
+/* The note shares row 2 with the body, so it is capped: an unbounded string here
+   would widen the auto column and collapse the title and body to a sliver. */
+.roleNote { grid-row: 2; grid-column: 2; justify-self: end; max-width: 220px; font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-caption); text-align: right; }
+.roleFields { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 11px; }
+
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fieldLabel { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
+.input { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 7px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; padding: 7px 9px; min-width: 0; }
+.input:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
+
+.save { align-self: flex-start; border: none; border-radius: 8px; padding: 8px 16px; font: inherit; font-size: 13px; cursor: pointer; background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); }
+.save:hover:enabled { background: var(--dsw-alias-button-primary-hover); }
+.save:disabled { opacity: .45; cursor: default; }
+.save:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
+
+.components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.component { display: flex; align-items: center; gap: 9px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 9px; padding: 10px 12px; }
+.componentOn, .componentOff { width: 7px; height: 7px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
+.componentOn { background: var(--dsw-alias-state-success-primary); }
+.componentOff { border: 0.5px solid var(--dsw-alias-border-l4); box-sizing: border-box; }
+.componentName { font-size: 12.5px; font-weight: 600; }
+.componentVersion { flex: 1; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+.install { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 7px; padding: 4px 10px; font: inherit; font-size: 11.5px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); white-space: nowrap; }
+.install:hover:enabled { background: var(--dsw-alias-interactive-bg-hover); }
+.install:disabled { opacity: .45; cursor: default; }
+
+.environments { display: flex; flex-direction: column; gap: 8px; }
+.environment { display: flex; align-items: center; gap: 12px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 9px; padding: 10px 12px; }
+.environmentName { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.environmentDetail { flex: 1; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+
+.footer { margin: 0; font-size: 11.5px; line-height: 1.8; color: var(--dsw-alias-label-tertiary); border-top: 0.5px solid var(--dsw-alias-border-l3); padding-top: 14px; }
+
+.role summary { cursor: pointer; list-style: none; }
+.role[open] > .roleFields { margin-top: 14px; }
+.roleHead { grid-template-columns: minmax(140px, 1fr) minmax(150px, 2fr); }
+.roleStanding { justify-self: start; }
+.roleNote { max-width: none; text-align: left; justify-self: start; }
+.environmentForm { display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 10px; margin-top: 14px; }
+.sectionHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.sectionHead > div:has(form) { width: 100%; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.error { color: var(--dsw-alias-state-error-primary); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 650px) { .roleHead { grid-template-columns: 1fr; } .roleStanding, .roleNote { grid-column: 1; grid-row: auto; } }
+.root, .root * { box-sizing: border-box; }
+.groupTitle, .roleTitle { font-size: 14px; }
+.roleStanding, .componentName, .environmentName { font-size: 13px; }
+.groupHint, .roleBody, .roleNote, .environmentDetail { font-size: 12px; }
+@media (max-width: 650px) { .components { grid-template-columns: 1fr; } }

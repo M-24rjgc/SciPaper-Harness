@@ -1,0 +1,20 @@
+.projects { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px 20px; }
+.label { font-size: 12px; color: var(--dsw-alias-label-tertiary); padding: 4px 6px; }
+.project { display: flex; flex-direction: column; gap: 6px; width: 100%; padding: 10px; text-align: left; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); cursor: pointer; font: inherit; font-size: 13px; }
+.project strong { overflow-wrap: anywhere; }
+.project:hover { border-color: var(--dsw-alias-state-success-primary); }
+.empty { margin: 0; font-size: 12px; color: var(--dsw-alias-label-tertiary); line-height: 1.6; }
+.waiting { font-size: 12px; color: var(--dsw-alias-state-warn-primary); }
+.entry, .primary { display: inline-flex; align-items: center; align-self: flex-start; gap: 6px; min-height: 30px; padding: 5px 12px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 7px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-secondary); cursor: pointer; font: inherit; font-size: 12px; }
+.primary { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); border-color: transparent; }
+.dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); overflow: auto; }
+.form { display: flex; flex-direction: column; gap: 14px; }
+.form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.form input, .form textarea, .form select { font: inherit; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 7px; padding: 9px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.actions { display: flex; gap: 10px; }
+.error { color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+.entry:focus-visible, .primary:focus-visible, .project:focus-visible { outline: 2px solid var(--dsw-alias-state-success-primary); outline-offset: 3px; }
+.composerEntry { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.composerEntry:hover:enabled { background: var(--dsw-alias-interactive-bg-hover); }
+.composerEntry:focus-visible { outline: 2px solid var(--dsw-alias-state-success-primary); outline-offset: 2px; }
+.composerEntry:disabled, .entry:disabled, .primary:disabled { opacity: .45; cursor: default; }

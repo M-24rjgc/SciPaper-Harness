@@ -1,0 +1,48 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: calc(100% - 2 * var(--dsh-composer-side-clearance) - 4 * var(--dsh-composer-dock-inset));
+  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));
+  margin: 0 auto;
+}
+
+.run { display: flex; flex-direction: column; gap: 10px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 12px; background: var(--dsw-alias-bg-layer-1); padding: 13px 15px; }
+.runHead { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.runName { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.runMeta { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.runEnvironment { margin-left: auto; font-size: 11.5px; color: var(--dsw-alias-label-caption); }
+.runNote { margin: 0; font-size: 12px; line-height: 1.7; color: var(--dsw-alias-label-secondary); }
+.runRow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+
+.markRunning, .markDone, .markAttention { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
+.markRunning { background: var(--dsw-alias-state-success-primary); box-shadow: 0 0 0 3px var(--dsw-alias-state-success-tertiary); }
+.markDone { background: var(--dsw-alias-state-success-primary); }
+.markAttention { background: var(--dsw-alias-state-warn-primary); }
+
+.bar { height: 4px; border-radius: 3px; background: var(--dsw-alias-border-l3); overflow: hidden; }
+.barFill { display: block; height: 100%; background: var(--dsw-alias-state-success-primary); }
+
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.action, .stop { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.action:hover, .stop:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.action:focus-visible, .stop:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
+.stop { border-color: var(--dsw-alias-state-warn-primary); color: var(--dsw-alias-state-warn-primary); }
+
+.logs {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--dsw-alias-bg-module-platform);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: 11.5px/1.65 var(--dsw-font-mono, ui-monospace, Consolas, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+.more { margin: 0; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); text-align: center; }
+.settled { align-self: center; border: 0; background: none; padding: 2px 8px; font: inherit; font-size: 12px; color: var(--dsw-alias-label-secondary); cursor: pointer; }
+.settled:hover { color: var(--dsw-alias-label-primary); }
+.settled:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }

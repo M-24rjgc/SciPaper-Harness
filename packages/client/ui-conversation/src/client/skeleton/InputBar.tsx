@@ -472,8 +472,8 @@ export const InputBar = memo(function InputBar({
           </div>
         </div>
       </div>
-      {variant === 'composer' && input !== undefined && sessionId !== undefined
-        ? renderSlot('conversation.composer.dock', {})
+      {input !== undefined && sessionId !== undefined
+        ? renderSlot('conversation.composer.dock', { variant })
         : null}
     </div>
   )

@@ -43,6 +43,7 @@
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash-Vision-Exp, reasoning effort high":
   - text: DeepSeek-V4-Flash-Vision-Exp high
   - img

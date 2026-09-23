@@ -31,6 +31,7 @@
 - 'button "Access mode, current: Auto review EXP"':
   - text: Auto review
   - superscript: EXP
+- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img
@@ -76,6 +77,7 @@
 - 'button "Access mode, current: Auto review EXP"':
   - text: Auto review
   - superscript: EXP
+- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img
@@ -146,6 +148,7 @@
 - 'button "Access mode, current: Auto review EXP"':
   - text: Auto review
   - superscript: EXP
+- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img

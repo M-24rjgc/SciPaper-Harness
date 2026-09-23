@@ -28,6 +28,12 @@
     // not declaration path aliases, keep each package/vendor source compiled
     // under its own tsconfig boundary.
     "paths": {
+      "@deepseek-ai/dsh-client-ui-research": ["./packages/client/ui-research/src/index.ts"],
+      "@deepseek-ai/dsh-client-ui-research/client": ["./packages/client/ui-research/src/client/index.ts"],
+      "@deepseek-ai/dsh-research-workbench": ["./packages/research/workbench/src/index.ts"],
+      "@deepseek-ai/dsh-research-workbench/types": ["./packages/research/workbench/src/types.ts"],
+      "@deepseek-ai/dsh-research-workbench/tools": ["./packages/research/workbench/src/agent-tools.ts"],
+      "@deepseek-ai/dsh-research-workbench/remote": ["./packages/research/workbench/lib/typert.remote-client.d.ts"],
       "@deepseek-ai/dsh-browser-use": ["./packages/browser-use/browser-use/src/index.ts"],
       "@deepseek-ai/dsh-browser-use/brand": ["./packages/browser-use/browser-use/src/brand.ts"],
       "@deepseek-ai/dsh-experimental-browser-use-runtime": ["./packages/experimental/browser-use-runtime/src/index.ts"],

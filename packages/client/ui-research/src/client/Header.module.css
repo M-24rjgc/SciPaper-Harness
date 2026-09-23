@@ -1,0 +1,9 @@
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; background: var(--dsw-alias-bg-module-platform); font-size: 11px; white-space: nowrap; }
+.position { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
+.separator { color: var(--dsw-alias-label-caption); }
+.stage { color: var(--dsw-alias-label-secondary); }
+.actions { display: inline-flex; align-items: center; gap: 5px; }
+.action { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 6px; padding: 4px 9px; font: inherit; font-size: 11px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); white-space: nowrap; }
+.action:hover, .chip:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.action:focus-visible, .chip:focus-visible { outline: 2px solid var(--dsw-alias-state-success-primary); outline-offset: 2px; }
+.chip { border: 0; font-family: inherit; cursor: pointer; }

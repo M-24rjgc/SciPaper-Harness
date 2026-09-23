@@ -64,6 +64,9 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   if (clientBuildValue('DSH_CLIENT_BUILD_PROFILE') === 'official') {
     expect(document.querySelector('svg[viewBox="26 0 156 24"]')).not.toBeNull()
     expect(screen.queryByText('DSH Local Build')).toBeNull()
+  } else if (clientBuildValue('DSH_CLIENT_TITLE') === 'Research Workbench') {
+    expect(document.querySelector('svg[viewBox="0 0 24 24"]')).not.toBeNull()
+    screen.getByText('Research Workbench')
   } else {
     expect(document.querySelector('svg[viewBox="0 0 23.16 17.04"]')).not.toBeNull()
     const version = clientBuildValue('DSH_CLIENT_VERSION')

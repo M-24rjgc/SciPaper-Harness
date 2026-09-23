@@ -39,6 +39,8 @@ export interface ILayout {
   beginNavigation(): AbortSignal
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
+  /** Suggest a first-open width without overriding a user's later resize. */
+  setInitialRightbarWidth(px: number): void
   /**
    * Report the right panel's presentation without changing its expanded state.
    * @param track - whether the normal panel width reserves a grid track,
@@ -88,6 +90,11 @@ export class LayoutController implements ILayout {
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void {
     this.panels.toggleSidebar()
+  }
+
+  /** Set the right panel's first-open preference while it is still unset. */
+  setInitialRightbarWidth(px: number): void {
+    this.panels.setInitialRightbarWidth(px)
   }
 
   /** Report the right panel's track and fullscreen presentation. */

@@ -441,6 +441,15 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     : await Promise.all(options.replayChildFixtures.map(path => selectedSessionFixture(path)))
   const compareReplaySession = options.compareReplaySession ?? await ownsReplayFixture(replayFixture)
   const browserHost = options.remoteAuthority ?? '127.0.0.1'
+  const fetchHost = (url: URL, init: RequestInit = {}): Promise<Response> => {
+    const headers = new Headers(init.headers)
+    headers.set('host', url.host)
+    // Node on Windows does not resolve *.localhost like Chromium does.
+    // Preserve the browser authority while connecting to the owned listener.
+    const target = new URL(url)
+    target.hostname = '127.0.0.1'
+    return fetch(target, { ...init, headers })
+  }
   if (mode === 'record') {
     // Both owning vitest configs (web unconditionally, snapshot in record
     // mode) load the repo-root .env before this file runs.
@@ -805,7 +814,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
     baseUrl = `http://${browserHost}:${String(port)}`
     authenticatedUrl = ctx.connection.authenticatedUrl(baseUrl)
-    const login = await fetch(authenticatedUrl, { redirect: 'manual' })
+    const login = await fetchHost(new URL(authenticatedUrl), { redirect: 'manual' })
     const setCookie = login.headers.get('set-cookie')
     if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
       throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')
@@ -838,7 +847,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
       const headers = new Headers(init.headers)
       headers.set('cookie', cookieHeader)
-      return fetch(new URL(path, baseUrl), { ...init, headers })
+      return fetchHost(new URL(path, baseUrl), { ...init, headers })
     },
     // Barrier stack: the in-process turn/end identifies the session, its
     // explicit flush makes the transcript durable, and the caller's browser
@@ -1419,8 +1428,9 @@ const ARIA_AGE =
 function normalizeAria(snapshot: string, workspaceCwd: string, age: boolean): string {
   // The session heading renders the workspace's basename, not the full
   // path, so both spellings must collapse to the token.
-  const base = workspaceCwd.split('/').pop()!
+  const base = workspaceCwd.split(/[\\/]/).pop()!
   return (age ? snapshot.replace(ARIA_AGE, '{{age}}') : snapshot)
+    .split(JSON.stringify(workspaceCwd).slice(1, -1)).join('{{cwd}}')
     .split(workspaceCwd).join('{{cwd}}')
     .split(base).join('{{workspace}}')
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{{uuid}}')

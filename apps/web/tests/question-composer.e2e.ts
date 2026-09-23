@@ -255,7 +255,7 @@ describe('web e2e: resident question composer round trip', () => {
       // Session-scoped store to restore both option and free-text drafts.
       const originalRow = page.locator('[role="treeitem"]')
         .filter({ hasText: 'Use the ask_user_question tool' }).first()
-      await page.getByRole('button', { name: 'New session', exact: true }).last().click()
+      await page.getByRole('button', { name: 'New research', exact: true }).last().click()
       await page.getByText('New Session', { exact: true }).waitFor({ timeout: 15_000 })
       await expect.poll(() => composer.count(), { timeout: 10_000 }).toBe(0)
       await originalRow.click()

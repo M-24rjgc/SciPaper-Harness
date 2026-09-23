@@ -72,7 +72,8 @@ async function seedSkills(workspaceCwd: string): Promise<void> {
     ].join('\n'))
     if (skill.name === 'policy-shared') {
       await mkdir(root, { recursive: true })
-      await symlink(join(directory, 'SKILL.md'), join(root, `${skill.name}.md`))
+      if (process.platform === 'win32') await symlink(directory, join(root, skill.name), 'junction')
+      else await symlink(join(directory, 'SKILL.md'), join(root, `${skill.name}.md`))
     }
   }
 }

@@ -392,7 +392,7 @@ describe('web e2e: shipped right Sidebar', () => {
       }
 
       await expect.poll(async () => await tabTitles(column)).toEqual(['Start'])
-      await expect.poll(async () => await column.locator('[data-sidebar-right-guide-entry]').count()).toBe(2)
+      await expect.poll(async () => await column.locator('[data-sidebar-right-guide-entry]').count()).toBe(3)
       await column.locator('[data-sidebar-right-guide-entry="files"]').click()
 
       // A manual guide is closable beside Files and suppresses another add
@@ -754,7 +754,7 @@ describe('web e2e: shipped right Sidebar', () => {
       // directory, which a text preview correctly refuses, and the native opener
       // it used to reach is gone — so the row offers nothing rather than a
       // button that always fails.
-      expect(await page.getByRole('button', { name: /folder/i }).count()).toBe(0)
+      expect(await page.locator('[data-produced-files-row]').getByRole('button', { name: /folder/i }).count()).toBe(0)
 
       // Split, then dock-drag: the kit's gestures drive the store's actions.
       await panes.first().locator('[data-dockkit-split-button]').click()
@@ -831,7 +831,7 @@ describe('web e2e: shipped right Sidebar', () => {
 
         // The real New Session action selects a distinct blank Session; its
         // collapsed surface must not inherit the settled Session's tabs.
-        await fx.getByRole('button', { name: 'New session', exact: true }).last().click()
+        await fx.getByRole('button', { name: 'New research', exact: true }).last().click()
         await expect.poll(async () => await settled.getAttribute('aria-selected')).toBe('false')
         await expect.poll(async () => await frame.getAttribute('data-rightbar-collapsed')).toBe('true')
         expect(await column.locator('[data-sidebar-right-open]').count()).toBe(0)

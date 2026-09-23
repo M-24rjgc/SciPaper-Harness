@@ -67,6 +67,7 @@ import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import McpResources from '@deepseek-ai/dsh-mcp-resources'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import { registerListSubagentModels } from '../packages/subagent/tool-subagent/src/list-models.ts'
+import { registerResearchTools } from '../packages/research/workbench/src/tools.ts'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
 import WorkflowEngine from '@deepseek-ai/dsh-workflow'
 import type { WorkflowRun, WorkflowStartRequest } from '@deepseek-ai/dsh-workflow'
@@ -637,6 +638,20 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-research-workbench',
+    dir: 'workbench',
+    source: 'packages/research/workbench/src/tools.ts',
+    requires: ['ctx.tools', 'ctx.research', 'a session working directory inside a research project'],
+    writes: ['tool/call', 'tool/result', 'the research project ledger'],
+    mount(ctx) {
+      // The schemas are static; the service is reached only when a tool executes, which harvest never does.
+      registerResearchTools(ctx, {} as never)
+      return Promise.resolve()
+    },
+    note:
+      'The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory.',
   },
 ]
 

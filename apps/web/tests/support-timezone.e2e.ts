@@ -5,7 +5,10 @@ import { newEnglishPage } from './support.ts'
 it.each(['UTC', 'America/Los_Angeles'])('isolates the recorded browser timezone from %s', async (hostTimeZone) => {
   const browser = await chromium.launch({ env: { ...process.env, TZ: hostTimeZone } })
   try {
-    const ambientPage = await browser.newPage()
+    // Windows Chromium uses the OS timezone and ignores TZ. Use its context
+    // setting there to exercise the same isolation between browser contexts.
+    const ambientOptions = process.platform === 'win32' ? { timezoneId: hostTimeZone } : {}
+    const ambientPage = await browser.newPage(ambientOptions)
     expect(await ambientPage.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe(hostTimeZone)
 
     const page = await newEnglishPage(browser)
@@ -14,7 +17,7 @@ it.each(['UTC', 'America/Los_Angeles'])('isolates the recorded browser timezone 
     expect(await ambientPage.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe(hostTimeZone)
 
     await page.close()
-    const nextPage = await browser.newPage()
+    const nextPage = await browser.newPage(ambientOptions)
     expect(await nextPage.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone)).toBe(hostTimeZone)
   } finally {
     await browser.close()

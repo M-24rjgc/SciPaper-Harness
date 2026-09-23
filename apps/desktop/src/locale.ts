@@ -1,9 +1,21 @@
-/** Typed English and Chinese copy owned by the Electron shell. */
+/**
+ * Typed English and Chinese copy owned by the Electron shell.
+ *
+ * This is the only copy a person sees before the workspace renders — the splash,
+ * the startup failure, the update prompt — so it names this product, not the
+ * harness it is built on. `electron-builder.config.mjs` ships the same name as
+ * `productName`.
+ */
+
+/** Product name as the shell's own surfaces say it. */
+const PRODUCT = 'Research Workbench'
+/** The same name in Chinese, matching the workbench's own dictionary. */
+const PRODUCT_ZH = '科研工作台'
 
 export const en = {
   application: 'Application',
-  startupFailed: 'DeepSeek Harness could not start',
-  startupLoading: 'Starting DeepSeek Harness…',
+  startupFailed: `${PRODUCT} could not start`,
+  startupLoading: `Starting ${PRODUCT}…`,
   startupLoadingDescription: 'Your workspace will open when it is ready.',
   startupErrorDescription: 'Choose a recovery action below. Disabling third-party plugins retains their files.',
   startupReinstallAdvice: 'If application files are missing or damaged, close the application and reinstall it. Your tasks are stored separately.',
@@ -18,14 +30,14 @@ export const en = {
   unknownError: 'Unknown error',
   updateCheckTitle: 'Check for Updates',
   updateCurrent: 'You already have the latest version.',
-  updateTitle: 'DeepSeek Harness Update',
+  updateTitle: `${PRODUCT} Update`,
   updateAvailable: 'An update is available',
-  updateDetail: 'DeepSeek Harness {version}\n\nThis release includes its matching dsh version. The application will restart after installation.',
+  updateDetail: `${PRODUCT} {version}\n\nThis release includes its matching dsh version. The application will restart after installation.`,
   installAndRestart: 'Install and Restart',
   later: 'Later',
   updateFailedTitle: 'Update Failed',
   pluginManagerTitle: 'Desktop Plugins',
-  pluginWindowTitle: 'DeepSeek Harness — Desktop Plugins',
+  pluginWindowTitle: `${PRODUCT} — Desktop Plugins`,
   pluginManagerDescription: 'Plugins are installed only in the Desktop node_modules and are managed by the bundled pnpm.',
   refresh: 'Refresh',
   enable: 'Enable',
@@ -56,8 +68,8 @@ export type DesktopMessages = { readonly [Key in keyof typeof en]: string }
 
 export const zh = {
   application: '应用',
-  startupFailed: 'DeepSeek Harness 无法启动',
-  startupLoading: '正在启动 DeepSeek Harness…',
+  startupFailed: `${PRODUCT_ZH} 无法启动`,
+  startupLoading: `正在启动 ${PRODUCT_ZH}…`,
   startupLoadingDescription: '准备就绪后将自动打开工作区。',
   startupErrorDescription: '请选择下方的恢复操作。禁用第三方插件会保留插件文件。',
   startupReinstallAdvice: '如果应用文件缺失或损坏，请关闭应用并重新安装。任务数据存储在独立位置。',
@@ -72,14 +84,14 @@ export const zh = {
   unknownError: '未知错误',
   updateCheckTitle: '检查更新',
   updateCurrent: '当前已是最新版本。',
-  updateTitle: 'DeepSeek Harness 更新',
+  updateTitle: `${PRODUCT_ZH} 更新`,
   updateAvailable: '发现可用更新',
-  updateDetail: 'DeepSeek Harness {version}\n\n新版本绑定匹配的 dsh，安装后将重新启动。',
+  updateDetail: `${PRODUCT_ZH} {version}\n\n新版本绑定匹配的 dsh，安装后将重新启动。`,
   installAndRestart: '安装并重启',
   later: '稍后',
   updateFailedTitle: '更新失败',
   pluginManagerTitle: '桌面插件',
-  pluginWindowTitle: 'DeepSeek Harness — 桌面插件',
+  pluginWindowTitle: `${PRODUCT_ZH} — 桌面插件`,
   pluginManagerDescription: '插件只安装到桌面端自己的 node_modules，并由内置 pnpm 管理。',
   refresh: '刷新',
   enable: '启用',

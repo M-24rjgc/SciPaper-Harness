@@ -84,10 +84,10 @@
   position: relative;
   z-index: 1;
   display: flex;
-  width: 800px;
+  width: 1110px;
   height: min(800px, calc(100vh - 48px));
   max-width: calc(100vw - 48px);
-  border-radius: 32px;
+  border-radius: 18px;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-elevation-prominent);
@@ -234,3 +234,10 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+.nav { width: 218px; background: var(--dsw-alias-bg-layer-2); border-right: 0.5px solid var(--dsw-alias-border-l1); }
+.content { background: var(--dsw-alias-bg-layer-1); }
+.header { border-bottom: 0.5px solid var(--dsw-alias-border-l1); padding: 16px 24px; height: 64px; align-items: center; }
+.sectionTitle { font-size: 14px; font-weight: 600; }
+.options { padding: 24px 28px; }
+@media (max-width: 700px) { .nav { width: 145px; } .navCell { padding: 8px; } }

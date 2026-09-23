@@ -87,6 +87,8 @@
     "apps/web/tests/agent-preset-selection.e2e.ts",
     "apps/web/tests/agent-preset-authoring.e2e.ts",
     "apps/web/tests/shipped-composition.e2e.ts",
+    "apps/web/tests/research-workbench.e2e.ts",
+    "apps/web/tests/research-demo.e2e.ts",
     "apps/web/tests/goal-bar.e2e.ts",
     "apps/web/tests/schedule-after.e2e.ts",
     "apps/web/tests/feedback-command.e2e.ts",
@@ -144,6 +146,7 @@
     "scripts/client-bundle-purity.spec.ts"
   ],
   "references": [
+    { "path": "./packages/research/workbench" },
     { "path": "./packages/browser-use/browser-use" },
     { "path": "./packages/experimental/browser-use-runtime" },
     { "path": "./packages/experimental/browser-use-playwright-mcp" },

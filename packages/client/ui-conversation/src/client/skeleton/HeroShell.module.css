@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  flex-shrink: 0;
   min-width: 0;
   padding: 0 24px;
 }
@@ -37,7 +37,9 @@
      keeps it reading as a mark above the title, not a squeezed inline glyph. */
   row-gap: 12px;
   align-items: center;
-  justify-content: center;
+  /* Research entry: the headline opens the same left-aligned column the
+     openings and the composer share, instead of floating centered above it. */
+  justify-content: flex-start;
   font-size: 26px;
   line-height: 32px;
   font-weight: 500;
@@ -229,3 +231,7 @@
   line-height: 18px;
   color: var(--dsw-alias-state-error-primary);
 }
+
+.headline { font-size: 30px; line-height: 1.35; font-weight: 700; }
+.fish { color: var(--dsw-alias-state-success-primary); }
+.root { padding: 0 16px; }

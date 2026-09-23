@@ -444,6 +444,9 @@
    block for position:fixed descendants (pickers/modals), shrinking them. */
 .composerHero {
   align-self: center;
+  min-height: 0;
+  max-height: 100%;
+  box-sizing: border-box;
   /* figma 75:8208 drew 12 between all three rows; the workspace row now sits
      8 above the card (its margin-top restores 12 under the hero chrome). */
   gap: 8px;
@@ -453,6 +456,24 @@
      width as the docked composer at every viewport. */
   width: min(calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance)), 100%);
   z-index: 1;
+}
+
+.heroWelcome {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.composerHero > :not(.heroWelcome) {
+  flex-shrink: 0;
+}
+
+.root[data-phase='hero'] .composerSeat {
+  flex-shrink: 1;
+  min-height: 0;
+  max-height: 100%;
 }
 
 .heroWorkspaceRow {
@@ -470,7 +491,7 @@
 /* Hero: the composer sits inside the session scroll body; center there so
    the tree seat matches active (sticky footer) without a Root remount. */
 .root[data-phase='hero'] .scrollBody {
-  justify-content: center;
+  justify-content: safe center;
   overflow-y: auto;
 }
 

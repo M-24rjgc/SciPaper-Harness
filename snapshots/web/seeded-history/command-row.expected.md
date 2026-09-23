@@ -63,6 +63,7 @@
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Read Only"': Read Only
+- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img

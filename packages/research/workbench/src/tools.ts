@@ -1,0 +1,291 @@
+/**
+ * The research agent's tools. The project is found from the session's working
+ * directory; every action takes typed fields; results are compact. Reaching
+ * outside the project goes through DSH's own approval card.
+ */
+import type { Context } from '@deepseek-ai/cordis'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
+import { isAbsolute, resolve } from 'node:path'
+import type { ResearchWorkbench } from './index.ts'
+import { MODE_PHASES } from './checks.ts'
+import { isInside } from './files.ts'
+import { runView } from './project.ts'
+import { autonomies, commandSchema, modes } from './schema.ts'
+import type { ProjectId, ResearchCommand, ResearchProject, ResearchResponse } from './types.ts'
+
+const text = (description: string) => ({ type: 'string' as const, description })
+const list = (description: string) => ({ type: 'array' as const, items: { type: 'string' as const }, description })
+const json = (description: string) => ({ type: 'json' as const, description })
+const projectId = text('Optional; defaults to the research project containing your working directory.')
+const output = { schema: { type: 'json' as const }, render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }] }
+
+interface Family {
+  name: string
+  title: string
+  actions: readonly string[]
+  description: string
+  fields: ParameterSchemaSpec
+}
+
+const FAMILIES: Family[] = [
+  {
+    name: 'research_evidence',
+    title: 'Research evidence',
+    actions: ['import', 'refresh-evidence', 'search-evidence', 'claim', 'literature-search', 'literature-import'],
+    description: 'Sources and citations. import {paths}: snapshot files (PDF, DOCX, CSV, JSON, text) as evidence with page/line locators; '
+      + 'CSV/JSON become data evidence that result numbers can trace to. search-evidence {query}: ranked quotes with evidenceId, revision and locator. '
+      + 'literature-search {provider: crossref|openalex|arxiv, query}; literature-import {item}: re-fetches the record by its identifier and returns '
+      + 'verified BibTeX to put in the bibliography. claim {claim}: link a claim to exact quoted evidence. refresh-evidence {evidenceId}.',
+    fields: {
+      paths: list('import: files, relative to the project or absolute. Paths outside the project ask the user first.'),
+      evidenceId: text('refresh-evidence'),
+      query: text('search-evidence / literature-search'),
+      provider: { type: 'string', enum: ['crossref', 'openalex', 'arxiv'], description: 'literature-search' },
+      item: json('literature-import: one item exactly as literature-search returned it'),
+      claim: json('claim: {id, text, kind: hypothesis|method|literature|empirical, state: proposed|supported|contradicted|stale, evidence: [{evidenceId, revision, locator, quote}], artifactIds}'),
+    },
+  },
+  {
+    name: 'research_artifact',
+    title: 'Research files',
+    actions: ['save-artifact', 'register-artifact', 'read-artifact', 'import-template', 'compile', 'render-pages', 'export'],
+    description: 'Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records '
+      + 'what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; '
+      + 'expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. '
+      + 'compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. '
+      + 'import-template {paths}: copy a venue template into template/. export {}: zip of sources, PDF, data manifest and the check report.',
+    fields: {
+      path: text('save-artifact / register-artifact / compile: project-relative path'),
+      content: text('save-artifact: full file text'),
+      kind: { type: 'string', enum: ['manuscript', 'diagram', 'figure', 'code', 'bibliography', 'supplement', 'image'], description: 'save-artifact / register-artifact' },
+      expectedRevision: { type: 'integer', description: 'save-artifact: optional optimistic revision' },
+      evidence: json('save/register: [{evidenceId, revision, locator, quote}]'),
+      claimIds: list('save/register: claims this file states'),
+      inputArtifacts: json('save/register: [{id, revision}] the files this one was made from (e.g. data table and plotting script)'),
+      artifactId: text('read-artifact / render-pages'),
+      paths: list('import-template: template files or directories'),
+      engine: { type: 'string', enum: ['pdflatex', 'xelatex', 'lualatex'], description: 'compile (xelatex for CJK text)' },
+      maxPages: { type: 'integer', description: 'render-pages: page cap' },
+    },
+  },
+  {
+    name: 'research_environment',
+    title: 'Research environment',
+    actions: ['environment'],
+    description: 'Create or bind the Python environment experiments run in. environment {environment: {name, kind: uv|existing|conda, target: local|ssh, '
+      + 'python, sshHost?, remoteRoot?, requirements: [], isDefault}}. kind uv with a blank python creates a managed 3.12 environment inside the project. '
+      + 'Existing and conda interpreters are inspected, never modified, and binding a local one asks the user first. SSH uses an OpenSSH alias and a dedicated absolute remoteRoot.',
+    fields: { environment: json('the environment description') },
+  },
+  {
+    name: 'research_experiment',
+    title: 'Research experiment',
+    actions: ['experiment', 'experiment-refresh', 'experiment-cancel', 'experiment-dismiss', 'experiment-logs', 'experiment-wait'],
+    description: 'Independent experiment runs that survive the chat and the app. experiment {requestId: a new UUID, spec: {environmentId, name, '
+      + 'argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], '
+      + 'metricsPath: "metrics.json"}}. The code directory (codePaths, default code/) and the selected data are snapshotted. The script writes numeric '
+      + 'metrics as JSON to $RESEARCH_METRICS_PATH and deliverables (tables, plot data) to $RESEARCH_OUTPUT_DIR (or ./outputs); both become data evidence. '
+      + 'Reuse the same requestId to reconcile a lost response — never resubmit with a new one. experiment-wait {runIds, timeoutSeconds ≤ 1800} blocks '
+      + 'until a run finishes. experiment-logs / -refresh / -cancel / -dismiss {runId}; dismiss only drops a run whose state is unknown.',
+    fields: {
+      requestId: text('experiment: a new UUID'),
+      spec: json('experiment: the run specification'),
+      runId: text('refresh / cancel / dismiss / logs'),
+      runIds: list('experiment-wait'),
+      timeoutSeconds: { type: 'integer', description: 'experiment-wait' },
+    },
+  },
+  {
+    name: 'research_media',
+    title: 'Research media',
+    actions: ['visual-review', 'complete-visual-review', 'generate-image'],
+    description: 'visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. '
+      + 'complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. '
+      + 'generate-image {prompt, path}: a raster illustration from the configured image API. Architecture diagrams are editable draw.io; result plots come from scripts and real data.',
+    fields: {
+      artifactId: text('visual-review / complete-visual-review'),
+      artifactRevision: { type: 'integer', description: 'complete-visual-review' },
+      sessionId: text('complete-visual-review'),
+      findings: text('complete-visual-review'),
+      prompt: text('generate-image'),
+      path: text('generate-image: new .png/.jpg/.webp path'),
+    },
+  },
+]
+
+/** Compact view of a project for the model: enough to act on, without source bodies. */
+export function projectBrief(project: ResearchProject): JsonValue {
+  const phases = project.mode ? MODE_PHASES[project.mode] : []
+  const next = project.lastCheck?.phases.find(phase => !phase.done)
+  const lastCompile = project.compilations.at(-1)
+  const guide = [
+    project.mode === undefined
+      ? 'No mode yet: route the project (research-paper skill) — paper-first for an idea, from-results when results already exist, free for a one-off task — and call set-mode with your reason.'
+      : phases.length ? `Mode ${project.mode}: ${phases.join(' → ')}.${next ? ` Next unfinished phase: ${next.id}.` : ''}` : 'Mode free: no pipeline.',
+    project.autonomy === 'checkpoints'
+      ? 'Autonomy checkpoints: at key decisions (the route when you chose it, the research question, before running experiments, before the final export, a material method change, results that contradict the hypothesis) ask with ask_user_question, then record-decision with the answer and decidedBy user.'
+      : 'Autonomy automatic: make those decisions yourself, record-decision with your rationale, and keep going; ask only when genuinely blocked.',
+    'A phase is done when research_check for it is clean; the paper is done when research_check (scope all) is clean.',
+  ]
+  return JSON.parse(JSON.stringify({
+    id: project.id, title: project.title, root: project.root, brief: project.brief,
+    mode: project.mode ?? null, modeReason: project.modeReason ?? null, autonomy: project.autonomy, guide,
+    phases: project.lastCheck?.phases ?? [],
+    decisions: project.decisions.slice(-20).map(({ question, answer, by, rationale }) => ({ question, answer, by, rationale })),
+    artifacts: project.artifacts.map(({ id, path, kind, revision, stale }) => ({ id, path, kind, revision, stale })),
+    evidence: project.evidence.slice(-60)
+      .map(({ id, title, kind, coverage, revision, stale, doi }) => ({ id, title, kind, coverage, revision, stale, doi })),
+    environments: project.environments
+      .map(({ id, name, kind, target, status, isDefault, python }) => ({ id, name, kind, target, status, isDefault, python })),
+    experiments: project.experiments.slice(-20).map(run => ({ ...runView(run), name: run.spec.name })),
+    lastCompile: lastCompile ? { status: lastCompile.status, pdfPath: lastCompile.pdfPath } : null,
+  })) as JsonValue
+}
+
+/** Tool results carry what the call produced, never the whole project. */
+function compact(response: ResearchResponse): JsonValue {
+  const { project: _project, ...rest } = response
+  return JSON.parse(JSON.stringify(rest)) as JsonValue
+}
+
+/** The project a call acts on: its explicit id (which must contain the session's directory) or the directory's own project. */
+async function projectFor(service: ResearchWorkbench, id: unknown, exec: ToolExecution): Promise<ResearchProject> {
+  const cwd = exec.agent?.session.header.cwd
+  if (cwd === undefined) throw new Error('This tool needs a session working directory inside a research project')
+  const here = await service.projectAt(cwd)
+  if (typeof id === 'string' && id) {
+    const project = service.getProject(id as ProjectId)
+    if (here?.id !== project.id) throw new Error('The tool session does not belong to this research project')
+    return project
+  }
+  if (!here) throw new Error('No research project contains this working directory; create one with research_project action create')
+  return here
+}
+
+/** Why a call needs the user's approval before it runs, or undefined when it does not. */
+async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): Promise<string | undefined> {
+  if (!['research_evidence', 'research_artifact', 'research_environment'].includes(exec.name)) return undefined
+  const args = (exec.arguments ?? {}) as Record<string, unknown>
+  let project: ResearchProject
+  try { project = await projectFor(service, args.projectId, exec) } catch { return undefined }
+  if (args.action === 'import' || args.action === 'import-template') {
+    const paths = Array.isArray(args.paths) ? args.paths.filter((path): path is string => typeof path === 'string') : []
+    const outside = paths.filter(path => !isInside(project.root, isAbsolute(path) ? path : resolve(project.root, path)))
+    if (outside.length) return `Copy files from outside the research project into it: ${outside.join(', ')}`
+  }
+  const environment = args.environment as { kind?: unknown; target?: unknown; python?: unknown } | undefined
+  if (exec.name === 'research_environment' && environment?.target === 'local' && environment.kind !== 'uv' && typeof environment.python === 'string') {
+    return `Run the Python interpreter ${environment.python} to inspect it and use it for experiments`
+  }
+  return undefined
+}
+
+/** Register the research tools and the approval hook for calls that reach outside the project. */
+export function registerResearchTools(ctx: Context, service: ResearchWorkbench): void {
+  ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> => {
+    const reason = await approvalReason(service, exec)
+    return reason === undefined ? next() : { kind: 'ask', reason }
+  })
+
+  ctx.tools.register(defineTool({
+    name: 'research_project',
+    description: 'The research project around your working directory. current: mode, autonomy, phases, decisions, files, runs — call it when you start work. '
+      + 'create {title, brief?, root?, mode?, autonomy?}: make the working directory (or root) a research project. list: all projects. '
+      + 'set-mode {mode: paper-first|from-results|free, reason}: route the project. set-autonomy {autonomy: checkpoints|automatic}. '
+      + 'record-decision {question, answer, rationale?, decidedBy?}: log a settled decision — decidedBy user for the user\'s answer at a checkpoint, '
+      + 'agent (the default) for your own call in automatic mode.',
+    parameters: {
+      action: { type: 'string', enum: ['current', 'create', 'list', 'set-mode', 'set-autonomy', 'record-decision'], required: true },
+      projectId,
+      title: text('create'),
+      brief: text('create: the idea or the material in a few sentences'),
+      root: text('create: absolute directory; defaults to the working directory'),
+      mode: { type: 'string', enum: [...modes], description: 'create / set-mode' },
+      autonomy: { type: 'string', enum: [...autonomies], description: 'create / set-autonomy' },
+      reason: text('set-mode: why this route'),
+      question: text('record-decision'),
+      answer: text('record-decision'),
+      rationale: text('record-decision'),
+      decidedBy: { type: 'string', enum: ['user', 'agent'], description: 'record-decision: who made the decision' },
+    },
+    output,
+    async execute(args, exec) {
+      if (args.action === 'list') {
+        return service.projects().map(({ id, title, root, mode }) => ({ id, title, root, mode: mode ?? null }))
+      }
+      if (args.action === 'create') {
+        const cwd = exec.agent?.session.header.cwd
+        const root = args.root ?? cwd
+        if (!root || !args.title) throw new Error('create needs a title, and a root when the session has no working directory')
+        const created = await service.createProject({
+          title: args.title, root, brief: args.brief ?? '',
+          ...(args.mode ? { mode: args.mode } : {}), ...(args.autonomy ? { autonomy: args.autonomy } : {}),
+        }, root === cwd ? exec.agent?.session.id : undefined)
+        return projectBrief(created)
+      }
+      const project = await projectFor(service, args.projectId, exec)
+      if (args.action === 'current') return projectBrief(project)
+      const request = args.action === 'set-mode'
+        ? { action: 'set-mode', projectId: project.id, mode: args.mode, reason: args.reason }
+        : args.action === 'set-autonomy'
+          ? { action: 'set-autonomy', projectId: project.id, autonomy: args.autonomy }
+          : {
+            action: 'record-decision', projectId: project.id, question: args.question, answer: args.answer,
+            rationale: args.rationale, decidedBy: args.decidedBy,
+          }
+      return compact(await service.execute(commandSchema.parse(request) as ResearchCommand, exec.signal, 'agent'))
+    },
+    presentCall: () => ({ card: 'generic', title: 'Research project', kind: 'read' }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'research_check',
+    description: 'Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected '
+      + 'metrics or data, placeholders (\\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review '
+      + 'is current, stale files. scope: all (default), a phase of the current mode, or one check (cite, numbers, placeholders, figures, compile, visual, '
+      + 'review, stale, claims, structure). It reports and never blocks. Not clean means not done: fix the errors and check again.',
+    parameters: { projectId, scope: text('all, a phase id or a check id') },
+    output,
+    async execute(args, exec) {
+      const project = await projectFor(service, args.projectId, exec)
+      return compact(await service.execute({ action: 'check', projectId: project.id, scope: args.scope }, exec.signal, 'agent'))
+    },
+    presentCall: () => ({ card: 'generic', title: 'Research check', kind: 'read' }),
+  }))
+
+  for (const family of FAMILIES) ctx.tools.register(defineTool({
+    name: family.name,
+    description: family.description,
+    parameters: {
+      action: { type: 'string', enum: [...family.actions], required: true },
+      projectId,
+      ...family.fields,
+    },
+    output,
+    async execute(args, exec) {
+      const { action, projectId: requested, ...fields } = args as Record<string, unknown> & { action: string }
+      const project = await projectFor(service, requested, exec)
+      const request = commandSchema.parse({ ...fields, action, projectId: project.id }) as ResearchCommand
+      if (request.action === 'complete-visual-review' && exec.agent?.session.id !== request.sessionId) {
+        throw new Error('Only the assigned visual-review session can record these findings')
+      }
+      return compact(await service.execute(request, exec.signal, 'agent'))
+    },
+    presentCall: () => ({ card: 'generic', title: family.title, kind: 'other' }),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'research_task',
+    description: 'Read a desktop-started research operation by jobId. A failed or interrupted task did not complete. Experiment runs are separate and reconciled by runId.',
+    parameters: { jobId: { type: 'string', required: true } },
+    output,
+    async execute(args, exec) {
+      const task = service.tasks().find(item => item.id === args.jobId)
+      if (!task?.projectId) throw new Error('Research task not found')
+      await projectFor(service, task.projectId, exec)
+      return JSON.parse(JSON.stringify({ ...task, ...(task.result ? { result: compact(task.result) } : {}) })) as JsonValue
+    },
+    presentCall: () => ({ card: 'generic', title: 'Research operation', kind: 'read' }),
+  }))
+}

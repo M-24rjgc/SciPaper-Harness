@@ -255,7 +255,12 @@ function runPnpm(
     throw new Error('desktop package: invoke this script through a pnpm package command')
   }
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(process.execPath, [pnpmEntry, ...args], {
+    // pnpm v11 on Windows may expose its native .exe through npm_execpath;
+    // invoking that path through Node produces ERR_UNKNOWN_FILE_EXTENSION.
+    const native = /\.exe$/iu.test(pnpmEntry)
+    const executable = native ? pnpmEntry : process.execPath
+    const commandArgs = native ? [...args] : [pnpmEntry, ...args]
+    const child = spawn(executable, commandArgs, {
       cwd,
       env,
       stdio: 'inherit',
@@ -287,8 +292,8 @@ async function main(): Promise<void> {
   for (const name of WINDOWS_SIGNING_ENV_NAMES) {
     if (!invocation.unsigned && process.env[name] !== undefined) electronBuilderEnv[name] = process.env[name]
   }
-  await runPnpm(['run', 'build:official'], buildEnv, REPOSITORY_ROOT)
-  await runPnpm(['run', 'release:pack', '--family', 'dsh', '--out', buildPaths.packedDsh], buildEnv, REPOSITORY_ROOT)
+  await runPnpm(['run', 'build:research'], buildEnv, REPOSITORY_ROOT)
+  await runPnpm(['run', 'release:pack', '--family', 'dsh', '--client-profile', 'research', '--out', buildPaths.packedDsh], buildEnv, REPOSITORY_ROOT)
   await runPnpm([
     '--dir',
     'apps/desktop-host',

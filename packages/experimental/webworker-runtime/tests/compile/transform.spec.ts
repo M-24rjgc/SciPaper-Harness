@@ -323,12 +323,30 @@ check(
 }
 
 {
-  // Documented cost: the function name stops being a module-scope binding, but
-  // the named function expression can still refer to itself.
-  const code = transformModule('export default function self(n) { return n <= 0 ? 0 : self(n - 1) }\n', 'probe.js')
+  const code = transformModule([
+    'export const before = self(3)',
+    'export default function self(n) { return n <= 0 ? 0 : self(n - 1) }',
+    'self.prototype.value = 42',
+    'export const same = self',
+  ].join('\n'), 'probe.js')
   parsesAsScript('default export function', code)
-  const fn = runBody(code).default as (n: number) => number
+  const exports = runBody(code)
+  const fn = exports.default as (n: number) => number
   check('default-exported function keeps self-reference', fn(3), 0)
+  check('default-exported function remains hoisted', exports.before, 0)
+  check('default-exported function retains its local binding', exports.same, fn)
+}
+
+{
+  const code = transformModule([
+    'export default class Builder { value() { return 42 } }',
+    'export const value = new Builder().value()',
+    'export const same = Builder',
+  ].join('\n'), 'probe.js')
+  parsesAsScript('default export class', code)
+  const exports = runBody(code)
+  check('default-exported class remains available for construction', exports.value, 42)
+  check('default-exported class retains its local binding', exports.same, exports.default)
 }
 
 {

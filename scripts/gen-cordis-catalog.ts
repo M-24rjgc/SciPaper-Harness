@@ -90,6 +90,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   sessionFeedback: 'feedback.md',
   permissionPresets: 'permission-presets.md',
   planMode: 'plan.md',
+  research: 'research.md',
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
@@ -707,6 +708,10 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  ...Object.fromEntries([
+    'ResearchSnapshot', 'ResearchTask', 'CreateProjectRequest', 'ResearchProject', 'ResearchPreferences',
+    'ResearchResponse', 'ResearchCommand', 'ProjectId',
+  ].map(name => [name, 'research record contract is owned by packages/research/workbench/src/types.ts'])),
   McpResourceProvider: 'scoped resource provider is owned by packages/mcp/mcp-resources/README.md',
   'z.ZodType': 'Zod response validation API is owned by https://zod.dev/packages/zod',
   Socket: 'Node.js byte stream API is owned by https://nodejs.org/api/net.html#class-netsocket',

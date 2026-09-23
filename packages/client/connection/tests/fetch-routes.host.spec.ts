@@ -19,6 +19,17 @@ async function mounted(): Promise<{
 }
 
 describe('Connection exact Fetch routes', () => {
+  it('serves encoded asset names while refusing path normalization and separator aliases', async () => {
+    const { connection, dispose } = await mounted()
+    try {
+      const path = '/api/research/drawio/images/Cloud%20Services_(extended).svg'
+      connection.fetch.register({ path, methods: ['GET'], requestBody: 'buffered', fetch: async () => new Response('<svg/>') })
+      expect(await (await connection.createSharedFetchHandler('/api').fetch(new Request(`https://app${path}`))).text()).toBe('<svg/>')
+      for (const invalid of ['/api/a/../b', '/api/%2e%2e/b', '/api/a%2Fb', '/api/a%5Cb', '/api/%00', '/api/%zz', '/api/a?b', '/api/a#b', '/api//b']) {
+        expect(() => connection.fetch.register({ path: invalid, methods: ['GET'], requestBody: 'buffered', fetch: async () => new Response() })).toThrow('invalid exact Fetch route')
+      }
+    } finally { await dispose() }
+  })
   it('dispatches owned methods and returns 404 for unclaimed requests', async () => {
     const { connection, dispose: disposeFiber } = await mounted()
     const route = vi.fn(async (request: Request) =>

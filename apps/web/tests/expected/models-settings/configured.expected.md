@@ -13,9 +13,13 @@
     - button "Agent 预设":
       - img
       - text: Agent 预设
+    - button "科研":
+      - img
+      - text: 科研
     - button "已归档会话":
       - img
       - text: 已归档会话
+  - text: 模型
   - button "打开配置文件"
   - button "关闭":
     - img

@@ -1,0 +1,46 @@
+body[data-research-workbench]:not([data-ds-dark-theme]) {
+  --dsw-alias-bg-base: #faf9f6;
+  --dsw-alias-bg-layer-1: #ffffff;
+  --dsw-alias-bg-layer-2: #f7f6f2;
+  --dsw-alias-bg-layer-3: #ffffff;
+  --dsw-alias-bg-module-platform: #f6f5f1;
+  --dsw-specific-sidebar-fill: #f3f1ec;
+  --dsw-specific-sidebar-nav-item-active: #ffffff;
+  --dsw-specific-sidebar-nav-item-active-accent: #e6efed;
+  --dsw-specific-sidebar-nav-item-hover: #ebe8e1;
+  --dsw-specific-input-major: #ffffff;
+  --dsw-specific-bubble: #efede7;
+  --dsw-alias-label-primary: #1c1c19;
+  --dsw-alias-label-secondary: #68675f;
+  --dsw-alias-label-tertiary: #918c80;
+  --dsw-alias-label-caption: #a39d90;
+  --dsw-alias-border-l1: #eeebe4;
+  --dsw-alias-border-l2: #e9e5dc;
+  --dsw-alias-border-l3: #ded9ce;
+  --dsw-alias-border-l4: #cec7b9;
+  --dsw-alias-interactive-bg-hover: #efede7;
+  --dsw-alias-interactive-bg-active: #e6efed;
+  --dsw-alias-brand-primary: #15635f;
+  --dsw-alias-brand-primary-new-colorprimary-new-color: #15635f;
+  --dsw-alias-button-primary-fill: #15635f;
+  --dsw-alias-button-primary-hover: #104f4c;
+  --dsw-alias-button-info-fill: #15635f;
+  --dsw-alias-button-info-hover: #104f4c;
+  --dsw-alias-state-business-primary: #15635f;
+  --dsw-alias-state-business-tertiary: #e6efed;
+  --dsw-alias-state-success-primary: #15635f;
+  --dsw-alias-state-success-tertiary: #e6efed;
+  --dsw-alias-state-warn-primary: #b65328;
+  --dsw-alias-state-warn-label: #a26f18;
+  --dsw-alias-state-warn-tertiary: #f7e9df;
+  --dsw-alias-link: #15635f;
+}
+body[data-research-workbench][data-ds-dark-theme] {
+  --dsw-alias-bg-base: #1c211f;
+  --dsw-specific-sidebar-fill: #202723;
+  --dsw-alias-state-success-primary: #7bc4bb;
+  --dsw-alias-state-success-tertiary: #263f3a;
+  --dsw-alias-state-warn-primary: #e99a72;
+  --dsw-alias-state-warn-tertiary: #49352c;
+  --dsw-alias-link: #7bc4bb;
+}

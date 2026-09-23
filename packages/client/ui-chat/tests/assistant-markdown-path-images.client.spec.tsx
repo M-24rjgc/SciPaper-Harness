@@ -17,6 +17,13 @@ function textBlock(text: string): AssistantBlock {
 const ORIGIN = 'http://127.0.0.1:3080'
 
 describe('localPathMediaUrl', () => {
+  it.each(['C:\\研究 project\\graph.png', 'D:/Research/graph.png'])('serves Windows drive path %s through the authenticated file API', (path) => {
+    const url = new URL(localPathMediaUrl('http:', ORIGIN, path)!)
+    expect(url.origin).toBe(ORIGIN)
+    expect(url.pathname).toBe('/api/file')
+    expect(url.searchParams.get('path')).toBe(path)
+  })
+
   it('maps an absolute POSIX path on an HTTP page to the file API', () => {
     expect(localPathMediaUrl('http:', ORIGIN, '/tmp/graph.png'))
       .toBe(`${ORIGIN}/api/file?path=${encodeURIComponent('/tmp/graph.png')}`)
@@ -33,7 +40,8 @@ describe('localPathMediaUrl', () => {
     expect(localPathMediaUrl('http:', ORIGIN, '')).toBeUndefined()
     expect(localPathMediaUrl('http:', ORIGIN, '//cdn.example.com/x.png')).toBeUndefined()
     expect(localPathMediaUrl('http:', ORIGIN, 'relative.png')).toBeUndefined()
-    expect(localPathMediaUrl('http:', ORIGIN, 'C:\\tmp\\x.png')).toBeUndefined()
+    expect(localPathMediaUrl('http:', ORIGIN, 'C:relative.png')).toBeUndefined()
+    expect(localPathMediaUrl('http:', ORIGIN, '\\\\server\\share\\x.png')).toBeUndefined()
   })
 
   it('encodes the full path including spaces', () => {
@@ -43,21 +51,23 @@ describe('localPathMediaUrl', () => {
 })
 
 describe('AssistantMarkdown local-path images', () => {
-  it('renders a local image path in closing prose through the same-origin API', () => {
-    const { container } = render(
-      <AssistantMarkdown
-        blocks={[textBlock('See ![diagram](/tmp/graph.png) for the layout.')]}
-        streaming={false}
-        renderMessageImages={renderMessageImages}
-        t={t}
-      />,
-    )
-    const image = container.querySelector('img')
-    expect(image?.getAttribute('alt')).toBe('diagram')
-    const url = new URL(image?.getAttribute('src') ?? '')
-    expect(url.pathname).toBe('/api/file')
-    expect(url.searchParams.get('path')).toBe('/tmp/graph.png')
-  })
+  it.each(['/tmp/graph.png', 'C:\\Research\\graph.png', 'D:/Research/graph.png'])(
+    'renders local image %s in closing prose through the same-origin API', (path) => {
+      const { container } = render(
+        <AssistantMarkdown
+          blocks={[textBlock(`See ![diagram](${path}) for the layout.`)]}
+          streaming={false}
+          renderMessageImages={renderMessageImages}
+          t={t}
+        />,
+      )
+      const image = container.querySelector('img')
+      expect(image?.getAttribute('alt')).toBe('diagram')
+      const url = new URL(image?.getAttribute('src') ?? '')
+      expect(url.pathname).toBe('/api/file')
+      expect(url.searchParams.get('path')).toBe(path)
+    },
+  )
 
   it('keeps non-absolute destinations inert', () => {
     const { container } = render(

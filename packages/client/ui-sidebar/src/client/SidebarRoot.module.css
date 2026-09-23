@@ -427,3 +427,6 @@
     animation: none;
   }
 }
+
+.newSession { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); border-radius: 8px; min-height: 36px; }
+.brandMark { color: var(--dsw-alias-state-success-primary); }

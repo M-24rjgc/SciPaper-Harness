@@ -22,11 +22,14 @@ export class ThemePresenter {
   private appliedTokens: string[] = []
   /** The single metadata node this presenter inserts and removes. */
   private readonly themeColorMeta: HTMLMetaElement
+  /** Plugin-owned body attributes can select a palette after the theme applies. */
+  private readonly bodyObserver: MutationObserver
 
   /** Create the presenter-owned metadata node before the first snapshot arrives. */
   constructor() {
     this.themeColorMeta = document.createElement('meta')
     this.themeColorMeta.name = 'theme-color'
+    this.bodyObserver = new MutationObserver(() => { this.syncThemeColor() })
   }
 
   /**
@@ -51,12 +54,19 @@ export class ThemePresenter {
       body.style.setProperty(name, value)
       this.appliedTokens.push(name)
     }
-    this.themeColorMeta.content = getComputedStyle(body).backgroundColor
+    this.syncThemeColor()
     if (!this.themeColorMeta.isConnected) document.head.append(this.themeColorMeta)
+    this.bodyObserver.observe(body, { attributes: true })
+  }
+
+  /** Keep browser chrome aligned with the rendered palette, including plugin overrides. */
+  private syncThemeColor(): void {
+    this.themeColorMeta.content = getComputedStyle(document.body).backgroundColor
   }
 
   /** Retract root color-scheme, the palette attribute, token variables, the font-size axis, and the owned metadata node. */
   dispose(): void {
+    this.bodyObserver.disconnect()
     document.documentElement.style.removeProperty('color-scheme')
     const body = document.body
     body.removeAttribute(DARK_ATTRIBUTE)

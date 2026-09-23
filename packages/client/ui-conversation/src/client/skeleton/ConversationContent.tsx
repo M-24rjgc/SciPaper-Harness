@@ -239,10 +239,14 @@ export function ConversationContent({
 
   const composerBar = (
     <div className={clsx(css.composerStack, hero && css.composerHero)}>
-      {hero && <HeroShell t={t} renderSlot={renderSlot} />}
+      {hero && <div className={css.heroWelcome}>
+        <HeroShell t={t} renderSlot={renderSlot} />
+        {renderSlot('conversation.hero.welcome', {})}
+      </div>}
       {hero && heroWorkspaceRow}
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
       {inputBar}
+      {hero && renderSlot('conversation.hero.footer', {})}
     </div>
   )
 

@@ -1428,6 +1428,84 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'research',
+    summary: 'One durable owner for each project\'s evidence, files, decisions and execution records.',
+    description: 'One durable owner for each project\'s evidence, files, decisions and execution records.',
+    methods: [
+      {
+        signature: '@Remote async snapshot(): Promise<ResearchSnapshot>',
+        description: 'Read detached project snapshots and non-secret component settings.',
+        parameters: [],
+        returns: 'every project without source bodies, the preferences and the component status.',
+      },
+      {
+        signature: '@Remote tasks(): ResearchTask[]',
+        description: 'Read durable operation handles, including interrupted calls from prior launches.',
+        parameters: [],
+        returns: 'every recorded task, with project bodies stripped from results.',
+      },
+      {
+        signature: '@Remote async create(request: CreateProjectRequest): Promise<ResearchProject>',
+        description: 'Create (or reopen) a research project around one canonical DSH Workspace. Nothing starts.',
+        parameters: [{ name: 'request', description: 'title, absolute root, brief, and optional mode and autonomy.' }],
+        returns: 'the project record.',
+      },
+      {
+        signature: 'async createProject(request: CreateProjectRequest, sessionId?: string): Promise<ResearchProject>',
+        description: 'Create or reopen a project. A caller that already runs in a session (the agent creating its own project) binds that session instead of a new one.',
+        parameters: [{ name: 'request', description: 'title, absolute root, brief, and optional mode and autonomy.' }, { name: 'sessionId', description: 'the calling session to bind, when there is one.' }],
+        returns: 'the project record.',
+      },
+      {
+        signature: '@Remote async configure(preferences: ResearchPreferences): Promise<ResearchPreferences>',
+        description: 'Save model roles and explicitly bound tool locations, never model secrets.',
+        parameters: [{ name: 'preferences', description: 'the complete preference record.' }],
+        returns: 'the preferences as stored.',
+      },
+      {
+        signature: '@Remote async setImageCredential(value: string): Promise<void>',
+        description: 'Store the image-provider API key under its fixed research credential name.',
+        parameters: [{ name: 'value', description: 'the API key.' }],
+      },
+      {
+        signature: '@Remote installComponent(component: \'python\' | \'uv\' | \'latex\' | \'drawio\'): Promise<ResearchResponse>',
+        description: 'Provision a tool component as a queryable background operation.',
+        parameters: [{ name: 'component', description: 'which managed tool to install.' }],
+        returns: 'the job handle to follow through tasks().',
+      },
+      {
+        signature: '@Remote async command(request: ResearchCommand, signal: AbortSignal): Promise<ResearchResponse>',
+        description: 'Admit a desktop action; long operations return a job the desktop follows.',
+        parameters: [{ name: 'request', description: 'one research command.' }, { name: 'signal', description: 'cancellation of the call.' }],
+        returns: 'the outcome, or a job handle for a long operation.',
+      },
+      {
+        signature: 'projects(): ResearchProject[]',
+        description: 'Every project record, detached, without evidence text (see getProject).',
+        parameters: [],
+        returns: 'copies of all project records.',
+      },
+      {
+        signature: 'getProject(id: ProjectId): ResearchProject',
+        description: 'One project\'s record with its evidence text, for tools and checks that read sources.',
+        parameters: [{ name: 'id', description: 'the project.' }],
+        returns: 'a detached copy of its record.',
+      },
+      {
+        signature: 'async projectAt(directory: string): Promise<ResearchProject | undefined>',
+        description: 'The project whose root contains a directory, preferring the innermost one.',
+        parameters: [{ name: 'directory', description: 'a session\'s working directory.' }],
+        returns: 'that project, or undefined outside every project.',
+      },
+      {
+        signature: 'async execute(raw: ResearchCommand, signal: AbortSignal, actor: \'user\' | \'agent\'): Promise<ResearchResponse>',
+        description: 'Dispatch a validated tool or desktop command. The desktop receives a job for long operations; the agent waits for the result inside its tool call.',
+        parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }],
+        returns: 'the outcome.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -3819,6 +3897,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ApprovalRequestEvent {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: ToolCallId;\n    readonly reason?: string;\n    readonly signal?: AbortSignal;\n}',
   },
   {
+    name: 'ArtifactId',
+    declaration: 'export type ArtifactId = Branded<\'ResearchArtifactId\'>;',
+  },
+  {
+    name: 'ArtifactRecord',
+    declaration: 'export interface ArtifactRecord {\n    id: ArtifactId;\n    path: string;\n    kind: \'manuscript\' | \'diagram\' | \'figure\' | \'code\' | \'bibliography\' | \'supplement\' | \'image\';\n    revision: number;\n    sha256: string;\n    evidence: EvidenceLink[];\n    claimIds: string[];\n    inputArtifacts: {\n        id: ArtifactId;\n        revision: number;\n    }[];\n    stale: boolean;\n    updatedAt: string;\n    author: \'user\' | \'agent\' | \'experiment\';\n}',
+  },
+  {
     name: 'AskUserQuestionAnswer',
     declaration: 'export interface AskUserQuestionAnswer {\n    answers: AskUserQuestionAnswerItem[];\n}',
   },
@@ -3939,6 +4025,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AuthorizationStatus = \'authorized\' | \'cancelled\';',
   },
   {
+    name: 'Autonomy',
+    declaration: 'export type Autonomy = \'checkpoints\' | \'automatic\';',
+  },
+  {
     name: 'BackendRegistry',
     declaration: 'export class BackendRegistry {\n    register(name: string, backend: StorageBackend): () => void;\n    get(name: string): StorageBackend;\n    names(): string[];\n}',
   },
@@ -3965,6 +4055,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BrowserUseProviderName',
     declaration: 'export type BrowserUseProviderName = Branded<\'BrowserUseProviderName\'>;',
+  },
+  {
+    name: 'CheckFinding',
+    declaration: 'export interface CheckFinding {\n    check: CheckId;\n    severity: \'error\' | \'warning\';\n    message: string;\n    file?: string | undefined;\n    line?: number | undefined;\n}',
+  },
+  {
+    name: 'CheckId',
+    declaration: 'export type CheckId = \'cite\' | \'numbers\' | \'placeholders\' | \'figures\' | \'compile\' | \'visual\' | \'review\' | \'stale\' | \'claims\' | \'structure\';',
+  },
+  {
+    name: 'CheckReport',
+    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: ResearchMode | undefined;\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
+  },
+  {
+    name: 'ClaimRecord',
+    declaration: 'export interface ClaimRecord {\n    id: string;\n    text: string;\n    kind: \'hypothesis\' | \'method\' | \'literature\' | \'empirical\';\n    state: \'proposed\' | \'supported\' | \'contradicted\' | \'stale\';\n    evidence: EvidenceLink[];\n    artifactIds: ArtifactId[];\n}',
   },
   {
     name: 'ClientArtifactBaseline',
@@ -4029,6 +4135,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CompactionTrigger',
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
+  },
+  {
+    name: 'CompileRecord',
+    declaration: 'export interface CompileRecord {\n    artifactId: ArtifactId;\n    artifactRevision: number;\n    inputDigest: string;\n    engine: \'pdflatex\' | \'xelatex\' | \'lualatex\';\n    status: \'completed\' | \'failed\';\n    pdfPath: string;\n    logPath: string;\n    diagnostics: string[];\n    createdAt: string;\n}',
+  },
+  {
+    name: 'ComponentStatus',
+    declaration: 'export interface ComponentStatus {\n    id: \'python\' | \'uv\' | \'latex\' | \'drawio\';\n    installed: boolean;\n    path: string;\n    version: string;\n}',
   },
   {
     name: 'CompositionRowEnablement',
@@ -4163,6 +4277,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreateGoalResult {\n    readonly ref: GoalRef;\n}',
   },
   {
+    name: 'CreateProjectRequest',
+    declaration: 'export interface CreateProjectRequest {\n    title: string;\n    root: string;\n    mode?: ResearchMode | undefined;\n    autonomy?: Autonomy | undefined;\n    brief: string;\n}',
+  },
+  {
     name: 'CreateSessionOptions',
     declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly isSeeded?: boolean;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
   },
@@ -4193,6 +4311,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CredentialRef',
     declaration: 'export type CredentialRef = Branded<\'CredentialRef\'>;',
+  },
+  {
+    name: 'DecisionRecord',
+    declaration: 'export interface DecisionRecord {\n    id: string;\n    question: string;\n    answer: string;\n    by: \'user\' | \'agent\';\n    rationale: string;\n    at: string;\n}',
   },
   {
     name: 'DeepSeekLlmApiExtensionMap',
@@ -4331,8 +4453,44 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EncodedImageAttachment {\n    mediaType: ImageMediaType;\n    data: string;\n    name?: string;\n}',
   },
   {
+    name: 'EnvironmentId',
+    declaration: 'export type EnvironmentId = Branded<\'ResearchEnvironmentId\'>;',
+  },
+  {
+    name: 'EnvironmentRecord',
+    declaration: 'export interface EnvironmentRecord {\n    id: EnvironmentId;\n    name: string;\n    kind: \'uv\' | \'existing\' | \'conda\';\n    target: \'local\' | \'ssh\';\n    python: string;\n    sshHost?: string | undefined;\n    remoteRoot?: string | undefined;\n    requirements: string[];\n    fingerprint: string;\n    status: \'pending\' | \'ready\' | \'failed\';\n    details: string;\n    isDefault: boolean;\n}',
+  },
+  {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'EvidenceChunk',
+    declaration: 'export interface EvidenceChunk {\n    text: string;\n    locator: SourceLocator;\n}',
+  },
+  {
+    name: 'EvidenceId',
+    declaration: 'export type EvidenceId = Branded<\'ResearchEvidenceId\'>;',
+  },
+  {
+    name: 'EvidenceLink',
+    declaration: 'export interface EvidenceLink {\n    evidenceId: EvidenceId;\n    revision: number;\n    locator: SourceLocator;\n    quote: string;\n}',
+  },
+  {
+    name: 'EvidenceRecord',
+    declaration: 'export interface EvidenceRecord {\n    id: EvidenceId;\n    title: string;\n    kind: \'file\' | \'literature\' | \'experiment\';\n    path: string;\n    originalPath?: string | undefined;\n    sha256: string;\n    revision: number;\n    importedAt: string;\n    chunks: EvidenceChunk[];\n    sourceUrl?: string | undefined;\n    doi?: string | undefined;\n    fullTextPath?: string | undefined;\n    coverage: \'full-text\' | \'abstract\' | \'metadata\' | \'data\';\n    verified: boolean;\n    stale: boolean;\n}',
+  },
+  {
+    name: 'ExperimentId',
+    declaration: 'export type ExperimentId = Branded<\'ResearchExperimentId\'>;',
+  },
+  {
+    name: 'ExperimentRecord',
+    declaration: 'export interface ExperimentRecord {\n    id: ExperimentId;\n    spec: ExperimentSpec;\n    status: RunStatus;\n    createdAt: string;\n    updatedAt: string;\n    directory: string;\n    inputRevision: number;\n    environmentFingerprint: string;\n    metrics: Record<string, number>;\n    exitCode?: number | undefined;\n    message: string;\n    snapshotPath: string;\n    collected: boolean;\n    startedAt?: string | undefined;\n    finishedAt?: string | undefined;\n    observeFailures?: number | undefined;\n    nextObserveAt?: number | undefined;\n}',
+  },
+  {
+    name: 'ExperimentSpec',
+    declaration: 'export interface ExperimentSpec {\n    environmentId: EnvironmentId;\n    name: string;\n    argv: string[];\n    cwd: string;\n    seed: number;\n    maxSeconds: number;\n    gpuIds: string[];\n    dataEvidenceIds: EvidenceId[];\n    codeArtifactIds: ArtifactId[];\n    codePaths?: string[] | undefined;\n    metricsPath: string;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -4487,6 +4645,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ImageAttachmentRef {\n    attachmentId: AttachmentId;\n    mediaType: ImageMediaType;\n    bytes: number;\n    width: number;\n    height: number;\n    name?: string;\n    originalDimensions?: {\n        width: number;\n        height: number;\n    };\n}',
   },
   {
+    name: 'ImageBinding',
+    declaration: 'export interface ImageBinding {\n    baseUrl: string;\n    model: string;\n    size: string;\n}',
+  },
+  {
     name: 'ImageBlock',
     declaration: 'export interface ImageBlock {\n    type: \'image\';\n    attachment: ImageAttachmentRef;\n    offloaded?: true;\n}',
   },
@@ -4625,6 +4787,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'KvUnitDescriptor',
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
+  },
+  {
+    name: 'LiteratureItem',
+    declaration: 'export interface LiteratureItem {\n    id: string;\n    provider: \'crossref\' | \'openalex\' | \'arxiv\';\n    title: string;\n    authors: string[];\n    year?: number | undefined;\n    doi?: string | undefined;\n    url: string;\n    abstract: string;\n    bibtex: string;\n}',
   },
   {
     name: 'LlmAdapter',
@@ -4839,6 +5005,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface MessageSourceMap {\n    user: {\n        kind: \'user\';\n    };\n    plugin: {\n        kind: \'plugin\';\n        plugin: string;\n    } & ContextFormed;\n    model: ModelMessageSource;\n    tool: ToolMessageSource;\n}',
   },
   {
+    name: 'ModelBinding',
+    declaration: 'export interface ModelBinding {\n    provider: string;\n    model: string;\n}',
+  },
+  {
     name: 'ModelCatalog',
     declaration: 'export interface ModelCatalog {\n    readonly default: ModelSelection;\n    readonly routableProviders: readonly string[];\n    readonly groups: readonly ModelProviderGroup[];\n    readonly failures: readonly ModelCatalogFailure[];\n}',
   },
@@ -4891,6 +5061,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n}',
   },
   {
+    name: 'PhaseId',
+    declaration: 'export type PhaseId = \'idea\' | \'literature\' | \'plan\' | \'draft\' | \'experiments\' | \'results\' | \'polish\' | \'submission\' | \'ingest\' | \'write\' | \'figures\';',
+  },
+  {
+    name: 'PhaseStatus',
+    declaration: 'export interface PhaseStatus {\n    id: PhaseId;\n    done: boolean;\n    missing: string[];\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
   },
@@ -4937,6 +5115,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PreToolDecision',
     declaration: 'export type PreToolDecision = {\n    kind: \'allow\';\n} | {\n    kind: \'deny\';\n    reason: string;\n    info?: ToolErrorInfo;\n} | {\n    kind: \'cancel\';\n} | {\n    kind: \'ask\';\n    reason?: string;\n};',
+  },
+  {
+    name: 'ProjectId',
+    declaration: 'export type ProjectId = Branded<\'ResearchProjectId\'>;',
   },
   {
     name: 'ProjectionChangeListener',
@@ -5095,6 +5277,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type RequestRunOutcome = \'approved\' | \'completed\' | \'rejected\' | \'cancelled\' | \'failed\';',
   },
   {
+    name: 'ResearchCommand',
+    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: ResearchMode;\n    reason?: string | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: ProjectId;\n} & ArtifactFields) | {\n    action: \'read-artifact\';\n    projectId: ProjectId;\n    artifactId: ArtifactId;\n} | {\n    action: \'environment\';\n    projectId: ProjectId;\n    environment: Omit<EnvironmentRecord, \'id\' |  /* …truncated — full shape in source */',
+  },
+  {
+    name: 'ResearchMode',
+    declaration: 'export type ResearchMode = \'paper-first\' | \'from-results\' | \'free\';',
+  },
+  {
+    name: 'ResearchPreferences',
+    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n}',
+  },
+  {
+    name: 'ResearchProject',
+    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    root: string;\n    mode?: ResearchMode | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    sessionId?: string | undefined;\n}',
+  },
+  {
+    name: 'ResearchResponse',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
+  },
+  {
+    name: 'ResearchSnapshot',
+    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n}',
+  },
+  {
+    name: 'ResearchTask',
+    declaration: 'export interface ResearchTask {\n    id: string;\n    kind: string;\n    projectId?: ProjectId | undefined;\n    status: \'running\' | \'completed\' | \'failed\' | \'interrupted\';\n    message: string;\n    createdAt: string;\n    result?: ResearchResponse | undefined;\n}',
+  },
+  {
     name: 'ResolvedAlwaysRetryPolicy',
     declaration: 'export interface ResolvedAlwaysRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'always\';\n}',
   },
@@ -5129,6 +5339,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
+  },
+  {
+    name: 'RunStatus',
+    declaration: 'export type RunStatus = \'queued\' | \'running\' | \'completed\' | \'failed\' | \'cancelled\' | \'interrupted\' | \'unknown\';',
   },
   {
     name: 'SandboxEnforcement',
@@ -5851,6 +6065,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
   },
   {
+    name: 'SourceLocator',
+    declaration: 'export interface SourceLocator {\n    page?: number | undefined;\n    paragraph?: number | undefined;\n    line?: number | undefined;\n    key?: string | undefined;\n}',
+  },
+  {
     name: 'SpawnTeammateRequest',
     declaration: 'export interface SpawnTeammateRequest {\n    readonly name: string;\n    readonly description: string;\n    readonly prompt: ContentBlock[];\n    readonly context: \'fresh\' | \'fork\';\n    readonly provider: string;\n    readonly signal: AbortSignal;\n}',
   },
@@ -6461,6 +6679,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'VerifiedWebhookDelivery',
     declaration: 'export interface VerifiedWebhookDelivery<K extends string = string> {\n    readonly kind: K;\n    readonly source: WebhookSourceId;\n    readonly deliveryId: WebhookDeliveryId;\n    readonly event: WebhookEventOf<K>;\n    readonly receivedAt: number;\n}',
+  },
+  {
+    name: 'VisualReview',
+    declaration: 'export interface VisualReview {\n    artifactId: ArtifactId;\n    artifactRevision: number;\n    status: \'not-configured\' | \'pending\' | \'reviewed\' | \'failed\' | \'rendered\';\n    inputDigest?: string | undefined;\n    sessionId?: string | undefined;\n    findings: string;\n    createdAt: string;\n}',
   },
   {
     name: 'WebBootBatch',

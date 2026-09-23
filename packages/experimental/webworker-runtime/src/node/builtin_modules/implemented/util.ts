@@ -37,6 +37,19 @@ export function callbackify<A extends unknown[], R>(
 }
 
 /**
+ * Link constructor prototypes while preserving the child's own methods.
+ * @param ctor - Child constructor.
+ * @param superCtor - Parent constructor.
+ */
+export const inherits: typeof import('node:util').inherits = (ctor, superCtor) => {
+  if (typeof ctor !== 'function' || typeof superCtor !== 'function') {
+    throw new TypeError('Constructor and parent must be functions')
+  }
+  Object.defineProperty(ctor, 'super_', { value: superCtor, writable: true, configurable: true })
+  Object.setPrototypeOf(ctor.prototype as object, superCtor.prototype as object)
+}
+
+/**
  * Diagnostic rendering of a value.
  * @param value - the value.
  * @returns a readable one-line rendering.
@@ -151,6 +164,6 @@ type NodeFace = Partial<Omit<typeof import('node:util'), 'promisify' | 'callback
 
 /** CommonJS default export: the members `require()` hands a caller of this module. */
 export default {
-  promisify, callbackify, inspect, format, isDeepStrictEqual, types, parseArgs, deprecate,
+  promisify, callbackify, inherits, inspect, format, isDeepStrictEqual, types, parseArgs, deprecate,
   TextDecoder: TextDecoderClass, TextEncoder: TextEncoderClass,
 } satisfies NodeFace

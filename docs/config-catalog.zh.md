@@ -1918,6 +1918,28 @@ export interface Config {
 
 来源：[`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
+<a id="deepseek-aidsh-research-workbench"></a>
+
+## `@deepseek-ai/dsh-research-workbench`
+
+需要：`storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm`
+
+```ts config-catalog
+/** Research workbench configuration. */
+export interface Config {
+  /** Directory for managed tools (Python, uv, TeX, draw.io); defaults to the product home's research/components. */
+  componentRoot?: string
+  /** Byte ceiling for any single source, artifact or tool response the service reads or returns. */
+  maxSourceBytes: number
+  /** How often running experiments are observed, in milliseconds. */
+  pollIntervalMs: number
+  /** Most PDF pages rendered for one inspection. */
+  maxReviewPages: number
+}
+```
+
+来源：[`packages/research/workbench/src/index.ts:35`](../packages/research/workbench/src/index.ts)
+
 <a id="deepseek-aidsh-sandbox-local"></a>
 
 ## `@deepseek-ai/dsh-sandbox-local`
@@ -3621,6 +3643,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-reference`（[`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-research`（[`packages/client/ui-research/src/index.ts`](../packages/client/ui-research/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-session`（[`packages/client/ui-session/src/index.ts`](../packages/client/ui-session/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings`（[`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts)）

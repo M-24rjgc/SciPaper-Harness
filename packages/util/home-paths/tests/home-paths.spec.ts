@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_DSH_HOME_DISPLAY,
@@ -19,10 +19,24 @@ afterEach(() => {
 })
 
 describe('dsh path helpers', () => {
-  it('owns the shared default DSH home directory name', () => {
-    expect(DSH_HOME_DIR_NAME).toBe('.dsh')
-    expect(DEFAULT_DSH_HOME_DISPLAY).toBe('~/.dsh')
-    expect(defaultDshHome()).toBe(join(homedir(), '.dsh'))
+  it('owns the shared default home directory name', () => {
+    expect(DSH_HOME_DIR_NAME).toBe('.research-workbench')
+    expect(DEFAULT_DSH_HOME_DISPLAY).toBe('~/.research-workbench')
+    expect(defaultDshHome()).toBe(join(homedir(), '.research-workbench'))
+  })
+
+  it('never defaults onto an official DeepSeek Harness installation', () => {
+    // This product installs beside a DSH install, not over it. A default of
+    // `.dsh` would put its sessions, storages, settings and profiles into the
+    // other installation's data. Resolution runs before any configuration
+    // loads, so no bundle or launcher can correct it afterwards.
+    const official = join(homedir(), '.dsh')
+
+    expect(defaultDshHome()).not.toBe(official)
+    expect(resolveDshHome(undefined, {})).not.toBe(resolve(official))
+    expect(dshCachePath()).not.toContain(`${sep}.dsh${sep}`)
+    // The override still reaches it, for a caller that asks on purpose.
+    expect(resolveDshHome(undefined, { DSH_HOME: official })).toBe(resolve(official))
   })
 
   it('expands tilde paths without changing non-tilde paths', () => {
@@ -53,14 +67,14 @@ describe('dsh path helpers', () => {
   })
 
   it('labels a resolved home by whether it is the default root', () => {
-    expect(dshHomeDisplay(resolve(defaultDshHome()))).toBe('~/.dsh')
+    expect(dshHomeDisplay(resolve(defaultDshHome()))).toBe('~/.research-workbench')
     expect(dshHomeDisplay('/some/other/root')).toBe('$DSH_HOME')
   })
 
   it.each([
-    [undefined, join(homedir(), '.dsh')],
-    ['', join(homedir(), '.dsh')],
-    ['   ', join(homedir(), '.dsh')],
+    [undefined, join(homedir(), '.research-workbench')],
+    ['', join(homedir(), '.research-workbench')],
+    ['   ', join(homedir(), '.research-workbench')],
     ['~/env-dsh', join(homedir(), 'env-dsh')],
     ['./relative-dsh', resolve('./relative-dsh')],
   ] as const)('resolves cache paths with DSH_HOME=%j', (home, expectedHome) => {

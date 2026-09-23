@@ -44,7 +44,7 @@ describe('web e2e: goal bar clear convergence', () => {
 
   it('renders one active goal and clears it without exposing a stale error', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-goal-bar-clear'))
-    const input = page.locator('[data-composer-input][data-placeholder="Describe what you want to build, / commands, @ files or sessions"]')
+    const input = page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data, / commands, @ files or sessions"]')
     await input.waitFor({ timeout: 10_000 })
     await input.fill('/goal guard rapid clear clicks')
     await input.press('Enter')

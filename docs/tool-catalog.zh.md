@@ -47,6 +47,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
 
 <a id="deepseek-aidsh-mcp-resources"></a>
 
@@ -2620,3 +2621,430 @@ todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为
 来源：[`packages/web/tool-web/src/index.ts`](../packages/web/tool-web/src/index.ts)
 
 web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。
+
+<a id="deepseek-aidsh-research-workbench"></a>
+
+## `@deepseek-ai/dsh-research-workbench`
+
+### `research_artifact`
+
+论文文件、LaTeX 与导出。用普通文件工具写下的文件同样计入；register-artifact {path, kind} 记录文件由什么产生（证据关联，以及输入文件，例如一张图背后的数据和脚本）。save-artifact {path, content, kind} 写入并记录；expectedRevision 可选，只用于防止覆盖更新的编辑。类型：manuscript、diagram、figure、code、bibliography、supplement、image。compile {path?, engine}：构建 PDF（path 默认为主 .tex）。render-pages {maxPages?}：最新 PDF 的 PNG 页面，逐页用 read_image 查看。import-template {paths}：把投稿模板复制到 template/。export {}：包含源文件、PDF、数据清单与检查报告的压缩包。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "save-artifact",
+        "register-artifact",
+        "read-artifact",
+        "import-template",
+        "compile",
+        "render-pages",
+        "export"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "path": {
+      "type": "string",
+      "description": "save-artifact / register-artifact / compile: project-relative path"
+    },
+    "content": {
+      "type": "string",
+      "description": "save-artifact: full file text"
+    },
+    "kind": {
+      "type": "string",
+      "description": "save-artifact / register-artifact",
+      "enum": [
+        "manuscript",
+        "diagram",
+        "figure",
+        "code",
+        "bibliography",
+        "supplement",
+        "image"
+      ]
+    },
+    "expectedRevision": {
+      "type": "integer",
+      "description": "save-artifact: optional optimistic revision"
+    },
+    "evidence": {
+      "description": "save/register: [{evidenceId, revision, locator, quote}]"
+    },
+    "claimIds": {
+      "type": "array",
+      "description": "save/register: claims this file states",
+      "items": {
+        "type": "string"
+      }
+    },
+    "inputArtifacts": {
+      "description": "save/register: [{id, revision}] the files this one was made from (e.g. data table and plotting script)"
+    },
+    "artifactId": {
+      "type": "string",
+      "description": "read-artifact / render-pages"
+    },
+    "paths": {
+      "type": "array",
+      "description": "import-template: template files or directories",
+      "items": {
+        "type": "string"
+      }
+    },
+    "engine": {
+      "type": "string",
+      "description": "compile (xelatex for CJK text)",
+      "enum": [
+        "pdflatex",
+        "xelatex",
+        "lualatex"
+      ]
+    },
+    "maxPages": {
+      "type": "integer",
+      "description": "render-pages: page cap"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_check`
+
+按磁盘上的现状检查论文：引用可解析且完整，结果与表格中的每个数字都能追溯到收集的指标或数据，占位符（\tbd{}、"--" 单元格），引用的插图存在，最近一次编译是最新的，页面已查看过，评审是最新的，过期文件。scope：all（默认）、当前模式的某个阶段，或某一项检查（cite、numbers、placeholders、figures、compile、visual、review、stale、claims、structure）。它只报告，从不拦截。未通过就是未完成：修正错误后再检查一次。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "scope": {
+      "type": "string",
+      "description": "all, a phase id or a check id"
+    }
+  }
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_environment`
+
+创建或绑定实验所用的 Python 环境。environment {environment: {name, kind: uv|existing|conda, target: local|ssh, python, sshHost?, remoteRoot?, requirements: [], isDefault}}。kind 为 uv 且 python 留空时，在项目内创建托管的 3.12 环境。已有解释器与 conda 解释器只做检查，从不修改，绑定本地解释器前会先询问用户。SSH 使用 OpenSSH 别名和专用的绝对路径 remoteRoot。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "environment"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "environment": {
+      "description": "the environment description"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_evidence`
+
+资料与引用。import {paths}：把文件（PDF、DOCX、CSV、JSON、文本）快照为带页码/行号定位的证据；CSV/JSON 成为结果数字可追溯的数据证据。search-evidence {query}：按相关度排序的引文，附 evidenceId、修订号与定位。literature-search {provider: crossref|openalex|arxiv, query}；literature-import {item}：按标识符重新获取记录，并返回经核实、可放入参考文献的 BibTeX。claim {claim}：把论点关联到精确引用的证据。refresh-evidence {evidenceId}。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "import",
+        "refresh-evidence",
+        "search-evidence",
+        "claim",
+        "literature-search",
+        "literature-import"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "paths": {
+      "type": "array",
+      "description": "import: files, relative to the project or absolute. Paths outside the project ask the user first.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evidenceId": {
+      "type": "string",
+      "description": "refresh-evidence"
+    },
+    "query": {
+      "type": "string",
+      "description": "search-evidence / literature-search"
+    },
+    "provider": {
+      "type": "string",
+      "description": "literature-search",
+      "enum": [
+        "crossref",
+        "openalex",
+        "arxiv"
+      ]
+    },
+    "item": {
+      "description": "literature-import: one item exactly as literature-search returned it"
+    },
+    "claim": {
+      "description": "claim: {id, text, kind: hypothesis|method|literature|empirical, state: proposed|supported|contradicted|stale, evidence: [{evidenceId, revision, locator, quote}], artifactIds}"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_experiment`
+
+独立于对话和应用存续的实验运行。experiment {requestId: 一个新的 UUID, spec: {environmentId, name, argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], metricsPath: "metrics.json"}}。代码目录（codePaths，默认 code/）与所选数据会留下快照。脚本把数值指标以 JSON 写入 $RESEARCH_METRICS_PATH，把交付物（表格、绘图数据）写入 $RESEARCH_OUTPUT_DIR（或 ./outputs）；两者都会成为数据证据。响应丢失时用同一个 requestId 对账，绝不用新的 requestId 重新提交。experiment-wait {runIds, timeoutSeconds ≤ 1800} 会一直等到某个运行结束。experiment-logs / -refresh / -cancel / -dismiss {runId}；dismiss 只放弃状态未知的运行。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "experiment",
+        "experiment-refresh",
+        "experiment-cancel",
+        "experiment-dismiss",
+        "experiment-logs",
+        "experiment-wait"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "requestId": {
+      "type": "string",
+      "description": "experiment: a new UUID"
+    },
+    "spec": {
+      "description": "experiment: the run specification"
+    },
+    "runId": {
+      "type": "string",
+      "description": "refresh / cancel / dismiss / logs"
+    },
+    "runIds": {
+      "type": "array",
+      "description": "experiment-wait",
+      "items": {
+        "type": "string"
+      }
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "description": "experiment-wait"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_media`
+
+visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path}：用配置的生图 API 生成一张位图插画。架构图使用可编辑的 draw.io；结果图来自脚本与真实数据。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "visual-review",
+        "complete-visual-review",
+        "generate-image"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "artifactId": {
+      "type": "string",
+      "description": "visual-review / complete-visual-review"
+    },
+    "artifactRevision": {
+      "type": "integer",
+      "description": "complete-visual-review"
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "complete-visual-review"
+    },
+    "findings": {
+      "type": "string",
+      "description": "complete-visual-review"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "generate-image"
+    },
+    "path": {
+      "type": "string",
+      "description": "generate-image: new .png/.jpg/.webp path"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_project`
+
+你工作目录所在的科研项目。current：模式、自主度、阶段、决策、文件、运行——开始工作时调用。create {title, brief?, root?, mode?, autonomy?}：把工作目录（或 root）设为科研项目。list：全部项目。set-mode {mode: paper-first|from-results|free, reason}：为项目选择路线。set-autonomy {autonomy: checkpoints|automatic}。record-decision {question, answer, rationale?, decidedBy?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "current",
+        "create",
+        "list",
+        "set-mode",
+        "set-autonomy",
+        "record-decision"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "title": {
+      "type": "string",
+      "description": "create"
+    },
+    "brief": {
+      "type": "string",
+      "description": "create: the idea or the material in a few sentences"
+    },
+    "root": {
+      "type": "string",
+      "description": "create: absolute directory; defaults to the working directory"
+    },
+    "mode": {
+      "type": "string",
+      "description": "create / set-mode",
+      "enum": [
+        "paper-first",
+        "from-results",
+        "free"
+      ]
+    },
+    "autonomy": {
+      "type": "string",
+      "description": "create / set-autonomy",
+      "enum": [
+        "checkpoints",
+        "automatic"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "set-mode: why this route"
+    },
+    "question": {
+      "type": "string",
+      "description": "record-decision"
+    },
+    "answer": {
+      "type": "string",
+      "description": "record-decision"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "record-decision"
+    },
+    "decidedBy": {
+      "type": "string",
+      "description": "record-decision: who made the decision",
+      "enum": [
+        "user",
+        "agent"
+      ]
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_task`
+
+按 jobId 读取桌面端发起的科研操作。失败或中断的任务并未完成。实验运行是独立的，按 runId 对账。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "jobId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "jobId"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。

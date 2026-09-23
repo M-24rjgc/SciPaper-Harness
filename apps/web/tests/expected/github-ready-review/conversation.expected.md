@@ -45,6 +45,7 @@
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Read Only"': Read Only
+- button "New project folder…"
 - button "Select model, current github-webhook-review-test/reply":
   - text: github-webhook-review-test/reply
   - img

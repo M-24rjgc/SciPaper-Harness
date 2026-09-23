@@ -97,6 +97,8 @@
     "tests/agent-preset-selection.e2e.ts",
     "tests/agent-preset-authoring.e2e.ts",
     "tests/shipped-composition.e2e.ts",
+    "tests/research-workbench.e2e.ts",
+    "tests/research-demo.e2e.ts",
     "tests/schedule-after.e2e.ts",
     "tests/feedback-command.e2e.ts",
     "tests/feedback-release.e2e.ts",

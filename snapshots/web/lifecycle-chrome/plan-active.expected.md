@@ -1,9 +1,12 @@
-- button "New session"
+- button "New research"
 - button "Collapse sidebar":
   - img
-- button "New session":
+- button "New research":
   - img
-  - text: New Session
+  - text: New research
+- navigation "Research projects":
+  - text: Research projects
+  - paragraph: Your research projects will appear here.
 - text: Workspaces
 - button "Search sessions":
   - img
@@ -20,7 +23,12 @@
 - button "Settings":
   - img
   - text: Settings
-- text: Into the Unknown Preview
+- text: Start a piece of research
+- paragraph: Hand me the material and the idea you have; we turn it into a paper that holds up. You make three decisions, and I do the checking, the runs and the writing.
+- article: "I already have material Papers, data, drafts, logs. The evidence base comes first: every import keeps its version and the exact place a quote came from. “Import these 6 PDFs and results.csv, and sort out what each one actually shows”"
+- article: I only have an idea Compare the literature, find the gap, narrow it into one falsifiable question — then you confirm it. “Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?”
+- article: Pick up where I left off Back to the point it stopped, with the evidence of that moment and whatever decision is still open. Your research projects will appear here.
+- button "New project folder…"
 - button "Choose workspace":
   - img
   - text: workspace
@@ -29,12 +37,14 @@
   - img
   - text: Standard mode
   - img
-- textbox "Describe what you want to build, / commands, @ files or sessions"
+- textbox "Describe your research question, or drop in papers and data, / commands, @ files or sessions"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
 - button "Plan mode on, press to turn off": Plan
+- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
+- text: You decide the question, the method and the experiment plan Every conclusion points back to the page it came from Experiments run on their own; closing the window will not stop them

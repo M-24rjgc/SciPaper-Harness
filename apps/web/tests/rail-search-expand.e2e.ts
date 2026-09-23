@@ -61,7 +61,7 @@ describe('web e2e: rail search click survives its own document-level bubble', ()
 
     // The guard ends with the gesture: a genuine outside click on an empty
     // query dismisses the expanded search as before.
-    await page.getByRole('button', { name: 'New session' }).first().click()
+    await page.getByRole('button', { name: 'New research' }).first().click()
     await expect.poll(async () => wideSearch.getAttribute('aria-expanded'), { timeout: 10_000 }).toBe('false')
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)

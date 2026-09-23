@@ -43,6 +43,12 @@
     },
     {
       "path": "../../subprocess/subprocess"
+    },
+    {
+      "path": "../../research/workbench"
+    },
+    {
+      "path": "../../client/ui-research"
     }
   ]
 }

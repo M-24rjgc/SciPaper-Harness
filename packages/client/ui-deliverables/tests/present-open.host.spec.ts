@@ -1,5 +1,5 @@
 /** Native delivery actions resolve the viewed Session's current workspace files. */
-import { mkdtemp, rm, readFile, writeFile, mkdir, realpath, symlink, unlink } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile, mkdir, realpath, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
@@ -128,15 +128,22 @@ describe('Presented workspace file native open route', () => {
     expect(opener).not.toHaveBeenCalled()
   })
 
-  it('opens external regular files through absolute and relative paths but refuses final symlinks', async () => {
-    const { root, cwd, file, open, opener } = await fixture()
-    const outside = join(root, 'outside.txt')
-    await writeFile(outside, 'outside')
-    const source = join(cwd, file.path)
-    await unlink(source)
-    await symlink(outside, source)
+  it('refuses a final symlink before resolving or opening its regular-file target', async () => {
+    const { ctx, cwd, file, open, opener } = await fixture()
+    const entry = await ctx.fs.lstat(file.path, { cwd })
+    if (entry === undefined) throw new Error('missing fixture file')
+    // The route consumes filesystem metadata; native symlink creation belongs
+    // to fs-local coverage and requires extra privileges on Windows.
+    vi.spyOn(ctx.fs, 'lstat').mockResolvedValueOnce({ ...entry, type: 'symlink' })
     expect((await open()).status).toBe(404)
     expect(opener).not.toHaveBeenCalled()
+    expect((await open()).status).toBe(204)
+  })
+
+  it('opens external regular files through absolute and relative paths', async () => {
+    const { root, file, open, opener } = await fixture()
+    const outside = join(root, 'outside.txt')
+    await writeFile(outside, 'outside')
     for (const path of ['../outside.txt', outside]) {
       file.path = path
       expect((await open()).status).toBe(204)

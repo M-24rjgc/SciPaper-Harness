@@ -1,5 +1,6 @@
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
+import { homedir } from 'node:os'
 import { readFile, writeFile } from 'node:fs/promises'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,6 +24,12 @@ import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { desktopErrorState } from './startup-error.ts'
 import { startupFailureDocument } from './startup-document.ts'
 
+// Separate product identity before any profile or single-instance resolution.
+app.setName('Research Workbench')
+// Chinese is this product's default interface language; both shipped locales stay switchable in settings.
+app.commandLine.appendSwitch('lang', process.env.RESEARCH_WORKBENCH_LANG || 'zh-CN')
+process.env.DSH_HOME = process.env.RESEARCH_WORKBENCH_HOME || (!app.isPackaged ? process.env.DSH_HOME : undefined) || join(homedir(), '.research-workbench')
+app.setPath('userData', join(process.env.DSH_HOME, 'electron'))
 const SCHEME = 'dsh-app'
 let focusPrimaryWindow = (): void => {}
 type RecoveryAction = 'restart' | 'plugins' | 'reset'
@@ -282,6 +289,8 @@ async function main(): Promise<void> {
       shellInstallerOwnsQuit = true
       await backend.stop()
     },
+    undefined,
+    () => false,
   )
 
   protocol.handle(SCHEME, (request) => {

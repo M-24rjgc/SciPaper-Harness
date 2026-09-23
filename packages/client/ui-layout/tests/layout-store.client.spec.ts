@@ -8,6 +8,15 @@ beforeEach(() => { vi.stubGlobal('innerWidth', 1920) })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('createLayoutStore', () => {
+  it('accepts a research rail width once and preserves subsequent manual resizing', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setInitialRightbarWidth(320)
+    actions.openRightbar(true, false)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBe(320)
+    actions.setRightbar(480)
+    actions.setInitialRightbarWidth(320)
+    expect(store.getSnapshot().layoutInfo.rightbar).toBe(480)
+  })
   it('starts with the default sidebar and no right panel preference', () => {
     const { store } = createLayoutStore().create()
     expect(store.getSnapshot()).toEqual({

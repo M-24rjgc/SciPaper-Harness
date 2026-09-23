@@ -1,0 +1,141 @@
+---
+description: "Research project ledger and model tools: sources with page-level quotes, literature with open-access full text, LaTeX compile and page renders, Python environments, detached experiments, report-only paper checks and submission export."
+kind: "package-reference"
+---
+
+# @deepseek-ai/dsh-research-workbench
+
+English | [中文](README.zh.md)
+
+## Summary
+
+Gives the agent a research project ledger and the tools to work in it: import and search sources with page-level quotes, verify literature and fetch open-access full text, write and compile LaTeX, render pages to look at, build Python environments, run experiments that outlive the app and SSH, and export a submission archive. `research_check` reports whether each phase of the paper is done; nothing is refused for failing it. Choose it for the research edition; it needs a storage domain and the desktop or web host.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+Mount it with the `ui-research` client plugin and the research agent preset; the web-app bundle already does. The service registers no tools of its own: the preset mounts `@deepseek-ai/dsh-research-workbench/tools`, so only agents composed from it see the research tools.
+
+### When to choose it
+
+Choose it when the agent should carry a paper from an idea or from existing results to a submission, with provenance for every source, file and number. It records and checks; the agent, its goals and the research skills drive the work, so a general coding session gains nothing from it.
+
+### Minimal configuration
+
+```yaml
+- id: research-workbench
+  name: '@deepseek-ai/dsh-research-workbench'
+  config:
+    maxSourceBytes: 67108864
+    pollIntervalMs: 5000
+    maxReviewPages: 12
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `maxSourceBytes` | required | Byte ceiling for any single source, artifact or tool response |
+| `pollIntervalMs` | required | How often running experiments are observed |
+| `maxReviewPages` | required | Most PDF pages rendered for one inspection |
+| `componentRoot` | the product home's `research/components` | Directory for managed Python, uv, TeX and draw.io |
+
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-research-workbench) is the exhaustive source for every accepted field.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Implementation internals — click to expand</summary>
+
+One service owns every project record in the `research_workbench` storage domain; each project's changes are applied one at a time. Slow work (compiles, page renders, imports, environment builds, experiment launches and observations) runs on a detached copy outside that queue and only its result is recorded, so a save never waits for a compile. Evidence text lives in per-revision files under `.research/chunks`, keeping each record write small. The files themselves stay in the project, with immutable snapshots under `.research`. The [research subsystem page](../../../docs/subsystems/research.md) covers the record, modes, checks and refusals.
+
+| Source | What it holds |
+|---|---|
+| [`src/index.ts`](src/index.ts) | The service: project lifecycle, command dispatch, the per-project queue, run observation |
+| [`src/checks.ts`](src/checks.ts) | `research_check`: the phase lists per mode and every check |
+| [`src/latex.ts`](src/latex.ts) | Manuscript discovery, input flattening, bibliography and graphic resolution |
+| [`src/artifacts.ts`](src/artifacts.ts) | Imports, file revisions, compile, page renders, export |
+| [`src/experiments.ts`](src/experiments.ts) | Run admission, input snapshots, launch, observation, output collection |
+| [`src/literature.ts`](src/literature.ts) | Crossref, OpenAlex and arXiv metadata; open-access PDF lookup |
+| [`src/tools.ts`](src/tools.ts) | The model tools and the approval hook |
+| [`runtime/experiment_runner.py`](runtime/experiment_runner.py) | The standard-library supervisor every run executes under |
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [Research subsystem](../../../docs/subsystems/research.md) — the record, modes, checks, refusals and the Cordis API.
+- [Goals](../../../docs/subsystems/goal.md) — how a pipeline runs round after round until its check is clean.
+- [Permission presets](../../../docs/subsystems/permission-presets.md) — the presets behind checkpoints and automatic autonomy.
+- [Storage](../../../docs/subsystems/storage.md) — the domain the project records live in.
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+### Tool schemas
+
+#### What the model sees
+
+The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): eight tools, `research_project` (current, create, list, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_media`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
+
+#### Token effect
+
+Fixed schema cost on every request where the tools are visible; the definitions are static for a given build.
+
+#### KV Cache effect
+
+Prefix-stable while the definitions and their visibility are unchanged.
+
+### Tool-call history and result
+
+#### What the model sees
+
+Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode and the reason for it, autonomy, phase progress from the last check, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next unfinished phase and when to ask. Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`.
+
+#### Token effect
+
+Grows with each call's result until compaction. Source searches and file reads are the largest and are clipped to `maxSourceBytes`; check reports list findings with file and line.
+
+#### KV Cache effect
+
+Append-only; results follow the reusable request prefix and invalidate nothing.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+These are current constraints of the package, not a task backlog.
+
+No runtime invariant companion is published because every relationship the ledger keeps (revisions, evidence links, run identities) is enforced where it is written, inside each project's one-at-a-time change queue.
+
+- **Windows-first provisioning** — automatic installation of Python, uv, TeX and draw.io targets Windows x64; other platforms bind existing tools in settings.
+- **SSH without provisioning** — remote runs use explicitly configured OpenSSH authentication and a dedicated remote directory; accounts, cluster schedulers and a server's global Python are never touched.
+- **No draw.io export from the agent** — diagrams are edited in the built-in editor, but a vector export needs the desktop app's main process, which this package does not extend; the agent draws TikZ by default.
+- **Single-user projects** — one person's projects on one machine; collaborative accounts are out of scope.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>

@@ -143,7 +143,7 @@ describe('web e2e: agent-preset authoring is a host-side copy', () => {
     // left (it names itself via aria-labelledby, which a CSS attribute
     // selector cannot address).
     const snapshot = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd, {
-      replacements: [[userRoot, '{{presetRoot}}']],
+      replacements: [[join(userRoot, 'my-agent'), '{{presetRoot}}/my-agent'], [userRoot, '{{presetRoot}}']],
     })
     await compareOrRefreshGolden(CREATED_EXPECTED, snapshot, MODE)
     expect(snapshot).toContain('{{presetRoot}}/my-agent')

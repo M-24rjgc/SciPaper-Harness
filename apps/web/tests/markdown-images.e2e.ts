@@ -1,7 +1,7 @@
 // Real browser image loading and failure fallbacks through the shipped Web composition.
 import { open, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
-import { join } from 'node:path'
+import { join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
@@ -182,7 +182,7 @@ describe('web e2e: Markdown image rendering', () => {
       const url = new URL(response.url())
       if (url.pathname !== '/api/file') return
       const path = url.searchParams.get('path')
-      if (path !== null) mediaResponses.set(path, response.status())
+      if (path !== null) mediaResponses.set(normalize(path), response.status())
     })
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -256,7 +256,7 @@ describe('web e2e: Markdown image rendering', () => {
       await page.getByText(alt, { exact: true }).waitFor()
       expect(await page.getByRole('img', { name: alt }).count()).toBe(0)
     }
-    await page.getByText(join(scaffold.workspaceCwd, 'corrupt.png'), { exact: true }).waitFor()
+    await page.getByText(`${scaffold.workspaceCwd}/corrupt.png`, { exact: true }).waitFor()
     expect(mediaResponses).toEqual(new Map([
       [join(scaffold.workspaceCwd, 'valid.png'), 200],
       [join(scaffold.workspaceCwd, 'oversized.png'), 413],

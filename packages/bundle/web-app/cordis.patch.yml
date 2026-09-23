@@ -488,4 +488,37 @@
     - id: agent-presets
       name: '@deepseek-ai/dsh-agent-presets'
       config:
-        default: standard
+        # The research edition opens every conversation as a research
+        # collaborator; the other shipped presets stay one pick away.
+        default: research
+
+# The research edition's automatic autonomy runs unattended: workspace writes
+# as usual, but an escalation is declined instead of waiting on an approval
+# card nobody is there to answer. A patch replaces the row's configuration, so
+# the base table is restated beside the new row.
+- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      research-auto:
+        sandbox: workspace-write
+        approval: never
+        description: 工作区内修改，不弹审批：越权请求直接拒绝，无人值守时不会卡住。Workspace writes without approval prompts; escalations are declined so unattended runs never stall.
+
+- insert:
+    - id: research-workbench
+      name: '@deepseek-ai/dsh-research-workbench'
+      config:
+        maxSourceBytes: 67108864
+        pollIntervalMs: 5000
+        maxReviewPages: 12
+    - id: ui-research
+      name: '@deepseek-ai/dsh-client-ui-research'

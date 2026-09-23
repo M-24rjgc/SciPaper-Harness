@@ -13,9 +13,13 @@
     - button "Agent presets":
       - img
       - text: Agent presets
+    - button "Research":
+      - img
+      - text: Research
     - button "Archived sessions":
       - img
       - text: Archived sessions
+  - text: General
   - button "Open configuration file"
   - button "Close":
     - img

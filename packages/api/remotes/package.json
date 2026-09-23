@@ -87,6 +87,7 @@
     "@deepseek-ai/dsh-api-workspace-files": "workspace:^",
     "zod": "^4.4.3",
     "@deepseek-ai/dsh-command-feedback": "workspace:^",
-    "@deepseek-ai/dsh-api-terminal-controller": "workspace:^"
+    "@deepseek-ai/dsh-api-terminal-controller": "workspace:^",
+    "@deepseek-ai/dsh-research-workbench": "workspace:^"
   }
 }
