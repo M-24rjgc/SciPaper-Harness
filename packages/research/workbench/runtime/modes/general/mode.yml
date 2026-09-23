@@ -1,0 +1,10 @@
+# The general research agent: every research tool, no pipeline, no extra
+# skills. Every other mode adds to this one; none takes anything away.
+id: general
+order: 0
+name:
+  en: General
+  zh: 通用
+summary:
+  en: The research agent with every tool and no pipeline. Use it for any task; switch to a mode when a paper should follow one.
+  zh: 带齐全部科研工具、不走流水线的通用 AI。什么任务都能做；想让论文按一套方法走完时，再切换到对应模式。

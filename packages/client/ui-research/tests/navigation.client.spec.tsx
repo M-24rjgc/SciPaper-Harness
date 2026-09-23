@@ -13,7 +13,7 @@ import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
 const project = newProject({ title: '研究乙', root: '/research/b', brief: 'test' }, 'b' as WorkspaceId)
-const other = newProject({ title: '研究甲', root: '/research/a', mode: 'paper-first', brief: 'test' }, 'a' as WorkspaceId)
+const other = newProject({ title: '研究甲', root: '/research/a', mode: 'spark-to-paper', brief: 'test' }, 'a' as WorkspaceId)
 function props() {
   const view: ResearchView = { snapshot: { projects: [other, project], preferences: {}, components: [] }, tasks: [], busy: false, error: '', response: null }
   return {

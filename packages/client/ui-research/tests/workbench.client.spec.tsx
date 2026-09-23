@@ -16,9 +16,12 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchBrand, Workbench } from '../src/client/Workbench.tsx'
 import { ContextCards } from '../src/client/ContextCards.tsx'
 import { ResearchProjects } from '../src/client/ProjectEntry.tsx'
-import { sessionProject, type ResearchFocus, type ResearchView, type WorkbenchProps } from '../src/client/contract.ts'
-import { modeShortKey, projectFileAddress, standingText, type Translate } from '../src/client/format.ts'
-import { zh } from '../src/client/locales.ts'
+import { sessionProject, useModes, type ResearchFocus, type ResearchView, type WorkbenchProps } from '../src/client/contract.ts'
+import {
+  chosenMode, modeChoice, modeName, modePhases, packText, parseModeChoice, phaseName, projectFileAddress, standingText, type Translate,
+} from '../src/client/format.ts'
+import { en, zh } from '../src/client/locales.ts'
+import { MODES } from './fixtures/modes.ts'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
@@ -28,7 +31,7 @@ const t = ((key: string, params?: Record<string, unknown>) => {
 }) as Translate
 
 function fixture(): ResearchProject {
-  const project = newProject({ root: '/research/sparse', title: 'Sparse attention', brief: 'Does it hold?', mode: 'paper-first' }, 'w' as WorkspaceId)
+  const project = newProject({ root: '/research/sparse', title: 'Sparse attention', brief: 'Does it hold?', mode: 'spark-to-paper', route: 'proposal' }, 'w' as WorkspaceId)
   const base = { revision: 1, sha256: 's', evidence: [], claimIds: [], inputArtifacts: [], stale: false, updatedAt: '', author: 'agent' as const }
   project.artifacts.push(
     { ...base, id: 'main' as ArtifactId, path: 'paper/main.tex', kind: 'manuscript' },
@@ -58,7 +61,7 @@ function harness(
   const commands: ResearchCommand[] = []
   const created: unknown[] = []
   const calls: string[] = []
-  const view: ResearchView = { snapshot: { projects, preferences: {}, components: [] }, tasks: [], busy: false, error: '', response: null }
+  const view: ResearchView = { snapshot: { projects, preferences: {}, components: [], modes: MODES }, tasks: [], busy: false, error: '', response: null }
   const props = {
     t,
     useResearch: (select: (value: ResearchView) => unknown) => select(view),
@@ -86,7 +89,7 @@ function harness(
 const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }
 
 describe('the workbench panel', () => {
-  it('offers a first project when there is none, and creates one with or without a mode', async () => {
+  it('offers a first project when there is none, and creates one in the general mode or a chosen one', async () => {
     const empty = harness([])
     const ui = render(<Workbench {...empty.props} />)
     expect(ui.getByText(zh.noProjects)).toBeTruthy()
@@ -97,13 +100,13 @@ describe('the workbench panel', () => {
     fireEvent.submit(ui.getByRole('button', { name: zh.create }).closest('form')!)
     await settle()
     fireEvent.click(ui.getAllByRole('button', { name: zh.newProject })[0]!)
-    fireEvent.change(ui.getByLabelText(zh.mode), { target: { value: 'free' } })
+    fireEvent.change(ui.getByLabelText(zh.mode), { target: { value: 'spark-to-paper/data' } })
     fireEvent.change(ui.getByLabelText(zh.autonomy), { target: { value: 'automatic' } })
     fireEvent.submit(ui.getByRole('button', { name: zh.create }).closest('form')!)
     await settle()
     expect(empty.created).toEqual([
-      { title: 'New', root: '/research/new', brief: 'b', autonomy: 'checkpoints' },
-      { title: '', root: '', brief: '', mode: 'free', autonomy: 'automatic' },
+      { title: 'New', root: '/research/new', brief: 'b', mode: 'general', autonomy: 'checkpoints' },
+      { title: '', root: '', brief: '', mode: 'spark-to-paper', route: 'data', autonomy: 'automatic' },
     ])
     fireEvent.click(ui.getAllByRole('button', { name: zh.newProject })[0]!)
     fireEvent.click(ui.getByRole('button', { name: zh.cancel }))
@@ -467,14 +470,32 @@ describe('matching a session to its project, and the helpers the surfaces share'
     expect(projectFileAddress('\\\\server\\share\\p', 'x.pdf')).toBe('dsh-resource://file/absolute//server/share/p/x.pdf')
   })
 
-  it('names modes and where a project stands', () => {
-    expect([undefined, 'paper-first', 'from-results', 'free'].map(mode => modeShortKey(mode as never)))
-      .toEqual(['modeUnset', 'modeShortPaperFirst', 'modeShortFromResults', 'modeShortFree'])
-    const project = newProject({ root: '/r', title: 'T', brief: '', mode: 'from-results' }, 'w' as WorkspaceId)
-    expect(standingText(project, t)).toBe(zh.modeShortFromResults)
-    project.lastCheck = { clean: true, scope: 'all', checkedAt: '', findings: [], phases: [{ id: 'ingest', done: true, missing: [] }] }
-    expect(standingText(project, t)).toBe(`${zh.modeShortFromResults} · ${zh.checkClean}`)
-    project.lastCheck.phases.push({ id: 'write', done: false, missing: [] })
-    expect(standingText(project, t)).toBe(`${zh.modeShortFromResults} · ${zh.phase_write} 1/2`)
+  it('names modes, routes and phases in the interface language, and where a project stands', () => {
+    const english = ((key: string) => (en as Record<string, string>)[key] ?? key) as Translate
+    expect([packText({ en: 'Plan', zh: '规划' }, t), packText({ en: 'Plan', zh: '规划' }, english)]).toEqual(['规划', 'Plan'])
+    expect([modeName(MODES, 'general', t), modeName(MODES, 'general', english), modeName(MODES, 'retired', t)]).toEqual(['通用', 'General', 'retired'])
+    expect([phaseName(MODES, 'spark-to-paper', 'cite', t), phaseName(MODES, 'spark-to-paper', 'gone', t), phaseName(MODES, 'retired', 'cite', t)])
+      .toEqual(['引用', 'gone', 'cite'])
+    expect(modePhases(MODES, { mode: 'general' })).toEqual([])
+    expect(modePhases(MODES, { mode: 'retired' })).toEqual([])
+    expect(modePhases(MODES, { mode: 'spark-to-paper' })).toEqual(['plan', 'cite', 'experiments'])
+    expect(modePhases(MODES, { mode: 'spark-to-paper', route: 'data' })).toEqual(['data', 'plan', 'cite'])
+    expect(modePhases([{ ...MODES[1]!, defaultRoute: undefined }], { mode: 'spark-to-paper' })).toEqual(['plan', 'cite'])
+    expect([modeChoice('general'), modeChoice('spark-to-paper', 'data')]).toEqual(['general', 'spark-to-paper/data'])
+    expect([parseModeChoice('general'), parseModeChoice('spark-to-paper/data')]).toEqual([{ mode: 'general' }, { mode: 'spark-to-paper', route: 'data' }])
+    const form = (value?: string): FormData => { const data = new FormData(); if (value !== undefined) data.set('mode', value); return data }
+    expect([chosenMode(form('spark-to-paper/idea')), chosenMode(form('')), chosenMode(form())]).toEqual([{ mode: 'spark-to-paper', route: 'idea' }, {}, {}])
+
+    const project = newProject({ root: '/r', title: 'T', brief: '', mode: 'spark-to-paper', route: 'data' }, 'w' as WorkspaceId)
+    expect(standingText(project, MODES, t)).toBe('spark-to-paper')
+    project.lastCheck = { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'data', checkedAt: '', findings: [], phases: [{ id: 'data', done: true, missing: [] }] }
+    expect(standingText(project, MODES, t)).toBe(`spark-to-paper · ${zh.checkClean}`)
+    project.lastCheck.phases.push({ id: 'plan', done: false, missing: [] })
+    expect(standingText(project, MODES, t)).toBe('spark-to-paper · 规划 1/2')
+    expect(standingText({ ...project, lastCheck: { ...project.lastCheck, mode: 'general' } }, MODES, t)).toBe('spark-to-paper')
+    expect(useModes(harness([]).props)).toBe(MODES)
+    const loading = harness([])
+    loading.view.snapshot = null
+    expect(useModes(loading.props)).toEqual([])
   })
 })

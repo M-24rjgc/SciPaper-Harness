@@ -9,7 +9,9 @@
  *
  * @module @deepseek-ai/dsh-client-ui-research/format
  */
-import type { ExperimentRecord, PhaseId, ResearchMode, ResearchProject, SourceLocator } from '@deepseek-ai/dsh-research-workbench/types'
+import type {
+  CreateProjectRequest, ExperimentRecord, LocalizedText, ModeSummary, ResearchProject, SourceLocator,
+} from '@deepseek-ai/dsh-research-workbench/types'
 import type { ResearchKey } from './locales.ts'
 
 /** Run statuses that still occupy a supervisor, and may therefore still be moving. */
@@ -138,35 +140,100 @@ export function projectFileAddress(root: string, path: string): string {
   return `dsh-resource://file/absolute/${unc ? '/' : ''}${encoded}`
 }
 
-/** Dictionary key of each pipeline phase's name. */
-export const PHASE_KEYS: Record<PhaseId, ResearchKey> = {
-  idea: 'phase_idea', literature: 'phase_literature', plan: 'phase_plan', draft: 'phase_draft',
-  experiments: 'phase_experiments', results: 'phase_results', polish: 'phase_polish', submission: 'phase_submission',
-  ingest: 'phase_ingest', write: 'phase_write', figures: 'phase_figures',
+/**
+ * A mode pack's text in the interface language. Packs carry their own names
+ * in both languages; the dictionary only says which one this interface reads.
+ * @param text - the pack's text in each language.
+ * @param t - bound dictionary lookup.
+ * @returns the text for the current language.
+ */
+export function packText(text: LocalizedText, t: Translate): string {
+  return t('packLocale') === 'zh' ? text.zh : text.en
 }
 
-/** Dictionary key of each mode's short name; an unrouted project reads as such. */
-export function modeShortKey(mode: ResearchMode | undefined): ResearchKey {
-  if (mode === 'paper-first') return 'modeShortPaperFirst'
-  if (mode === 'from-results') return 'modeShortFromResults'
-  if (mode === 'free') return 'modeShortFree'
-  return 'modeUnset'
+/**
+ * The name a project's mode goes by; a pack no longer installed shows its id.
+ * @param modes - the installed modes, as the snapshot carries them.
+ * @param mode - the recorded mode id.
+ * @param t - bound dictionary lookup.
+ * @returns the mode's name.
+ */
+export function modeName(modes: readonly ModeSummary[], mode: string, t: Translate): string {
+  const pack = modes.find(item => item.id === mode)
+  return pack ? packText(pack.name, t) : mode
+}
+
+/**
+ * A phase's label in its mode; an unknown phase shows its id.
+ * @param modes - the installed modes.
+ * @param mode - the mode the phase belongs to.
+ * @param phase - the phase id.
+ * @param t - bound dictionary lookup.
+ * @returns the phase's label.
+ */
+export function phaseName(modes: readonly ModeSummary[], mode: string, phase: string, t: Translate): string {
+  const label = modes.find(item => item.id === mode)?.phases.find(item => item.id === phase)?.label
+  return label ? packText(label, t) : phase
+}
+
+/**
+ * The phases a project's mode has on its route; none for the general mode or
+ * a pack that is no longer installed.
+ * @param modes - the installed modes.
+ * @param project - the recorded mode and route.
+ * @returns the phase ids in order.
+ */
+export function modePhases(modes: readonly ModeSummary[], project: Pick<ResearchProject, 'mode' | 'route'>): string[] {
+  const pack = modes.find(item => item.id === project.mode)
+  const route = project.route ?? pack?.defaultRoute
+  const onRoute = (routes: string[] | undefined): boolean => routes === undefined || (route !== undefined && routes.includes(route))
+  return (pack?.phases ?? []).filter(phase => onRoute(phase.routes)).map(phase => phase.id)
+}
+
+/** The value one mode choice carries in a form: the mode id, and the route after a slash. */
+export function modeChoice(mode: string, route?: string): string {
+  return route === undefined ? mode : `${mode}/${route}`
+}
+
+/**
+ * Split a mode choice back into mode and route.
+ * @param value - a value {@link modeChoice} produced.
+ * @returns the mode, and the route when the choice names one.
+ */
+export function parseModeChoice(value: string): { mode: string; route?: string } {
+  const [mode = '', route] = value.split('/')
+  return route === undefined ? { mode } : { mode, route }
+}
+
+/**
+ * The mode a creation form chose, ready to spread into the request. A form
+ * rendered before the modes arrived chose nothing, and the service then
+ * starts the project in the general mode.
+ * @param form - the submitted form, whose `mode` field a mode select fills.
+ * @returns the mode and route fields of the request.
+ */
+export function chosenMode(form: FormData): Pick<CreateProjectRequest, 'mode' | 'route'> {
+  const value = form.get('mode')
+  return typeof value === 'string' && value ? parseModeChoice(value) : {}
 }
 
 /**
  * Where a project stands, from its last check: the first unfinished phase and
  * how many are done, or the mode alone when there is no phase list.
  * @param project - the project as the snapshot carries it.
+ * @param modes - the installed modes.
  * @param t - bound dictionary lookup.
  * @returns one line of standing text.
  */
-export function standingText(project: ResearchProject, t: Translate): string {
-  const phases = project.lastCheck?.phases ?? []
-  const mode = t(modeShortKey(project.mode))
+export function standingText(project: ResearchProject, modes: readonly ModeSummary[], t: Translate): string {
+  const check = project.lastCheck
+  const current = check?.mode === project.mode && check.route === project.route ? check : undefined
+  const phases = current?.phases ?? []
+  const mode = modeName(modes, project.mode, t)
   if (phases.length === 0) return mode
   const next = phases.find(phase => !phase.done)
   const done = phases.filter(phase => phase.done).length
-  return next ? `${mode} · ${t(PHASE_KEYS[next.id])} ${done}/${phases.length}` : `${mode} · ${t('checkClean')}`
+  return next ? `${mode} · ${phaseName(modes, project.mode, next.id, t)} ${done}/${phases.length}` : `${mode} · ${t('checkClean')}`
 }
 
 /**

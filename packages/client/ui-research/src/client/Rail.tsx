@@ -5,10 +5,11 @@
  * offers are a check and handing the pipeline to the assistant as a goal.
  */
 import type { ReactNode } from 'react'
-import type { Autonomy, ResearchMode, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
-import { useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
+import type { Autonomy, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import { useModes, useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
 import { ResearchHeroMark } from './Hero.tsx'
-import { modeShortKey, PHASE_KEYS } from './format.ts'
+import { modeChoice, modeName, modePhases, parseModeChoice, phaseName } from './format.ts'
+import { ModeSelect } from './ModeSelect.tsx'
 import styles from './Rail.module.css'
 
 /** Runs that still occupy a supervisor, and therefore may still be moving. */
@@ -36,20 +37,18 @@ function Controls(props: RailProps): ReactNode {
     quiet(props.run({ action: 'set-autonomy', projectId: project.id, autonomy })
       .then(() => commandSession === undefined ? undefined : props.command(commandSession, `/permission ${AUTONOMY_PRESET[autonomy]}`)))
   }
-  const pipeline = project.mode === 'paper-first' || project.mode === 'from-results'
+  const modes = useModes(props)
+  const pipeline = modePhases(modes, project).length > 0
   return <section className={styles.controls}>
     <label className={styles.field}>
       <span className={styles.fieldLabel}>{t('mode')}</span>
-      <select
+      <ModeSelect
         className={styles.select}
-        value={project.mode ?? ''}
-        onChange={(event) => { quiet(props.run({ action: 'set-mode', projectId: project.id, mode: event.target.value as ResearchMode })) }}
-      >
-        {project.mode === undefined && <option value="" disabled>{t('modeAuto')}</option>}
-        <option value="paper-first">{t('modePaperFirst')}</option>
-        <option value="from-results">{t('modeFromResults')}</option>
-        <option value="free">{t('modeFree')}</option>
-      </select>
+        modes={modes}
+        t={t}
+        value={modeChoice(project.mode, project.route)}
+        onChoose={(value) => { quiet(props.run({ action: 'set-mode', projectId: project.id, ...parseModeChoice(value) })) }}
+      />
     </label>
     <label className={styles.field}>
       <span className={styles.fieldLabel}>{t('autonomy')}</span>
@@ -64,7 +63,7 @@ function Controls(props: RailProps): ReactNode {
         type="button"
         className={styles.button}
         title={t('pipelineRunHelp')}
-        onClick={() => { quiet(props.command(commandSession, `/goal ${t('goalObjective', { title: project.title, mode: t(modeShortKey(project.mode)) })}`)) }}
+        onClick={() => { quiet(props.command(commandSession, `/goal ${t('goalObjective', { title: project.title, mode: modeName(modes, project.mode, t) })}`)) }}
       >{t('pipelineRun')}</button>}
     </div>
   </section>
@@ -74,13 +73,16 @@ function Controls(props: RailProps): ReactNode {
 function Phases(props: RailProps): ReactNode {
   const { project, t } = props
   const check = project.lastCheck
-  if (project.mode === 'free') return null
-  if (!check || check.mode !== project.mode || check.phases.length === 0) return <p className={styles.note}>{t('checkNever')}</p>
+  const modes = useModes(props)
+  if (modePhases(modes, project).length === 0) return null
+  if (!check || check.mode !== project.mode || check.route !== project.route || check.phases.length === 0) {
+    return <p className={styles.note}>{t('checkNever')}</p>
+  }
   return <ol className={styles.spine}>
     {check.phases.map(phase => <li key={phase.id} className={styles.stage}>
       <span className={phase.done ? styles.dotDone : styles.dotPending}></span>
       <span className={styles.stageBody}>
-        <span className={phase.done ? styles.stageName : `${styles.stageName} ${styles.stageNamePending}`}>{t(PHASE_KEYS[phase.id])}</span>
+        <span className={phase.done ? styles.stageName : `${styles.stageName} ${styles.stageNamePending}`}>{phaseName(modes, project.mode, phase.id, t)}</span>
         {phase.missing.slice(0, 2).map(line => <span key={line} className={styles.caption}>{line}</span>)}
       </span>
     </li>)}

@@ -47,7 +47,7 @@ function settle(): Promise<void> {
 async function submittedProject(): Promise<ResearchProject> {
   const root = await mkdtemp(join(tmpdir(), 'research-runs-'))
   roots.push(root)
-  const project = newProject({ root, title: 'Sparse attention scaling study', mode: 'paper-first', brief: '块稀疏能否在 1/4 FLOPs 下保住长上下文准确率' }, 'workspace' as WorkspaceId)
+  const project = newProject({ root, title: 'Sparse attention scaling study', mode: 'spark-to-paper', brief: '块稀疏能否在 1/4 FLOPs 下保住长上下文准确率' }, 'workspace' as WorkspaceId)
   await writeArtifact(project, {
     action: 'save-artifact', projectId: project.id, path: 'code/train.py', content: 'print("sparse attention")\n',
     kind: 'code', expectedRevision: 0, evidence: [], claimIds: [], inputArtifacts: [],

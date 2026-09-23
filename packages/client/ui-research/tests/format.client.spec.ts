@@ -45,7 +45,7 @@ const tZh = bind(zh)
 async function importedSource(): Promise<{ project: ResearchProject; evidence: EvidenceRecord }> {
   const root = await mkdtemp(join(tmpdir(), 'research-format-'))
   roots.push(root)
-  const project = newProject({ root, title: 'Sparse attention scaling study', mode: 'from-results', brief: '块稀疏能否在 1/4 FLOPs 下保住长上下文准确率' }, 'workspace' as WorkspaceId)
+  const project = newProject({ root, title: 'Sparse attention scaling study', mode: 'spark-to-paper', route: 'data', brief: '块稀疏能否在 1/4 FLOPs 下保住长上下文准确率' }, 'workspace' as WorkspaceId)
   await mkdir(join(root, 'inbox'), { recursive: true })
   const source = join(root, 'inbox', 'notes.md')
   await writeFile(source, '# 实验记录\n\n块稀疏在 1/4 FLOPs 下的长上下文准确率。\n', 'utf8')

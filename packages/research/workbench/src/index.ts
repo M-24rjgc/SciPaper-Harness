@@ -14,11 +14,12 @@ import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
-import { ComponentManager } from './components.ts'
-import { autonomies, commandSchema, locatorSchema, modes, preferencesSchema, researchDomain } from './schema.ts'
+import { ComponentManager, runtimeAsset } from './components.ts'
+import { autonomies, commandSchema, locatorSchema, preferencesSchema, researchDomain } from './schema.ts'
 import { invalidate, newProject, putClaim, runView, searchEvidence } from './project.ts'
 import { compilePaper, compileTarget, exportPaper, extractText, importEvidence, importTemplate, renderPages, writeArtifact } from './artifacts.ts'
-import { MODE_PHASES, runChecks } from './checks.ts'
+import { runChecks } from './checks.ts'
+import { GENERAL_MODE, ModeRegistry } from './modes.ts'
 import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
@@ -86,8 +87,26 @@ function runAt(project: ResearchProject, id: string): number {
   return project.experiments.findIndex(run => run.id === id)
 }
 
+/** A project's mode or route as just recorded. */
+export interface ResearchModeEvent {
+  projectId: ProjectId
+  root: string
+  mode: string
+  route?: string | undefined
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context { research: ResearchWorkbench }
+
+  interface Events {
+    /**
+     * A project was created or its mode changed, after the change was stored.
+     * The mode's skills follow it into the project's sessions.
+     * @param event - the project, its root and the mode now recorded.
+     * @mode emit
+     */
+    'research/mode'(event: ResearchModeEvent): void
+  }
 }
 
 /** One durable owner for each project's evidence, files, decisions and execution records. */
@@ -114,6 +133,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   private readonly evidenceText = new Map<string, EvidenceRecord['chunks']>()
   private readonly lifetime = new AbortController()
   readonly components: ComponentManager
+  /** The installed mode packs, loaded once at start. */
+  modes!: ModeRegistry
   private refreshResourceRoutes!: () => Promise<void>
 
   /** Bind the research API and its private tooling directory. */
@@ -165,6 +186,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   protected async [Service.init](): Promise<void> {
+    this.modes = await ModeRegistry.load([runtimeAsset('modes')], this.ctx.logger)
     this.domain = await this.ctx.storageDomain.open(researchDomain)
     const cut = [...this.domain.table('tasks').entries()].filter(([, task]) => task.status === 'running')
     await Promise.all(cut.map(([id, task]) => this.domain.table('tasks').put(id, {
@@ -198,6 +220,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       projects: this.projects().map(publicProject),
       preferences: structuredClone(this.domain.global.get()),
       components: await this.components.status(),
+      modes: this.modes.summaries(),
     }
   }
 
@@ -231,11 +254,12 @@ export class ResearchWorkbench extends TypertRemoteService {
   async createProject(request: CreateProjectRequest, sessionId?: string): Promise<ResearchProject> {
     z.object({
       title: z.string().trim().min(1), root: z.string().min(1), brief: z.string(),
-      mode: z.enum(modes).optional(), autonomy: z.enum(autonomies).optional(),
+      mode: z.string().min(1).optional(), route: z.string().min(1).optional(), autonomy: z.enum(autonomies).optional(),
     }).parse(request)
     if (!isAbsolute(request.root)) throw new Error('Choose an absolute project directory')
+    const chosen = this.modes.choose(request.mode ?? GENERAL_MODE, request.route)
     // One creation at a time: two requests for the same folder would otherwise both find no project and record two.
-    const creation = this.creations.catch(() => {}).then(() => this.createAt(request, sessionId))
+    const creation = this.creations.catch(() => {}).then(() => this.createAt({ ...request, ...chosen }, sessionId))
     this.creations = creation
     return creation
   }
@@ -262,7 +286,14 @@ export class ResearchWorkbench extends TypertRemoteService {
     }
     project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
     await this.domain.table('projects').put(project.id, project)
+    this.announceMode(project.id)
     return structuredClone(project)
+  }
+
+  /** Tell listeners (the mode's skill catalog) which mode a project now records. */
+  private announceMode(id: ProjectId): void {
+    const { root, mode, route } = this.record(id)
+    this.ctx.emit('research/mode', { projectId: id, root, mode, ...(route === undefined ? {} : { route }) })
   }
 
   /**
@@ -421,7 +452,7 @@ export class ResearchWorkbench extends TypertRemoteService {
         return this.clipped({ message: 'Experiment logs', content: await experimentLogs(project, run, signal) })
       }
       case 'check': {
-        const check = await runChecks(this.getProject(project.id), this.config.maxSourceBytes, request.scope)
+        const check = await runChecks(this.getProject(project.id), this.config.maxSourceBytes, request.scope, this.modes.resolve(project))
         await this.mutate(project.id, (current) => { current.lastCheck = check })
         return { message: check.clean ? 'Clean' : 'Not done yet: fix the errors and check again', check }
       }
@@ -430,6 +461,7 @@ export class ResearchWorkbench extends TypertRemoteService {
         const work = async (workSignal: AbortSignal): Promise<ResearchResponse> => {
           const prepared = await this.prepare(project.id, request, workSignal, actor)
           const value = typeof prepared === 'function' ? await this.mutate(project.id, prepared) : prepared
+          if (request.action === 'set-mode') this.announceMode(project.id)
           return this.clipped({ ...value, project: publicProject(this.record(project.id)) })
         }
         return LONG_ACTIONS.has(request.action) && actor === 'user' ? this.begin(request.action, project.id, work) : work(signal)
@@ -543,7 +575,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'generate-image': return this.generateImage(id, request.prompt, request.path, signal)
       case 'export': {
         const snapshot = this.getProject(id)
-        const check = await runChecks(snapshot, limit)
+        const check = await runChecks(snapshot, limit, 'all', this.modes.resolve(snapshot))
         const result = await exportPaper(snapshot, limit, check)
         return (project) => {
           project.lastCheck = check
@@ -584,12 +616,17 @@ export class ResearchWorkbench extends TypertRemoteService {
   private async perform(project: ResearchProject, request: ShortCommand, actor: 'user' | 'agent'): Promise<ResearchResponse> {
     switch (request.action) {
       case 'set-mode': {
-        project.mode = request.mode
+        const { mode, route } = this.modes.choose(request.mode, request.route)
+        project.mode = mode
+        if (route === undefined) delete project.route
+        else project.route = route
         project.modeSetBy = actor
         if (request.reason?.trim()) project.modeReason = request.reason.trim()
         else delete project.modeReason
-        const phases = MODE_PHASES[request.mode]
-        return { message: phases.length ? `Mode ${request.mode}: ${phases.join(' → ')}` : 'Mode free: no pipeline; run checks when useful' }
+        const resolved = this.modes.resolve(project)
+        const phases = resolved.phases.map(phase => phase.id)
+        const name = `${resolved.pack.name.en}${route === undefined ? '' : ` (${route})`}`
+        return { message: phases.length ? `Mode ${name}: ${phases.join(' → ')}` : `Mode ${name}: no pipeline; run checks when useful` }
       }
       case 'set-autonomy': project.autonomy = request.autonomy; return { message: `Autonomy: ${request.autonomy}` }
       case 'record-decision': {

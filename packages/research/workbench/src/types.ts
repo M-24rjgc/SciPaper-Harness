@@ -7,19 +7,37 @@ export type EvidenceId = Branded<'ResearchEvidenceId'>
 export type ArtifactId = Branded<'ResearchArtifactId'>
 export type ExperimentId = Branded<'ResearchExperimentId'>
 export type EnvironmentId = Branded<'ResearchEnvironmentId'>
-/**
- * How the paper is developed. `paper-first` writes the complete method paper
- * with experiment placeholders before running experiments; `from-results`
- * writes from data that already exists; `free` follows no pipeline.
- */
-export type ResearchMode = 'paper-first' | 'from-results' | 'free'
 /** Whether the agent stops at key decisions to ask, or decides and records its rationale. */
 export type Autonomy = 'checkpoints' | 'automatic'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'unknown'
-export type PhaseId =
-  | 'idea' | 'literature' | 'plan' | 'draft' | 'experiments' | 'results' | 'polish' | 'submission'
-  | 'ingest' | 'write' | 'figures'
+/** The checks every mode has; a mode pack may add gates of its own, reported under their own ids. */
 export type CheckId = 'cite' | 'numbers' | 'placeholders' | 'figures' | 'compile' | 'visual' | 'review' | 'stale' | 'claims' | 'structure'
+
+/** Text a mode pack supplies in each interface language. */
+export interface LocalizedText {
+  en: string
+  zh: string
+}
+/**
+ * One installed mode as the desktop and the agent see it. The general mode has
+ * no phases; a pack mode (spark-to-paper, CCFA, …) adds its own skills, phases
+ * and gates on top of the same research tools.
+ */
+export interface ModeSummary {
+  id: string
+  order: number
+  name: LocalizedText
+  summary: LocalizedText
+  /** The skill that runs the mode, loaded first. */
+  entry?: string | undefined
+  /** Skills loaded before the entry skill on every task in this mode. */
+  preload: string[]
+  /** Alternative paths through the mode, such as starting from an idea or from measured data. */
+  routes: { id: string; name: LocalizedText; summary: LocalizedText }[]
+  defaultRoute?: string | undefined
+  /** Every phase of the pack; `routes` limits a phase to some routes. */
+  phases: { id: string; label: LocalizedText; routes?: string[] | undefined; checkpoint: boolean; skills: string[] }[]
+}
 
 export interface SourceLocator {
   page?: number | undefined
@@ -159,14 +177,16 @@ export interface VisualReview {
   createdAt: string
 }
 export interface CheckFinding {
-  check: CheckId
+  /** A base {@link CheckId}, or the id of a gate the project's mode pack runs. */
+  check: string
   severity: 'error' | 'warning'
   message: string
   file?: string | undefined
   line?: number | undefined
 }
 export interface PhaseStatus {
-  id: PhaseId
+  /** A phase id of the mode pack the check ran under. */
+  id: string
   done: boolean
   /** What still stands between this phase and done, in the agent's terms. */
   missing: string[]
@@ -175,7 +195,9 @@ export interface PhaseStatus {
 export interface CheckReport {
   clean: boolean
   scope: string
-  mode?: ResearchMode | undefined
+  /** The mode and route whose phases the report lists. */
+  mode?: string | undefined
+  route?: string | undefined
   phases: PhaseStatus[]
   findings: CheckFinding[]
   checkedAt: string
@@ -185,8 +207,12 @@ export interface ResearchProject {
   workspaceId: WorkspaceId
   title: string
   root: string
-  /** Absent until the user chooses a mode or the agent routes the project. */
-  mode?: ResearchMode | undefined
+  /** The mode pack the project runs in; `general` adds nothing to the research tools. */
+  mode: string
+  /** The route through the mode, for packs that have routes. */
+  route?: string | undefined
+  /** The venue whose template the project uses, once one is applied. */
+  venue?: string | undefined
   modeReason?: string | undefined
   modeSetBy?: 'user' | 'agent' | undefined
   autonomy: Autonomy
@@ -233,6 +259,8 @@ export interface ResearchSnapshot {
   projects: ResearchProject[]
   preferences: ResearchPreferences
   components: ComponentStatus[]
+  /** The installed modes, in display order. */
+  modes: ModeSummary[]
 }
 export interface LiteratureItem {
   id: string
@@ -259,7 +287,9 @@ export interface ResearchResponse {
 export interface CreateProjectRequest {
   title: string
   root: string
-  mode?: ResearchMode | undefined
+  /** A mode pack id; the general mode when absent. */
+  mode?: string | undefined
+  route?: string | undefined
   autonomy?: Autonomy | undefined
   brief: string
 }
@@ -271,7 +301,7 @@ type ArtifactFields = {
   inputArtifacts: ArtifactRecord['inputArtifacts']
 }
 export type ResearchCommand =
-  | { action: 'set-mode'; projectId: ProjectId; mode: ResearchMode; reason?: string | undefined }
+  | { action: 'set-mode'; projectId: ProjectId; mode: string; route?: string | undefined; reason?: string | undefined }
   | { action: 'set-autonomy'; projectId: ProjectId; autonomy: Autonomy }
   | {
     action: 'record-decision'

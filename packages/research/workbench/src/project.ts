@@ -11,7 +11,9 @@ export function newProject(request: CreateProjectRequest, workspaceId: Workspace
   const now = new Date().toISOString()
   return {
     id: randomUUID() as ProjectId, workspaceId, title: request.title.trim(), root: request.root,
-    ...(request.mode === undefined ? {} : { mode: request.mode, modeSetBy: 'user' as const }),
+    mode: request.mode ?? 'general',
+    ...(request.route === undefined ? {} : { route: request.route }),
+    ...(request.mode === undefined ? {} : { modeSetBy: 'user' as const }),
     autonomy: request.autonomy ?? 'checkpoints',
     brief: request.brief, revision: 1, researchRevision: 1, createdAt: now, updatedAt: now,
     evidence: [], claims: [], artifacts: [], decisions: [], environments: [], experiments: [], compilations: [], visualReviews: [],

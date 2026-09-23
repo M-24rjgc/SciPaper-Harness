@@ -8,10 +8,10 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { isAbsolute, resolve } from 'node:path'
 import type { ResearchWorkbench } from './index.ts'
-import { MODE_PHASES } from './checks.ts'
 import { isInside } from './files.ts'
+import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
-import { autonomies, commandSchema, modes } from './schema.ts'
+import { autonomies, checkIds, commandSchema } from './schema.ts'
 import type { ProjectId, ResearchCommand, ResearchProject, ResearchResponse } from './types.ts'
 
 const text = (description: string) => ({ type: 'string' as const, description })
@@ -114,24 +114,45 @@ const FAMILIES: Family[] = [
   },
 ]
 
+/** What the mode asks of the agent, in a sentence or two. */
+function modeGuide(project: ResearchProject, mode: ResolvedMode): string[] {
+  const { pack, route, phases } = mode
+  const lines: string[] = []
+  if (mode.missing !== undefined) lines.push(`The mode pack "${mode.missing}" is not installed; the project runs in general mode until you set another mode.`)
+  if (phases.length === 0) {
+    lines.push(pack.id === 'general'
+      ? 'Mode general: no pipeline. Every research tool is available; run the relevant check (research_check with scope cite, compile, figures …) before you say a task is done. '
+        + 'When the user wants a whole paper carried through a method, suggest a mode (research_project modes) and switch with set-mode.'
+      : `Mode ${pack.name.en}: no pipeline on this route; work as the mode's skills direct and run the relevant checks.`)
+  } else {
+    const current = project.lastCheck?.mode === pack.id && project.lastCheck.route === route ? project.lastCheck : undefined
+    const next = current?.phases.find(phase => !phase.done)
+    const checkpoints = phases.filter(phase => phase.checkpoint).map(phase => phase.id)
+    lines.push(`Mode ${pack.name.en}${route === undefined ? '' : ` (route ${route})`}: ${phases.map(phase => phase.id).join(' → ')}.`
+      + `${next ? ` Next unfinished phase: ${next.id}.` : ''}${checkpoints.length ? ` Checkpoint before: ${checkpoints.join(', ')}.` : ''}`)
+    lines.push('A phase is done when research_check for it is clean; the paper is done when research_check (scope all) is clean.')
+  }
+  const skills = [...pack.preload, ...pack.entry === undefined ? [] : [pack.entry]]
+  if (skills.length) lines.push(`Load the ${skills.join(', then ')} skill${skills.length > 1 ? 's' : ''} before working in this mode.`)
+  return lines
+}
+
 /** Compact view of a project for the model: enough to act on, without source bodies. */
-export function projectBrief(project: ResearchProject): JsonValue {
-  const phases = project.mode ? MODE_PHASES[project.mode] : []
-  const next = project.lastCheck?.phases.find(phase => !phase.done)
+export function projectBrief(project: ResearchProject, mode: ResolvedMode): JsonValue {
   const lastCompile = project.compilations.at(-1)
   const guide = [
-    project.mode === undefined
-      ? 'No mode yet: route the project (research-paper skill) — paper-first for an idea, from-results when results already exist, free for a one-off task — and call set-mode with your reason.'
-      : phases.length ? `Mode ${project.mode}: ${phases.join(' → ')}.${next ? ` Next unfinished phase: ${next.id}.` : ''}` : 'Mode free: no pipeline.',
+    ...modeGuide(project, mode),
     project.autonomy === 'checkpoints'
-      ? 'Autonomy checkpoints: at key decisions (the route when you chose it, the research question, before running experiments, before the final export, a material method change, results that contradict the hypothesis) ask with ask_user_question, then record-decision with the answer and decidedBy user.'
+      ? 'Autonomy checkpoints: at key decisions (the mode or route when you chose it, the research question, before running experiments, before the final export, a material method change, results that contradict the hypothesis) ask with ask_user_question, then record-decision with the answer and decidedBy user.'
       : 'Autonomy automatic: make those decisions yourself, record-decision with your rationale, and keep going; ask only when genuinely blocked.',
-    'A phase is done when research_check for it is clean; the paper is done when research_check (scope all) is clean.',
   ]
+  const current = project.lastCheck?.mode === mode.pack.id && project.lastCheck.route === mode.route ? project.lastCheck : undefined
   return JSON.parse(JSON.stringify({
     id: project.id, title: project.title, root: project.root, brief: project.brief,
-    mode: project.mode ?? null, modeReason: project.modeReason ?? null, autonomy: project.autonomy, guide,
-    phases: project.lastCheck?.phases ?? [],
+    mode: mode.pack.id, route: mode.route ?? null, modeReason: project.modeReason ?? null, venue: project.venue ?? null,
+    autonomy: project.autonomy, guide,
+    phases: current?.phases ?? mode.phases.map(phase => ({ id: phase.id, done: false, missing: ['Not checked yet'] })),
+    phaseSkills: Object.fromEntries(mode.phases.map(phase => [phase.id, phase.skills])),
     decisions: project.decisions.slice(-20).map(({ question, answer, by, rationale }) => ({ question, answer, by, rationale })),
     artifacts: project.artifacts.map(({ id, path, kind, revision, stale }) => ({ id, path, kind, revision, stale })),
     evidence: project.evidence.slice(-60)
@@ -141,6 +162,19 @@ export function projectBrief(project: ResearchProject): JsonValue {
     experiments: project.experiments.slice(-20).map(run => ({ ...runView(run), name: run.spec.name })),
     lastCompile: lastCompile ? { status: lastCompile.status, pdfPath: lastCompile.pdfPath } : null,
   })) as JsonValue
+}
+
+/** The installed modes as the agent chooses between them. */
+function modeCatalog(modes: ModeRegistry): JsonValue {
+  return JSON.parse(JSON.stringify(modes.list().map(pack => ({
+    id: pack.id, name: pack.name.en, summary: pack.summary.en,
+    routes: pack.routes.map(route => ({ id: route.id, name: route.name.en, summary: route.summary.en })),
+    defaultRoute: pack.defaultRoute ?? null,
+    phases: (pack.routes.length ? pack.routes.map(route => route.id) : [undefined]).map(route => ({
+      route: route ?? null,
+      phases: modes.resolve({ mode: pack.id, route }).phases.map(phase => phase.id),
+    })),
+  })))) as JsonValue
 }
 
 /** Tool results carry what the call produced, never the whole project. */
@@ -190,20 +224,22 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
 
   ctx.tools.register(defineTool({
     name: 'research_project',
-    description: 'The research project around your working directory. current: mode, autonomy, phases, decisions, files, runs — call it when you start work. '
-      + 'create {title, brief?, root?, mode?, autonomy?}: make the working directory (or root) a research project. list: all projects. '
-      + 'set-mode {mode: paper-first|from-results|free, reason}: route the project. set-autonomy {autonomy: checkpoints|automatic}. '
+    description: 'The research project around your working directory. current: mode, route, autonomy, phases, decisions, files, runs — call it when you start work. '
+      + 'create {title, brief?, root?, mode?, route?, autonomy?}: make the working directory (or root) a research project. list: all projects. '
+      + 'modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. '
+      + 'set-mode {mode, route?, reason}: switch the project\'s mode; its skills follow. set-autonomy {autonomy: checkpoints|automatic}. '
       + 'record-decision {question, answer, rationale?, decidedBy?}: log a settled decision — decidedBy user for the user\'s answer at a checkpoint, '
       + 'agent (the default) for your own call in automatic mode.',
     parameters: {
-      action: { type: 'string', enum: ['current', 'create', 'list', 'set-mode', 'set-autonomy', 'record-decision'], required: true },
+      action: { type: 'string', enum: ['current', 'create', 'list', 'modes', 'set-mode', 'set-autonomy', 'record-decision'], required: true },
       projectId,
       title: text('create'),
       brief: text('create: the idea or the material in a few sentences'),
       root: text('create: absolute directory; defaults to the working directory'),
-      mode: { type: 'string', enum: [...modes], description: 'create / set-mode' },
+      mode: text('create / set-mode: a mode id from action modes (general when omitted on create)'),
+      route: text('create / set-mode: one of the mode\'s routes; its default route when omitted'),
       autonomy: { type: 'string', enum: [...autonomies], description: 'create / set-autonomy' },
-      reason: text('set-mode: why this route'),
+      reason: text('set-mode: why this mode and route'),
       question: text('record-decision'),
       answer: text('record-decision'),
       rationale: text('record-decision'),
@@ -212,22 +248,24 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
     output,
     async execute(args, exec) {
       if (args.action === 'list') {
-        return service.projects().map(({ id, title, root, mode }) => ({ id, title, root, mode: mode ?? null }))
+        return service.projects().map(({ id, title, root, mode, route }) => ({ id, title, root, mode, route: route ?? null }))
       }
+      if (args.action === 'modes') return modeCatalog(service.modes)
       if (args.action === 'create') {
         const cwd = exec.agent?.session.header.cwd
         const root = args.root ?? cwd
         if (!root || !args.title) throw new Error('create needs a title, and a root when the session has no working directory')
         const created = await service.createProject({
           title: args.title, root, brief: args.brief ?? '',
-          ...(args.mode ? { mode: args.mode } : {}), ...(args.autonomy ? { autonomy: args.autonomy } : {}),
+          ...(args.mode ? { mode: args.mode } : {}), ...(args.route ? { route: args.route } : {}),
+          ...(args.autonomy ? { autonomy: args.autonomy } : {}),
         }, root === cwd ? exec.agent?.session.id : undefined)
-        return projectBrief(created)
+        return projectBrief(created, service.modes.resolve(created))
       }
       const project = await projectFor(service, args.projectId, exec)
-      if (args.action === 'current') return projectBrief(project)
+      if (args.action === 'current') return projectBrief(project, service.modes.resolve(project))
       const request = args.action === 'set-mode'
-        ? { action: 'set-mode', projectId: project.id, mode: args.mode, reason: args.reason }
+        ? { action: 'set-mode', projectId: project.id, mode: args.mode, route: args.route, reason: args.reason }
         : args.action === 'set-autonomy'
           ? { action: 'set-autonomy', projectId: project.id, autonomy: args.autonomy }
           : {
@@ -243,9 +281,9 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
     name: 'research_check',
     description: 'Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected '
       + 'metrics or data, placeholders (\\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review '
-      + 'is current, stale files. scope: all (default), a phase of the current mode, or one check (cite, numbers, placeholders, figures, compile, visual, '
-      + 'review, stale, claims, structure). It reports and never blocks. Not clean means not done: fix the errors and check again.',
-    parameters: { projectId, scope: text('all, a phase id or a check id') },
+      + `is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode, one base check (${checkIds.join(', ')}) `
+      + 'or one of the mode\'s gates. It reports and never blocks. Not clean means not done: fix the errors and check again.',
+    parameters: { projectId, scope: text('all, a phase id, a check id or a gate id') },
     output,
     async execute(args, exec) {
       const project = await projectFor(service, args.projectId, exec)

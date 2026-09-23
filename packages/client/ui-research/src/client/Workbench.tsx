@@ -2,11 +2,12 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
-import type { ArtifactRecord, EnvironmentId, EvidenceId, ArtifactId, ResearchProject, ResearchCommand, ResearchMode, CheckReport } from '@deepseek-ai/dsh-research-workbench/types'
-import type { WorkbenchProps } from './contract.ts'
+import type { ArtifactRecord, EnvironmentId, EvidenceId, ArtifactId, ResearchProject, ResearchCommand, CheckReport } from '@deepseek-ai/dsh-research-workbench/types'
+import { useModes, type WorkbenchProps } from './contract.ts'
 import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { ProjectStatus } from './Rail.tsx'
-import { researchFileUrl } from './format.ts'
+import { ModeSelect } from './ModeSelect.tsx'
+import { chosenMode, researchFileUrl } from './format.ts'
 import styles from './Workbench.module.css'
 
 type PanelProps = WorkbenchProps & { project: ResearchProject }
@@ -51,6 +52,7 @@ function CheckSummary(props: WorkbenchProps & { check: CheckReport }): ReactNode
 /** The project's own files: sources, manuscript, figures, runs. */
 export function Workbench(props: WorkbenchProps): ReactNode {
   const view = props.useResearch(s => s)
+  const modes = useModes(props)
   const { t } = props
   const focus = props.useFocus(s => s)
   const [selected, setSelected] = useState(focus.projectId ?? '')
@@ -61,10 +63,9 @@ export function Workbench(props: WorkbenchProps): ReactNode {
   const session = project?.sessionId
   const create = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault(); const f = new FormData(event.currentTarget)
-    const mode = field(f, 'mode')
     attempt(props.create({
       title: field(f, 'title'), root: field(f, 'root'), brief: field(f, 'brief'),
-      ...(mode === '' ? {} : { mode: mode as ResearchMode }),
+      ...chosenMode(f),
       autonomy: field(f, 'autonomy') === 'automatic' ? 'automatic' : 'checkpoints',
     }).then(() => { setCreating(false) }))
   }
@@ -81,7 +82,7 @@ export function Workbench(props: WorkbenchProps): ReactNode {
     {creating && <form className={styles.card} onSubmit={create}>
       <Field label={t('title')} name="title" required />
       <Field label={t('directory')} name="root" required placeholder={t('projectRootHint')} />
-      <label>{t('mode')}<select name="mode" defaultValue=""><option value="">{t('modeAuto')}</option><option value="paper-first">{t('modePaperFirst')}</option><option value="from-results">{t('modeFromResults')}</option><option value="free">{t('modeFree')}</option></select></label>
+      <label>{t('mode')}<ModeSelect modes={modes} t={t} name="mode" defaultValue="general" /></label>
       <label>{t('autonomy')}<select name="autonomy" defaultValue="checkpoints"><option value="checkpoints">{t('autonomyCheckpoints')}</option><option value="automatic">{t('autonomyAutomatic')}</option></select></label>
       <label>{t('brief')}<textarea name="brief" rows={3} /></label>
       <div className={styles.toolbar}><button type="submit" disabled={view.busy}>{t('create')}</button><button type="button" onClick={() => { setCreating(false) }}>{t('cancel')}</button></div>

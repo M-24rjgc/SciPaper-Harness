@@ -110,7 +110,7 @@ async function scene(): Promise<Scene> {
   const project = newProject({
     root,
     title: 'Sparse attention scaling study',
-    mode: 'from-results',
+    mode: 'spark-to-paper', route: 'data',
     brief: '块稀疏能否在 1/4 FLOPs 下保住长上下文准确率',
   }, 'workspace' as WorkspaceId)
 

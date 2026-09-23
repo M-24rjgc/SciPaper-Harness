@@ -259,12 +259,13 @@ describe('the ledger records and marks stale; nothing downstream is reset', () =
     expect(searchEvidence(p, 'alpha', 40).content).toBe('[]')
   })
 
-  it('creates projects with an optional mode and checkpoint autonomy by default', () => {
-    const routed = newProject({ root: 'r', title: ' T ', brief: '', mode: 'paper-first', autonomy: 'automatic' }, 'w' as WorkspaceId)
-    expect(routed).toMatchObject({ title: 'T', mode: 'paper-first', modeSetBy: 'user', autonomy: 'automatic', decisions: [] })
-    const unrouted = newProject({ root: 'r', title: 'T', brief: '' }, 'w' as WorkspaceId)
-    expect('mode' in unrouted).toBe(false)
-    expect(unrouted.autonomy).toBe('checkpoints')
+  it('creates projects in the chosen mode, or the general one, with checkpoint autonomy by default', () => {
+    const routed = newProject({ root: 'r', title: ' T ', brief: '', mode: 'spark-to-paper', route: 'idea', autonomy: 'automatic' }, 'w' as WorkspaceId)
+    expect(routed).toMatchObject({ title: 'T', mode: 'spark-to-paper', route: 'idea', modeSetBy: 'user', autonomy: 'automatic', decisions: [] })
+    const general = newProject({ root: 'r', title: 'T', brief: '' }, 'w' as WorkspaceId)
+    expect(general.mode).toBe('general')
+    expect('route' in general || 'modeSetBy' in general).toBe(false)
+    expect(general.autonomy).toBe('checkpoints')
   })
 })
 
@@ -279,20 +280,29 @@ describe('version-1 records migrate into the ledger shape', () => {
       ],
     }
     const migrated = migrateProject(legacy) as Record<string, unknown>
-    expect(migrated).toMatchObject({ id: 'p', mode: 'paper-first', modeSetBy: 'user', autonomy: 'checkpoints' })
+    expect(migrated).toMatchObject({ id: 'p', mode: 'spark-to-paper', route: 'proposal', modeSetBy: 'user', autonomy: 'checkpoints' })
     expect(migrated.decisions).toEqual([
       { id: 'stage-question', question: 'Confirm the question proposal', answer: 'Does X help?', by: 'user', rationale: '', at: '2026-09-02T00:00:00.000Z' },
       { id: 'stage-method', question: 'Confirm the method proposal', answer: 'Confirmed', by: 'user', rationale: '', at: '2026-09-01T00:00:00.000Z' },
     ])
     for (const key of ['stages', 'paused', 'budget', 'pendingPrompt']) expect(key in migrated).toBe(false)
     expect((migrateProject({ stages: [{ id: 'x', confirmedRevision: 0 }], mode: 'evidence' }) as { mode: string; decisions: { at: string }[] }))
-      .toMatchObject({ mode: 'from-results', decisions: [{ at: new Date(0).toISOString() }] })
-    expect('mode' in (migrateProject({ stages: undefined, mode: 'other' }) as object)).toBe(false)
-    const current = { id: 'p', decisions: [] }
+      .toMatchObject({ mode: 'spark-to-paper', route: 'data', decisions: [{ at: new Date(0).toISOString() }] })
+    expect(migrateProject({ stages: undefined, mode: 'other' })).toMatchObject({ mode: 'general' })
+    const current = { id: 'p', mode: 'spark-to-paper', route: 'idea', lastCheck: { phases: [] }, decisions: [] }
     expect(migrateProject(current)).toBe(current)
     expect(migrateProject(null)).toBeNull()
     // The single-document layout rejects other stamped versions, so the schema carries old records forward instead.
     expect(researchDomain.version).toBe(1)
+  })
+
+  it('moves the built-in modes onto the packs that succeeded them and drops their stale last check', () => {
+    const lastCheck = { clean: false, scope: 'all', mode: 'paper-first', phases: [{ id: 'draft', done: false, missing: [] }], findings: [], checkedAt: 'x' }
+    expect(migrateProject({ id: 'a', mode: 'paper-first', lastCheck })).toEqual({ id: 'a', mode: 'spark-to-paper', route: 'proposal' })
+    expect(migrateProject({ id: 'b', mode: 'from-results', lastCheck })).toEqual({ id: 'b', mode: 'spark-to-paper', route: 'data' })
+    expect(migrateProject({ id: 'c', mode: 'free', lastCheck })).toEqual({ id: 'c', mode: 'general' })
+    expect(migrateProject({ id: 'd', lastCheck })).toEqual({ id: 'd', mode: 'general' })
+    expect(migrateProject('text')).toBe('text')
   })
 })
 

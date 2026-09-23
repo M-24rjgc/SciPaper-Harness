@@ -1,18 +1,18 @@
 /** Project navigation and project creation. Creating a project starts nothing: the conversation does the work. */
 import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ResearchMode } from '@deepseek-ai/dsh-research-workbench/types'
-import type { WorkbenchProps } from './contract.ts'
-import { standingText } from './format.ts'
+import { useModes, type WorkbenchProps } from './contract.ts'
+import { chosenMode, standingText } from './format.ts'
+import { ModeSelect } from './ModeSelect.tsx'
 import styles from './ProjectEntry.module.css'
-
-const MODES: readonly ResearchMode[] = ['paper-first', 'from-results', 'free']
 
 /** Project cards name where each project stands and open its own conversation. */
 export function ResearchProjects(props: WorkbenchProps & { wide: boolean }): ReactNode {
   const { t } = props
   // Most recently worked on first, the same project the blank session offers to resume.
-  const projects = [...props.useResearch(s => s).snapshot?.projects ?? []].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const snapshot = props.useResearch(s => s).snapshot
+  const projects = [...snapshot?.projects ?? []].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const modes = useModes(props)
   if (!props.wide) return null
   return <nav className={styles.projects} aria-label={t('projects')}>
     <div className={styles.label}>{t('projects')}</div>
@@ -27,7 +27,7 @@ export function ResearchProjects(props: WorkbenchProps & { wide: boolean }): Rea
         }).catch(() => {})
     }}>
       <strong>{project.title}</strong>
-      <span className={styles.empty}>{standingText(project, t)}</span>
+      <span className={styles.empty}>{standingText(project, modes, t)}</span>
     </button>)}
   </nav>
 }
@@ -36,6 +36,7 @@ export function ResearchProjects(props: WorkbenchProps & { wide: boolean }): Rea
 export function ResearchProjectEntry(props: WorkbenchProps & { composerDraft?: string }): ReactNode {
   const { t } = props
   const view = props.useResearch(s => s)
+  const modes = useModes(props)
   const [open, setOpen] = useState(false)
   const [root, setRoot] = useState('')
   const [error, setError] = useState('')
@@ -48,12 +49,11 @@ export function ResearchProjectEntry(props: WorkbenchProps & { composerDraft?: s
     const form = new FormData(event.currentTarget)
     // Every name read here is a field this form always renders.
     const text = (name: string): string => (form.get(name) as string).trim()
-    const mode = MODES.find(item => item === text('mode'))
     setError('')
     setSubmitting(true)
     void props.create({
       title: text('title'), root: root.trim(), brief: text('brief'),
-      ...(mode === undefined ? {} : { mode }),
+      ...chosenMode(form),
       autonomy: text('autonomy') === 'automatic' ? 'automatic' : 'checkpoints',
     })
       .then(async (project) => {
@@ -79,12 +79,7 @@ export function ResearchProjectEntry(props: WorkbenchProps & { composerDraft?: s
         <button type="button" className={styles.entry} disabled={view.busy} onClick={() => {
           void props.pickDirectory().then((path) => { if (path) setRoot(path) }).catch((problem: unknown) => { setError(String(problem)) })
         }}>{t('pickDirectory')}</button>
-        <label>{t('mode')}<select name="mode" defaultValue="">
-          <option value="">{t('modeAuto')}</option>
-          <option value="paper-first">{t('modePaperFirst')}</option>
-          <option value="from-results">{t('modeFromResults')}</option>
-          <option value="free">{t('modeFree')}</option>
-        </select></label>
+        <label>{t('mode')}<ModeSelect modes={modes} t={t} name="mode" defaultValue="general" /></label>
         <label>{t('autonomy')}<select name="autonomy" defaultValue="checkpoints">
           <option value="checkpoints">{t('autonomyCheckpoints')}</option>
           <option value="automatic">{t('autonomyAutomatic')}</option>

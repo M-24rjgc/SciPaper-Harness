@@ -69,7 +69,7 @@ async function projectWithEnvironments(environments: EnvironmentRecord[]): Promi
   const root = await mkdtemp(join(tmpdir(), 'research-settings-'))
   roots.push(root)
   const project = newProject(
-    { root, title: '块稀疏注意力的长上下文代价', mode: 'from-results', brief: '1/4 FLOPs 下还能不能保住准确率' },
+    { root, title: '块稀疏注意力的长上下文代价', mode: 'spark-to-paper', route: 'data', brief: '1/4 FLOPs 下还能不能保住准确率' },
     'workspace' as WorkspaceId,
   )
   project.environments.push(...environments)

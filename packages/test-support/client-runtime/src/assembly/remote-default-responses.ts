@@ -14,7 +14,7 @@ export const remoteDefaultResponses: RemoteTable = {
     // api-session-controller `sessions.handleConnected()` on `connection/reset`.
     'session/list': ok({ items: [] }),
     // ui-research refreshes projects and background tasks at apply and on its polling interval.
-    'research/snapshot': ok({ projects: [], preferences: {}, components: [] }),
+    'research/snapshot': ok({ projects: [], preferences: {}, components: [], modes: [] }),
     'research/tasks': ok([]),
     // ui-settings `mirror.ensure()` at apply and again on `connection/reset`.
     'settings/describe': ok({ writable: true, hasDocument: false, namespaces: [] }),

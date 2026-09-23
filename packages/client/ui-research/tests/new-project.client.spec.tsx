@@ -12,6 +12,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchNewProject, type NewProjectOwnerProps } from '../src/client/NewProject.tsx'
 import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
+import { MODES } from './fixtures/modes.ts'
 
 const SESSION = 'session-new'
 const roots: string[] = []
@@ -37,7 +38,7 @@ function recorder(over: Partial<Recorder> = {}): Recorder {
 }
 
 function propsFor(log: Recorder): WorkbenchProps & SessionSeatProps & NewProjectOwnerProps {
-  const view = { snapshot: { projects: log.existing ? [log.existing] : [], preferences: {}, components: [] }, tasks: [], busy: false, error: '', response: null }
+  const view = { snapshot: { projects: log.existing ? [log.existing] : [], preferences: {}, components: [], modes: MODES }, tasks: [], busy: false, error: '', response: null }
   return {
     sessionId: SESSION,
     t: (key: string) => (zh as Record<string, string>)[key] ?? key,
@@ -77,23 +78,23 @@ describe('starting a project from the composer', () => {
     openForm(view)
     expect(log.created).toEqual([])
     expect(view.getByLabelText(zh.brief)).toHaveProperty('value', '块稀疏能否保住长上下文准确率')
-    fireEvent.change(view.getByLabelText(zh.mode), { target: { value: 'paper-first' } })
+    fireEvent.change(view.getByLabelText(zh.mode), { target: { value: 'spark-to-paper/data' } })
     fireEvent.change(view.getByLabelText(zh.autonomy), { target: { value: 'automatic' } })
     submitForm(view, root)
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
-    expect(log.created).toEqual([{ title: 'Sparse attention', root, brief: '块稀疏能否保住长上下文准确率', mode: 'paper-first', autonomy: 'automatic' }])
+    expect(log.created).toEqual([{ title: 'Sparse attention', root, brief: '块稀疏能否保住长上下文准确率', mode: 'spark-to-paper', route: 'data', autonomy: 'automatic' }])
     // Creating a project sends nothing to the model: the conversation does the work.
     expect(log.commands).toEqual([])
     expect(log.opened).toEqual(['session-project'])
   })
 
-  it('leaves the mode to the assistant by default, with checkpoint autonomy, and shows an unbound project in the workbench', async () => {
+  it('starts in the general mode by default, with checkpoint autonomy, and shows an unbound project in the workbench', async () => {
     const log = recorder()
     const view = render(<ResearchNewProject {...propsFor(log)} />)
     openForm(view)
     submitForm(view, '/research/default')
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
-    expect(log.created).toEqual([{ title: 'Sparse attention', root: '/research/default', brief: '', autonomy: 'checkpoints' }])
+    expect(log.created).toEqual([{ title: 'Sparse attention', root: '/research/default', brief: '', mode: 'general', autonomy: 'checkpoints' }])
     expect(log.expanded).toHaveLength(1)
   })
 

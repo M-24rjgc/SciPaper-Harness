@@ -1,8 +1,11 @@
 /**
  * Definition-of-done checks the agent runs on its own paper. They read the
  * files as they exist on disk and report; nothing here ever refuses an action.
- * A phase is done when its checks carry no errors — whether to keep working is
- * the agent's call, guided by its skills.
+ * The base checks run in every mode; a mode pack adds its phases (each with the
+ * facts it requires and the checks that decide it) and its own gates, which a
+ * caller-supplied runner executes. A phase is done when its requirements hold
+ * and its checks carry no errors — whether to keep working is the agent's
+ * call, guided by its skills.
  */
 import { stat } from 'node:fs/promises'
 import { join, posix } from 'node:path'
@@ -12,31 +15,17 @@ import {
   listProjectFiles, originAt, paperDigest, paperModifiedAt, parseBibliography, sections,
   type BibEntry, type FlatPaper,
 } from './latex.ts'
+import type { ModeCondition, ModePhase, ModeScript, ResolvedMode } from './modes.ts'
 import { validateLinks } from './project.ts'
-import { checkIds, phaseIds } from './schema.ts'
-import type { CheckFinding, CheckId, CheckReport, PhaseId, PhaseStatus, ResearchMode, ResearchProject } from './types.ts'
+import { checkIds } from './schema.ts'
+import type { CheckFinding, CheckId, CheckReport, PhaseStatus, ResearchProject } from './types.ts'
 
-/** The phases of each pipeline, in order; `free` has none. */
-export const MODE_PHASES: Record<ResearchMode, PhaseId[]> = {
-  'paper-first': ['idea', 'literature', 'plan', 'draft', 'experiments', 'results', 'polish', 'submission'],
-  'from-results': ['ingest', 'plan', 'literature', 'write', 'figures', 'polish', 'submission'],
-  'free': [],
-}
-
-/** Which checks decide each phase; `submission` is decided by all of them. */
-const PHASE_CHECKS: Record<PhaseId, CheckId[]> = {
-  idea: [],
-  literature: ['cite'],
-  plan: ['structure'],
-  draft: ['structure', 'cite', 'figures', 'compile', 'numbers'],
-  experiments: [],
-  results: ['placeholders', 'numbers', 'figures', 'compile'],
-  polish: ['review', 'visual'],
-  submission: [...checkIds],
-  ingest: [],
-  write: ['structure', 'cite', 'numbers', 'placeholders'],
-  figures: ['figures'],
-}
+/**
+ * Runs one of the mode pack's gates over the project. The service supplies it,
+ * so this module never starts a process itself.
+ * @returns the gate's findings, each tagged with the gate's id.
+ */
+export type GateRunner = (gate: ModeScript, mode: ResolvedMode, project: ResearchProject) => Promise<CheckFinding[]>
 
 const RESULT_SECTION = /experiment|result|evaluat|ablation|analys|benchmark|实验|结果|评估|消融/i
 const CONCLUSION_SECTION = /conclu|summary|discussion|结论|总结|讨论/i
@@ -52,6 +41,7 @@ const MAX_FINDINGS_PER_CHECK = 25
 
 interface Context {
   project: ResearchProject
+  mode: ResolvedMode
   limit: number
   paper?: FlatPaper | undefined
   findings: CheckFinding[]
@@ -64,10 +54,14 @@ interface Context {
  * Run the checks and fold them into phase progress for the project's mode.
  * @param project - the ledger; only read.
  * @param limit - byte ceiling for any single file read.
- * @param scope - `all` (default), a phase id or a check id.
+ * @param scope - `all` (default), a phase of the mode, a base check or one of the mode's gates.
+ * @param mode - the mode in effect, as the registry resolved it.
+ * @param runGate - executes the mode's gates; without one, gates are reported as not run.
  */
-export async function runChecks(project: ResearchProject, limit: number, scope = 'all'): Promise<CheckReport> {
-  const context: Context = { project, limit, findings: [], bibEntries: [], graphicsCount: 0, reviewExists: false }
+export async function runChecks(
+  project: ResearchProject, limit: number, scope: string | undefined, mode: ResolvedMode, runGate?: GateRunner,
+): Promise<CheckReport> {
+  const context: Context = { project, mode, limit, findings: [], bibEntries: [], graphicsCount: 0, reviewExists: false }
   const main = await findMainManuscript(project, limit)
   if (main === undefined) {
     add(context, 'structure', 'error', 'No LaTeX manuscript yet: write one with \\documentclass (for example paper/main.tex)')
@@ -89,11 +83,34 @@ export async function runChecks(project: ResearchProject, limit: number, scope =
   }
   await checkReview(context)
   checkLedger(context)
+  await runGates(context, gatesInScope(mode, scope ?? 'all'), runGate)
   const phases = await phaseProgress(context)
-  return summarize(context, phases, scope)
+  return summarize(context, phases, scope ?? 'all')
 }
 
-function add(context: Context, check: CheckId, severity: CheckFinding['severity'], message: string, file?: string, line?: number): void {
+/** The mode's gates a scope calls for: all of them, those deciding one phase, or one by id. */
+function gatesInScope(mode: ResolvedMode, scope: string): ModeScript[] {
+  if ((checkIds as readonly string[]).includes(scope)) return []
+  const phase = mode.phases.find(item => item.id === scope)
+  if (phase) return phase.checks === 'all' ? mode.gates : mode.gates.filter(gate => phase.checks.includes(gate.id))
+  const gate = mode.gates.find(item => item.id === scope)
+  return gate ? [gate] : mode.gates
+}
+
+async function runGates(context: Context, gates: ModeScript[], runGate: GateRunner | undefined): Promise<void> {
+  for (const gate of gates) {
+    if (!runGate) { add(context, gate.id, 'error', 'This gate could not run here'); continue }
+    try {
+      const findings = await runGate(gate, context.mode, context.project)
+      context.findings.push(...findings.slice(0, MAX_FINDINGS_PER_CHECK).map(finding => ({ ...finding, check: gate.id })))
+      if (findings.length > MAX_FINDINGS_PER_CHECK) add(context, gate.id, 'error', `…and ${findings.length - MAX_FINDINGS_PER_CHECK} more findings`)
+    } catch (error) {
+      add(context, gate.id, 'error', `The gate failed to run: ${errorText(error)}`)
+    }
+  }
+}
+
+function add(context: Context, check: string, severity: CheckFinding['severity'], message: string, file?: string, line?: number): void {
   context.findings.push({ check, severity, message, ...(file === undefined ? {} : { file }), ...(line === undefined ? {} : { line }) })
 }
 
@@ -282,7 +299,8 @@ async function checkCompile(context: Context, paper: FlatPaper): Promise<void> {
 
 function checkStructure(context: Context, paper: FlatPaper): void {
   for (const missing of paper.missingInputs) add(context, 'structure', 'error', `\\input target not found: ${missing.name}`, missing.origin.file, missing.origin.line)
-  if (context.project.mode === 'free') return
+  // Without a pipeline the paper may be anything — a note, a chapter — so its shape is not judged.
+  if (context.mode.phases.length === 0) return
   const titles = sections(paper).map(section => section.title)
   if (!/\\begin\s*\{abstract\}|\\abstract\s*\{/.test(paper.text)) add(context, 'structure', 'warning', 'No abstract', paper.main)
   for (const expected of EXPECTED_SECTIONS) {
@@ -324,74 +342,141 @@ function checkLedger(context: Context): void {
   }
 }
 
-async function phaseProgress(context: Context): Promise<PhaseStatus[]> {
-  const { project, paper } = context
-  const mode = project.mode
-  if (mode === undefined) return []
-  const errorsIn = (checks: CheckId[]): CheckFinding[] =>
-    context.findings.filter(finding => finding.severity === 'error' && checks.includes(finding.check))
-  const note = /(^|\/)(idea|proposal|story|brief|outline|plan|blueprint)[\w-]*\.(md|tex|txt|json)$/i
-  const notes = await listProjectFiles(project.root, path => note.test(path), 2)
-  const has = (pattern: RegExp): boolean => notes.some(path => pattern.test(posix.basename(path)))
-  // An architecture diagram is an editable draw.io file or a TikZ picture in the paper itself.
-  const hasDiagram = project.artifacts.some(item => item.kind === 'diagram' && !item.stale)
-    || /\\begin\s*\{tikzpicture\}/.test(paper?.text ?? '')
-    || (await listProjectFiles(project.root, path => path.endsWith('.drawio'), 3)).length > 0
-  const completedRuns = project.experiments.filter(run => run.status === 'completed' && run.collected).length
-  const activeRuns = project.experiments.filter(run => ['queued', 'running'].includes(run.status)).length
-  const dataSources = project.evidence.filter(source => source.coverage === 'data' && !source.stale).length
-  const sectionCount = paper ? sections(paper).length : 0
-  const visualCurrent = !context.findings.some(finding => finding.check === 'visual')
-  const reviewCurrent = context.reviewExists && !context.findings.some(finding => finding.check === 'review')
-
-  const status = (id: PhaseId): PhaseStatus => {
-    const missing: string[] = []
-    const blocking = errorsIn(PHASE_CHECKS[id])
-    if (blocking.length) missing.push(`${blocking.length} error(s) in ${[...new Set(blocking.map(item => item.check))].join(', ')}`)
-    switch (id) {
-      case 'idea': if (!has(/^(idea|proposal|story|brief)/i) && !paper) missing.push('Write the idea: problem, contributions and a falsifiable question (idea.md)'); break
-      case 'literature': if (!context.bibEntries.length) missing.push('No bibliography entries yet'); break
-      case 'plan': if (!has(/^(outline|plan|blueprint)/i) && sectionCount < 4) missing.push('Write the outline (outline.md) or the section skeleton'); break
-      case 'draft':
-        if (!paper) missing.push('No manuscript')
-        if (!hasDiagram) missing.push('No editable architecture diagram (draw.io file or TikZ picture)')
-        if (!visualCurrent) missing.push('Compiled pages not inspected')
-        break
-      case 'experiments':
-        if (!completedRuns) missing.push('No completed, collected experiment run')
-        if (activeRuns) missing.push(`${activeRuns} run(s) still in progress`)
-        break
-      case 'results': if (!completedRuns && !dataSources) missing.push('No collected results to report'); break
-      case 'polish': case 'submission':
-        if (!reviewCurrent) missing.push('No current review (paper-review skill)')
-        if (!visualCurrent) missing.push('Compiled pages not inspected')
-        break
-      case 'ingest': if (!dataSources) missing.push('Import the existing results as data evidence'); break
-      case 'write': if (!paper) missing.push('No manuscript'); break
-      case 'figures': if (!context.graphicsCount) missing.push('The paper includes no figures'); break
-    }
-    return { id, done: missing.length === 0, missing }
+/**
+ * A case-insensitive matcher for a project-relative glob (`*`, `?`, `**`,
+ * `{a,b}`). A pattern without a slash matches a file name at any depth.
+ * @param glob - the pattern a mode pack wrote.
+ * @returns whether a project-relative path matches.
+ */
+export function globMatcher(glob: string): (path: string) => boolean {
+  const escape = (text: string): string => text.replace(/[.+^$()|[\]\\{}*?]/g, '\\$&')
+  let source = ''
+  for (let index = 0; index < glob.length; index++) {
+    const character = glob[index] as string
+    const close = character === '{' ? glob.indexOf('}', index) : -1
+    if (glob.startsWith('**/', index)) { source += '(?:.*/)?'; index += 2 }
+    else if (glob.startsWith('**', index)) { source += '.*'; index += 1 }
+    else if (character === '*') source += '[^/]*'
+    else if (character === '?') source += '[^/]'
+    else if (close > index) { source += `(?:${glob.slice(index + 1, close).split(',').map(escape).join('|')})`; index = close }
+    else source += escape(character)
   }
-  return MODE_PHASES[mode].map(status)
+  const pattern = new RegExp(`^${source}$`, 'i')
+  return glob.includes('/') ? path => pattern.test(path) : path => pattern.test(posix.basename(path))
+}
+
+/** What the phases can require of the project, gathered once per check. */
+interface Facts {
+  paper: boolean
+  bibEntries: number
+  sections: number
+  figures: number
+  pagesInspected: boolean
+  reviewCurrent: boolean
+  completedRuns: number
+  activeRuns: number
+  dataSources: number
+  /** Project files, listed only when a phase asks about files or diagrams. */
+  files: () => Promise<string[]>
+  diagram: () => Promise<boolean>
+}
+
+/** The facts a check found, with file listings deferred until a requirement needs them. */
+function gatherFacts(context: Context): Facts {
+  const { project, paper } = context
+  let listing: Promise<string[]> | undefined
+  const files = (): Promise<string[]> => listing ??= listProjectFiles(project.root, () => true, 4)
+  return {
+    paper: paper !== undefined,
+    bibEntries: context.bibEntries.length,
+    sections: paper ? sections(paper).length : 0,
+    figures: context.graphicsCount,
+    pagesInspected: !context.findings.some(finding => finding.check === 'visual'),
+    reviewCurrent: context.reviewExists && !context.findings.some(finding => finding.check === 'review'),
+    completedRuns: project.experiments.filter(run => run.status === 'completed' && run.collected).length,
+    activeRuns: project.experiments.filter(run => ['queued', 'running'].includes(run.status)).length,
+    dataSources: project.evidence.filter(source => source.coverage === 'data' && !source.stale).length,
+    files,
+    // An architecture diagram is an editable draw.io file or a TikZ picture in the paper itself.
+    diagram: async () => project.artifacts.some(item => item.kind === 'diagram' && !item.stale)
+      || /\\begin\s*\{tikzpicture\}/.test(paper?.text ?? '')
+      || (await files()).some(path => path.endsWith('.drawio')),
+  }
+}
+
+/** Why a condition does not hold yet, or undefined when it does. */
+async function unmet(condition: ModeCondition, facts: Facts): Promise<string | undefined> {
+  if (typeof condition === 'string') {
+    switch (condition) {
+      case 'manuscript': return facts.paper ? undefined : 'No manuscript yet'
+      case 'diagram': return await facts.diagram() ? undefined : 'No editable architecture diagram (draw.io file or TikZ picture)'
+      case 'pagesInspected': return facts.pagesInspected ? undefined : 'Compiled pages not inspected'
+      case 'reviewCurrent': return facts.reviewCurrent ? undefined : 'No current review'
+      case 'runsCollected': return facts.completedRuns ? undefined : 'No completed, collected experiment run'
+      case 'noActiveRuns': return facts.activeRuns ? `${facts.activeRuns} run(s) still in progress` : undefined
+      case 'dataEvidence': return facts.dataSources ? undefined : 'No data evidence: import the measured results'
+      case 'resultsOrData': return facts.completedRuns || facts.dataSources ? undefined : 'No collected results to report'
+    }
+  }
+  if ('file' in condition) {
+    const min = condition.min ?? 1
+    const matches = globMatcher(condition.file)
+    const found = (await facts.files()).filter(matches).length
+    if (found >= min) return undefined
+    return found === 0 ? `No file matching ${condition.file}` : `Fewer than ${min} files matching ${condition.file} (${found})`
+  }
+  const [have, need, noun] = 'bibEntries' in condition
+    ? [facts.bibEntries, condition.bibEntries, 'bibliography entries']
+    : 'sections' in condition ? [facts.sections, condition.sections, 'sections'] : [facts.figures, condition.figures, 'figures in the paper']
+  if (have >= need) return undefined
+  return have === 0 ? `No ${noun} yet` : `Fewer than ${need} ${noun} (${have})`
+}
+
+/** The checks whose errors hold a phase back. */
+function decidingChecks(phase: ModePhase, context: Context): Set<string> {
+  return new Set(phase.checks === 'all' ? [...checkIds, ...context.mode.gates.map(gate => gate.id)] : phase.checks)
+}
+
+async function phaseProgress(context: Context): Promise<PhaseStatus[]> {
+  const facts = gatherFacts(context)
+  const statuses: PhaseStatus[] = []
+  for (const phase of context.mode.phases) {
+    const missing: string[] = []
+    const deciding = decidingChecks(phase, context)
+    const blocking = context.findings.filter(finding => finding.severity === 'error' && deciding.has(finding.check))
+    if (blocking.length) missing.push(`${blocking.length} error(s) in ${[...new Set(blocking.map(item => item.check))].join(', ')}`)
+    for (const requirement of phase.requires) {
+      const alternatives = Array.isArray(requirement.when) ? requirement.when : [requirement.when]
+      const reasons: string[] = []
+      for (const condition of alternatives) {
+        const reason = await unmet(condition, facts)
+        if (reason === undefined) break
+        reasons.push(reason)
+      }
+      if (reasons.length === alternatives.length) missing.push(requirement.message ?? reasons[0] as string)
+    }
+    statuses.push({ id: phase.id, done: missing.length === 0, missing })
+  }
+  return statuses
 }
 
 function summarize(context: Context, phases: PhaseStatus[], scope: string): CheckReport {
-  const { project } = context
+  const { mode } = context
   let findings = context.findings
   // The whole paper is done only when nothing is wrong and every phase of its mode is done.
   let clean = !findings.some(finding => finding.severity === 'error') && phases.every(phase => phase.done)
-  if ((phaseIds as readonly string[]).includes(scope)) {
-    const phase = phases.find(item => item.id === scope)
-    const relevant = PHASE_CHECKS[scope as PhaseId]
-    findings = findings.filter(finding => relevant.includes(finding.check))
-    clean = phase?.done ?? !findings.some(finding => finding.severity === 'error')
-  } else if ((checkIds as readonly string[]).includes(scope)) {
+  const phase = mode.phases.find(item => item.id === scope)
+  if (phase) {
+    const deciding = decidingChecks(phase, context)
+    findings = findings.filter(finding => deciding.has(finding.check))
+    clean = phases.some(item => item.id === scope && item.done)
+  } else if ((checkIds as readonly string[]).includes(scope) || mode.gates.some(gate => gate.id === scope)) {
     findings = findings.filter(finding => finding.check === scope)
     clean = !findings.some(finding => finding.severity === 'error')
   }
   findings = [...findings].sort((a, b) => Number(a.severity === 'warning') - Number(b.severity === 'warning'))
   return {
-    clean, scope, ...(project.mode === undefined ? {} : { mode: project.mode }),
+    clean, scope, mode: mode.pack.id, ...(mode.route === undefined ? {} : { route: mode.route }),
     phases, findings, checkedAt: new Date().toISOString(),
   }
 }

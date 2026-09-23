@@ -1,0 +1,115 @@
+# spark-to-paper: one idea, a proposal, or a proposal with measured results
+# in; a complete compiled paper out. Routes follow the upstream orchestrator's
+# Stage 0: an idea gets a story first; a proposal leaves result cells "--"
+# until experiments fill them; measured data means every number traces to it.
+id: spark-to-paper
+order: 10
+name:
+  en: spark-to-paper
+  zh: spark-to-paper
+summary:
+  en: An idea, a proposal, or a proposal with measured results in; a complete compiled paper out — real citations, editable vector figures, every number traced.
+  zh: 输入一个想法、一份提案，或带实测结果的提案，产出一篇编译好的完整论文：引用真实、图是可编辑矢量图、每个数字可追溯。
+source:
+  repo: https://github.com/Spark-To-Paper-Skills/spark-to-paper-skills
+  version: 1.2.0
+  license: MIT
+routes:
+  - id: idea
+    name: { en: From an idea, zh: 从想法开始 }
+    summary:
+      en: A line or a short note; the research story is built first.
+      zh: 一句话或一小段笔记，先把研究故事搭起来。
+  - id: proposal
+    name: { en: From a proposal, zh: 从提案开始 }
+    summary:
+      en: Problem, method and evaluation are set but nothing is measured; result cells stay "--" until the experiments run.
+      zh: 问题、方法、评测都已定，但还没有实测结果；结果格先留「--」，跑完实验再填。
+  - id: data
+    name: { en: From measured results, zh: 从实测结果开始 }
+    summary:
+      en: Results already exist; every number in the paper traces to them.
+      zh: 结果已经有了，论文里的每个数字都追溯到这些结果。
+defaultRoute: proposal
+phases:
+  - id: story
+    label: { en: Story, zh: 研究故事 }
+    routes: [idea]
+    skills: [idea-development]
+    requires:
+      - when: [{ file: story.json }, { file: "{idea,story,proposal,brief}*.md" }]
+        message: Build the story from the idea (problem, gap, solution, method skeleton, experiment plan, claims) and write story.json
+  - id: data
+    label: { en: Data, zh: 数据 }
+    routes: [data]
+    skills: [results-ingest]
+    requires:
+      - when: dataEvidence
+        message: Import the measured results as data evidence; derived numbers come from a script
+  - id: plan
+    label: { en: Plan, zh: 规划 }
+    skills: [paper-plan]
+    checks: [structure]
+    requires:
+      - when: [{ file: blueprint.json }, { file: "{outline,plan}*.md" }, { sections: 4 }]
+        message: Write the blueprint (blueprint.json or outline.md) — title, contributions, notation, section word targets
+  - id: cite
+    label: { en: Citations, zh: 引用 }
+    skills: [literature-review]
+    checks: [cite]
+    requires:
+      - when: { bibEntries: 1 }
+  - id: write
+    label: { en: Write, zh: 写作 }
+    routes: [idea, proposal]
+    skills: [paper-writing]
+    checks: [structure, cite, numbers]
+    requires:
+      - when: manuscript
+  - id: write
+    label: { en: Write, zh: 写作 }
+    routes: [data]
+    skills: [paper-writing]
+    checks: [structure, cite, numbers, placeholders]
+    requires:
+      - when: manuscript
+  - id: refine
+    label: { en: Refine, zh: 润色 }
+    skills: [paper-writing]
+    requires:
+      - when: manuscript
+  - id: review
+    label: { en: Review, zh: 评审 }
+    skills: [paper-review]
+    checks: [review]
+    requires:
+      - when: reviewCurrent
+        message: No current review — run the adversarial review and write reviews/review.md
+  - id: figures
+    label: { en: Figures, zh: 图表 }
+    skills: [method-diagram, figures-from-data]
+    checks: [figures]
+    requires:
+      - when: diagram
+  - id: latex
+    label: { en: LaTeX, zh: 编译排版 }
+    skills: [latex-compile-and-fix, visual-self-review]
+    checks: [compile, visual]
+    requires:
+      - when: pagesInspected
+  - id: experiments
+    label: { en: Experiments, zh: 实验 }
+    routes: [idea, proposal]
+    checkpoint: true
+    skills: [running-experiments, figures-from-data]
+    checks: [placeholders, numbers, figures, compile]
+    requires:
+      - when: resultsOrData
+      - when: noActiveRuns
+  - id: submission
+    label: { en: Submission, zh: 投稿 }
+    skills: [submission-package]
+    checks: all
+    requires:
+      - when: reviewCurrent
+      - when: pagesInspected

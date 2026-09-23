@@ -1,15 +1,22 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { newProject } from '../src/project.ts'
-import { MODE_PHASES, runChecks } from '../src/checks.ts'
+import { runChecks as runWithMode } from '../src/checks.ts'
+import { ModeRegistry } from '../src/modes.ts'
 import { bibliographyFiles, flattenPaper, listProjectFiles, originAt, paperDigest, stripComment } from '../src/latex.ts'
-import type { ArtifactId, EvidenceId, ResearchMode, ResearchProject } from '../src/types.ts'
+import type { ArtifactId, EvidenceId, ResearchProject } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
+
+// The shipped packs, so these checks run against the phases users actually get.
+let registry: ModeRegistry
+beforeAll(async () => { registry = await ModeRegistry.load([join(import.meta.dirname, '../runtime/modes')], { warn: (...args: unknown[]) => { throw new Error(args.join(' ')) } }) })
+const runChecks = (project: ResearchProject, limit: number, scope?: string) => runWithMode(project, limit, scope, registry.resolve(project))
+type Route = 'idea' | 'proposal' | 'data'
 
 async function write(root: string, path: string, content: string): Promise<void> {
   await mkdir(dirname(join(root, path)), { recursive: true })
@@ -37,7 +44,8 @@ We see 3.25 points gain. Accuracy is \tbd{final accuracy}. TODO
 \end{document}
 `
 
-async function fixture(mode?: ResearchMode): Promise<ResearchProject> {
+/** A spark-to-paper project on the given route, or a general one without a route. */
+async function fixture(route?: Route): Promise<ResearchProject> {
   const root = await mkdtemp(join(tmpdir(), 'research checks 中文 '))
   roots.push(root)
   await write(root, 'paper/main.tex', MAIN)
@@ -52,7 +60,7 @@ async function fixture(mode?: ResearchMode): Promise<ResearchProject> {
   ].join('\n'))
   await write(root, 'figures/plot.png', 'png')
   await write(root, 'template/other.tex', '\\documentclass{x}')
-  return newProject({ root, title: 'Checks', brief: '', ...(mode ? { mode } : {}) }, 'workspace' as WorkspaceId)
+  return newProject({ root, title: 'Checks', brief: '', ...(route ? { mode: 'spark-to-paper', route } : {}) }, 'workspace' as WorkspaceId)
 }
 
 const errors = (report: Awaited<ReturnType<typeof runChecks>>, check: string) => report.findings.filter(f => f.check === check && f.severity === 'error')
@@ -60,7 +68,7 @@ const warnings = (report: Awaited<ReturnType<typeof runChecks>>, check: string) 
 
 describe('research checks report on the paper as it is on disk', () => {
   it('finds the main file without registration and reports every class of problem with its location', async () => {
-    const p = await fixture('paper-first')
+    const p = await fixture('proposal')
     const report = await runChecks(p, 100000)
     expect(report.clean).toBe(false)
     expect(errors(report, 'cite').map(f => f.message)).toEqual(expect.arrayContaining([
@@ -90,10 +98,11 @@ describe('research checks report on the paper as it is on disk', () => {
   })
 
   it('traces numbers to data evidence, run metrics and code, and goes clean once the paper is finished', async () => {
-    const p = await fixture('from-results')
+    const p = await fixture('data')
     await write(p.root, 'paper/main.tex', MAIN.replace('Baseline & -- \\\\', 'Baseline & 0.5 \\\\').replace(' Accuracy is \\tbd{final accuracy}. TODO', '').replace('\\includegraphics{absent}\n', '')
       .replace('\\input{sections/ghost}\n', '').replace('\\cite{missing, real}', '\\cite{real}').replace(' Prior art \\cite{incomplete} and \\cite{novenue}.', ''))
     await write(p.root, 'code/config.yaml', 'gain: 3.25\n')
+    await write(p.root, 'figures/arch.drawio', '<mxfile/>')
     p.evidence.push({ id: 'data' as EvidenceId, title: 'results.csv', kind: 'file', path: 'x', sha256: 'h', revision: 1, importedAt: '', chunks: [{ text: '["ours","0.6213"]', locator: { line: 2 } }], coverage: 'data', verified: true, stale: false })
     p.experiments.push({ id: 'run' as never, spec: { environmentId: 'e' as never, name: 'r', argv: ['{python}'], cwd: '.', seed: 0, maxSeconds: 1, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], metricsPath: 'm' }, status: 'completed', createdAt: '', updatedAt: '', directory: '', inputRevision: 1, environmentFingerprint: '', metrics: { accuracy: 0.715, base: 0.5 }, message: '', snapshotPath: '', collected: true })
     p.evidence.push({ id: 'lit' as EvidenceId, title: 'Real', kind: 'literature', path: 'y', sha256: 'h', revision: 1, importedAt: '', chunks: [], doi: '10.1/real', coverage: 'abstract', verified: true, stale: false })
@@ -108,14 +117,15 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(report.findings.filter(f => f.severity === 'error')).toEqual([])
     expect(report.clean).toBe(true)
     expect(warnings(report, 'compile').map(f => f.message)).toEqual([expect.stringMatching(/Undefined cross-references/), '1 overfull box(es) in the compiled PDF'])
+    expect(report).toMatchObject({ mode: 'spark-to-paper', route: 'data' })
     expect(report.phases.map(phase => [phase.id, phase.done])).toEqual([
-      ['ingest', true], ['plan', true], ['literature', true], ['write', true], ['figures', true], ['polish', true], ['submission', true],
+      ['data', true], ['plan', true], ['cite', true], ['write', true], ['refine', true], ['review', true], ['figures', true], ['latex', true], ['submission', true],
     ])
-    // Without a review nothing is wrong, but polish is unfinished, so the paper is not done.
+    // Without a review nothing is wrong, but the review phase is unfinished, so the paper is not done.
     await rm(join(p.root, 'reviews'), { recursive: true })
     const unreviewed = await runChecks(p, 100000)
     expect(unreviewed.findings.filter(f => f.severity === 'error')).toEqual([])
-    expect(unreviewed.phases.find(phase => phase.id === 'polish')?.done).toBe(false)
+    expect(unreviewed.phases.find(phase => phase.id === 'review')?.missing).toEqual(['No current review — run the adversarial review and write reviews/review.md'])
     expect(unreviewed.clean).toBe(false)
     await write(p.root, 'paper/main.tex', `${MAIN}\n% changed`)
     const changed = await runChecks(p, 100000, 'compile')
@@ -125,7 +135,7 @@ describe('research checks report on the paper as it is on disk', () => {
   })
 
   it('reports failed compiles, stale review, open review issues, ledger staleness and invalid claims', async () => {
-    const p = await fixture('paper-first')
+    const p = await fixture('proposal')
     const manuscript = { id: 'm' as ArtifactId, path: 'paper/main.tex', kind: 'manuscript' as const, revision: 1, sha256: 'x', evidence: [], claimIds: [], inputArtifacts: [], stale: true, updatedAt: '', author: 'agent' as const }
     p.artifacts.push(manuscript, { ...manuscript, id: 'plot' as ArtifactId, path: 'figures/plot.png', kind: 'figure', stale: false }, { ...manuscript, id: 'd' as ArtifactId, path: 'diagrams/arch.drawio', kind: 'diagram', stale: false })
     p.compilations.push({ artifactId: manuscript.id, artifactRevision: 1, inputDigest: 'old', engine: 'pdflatex', status: 'failed', pdfPath: '', logPath: 'log', diagnostics: ['! Undefined control sequence.', 'plain'], createdAt: '' })
@@ -146,57 +156,59 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(warnings(report, 'stale').map(f => f.file)).toEqual(['paper/main.tex', 'z'])
     expect(warnings(report, 'claims').map(f => f.message)).toEqual(['Contradicted by the evidence — make sure the paper says so: It improves'])
     expect(errors(report, 'claims').map(f => f.message)).toEqual(['c2: Evidence is missing or outdated: gone'])
-    const draft = report.phases.find(phase => phase.id === 'draft')
-    expect(draft?.done).toBe(false)
-    expect(draft?.missing.join('\n')).toMatch(/error\(s\) in /)
-    const scoped = await runChecks(p, 100000, 'draft')
+    const latex = report.phases.find(phase => phase.id === 'latex')
+    expect(latex?.done).toBe(false)
+    expect(latex?.missing.join('\n')).toMatch(/error\(s\) in compile/)
+    const scoped = await runChecks(p, 100000, 'write')
     expect(scoped.clean).toBe(false)
-    expect(scoped.findings.every(f => ['structure', 'cite', 'figures', 'compile', 'numbers'].includes(f.check))).toBe(true)
+    expect(scoped.findings.every(f => ['structure', 'cite', 'numbers'].includes(f.check))).toBe(true)
   })
 
-  it('derives phase progress for paper-first from notes, runs and files', async () => {
-    const p = await fixture('paper-first')
+  it('derives phase progress on the idea route from notes, runs and files', async () => {
+    const p = await fixture('idea')
     await rm(join(p.root, 'paper'), { recursive: true })
     await write(p.root, 'notes/b.tex', 'no class')
     await write(p.root, 'notes/a.tex', 'no class')
     let report = await runChecks(p, 100000)
     expect(errors(report, 'structure').map(f => f.message)).toEqual([expect.stringMatching(/No LaTeX manuscript yet/)])
+    expect(report.phases.map(phase => phase.id)).toEqual(['story', 'plan', 'cite', 'write', 'refine', 'review', 'figures', 'latex', 'experiments', 'submission'])
     expect(Object.fromEntries(report.phases.map(phase => [phase.id, phase.missing]))).toMatchObject({
-      idea: [expect.stringMatching(/Write the idea/)],
-      literature: ['No bibliography entries yet'],
-      plan: [expect.stringMatching(/1 error/), expect.stringMatching(/outline/)],
-      draft: [expect.stringMatching(/error/), 'No manuscript', 'No editable architecture diagram (draw.io file or TikZ picture)'],
-      experiments: ['No completed, collected experiment run'],
-      results: [expect.stringMatching(/No collected results/)],
+      story: [expect.stringMatching(/write story\.json/)],
+      cite: ['No bibliography entries yet'],
+      plan: [expect.stringMatching(/1 error/), expect.stringMatching(/blueprint/)],
+      write: [expect.stringMatching(/error/), 'No manuscript yet'],
+      figures: ['No editable architecture diagram (draw.io file or TikZ picture)'],
+      experiments: ['No collected results to report'],
     })
     await write(p.root, 'idea.md', 'idea')
     await write(p.root, 'notes/outline.md', 'outline')
     await write(p.root, 'figures/arch.drawio', '<mxfile/>')
     p.experiments.push({ id: 'r' as never, spec: {} as never, status: 'running', createdAt: '', updatedAt: '', directory: '', inputRevision: 1, environmentFingerprint: '', metrics: {}, message: '', snapshotPath: '', collected: false })
-    report = await runChecks(p, 100000, 'idea')
+    report = await runChecks(p, 100000, 'story')
     expect(report.clean).toBe(true)
     expect(report.findings).toEqual([])
-    const experiments = (await runChecks(p, 100000)).phases.find(phase => phase.id === 'experiments')
-    expect(experiments?.missing).toEqual(['No completed, collected experiment run', '1 run(s) still in progress'])
+    const phases = Object.fromEntries((await runChecks(p, 100000)).phases.map(phase => [phase.id, phase.missing]))
+    expect(phases.plan).toEqual([expect.stringMatching(/1 error/)])
+    expect(phases.figures).toEqual([])
+    expect(phases.experiments).toEqual(['No collected results to report', '1 run(s) still in progress'])
   })
 
-  it('has no phases in free mode or before routing, skips section expectations in free mode, and treats unknown scopes as all', async () => {
-    const free = await fixture('free')
-    const report = await runChecks(free, 100000, 'nonsense')
+  it('has no phases in general mode, skips section expectations there, and treats unknown scopes as all', async () => {
+    const general = await fixture()
+    const report = await runChecks(general, 100000, 'nonsense')
     expect(report.phases).toEqual([])
-    expect(report.mode).toBe('free')
+    expect(report.mode).toBe('general')
+    expect('route' in report).toBe(false)
     expect(report.scope).toBe('nonsense')
     expect(report.findings.some(f => f.check === 'structure' && f.severity === 'warning')).toBe(false)
     expect(report.clean).toBe(report.findings.every(f => f.severity !== 'error'))
-    const unrouted = await fixture()
-    const unroutedReport = await runChecks(unrouted, 100000, 'draft')
-    expect(unroutedReport.phases).toEqual([])
-    expect('mode' in unroutedReport).toBe(false)
-    expect(MODE_PHASES.free).toEqual([])
+    // A pack that is no longer installed leaves the project in general mode, not broken.
+    const orphan = await runChecks({ ...general, mode: 'gone', route: 'x' }, 100000, 'story')
+    expect(orphan).toMatchObject({ mode: 'general', phases: [] })
   })
 
   it('reports an unreadable manuscript, an unreadable bibliography and caps repeated findings', async () => {
-    const p = await fixture('from-results')
+    const p = await fixture('data')
     await write(p.root, 'paper/main.tex', `\\documentclass{acmart}\n\\begin{document}\n${'\\begin{tabular}{c}1.11 \\\\ \\end{tabular}\n'.repeat(1)}${Array.from({ length: 30 }, (_, i) => `\\section{Results ${i}} ${i}.5 \\tbd{x}`).join('\n')}\n\\cite{a}\n\\addbibresource{refs.bib}\n\\end{document}\n`)
     await rm(join(p.root, 'paper/refs.bib'))
     await mkdir(join(p.root, 'paper/refs.bib'))
@@ -219,7 +231,7 @@ describe('research checks report on the paper as it is on disk', () => {
   })
 
   it('covers verification matches, figure provenance, discovery order and compile edges', async () => {
-    const p = await fixture('paper-first')
+    const p = await fixture('proposal')
     await write(p.root, 'paper/main.tex', String.raw`% \documentclass{article}
 \begin{document}
 \section{Introduction} Some 1.5 decades ago \cite{byeprint, bybibtex, extra}.
@@ -282,10 +294,10 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(errors(report, 'compile')).toEqual([])
     expect(warnings(report, 'visual').map(f => f.file)).toEqual(['b/main.pdf'])
     const phase = (id: string) => report.phases.find(item => item.id === id)?.missing ?? []
-    expect(phase('draft')).toContain('Compiled pages not inspected')
-    expect(phase('experiments')).toEqual([])
-    expect(phase('results').some(item => item.startsWith('No collected results'))).toBe(false)
-    expect(phase('polish')).toEqual(['No current review (paper-review skill)', 'Compiled pages not inspected'])
+    expect(phase('latex')).toContain('Compiled pages not inspected')
+    expect(phase('experiments')).toEqual([expect.stringMatching(/error\(s\) in figures/)])
+    expect(phase('review')).toEqual([expect.stringMatching(/^No current review/)])
+    expect(phase('submission')).toEqual([expect.stringMatching(/error\(s\) in figures/), 'No current review', 'Compiled pages not inspected'])
     p.compilations.push({ ...p.compilations[0]!, status: 'failed', diagnostics: ['Overfull \\hbox only'] })
     expect(errors(await runChecks(p, 100000, 'compile'), 'compile').map(f => f.message)).toEqual(['The last compile failed (log: b/log)'])
     expect(originAt({ main: 'm.tex', text: '', origins: [], files: [], missingInputs: [] }, 5)).toEqual({ file: 'm.tex', line: 1 })
@@ -293,17 +305,17 @@ describe('research checks report on the paper as it is on disk', () => {
   })
 
   it('stops reading configuration once its byte budget is spent, and skips unreadable files', async () => {
-    const p = await fixture('paper-first')
+    const p = await fixture('proposal')
     await write(p.root, 'paper/main.tex', '\\documentclass{x}\n\\begin{tikzpicture}\\end{tikzpicture}\n\\section{Results}\n0.33\n')
     for (const name of ['a', 'b', 'c']) await write(p.root, `code/${name}.yaml`, `v: 0.${name === 'c' ? '33' : '11'}\n${'#'.repeat(80)}`)
     await write(p.root, 'code/big.json', 'x'.repeat(200))
     const report = await runChecks(p, 100)
     expect(warnings(report, 'numbers').map(f => f.message.split(' ')[0])).toEqual(['0.33'])
-    expect(report.phases.find(phase => phase.id === 'draft')?.missing.join('\n')).not.toMatch(/architecture diagram/)
+    expect(report.phases.find(phase => phase.id === 'figures')?.missing.join('\n')).not.toMatch(/architecture diagram/)
   })
 
   it('reports citations without any bibliography and strips only unescaped comments', async () => {
-    const p = await fixture('paper-first')
+    const p = await fixture('proposal')
     await write(p.root, 'paper/main.tex', '\\documentclass{article}\n\\cite{x}\n')
     const report = await runChecks(p, 100000)
     expect(errors(report, 'cite').map(f => f.message)).toEqual([

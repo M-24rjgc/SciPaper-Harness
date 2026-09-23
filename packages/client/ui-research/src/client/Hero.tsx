@@ -1,7 +1,7 @@
 /** Blank-session entry: the research mark, the promise, and the three ways to open. */
 import { useEffect, type ReactNode } from 'react'
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
-import { useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
+import { useModes, useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
 import { ContextCards } from './ContextCards.tsx'
 import { standingText } from './format.ts'
 import styles from './Hero.module.css'
@@ -80,7 +80,7 @@ function ResumeContent(props: WorkbenchProps & { resume: ResearchProject }): Rea
     <span className={styles.cardBody}>{t('heroCardResumeBody')}</span>
     <span className={styles.resumeBox}>
       <span className={styles.resumeTitle}>{resume.title}</span>
-      <span className={styles.resumeStage}>{standingText(resume, t)}</span>
+      <span className={styles.resumeStage}>{standingText(resume, useModes(props), t)}</span>
     </span>
   </>
 }

@@ -8,18 +8,19 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
-import type { ResearchMode, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchProjectActions, ResearchStatusChip } from '../src/client/Header.tsx'
 import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
+import { MODES } from './fixtures/modes.ts'
 
 afterEach(() => { cleanup() })
 
 const SESSION = 'session-header'
 
-function project(root: string, mode?: ResearchMode): ResearchProject {
-  return newProject({ root, title: 'Sparse attention scaling study', brief: '', ...(mode ? { mode } : {}) }, 'workspace' as WorkspaceId)
+function project(root: string, mode?: string, route?: string): ResearchProject {
+  return newProject({ root, title: 'Sparse attention scaling study', brief: '', ...(mode ? { mode } : {}), ...(route ? { route } : {}) }, 'workspace' as WorkspaceId)
 }
 
 function propsFor(
@@ -27,7 +28,7 @@ function propsFor(
   log: { expanded: string[]; progress: number },
   directories: Record<string, string> = {},
 ): WorkbenchProps & SessionSeatProps {
-  const view = { snapshot: projects.length > 0 ? { projects, preferences: {}, components: [] } : null, tasks: [], busy: false, error: '', response: null }
+  const view = { snapshot: projects.length > 0 ? { projects, preferences: {}, components: [], modes: MODES } : null, tasks: [], busy: false, error: '', response: null }
   return {
     sessionId: SESSION,
     t: (key: string, params?: Record<string, unknown>) => {
@@ -45,49 +46,56 @@ const log = (): { expanded: string[]; progress: number } => ({ expanded: [], pro
 
 describe('the header names where this session\'s project stands', () => {
   it('draws nothing until the session works in a research project', () => {
-    const stranger = project('C:\\research\\other', 'paper-first')
+    const stranger = project('C:\\research\\other', 'spark-to-paper')
     stranger.sessionId = 'session-elsewhere'
     expect(render(<ResearchStatusChip {...propsFor([], log())} />).container.textContent).toBe('')
     expect(render(<ResearchStatusChip {...propsFor([stranger], log())} />).container.textContent).toBe('')
     expect(render(<ResearchProjectActions {...propsFor([stranger], log())} />).container.textContent).toBe('')
   })
 
-  it('names an unrouted project as such, and a routed one by its mode before any check', () => {
-    const unrouted = project('C:\\research\\a')
-    unrouted.sessionId = SESSION
-    expect(render(<ResearchStatusChip {...propsFor([unrouted], log())} />).container.textContent).toBe(zh.modeUnset)
+  it('names the mode before any check, and a pack that is gone by its id', () => {
+    const general = project('C:\\research\\a')
+    general.sessionId = SESSION
+    expect(render(<ResearchStatusChip {...propsFor([general], log())} />).container.textContent).toBe('通用')
     cleanup()
-    const routed = project('C:\\research\\b', 'from-results')
+    const routed = project('C:\\research\\b', 'spark-to-paper', 'data')
     routed.sessionId = SESSION
-    expect(render(<ResearchStatusChip {...propsFor([routed], log())} />).container.textContent).toBe(zh.modeShortFromResults)
+    expect(render(<ResearchStatusChip {...propsFor([routed], log())} />).container.textContent).toBe('spark-to-paper')
+    cleanup()
+    routed.mode = 'retired-pack'
+    expect(render(<ResearchStatusChip {...propsFor([routed], log())} />).container.textContent).toBe('retired-pack')
   })
 
   it('names the first unfinished phase and how many are done, and the automatic autonomy', () => {
-    const mine = project('C:\\research\\mine', 'paper-first')
+    const mine = project('C:\\research\\mine', 'spark-to-paper', 'proposal')
     mine.autonomy = 'automatic'
     mine.lastCheck = {
-      clean: false, scope: 'all', mode: 'paper-first', checkedAt: '',
-      phases: [{ id: 'idea', done: true, missing: [] }, { id: 'literature', done: false, missing: ['x'] }, { id: 'plan', done: false, missing: [] }],
+      clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '',
+      phases: [{ id: 'plan', done: true, missing: [] }, { id: 'cite', done: false, missing: ['x'] }, { id: 'experiments', done: false, missing: [] }],
       findings: [],
     }
     // Any conversation opened inside the project folder shows it, bound or not.
     const records = log()
     const chip = render(<ResearchStatusChip {...propsFor([mine], records, { [SESSION]: 'c:/research/MINE/paper' })} />)
-    expect(chip.container.textContent).toBe(`${zh.modeShortPaperFirst} · ${zh.phase_literature} 1/3·${zh.autonomyShortAutomatic}`)
+    expect(chip.container.textContent).toBe(`spark-to-paper · 引用 1/3·${zh.autonomyShortAutomatic}`)
     fireEvent.click(chip.getByRole('button'))
     expect(records.progress).toBe(1)
   })
 
   it('says the check is clean once every phase is done', () => {
-    const mine = project('/research/mine', 'free')
+    const mine = project('/research/mine', 'spark-to-paper', 'proposal')
     mine.sessionId = SESSION
-    mine.lastCheck = { clean: true, scope: 'all', mode: 'free', checkedAt: '', phases: [{ id: 'submission', done: true, missing: [] }], findings: [] }
-    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe(`${zh.modeShortFree} · ${zh.checkClean}`)
+    mine.lastCheck = { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '', phases: [{ id: 'submission', done: true, missing: [] }], findings: [] }
+    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe(`spark-to-paper · ${zh.checkClean}`)
+    cleanup()
+    // A check made on another route no longer says where this one stands.
+    mine.route = 'data'
+    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe('spark-to-paper')
   })
 
   it('opens the project files of this session\'s project, never a stranger\'s', () => {
-    const stranger = project('/research/stranger', 'free')
-    const mine = project('/research/mine', 'free')
+    const stranger = project('/research/stranger')
+    const mine = project('/research/mine')
     mine.sessionId = SESSION
     const records = log()
     const actions = render(<ResearchProjectActions {...propsFor([stranger, mine], records)} />)

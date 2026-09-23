@@ -1,7 +1,7 @@
 /** Validation for durable records and incoming research commands. */
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
-import type { ProjectId, ResearchProject, ResearchPreferences, ResearchTask } from './types.ts'
+import type { CheckId, ProjectId, ResearchProject, ResearchPreferences, ResearchTask } from './types.ts'
 
 const id = z.string().min(1)
 const integer = z.number().int().nonnegative()
@@ -14,10 +14,9 @@ export const locatorSchema = z.object({
 })
 export const evidenceLinkSchema = z.object({ evidenceId: id, revision: integer, locator: locatorSchema, quote: z.string() })
 export const artifactKinds = ['manuscript', 'diagram', 'figure', 'code', 'bibliography', 'supplement', 'image'] as const
-export const modes = ['paper-first', 'from-results', 'free'] as const
 export const autonomies = ['checkpoints', 'automatic'] as const
-export const checkIds = ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'review', 'stale', 'claims', 'structure'] as const
-export const phaseIds = ['idea', 'literature', 'plan', 'draft', 'experiments', 'results', 'polish', 'submission', 'ingest', 'write', 'figures'] as const
+/** The base checks; mode packs add gates under their own ids. */
+export const checkIds = ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'review', 'stale', 'claims', 'structure'] as const satisfies readonly CheckId[]
 const dependency = z.object({ id, revision: integer })
 
 export const experimentSpecSchema = z.object({
@@ -110,19 +109,23 @@ const visualReviewSchema = z.object({
 const decisionSchema = z.object({
   id, question: z.string().min(1), answer: z.string().min(1), by: z.enum(['user', 'agent']), rationale: z.string(), at: id,
 })
+// Mode, route, phase and check ids are stored as plain strings: which packs are
+// installed is the registry's business, and a record must still open when a
+// pack it names has gone.
 const findingSchema = z.object({
-  check: z.enum(checkIds), severity: z.enum(['error', 'warning']), message: z.string(),
+  check: id, severity: z.enum(['error', 'warning']), message: z.string(),
   file: z.string().optional(), line: integer.optional(),
 })
 const checkReportSchema = z.object({
-  clean: z.boolean(), scope: z.string(), mode: z.enum(modes).optional(),
-  phases: z.array(z.object({ id: z.enum(phaseIds), done: z.boolean(), missing: z.array(z.string()) })),
+  clean: z.boolean(), scope: z.string(), mode: z.string().optional(), route: z.string().optional(),
+  phases: z.array(z.object({ id, done: z.boolean(), missing: z.array(z.string()) })),
   findings: z.array(findingSchema), checkedAt: id,
 })
 
 const projectSchema = z.object({
   id, workspaceId: id, title: id, root: id,
-  mode: z.enum(modes).optional(), modeReason: z.string().optional(), modeSetBy: z.enum(['user', 'agent']).optional(),
+  mode: id, route: z.string().optional(), venue: z.string().optional(),
+  modeReason: z.string().optional(), modeSetBy: z.enum(['user', 'agent']).optional(),
   autonomy: z.enum(autonomies), brief: z.string(),
   revision: integer, researchRevision: integer,
   createdAt: id, updatedAt: id,
@@ -139,14 +142,43 @@ const projectSchema = z.object({
 })
 
 /**
- * Carry a version-1 record into the current shape. Version 1 drove a stage
- * machine: its stages, pending prompt, pause flag and experiment budget have no
- * successor, and settled stage confirmations become user decisions so nothing
- * the user decided is lost. Current-shape records pass through untouched.
- * @param value - one stored project document of either version.
+ * Carry a stored record of any earlier shape into the current one. Each step
+ * leaves current-shape records untouched, so the chain can run on every read.
+ * @param value - one stored project document.
  * @returns the document in the current shape, still to be validated.
  */
 export function migrateProject(value: unknown): unknown {
+  return migrateModes(migrateStages(value))
+}
+
+/** Modes that were built into the service before modes became packs. */
+const LEGACY_MODES: Record<string, { mode: string; route?: string }> = {
+  'paper-first': { mode: 'spark-to-paper', route: 'proposal' },
+  'from-results': { mode: 'spark-to-paper', route: 'data' },
+  'free': { mode: 'general' },
+}
+
+/**
+ * Map a built-in mode onto the pack that succeeded it: both pipelines were
+ * spark-to-paper's routes all along, and an unrouted or free project is a
+ * general one. Its last check named phases of the old pipeline, so it goes;
+ * the next check writes a new one.
+ */
+function migrateModes(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return value
+  const record = value as Record<string, unknown>
+  const mode = typeof record.mode === 'string' ? record.mode : undefined
+  if (mode !== undefined && !Object.hasOwn(LEGACY_MODES, mode)) return value
+  const { lastCheck: _lastCheck, ...rest } = record
+  return { ...rest, ...(mode === undefined ? { mode: 'general' } : LEGACY_MODES[mode]) }
+}
+
+/**
+ * Version 1 drove a stage machine: its stages, pending prompt, pause flag and
+ * experiment budget have no successor, and settled stage confirmations become
+ * user decisions so nothing the user decided is lost.
+ */
+function migrateStages(value: unknown): unknown {
   if (typeof value !== 'object' || value === null || !('stages' in value)) return value
   const legacy = value as Record<string, unknown> & {
     mode?: string
@@ -202,7 +234,7 @@ const artifact = {
 const runRef = { ...base, runId: id }
 
 export const commandSchema = z.discriminatedUnion('action', [
-  z.object({ ...base, action: z.literal('set-mode'), mode: z.enum(modes), reason: z.string().optional() }),
+  z.object({ ...base, action: z.literal('set-mode'), mode: id, route: id.optional(), reason: z.string().optional() }),
   z.object({ ...base, action: z.literal('set-autonomy'), autonomy: z.enum(autonomies) }),
   z.object({
     ...base, action: z.literal('record-decision'), question: z.string().trim().min(1), answer: z.string().trim().min(1),

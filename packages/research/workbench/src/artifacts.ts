@@ -419,8 +419,8 @@ export async function exportPaper(project: ResearchProject, limit: number, repor
   const final = report.clean && compilation !== undefined
   // This manifest is part of the user's reproducibility output, not a development report.
   const manifest = {
-    schema: 2, title: project.title, final, mode: project.mode, artifacts: project.artifacts, claims: project.claims,
-    decisions: project.decisions,
+    schema: 2, title: project.title, final, mode: project.mode, route: project.route, venue: project.venue,
+    artifacts: project.artifacts, claims: project.claims, decisions: project.decisions,
     sources: project.evidence.map(({ chunks: _chunks, originalPath: _original, ...source }) => source),
     experiments: project.experiments, check: report,
   }

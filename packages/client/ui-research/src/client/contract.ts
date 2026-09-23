@@ -2,7 +2,7 @@
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {
-  CreateProjectRequest, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
+  CreateProjectRequest, ModeSummary, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
   ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 
@@ -99,4 +99,9 @@ export function sessionProject<T extends { sessionId?: string | undefined; root:
 /** This seat's project, read through the injected stores. */
 export function useSessionProject(props: WorkbenchProps & SessionSeatProps): ResearchProject | undefined {
   return sessionProject(props.useResearch(s => s).snapshot?.projects, props.sessionId, props.useDirectories(s => s))
+}
+
+/** The installed modes, read through the injected store; none before the first snapshot arrives. */
+export function useModes(props: WorkbenchProps): readonly ModeSummary[] {
+  return props.useResearch(s => s).snapshot?.modes ?? []
 }

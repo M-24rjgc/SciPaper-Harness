@@ -169,8 +169,15 @@ describe('the research service records; it never drives the agent', () => {
     expect([...first.registry.keys()].sort()).toEqual([
       'research_artifact', 'research_check', 'research_environment', 'research_evidence', 'research_experiment', 'research_media', 'research_project', 'research_task',
     ])
-    const p = await first.service.create({ title: 'Study', root: join(root, 'paper'), brief: 'One small spark', mode: 'paper-first' })
-    expect(p).toMatchObject({ sessionId: 'session-1', mode: 'paper-first', autonomy: 'checkpoints' })
+    const announced: unknown[] = []
+    ctx!.on('research/mode', (event) => { announced.push(event) })
+    const p = await first.service.create({ title: 'Study', root: join(root, 'paper'), brief: 'One small spark', mode: 'spark-to-paper' })
+    expect(p).toMatchObject({ sessionId: 'session-1', mode: 'spark-to-paper', route: 'proposal', autonomy: 'checkpoints' })
+    expect(announced).toEqual([{ projectId: p.id, root: p.root, mode: 'spark-to-paper', route: 'proposal' }])
+    await expect(first.service.create({ title: 'x', root: join(root, 'x'), brief: '', mode: 'nope' })).rejects.toThrow(/Unknown mode nope; installed modes: general, spark-to-paper/)
+    await expect(first.service.create({ title: 'x', root: join(root, 'x'), brief: '', mode: 'spark-to-paper', route: 'nope' })).rejects.toThrow(/has no route nope/)
+    await expect(first.service.create({ title: 'x', root: join(root, 'x'), brief: '', route: 'idea' })).rejects.toThrow(/Mode general has no routes/)
+    expect((await first.service.snapshot()).modes.map(mode => mode.id)).toEqual(['general', 'spark-to-paper'])
     for (const directory of ['paper', 'figures', 'code', 'data', '.research', 'exports']) expect(existsSync(join(p.root, directory))).toBe(true)
     expect((await first.service.create({ title: p.title, root: p.root, brief: p.brief })).sessionId).toBe('session-1')
     const bound = await first.service.createProject({ title: 'Bound', root: join(root, 'bound'), brief: '' }, 'agent-session')
@@ -210,7 +217,7 @@ describe('the research service records; it never drives the agent', () => {
       table.set(p.id, { ...legacy, mode: 'evidence', paused: false, stages: [{ id: 'question', summary: 'Q', confirmedRevision: 1, confirmedAt: '2026-01-01T00:00:00.000Z' }] })
     }
     const second = await boot(pool)
-    expect(second.service.getProject(p.id)).toMatchObject({ mode: 'from-results', autonomy: 'checkpoints', decisions: [{ answer: 'Q', by: 'user' }] })
+    expect(second.service.getProject(p.id)).toMatchObject({ mode: 'spark-to-paper', route: 'data', autonomy: 'checkpoints', decisions: [{ answer: 'Q', by: 'user' }] })
   })
 
   it('keeps evidence text out of the stored ledger and restores it after a restart', async () => {
@@ -255,10 +262,15 @@ describe('the research service records; it never drives the agent', () => {
     const { service } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Ledger', root: join(root, 'p'), brief: '' })
     const run = (request: Record<string, unknown>, actor: 'user' | 'agent' = 'agent') => service.execute({ projectId: p.id, ...request } as never, signal, actor)
-    expect((await run({ action: 'set-mode', mode: 'from-results', reason: 'CSV results exist' })).message).toMatch(/ingest → plan/)
-    expect(service.getProject(p.id)).toMatchObject({ mode: 'from-results', modeReason: 'CSV results exist', modeSetBy: 'agent' })
-    expect((await run({ action: 'set-mode', mode: 'free' }, 'user')).message).toMatch(/no pipeline/)
-    expect('modeReason' in service.getProject(p.id)).toBe(false)
+    const announced: { mode: string; route?: string }[] = []
+    ctx!.on('research/mode', (event) => { announced.push(event) })
+    expect((await run({ action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: 'CSV results exist' })).message)
+      .toBe('Mode spark-to-paper (data): data → plan → cite → write → refine → review → figures → latex → submission')
+    expect(service.getProject(p.id)).toMatchObject({ mode: 'spark-to-paper', route: 'data', modeReason: 'CSV results exist', modeSetBy: 'agent' })
+    await expect(run({ action: 'set-mode', mode: 'spark-to-paper', route: 'sideways' })).rejects.toThrow(/has no route sideways/)
+    expect((await run({ action: 'set-mode', mode: 'general' }, 'user')).message).toBe('Mode General: no pipeline; run checks when useful')
+    expect('modeReason' in service.getProject(p.id) || 'route' in service.getProject(p.id)).toBe(false)
+    expect(announced.map(event => [event.mode, event.route])).toEqual([['spark-to-paper', 'data'], ['general', undefined]])
     await run({ action: 'set-autonomy', autonomy: 'automatic' }, 'user')
     await run({ action: 'record-decision', question: 'Which dataset?', answer: 'CIFAR-10', rationale: '  small and standard ' })
     expect(service.getProject(p.id)).toMatchObject({ autonomy: 'automatic', decisions: [{ question: 'Which dataset?', answer: 'CIFAR-10', by: 'agent', rationale: 'small and standard' }] })
@@ -444,7 +456,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(service.tasks().find(task => task.id === job.jobId)?.result?.project?.evidence).toBeDefined()
 
     // A finished paper, compiled and looked at, exports as a submission.
-    const clean = await service.create({ title: 'Clean', root: join(root, 'clean'), brief: '', mode: 'free' })
+    const clean = await service.create({ title: 'Clean', root: join(root, 'clean'), brief: '', mode: 'general' })
     const tidy = (request: Record<string, unknown>) => service.execute({ projectId: clean.id, ...request } as never, signal, 'agent')
     await write(join(clean.root, 'paper/main.tex'), '\\documentclass{article}\n\\begin{document}\nHello.\n\\end{document}\n')
     await tidy({ action: 'compile', engine: 'pdflatex' })

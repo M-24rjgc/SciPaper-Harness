@@ -9,17 +9,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
-import type { ArtifactId, ResearchMode, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { ArtifactId, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchDock, ResearchStarters, ResearchHeroMark, ResearchPromise } from '../src/client/Hero.tsx'
 import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
+import { MODES } from './fixtures/modes.ts'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 const SESSION = 'session-hero'
 
-function project(title: string, updatedAt: string, mode?: ResearchMode): ResearchProject {
+function project(title: string, updatedAt: string, mode?: string): ResearchProject {
   const record = newProject({ root: `/research/${title}`, title, brief: '', ...(mode ? { mode } : {}) }, 'workspace' as WorkspaceId)
   record.updatedAt = updatedAt
   return record
@@ -28,7 +29,7 @@ function project(title: string, updatedAt: string, mode?: ResearchMode): Researc
 function propsFor(
   projects: ResearchProject[] | null, blank: boolean, opened: string[] = [], progress: { n: number } = { n: 0 },
 ): WorkbenchProps & SessionSeatProps & { session: { blank: boolean } } {
-  const view = { snapshot: projects === null ? null : { projects, preferences: {}, components: [] }, tasks: [], busy: false, error: '', response: null }
+  const view = { snapshot: projects === null ? null : { projects, preferences: {}, components: [], modes: MODES }, tasks: [], busy: false, error: '', response: null }
   return {
     sessionId: SESSION,
     t: (key: string, params?: Record<string, unknown>) => {
@@ -74,15 +75,16 @@ describe('the openings a blank session offers', () => {
   })
 
   it('offers the most recently touched project, standing by its last check, and walks back into it', () => {
-    const older = project('older', '2026-09-01T00:00:00.000Z', 'free')
+    const older = project('older', '2026-09-01T00:00:00.000Z')
     older.sessionId = 'session-old'
-    const newer = project('newer', '2026-09-20T00:00:00.000Z', 'paper-first')
+    const newer = project('newer', '2026-09-20T00:00:00.000Z', 'spark-to-paper')
     newer.sessionId = 'session-new'
-    newer.lastCheck = { clean: false, scope: 'all', mode: 'paper-first', checkedAt: '', findings: [], phases: [{ id: 'idea', done: true, missing: [] }, { id: 'literature', done: false, missing: [] }] }
+    newer.route = 'proposal'
+    newer.lastCheck = { clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '', findings: [], phases: [{ id: 'plan', done: true, missing: [] }, { id: 'cite', done: false, missing: [] }] }
     const opened: string[] = []
     const view = render(<ResearchStarters {...propsFor([older, newer], true, opened)} />)
     expect(view.getByText('newer')).toBeTruthy()
-    expect(view.getByText(`${zh.modeShortPaperFirst} · ${zh.phase_literature} 1/2`)).toBeTruthy()
+    expect(view.getByText('spark-to-paper · 引用 1/2')).toBeTruthy()
     fireEvent.click(view.getByRole('button', { name: new RegExp(zh.heroCardResume) }))
     expect(opened).toEqual(['session-new'])
   })
@@ -91,9 +93,9 @@ describe('the openings a blank session offers', () => {
     const unbound = project('unbound', '2026-09-20T00:00:00.000Z')
     const first = render(<ResearchStarters {...propsFor([unbound], true)} />)
     expect(first.queryByRole('button')).toBeNull()
-    expect(first.getByText(zh.modeUnset)).toBeTruthy()
+    expect(first.getByText('通用')).toBeTruthy()
     cleanup()
-    const bound = project('bound', '2026-09-20T00:00:00.000Z', 'free')
+    const bound = project('bound', '2026-09-20T00:00:00.000Z')
     bound.sessionId = 'session-9'
     const refusing = { ...propsFor([bound], true), openConversation: () => Promise.reject(new Error('gone')) } as unknown as ReturnType<typeof propsFor>
     const view = render(<ResearchStarters {...refusing} />)
@@ -108,10 +110,10 @@ describe('the dock beside a research conversation', () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
     vi.stubGlobal('cancelAnimationFrame', () => {})
     expect(render(<ResearchDock {...propsFor([], false)} />).container.textContent).toBe('')
-    const stranger = project('stranger', '2026-09-20T00:00:00.000Z', 'free')
+    const stranger = project('stranger', '2026-09-20T00:00:00.000Z')
     stranger.sessionId = 'session-elsewhere'
     expect(render(<ResearchDock {...propsFor([stranger], false)} />).container.textContent).toBe('')
-    const mine = project('mine', '2026-09-20T00:00:00.000Z', 'free')
+    const mine = project('mine', '2026-09-20T00:00:00.000Z')
     mine.sessionId = SESSION
     const progress = { n: 0 }
     render(<ResearchDock {...propsFor([mine], true, [], progress)} />)
@@ -121,7 +123,7 @@ describe('the dock beside a research conversation', () => {
   })
 
   it('keeps the newest claim and figure in view until runs take their place', () => {
-    const mine = project('mine', '2026-09-20T00:00:00.000Z', 'paper-first')
+    const mine = project('mine', '2026-09-20T00:00:00.000Z', 'spark-to-paper')
     mine.sessionId = SESSION
     mine.claims.push({ id: 'c', text: '块稀疏保住了精度', kind: 'hypothesis', state: 'proposed', evidence: [], artifactIds: [] })
     mine.artifacts.push({ id: 'a' as ArtifactId, path: 'figures/arch.svg', kind: 'diagram', revision: 1, sha256: 's', evidence: [], claimIds: [], inputArtifacts: [], stale: false, updatedAt: '', author: 'agent' })
