@@ -15,6 +15,7 @@ export interface DesktopElectronBuilderConfig {
   readonly asarUnpack: readonly string[]
   readonly extraResources: readonly [{ readonly from: string, readonly to: 'runtime' }]
   readonly mac: {
+    readonly icon: string
     readonly identity: string | undefined
     readonly forceCodeSigning: boolean
     readonly notarize: boolean
@@ -24,8 +25,17 @@ export interface DesktopElectronBuilderConfig {
     readonly sign: boolean
     readonly writeUpdateInfo: boolean
   }
+  readonly win: {
+    readonly icon: string
+  }
+  readonly linux: {
+    readonly icon: string
+  }
   readonly nsis: {
     readonly include: string
+    readonly installerIcon: string
+    readonly uninstallerIcon: string
+    readonly installerHeaderIcon: string
   }
   readonly artifactBuildCompleted: (artifact: { readonly file: string }) => Promise<void> | undefined
   readonly publish: readonly [{ readonly provider: 'generic', readonly url: string }] | null

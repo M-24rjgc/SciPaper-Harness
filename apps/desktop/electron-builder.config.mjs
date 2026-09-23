@@ -50,6 +50,9 @@ export function createElectronBuilderConfig(
   }
   // Preview builds never use the upstream update feed.
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
+  // The flask icon, rendered from icons/icon.svg by scripts/generate-icons.mjs.
+  const windowsIcon = fileURLToPath(new URL('./icons/icon.ico', import.meta.url))
+  const appIcon = fileURLToPath(new URL('./icons/icon.png', import.meta.url))
   return {
     appId,
     productName: 'Research Workbench Preview',
@@ -76,6 +79,7 @@ export function createElectronBuilderConfig(
       { from: buildPaths.runtime, to: 'runtime' },
     ],
     mac: {
+      icon: appIcon,
       category: 'public.app-category.developer-tools',
       identity: macOSSigning?.signingIdentity,
       forceCodeSigning: true,
@@ -102,6 +106,7 @@ export function createElectronBuilderConfig(
       )
     },
     win: {
+      icon: windowsIcon,
       forceCodeSigning: !unsigned,
       signtoolOptions: {
         sign: windowsSigner,
@@ -110,11 +115,15 @@ export function createElectronBuilderConfig(
       target: ['nsis'],
     },
     linux: {
+      icon: appIcon,
       category: 'Development',
       target: ['AppImage'],
     },
     nsis: {
       include: fileURLToPath(new URL('./scripts/installer.nsh', import.meta.url)),
+      installerIcon: windowsIcon,
+      uninstallerIcon: windowsIcon,
+      installerHeaderIcon: windowsIcon,
       oneClick: false,
       allowToChangeInstallationDirectory: true,
       differentialPackage: true,

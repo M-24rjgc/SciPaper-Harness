@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { DESKTOP_IPC } from '../src/ipc.ts'
 
 const harness = await vi.hoisted(async () => {
@@ -65,6 +66,9 @@ const harness = await vi.hoisted(async () => {
     getVersion: () => '1.0.0',
     getAppPath: () => 'desktop-test-app',
     requestSingleInstanceLock: () => true,
+    setName: vi.fn(),
+    setPath: vi.fn(),
+    commandLine: { appendSwitch: vi.fn() },
     exit: vi.fn(),
     relaunch: vi.fn(),
     quit: vi.fn(() => {
@@ -141,6 +145,9 @@ beforeEach(() => {
   vi.stubEnv('DSH_DESKTOP_DSH_DIR', 'test-runtime')
   vi.stubGlobal('process', { ...process, resourcesPath: 'desktop-test-resources' })
   vi.stubEnv('DSH_DESKTOP_HOST_INSPECT_PORT', undefined)
+  // main.ts derives its home from these; a test never resolves the user's real ~/.research-workbench.
+  vi.stubEnv('RESEARCH_WORKBENCH_HOME', join(tmpdir(), 'research-workbench-main-startup'))
+  vi.stubEnv('DSH_HOME', undefined)
 })
 
 afterEach(async () => {

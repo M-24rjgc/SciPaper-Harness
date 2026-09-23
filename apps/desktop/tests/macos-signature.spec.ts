@@ -55,8 +55,11 @@ describe('desktop macOS release signature', () => {
       '**/*.{node,dylib,dll,so,exe}',
       '**/@vscode/ripgrep/bin/rg',
     ]))
+    // The product's own identifier; the upstream DSH_DESKTOP_APP_ID never names this app.
+    expect(config.appId).toBe('org.researchworkbench.desktop')
+    expect(createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, RESEARCH_WORKBENCH_APP_ID: 'com.example.research' }, 'darwin', 'arm64').appId)
+      .toBe('com.example.research')
     expect(config).toMatchObject({
-      appId: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
       mac: {
         identity: RELEASE_ENVIRONMENT.DSH_DESKTOP_MACOS_SIGNING_IDENTITY,
         forceCodeSigning: true,
@@ -67,10 +70,8 @@ describe('desktop macOS release signature', () => {
         sign: true,
         writeUpdateInfo: false,
       },
-      publish: [{
-        provider: 'generic',
-        url: 'https://desktop-updates.example.com/_/harness/desktop/stable/mac-arm64/',
-      }],
+      // Preview builds publish no update feed.
+      publish: null,
     })
     expect(typeof config.artifactBuildCompleted).toBe('function')
   })
