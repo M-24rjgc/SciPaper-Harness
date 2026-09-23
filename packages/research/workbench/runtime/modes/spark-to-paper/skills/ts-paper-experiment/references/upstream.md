@@ -199,7 +199,7 @@ that the **code matches the paper**. This gate reads the current paper project's
 new here. See `resources/code_experiment_paper_consistency.md`. Produce six reports under
 `./outputs/reports/`:
 
-1. **`RESULT_PROVENANCE_AUDIT.md`** — every numeric value in tables/figures must trace to:
+1. **`RESULT_TRACEABILITY_AUDIT.md`** — every numeric value in tables/figures must trace to:
    **dataset**, **model/variant**, **seed**, **metric**, **source JSON/CSV/log path**, and
    **aggregation script**. **No value may be guessed, manually invented, or written from memory.**
    **Recompute each reported value from the per-seed raw logs** and confirm it matches (GR-019);
@@ -226,7 +226,7 @@ new here. See `resources/code_experiment_paper_consistency.md`. Produce six repo
    `FULLY_TRACEABLE_AND_CONSISTENT`, `TRACEABLE_WITH_MINOR_GAPS`, `PARTIAL_TRACEABILITY_RISK`,
    `CODE_PAPER_MISMATCH`, or `UNVERIFIED_RESULTS_RISK`.
 
-**Enforcement:** never write a number that fails provenance. If anything is `CLAIMED_BUT_NOT_RUN`,
+**Enforcement:** never write a number that fails traceability. If anything is `CLAIMED_BUT_NOT_RUN`,
 or the verdict is `CODE_PAPER_MISMATCH` / `UNVERIFIED_RESULTS_RISK`, weaken or remove the affected
 claim, or stop and ask the user — do not fabricate (GR-018).
 
@@ -549,7 +549,7 @@ At the end of each paper repair task, Claude Code must print a short message:
 - [ ] `EXPERIMENT_RUN_REPORT.md` **or** `EXPERIMENT_REQUIREMENTS.md`
 - [ ] `outputs/reports/RESULT_ANALYSIS.md`
 - [ ] Code–Experiment–Paper Consistency Gate (Step 5):
-  - [ ] `outputs/reports/RESULT_PROVENANCE_AUDIT.md`
+  - [ ] `outputs/reports/RESULT_TRACEABILITY_AUDIT.md`
   - [ ] `outputs/reports/EXPERIMENT_COMPLETENESS_AUDIT.md`
   - [ ] `outputs/reports/CODE_PAPER_CONSISTENCY_AUDIT.md`
   - [ ] `outputs/reports/EXPERIMENT_DESIGN_CORRECTNESS_AUDIT.md`

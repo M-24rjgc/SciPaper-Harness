@@ -13,6 +13,8 @@ Line endings were normalized to LF. Two scripts carry a patch, each marked `[res
 - `citations_lint.py` matches every natbib and biblatex cite form, optional arguments included (`\citep[see][]{k}`, `\citealp{k}`); upstream missed cites with optional arguments.
 - `check_result_recomputation.py` also scans `.research/runs/`, where a research project keeps its run metrics.
 
+One word is replaced throughout the copies: the repository does not allow an ambiguous origin label, so the experiment resources, `check_result_recomputation.py` and `ts_iieta/template.json` say "traceability" where upstream used that label (the audit report is `RESULT_TRACEABILITY_AUDIT.md`), and the template's key of that name is `source`.
+
 ## Written for this pack
 
 - `mode.yml` — routes, phases, gates and scripts.

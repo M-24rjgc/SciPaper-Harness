@@ -1,0 +1,32 @@
+{
+  "id": "lipics",
+  "name": "LIPIcs v2021",
+  "from": "LIPIcs",
+  "files": [
+    "lipics.cls",
+    "lipics-logo-bw.pdf"
+  ],
+  "rename": {
+    "lipics.cls": "lipics-v2021.cls"
+  },
+  "documentclass": "[a4paper,UKenglish,cleveref,autoref]{lipics-v2021}",
+  "isClass": true,
+  "stylePackage": null,
+  "citationStyle": "numeric",
+  "bibstyle": "plainurl",
+  "options": {
+    "review": "a4paper,UKenglish,cleveref,autoref,anonymous",
+    "final": "a4paper,UKenglish,cleveref,autoref"
+  },
+  "author": "\\author{@@authors@@}{@@affil@@}{@@email@@}{}{}\n\\authorrunning{@@authors@@}\n\\Copyright{@@authors@@}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": [
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice"
+  ]
+}

@@ -2620,7 +2620,7 @@ web_search and web_fetch keep provider selection behind ctx.web so model-visible
 
 ### `research_artifact`
 
-Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. import-template {paths}: copy a venue template into template/. run-script {script, args?}: run one of the scripts the project's mode declares (its skills name them) in the project folder. export {}: zip of sources, PDF, data manifest and the check report.
+Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. list-venues {query?}: the template library, 139 CCF venues (words such as "neurips", "CCF-A", "security"). apply-template {venue, stage?: review|final}: the venue's official style files, example and guide into template/<venue>/ (a paper there, or anywhere in the project, finds them), and template.json, main.tex.tmpl and the style files into the project root for an assembled paper; review is anonymous where the venue is. import-template {paths}: copy template files you have into template/. run-script {script, args?}: run one of the scripts the project's mode declares (its skills name them) in the project folder. export {}: zip of sources, PDF, data manifest and the check report.
 
 ```json
 {
@@ -2632,6 +2632,8 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
         "save-artifact",
         "register-artifact",
         "read-artifact",
+        "list-venues",
+        "apply-template",
         "import-template",
         "compile",
         "render-pages",
@@ -2704,6 +2706,22 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
     "maxPages": {
       "type": "integer",
       "description": "render-pages: page cap"
+    },
+    "query": {
+      "type": "string",
+      "description": "list-venues: words matched against venue id, name, family and CCF tier"
+    },
+    "venue": {
+      "type": "string",
+      "description": "apply-template: a venue id from list-venues"
+    },
+    "stage": {
+      "type": "string",
+      "description": "apply-template: review (the default; anonymous where the venue is) or final",
+      "enum": [
+        "review",
+        "final"
+      ]
     },
     "script": {
       "type": "string",

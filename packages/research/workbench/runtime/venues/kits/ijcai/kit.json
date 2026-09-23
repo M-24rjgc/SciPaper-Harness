@@ -1,0 +1,28 @@
+{
+  "id": "ijcai",
+  "name": "IJCAI 2026",
+  "from": "IJCAI",
+  "files": [
+    "ijcai26.sty",
+    "named.bst"
+  ],
+  "documentclass": "{article}",
+  "isClass": false,
+  "stylePackage": "ijcai26",
+  "citationStyle": "author_year",
+  "bibstyle": "named",
+  "options": {
+    "review": "",
+    "final": ""
+  },
+  "stage": {
+    "review": "\\linenumbers",
+    "final": ""
+  },
+  "author": "\\author{@@authors@@\n\\affiliations\n@@affil@@\n\\emails\n@@email@@}",
+  "anonymousAuthor": "\\author{Anonymous Submission}",
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "notes": []
+}

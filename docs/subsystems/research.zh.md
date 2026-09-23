@@ -37,6 +37,10 @@
 
 门禁是模式包里的 Python 脚本。它用平台 Python 在项目根目录运行（`python -I -X utf8`，不经过 shell，按参数向量传参），输出的最后一行是 `{"findings": [{severity, message, file?, line?}]}`；除此之外的任何输出都记为一条错误发现。检查从不安装 Python：没有它时，每个门禁都报告自己无法运行。`research_artifact` 的 run-script 以同样方式运行模式包为项目当前路线声明的脚本，并返回脚本的输出。spark-to-paper 模式包通过这样一个适配器原样运行上游的检查脚本；它的 `NOTICE.md` 列出了取用、修补和替换了哪些内容。
 
+## 会议模板
+
+`research_artifact` 的 list-venues 与 apply-template 使用一个模板库：139 个 CCF 会议、16 套官方样式（`runtime/venues`，由 `scripts/build_venues.py` 从 CCFA-Skills 构建）。应用一个会议会把样式套件、该会议自己的示例和指南放进 `template/<venue>/`；项目的每个顶层文件夹都在 TeX 搜索路径上，所以项目里任何位置手写的论文都能找到该文档类。同时它把 `template.json`、`main.tex.tmpl` 和样式文件写进项目根目录，供 spark-to-paper 的拼装使用。review 阶段在会议要求匿名时匿名（通过文档类选项或匿名作者块）；final 使用终稿选项。编译时会把会议文档类需要的东西装进托管的 TeX Live：缺失的样式、文档类与参考文献样式文件按提供它们的包安装，字体和图片只在发行版能指出所属包时才安装。
+
 ## 知识图谱
 
 `research_knowledge` 读取科研模式图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式，做法沿用 spark-to-paper 的图谱构建。内置图谱从上游的 AI 语料精简而来，以 `runtime/kg/ai-kg.json.gz` 随包发布：包含模式、带故事字段与五个最近邻的论文，不含向量。`scripts/build_kg.py` 离线转换上游压缩包，读取其中的 networkx pickle 时使用不执行文件中任何代码的反序列化器。项目也可以用 agent 抽取好的语料自建图谱（先 `build-graph`，再 `name-patterns`），存放在 `.research/kg/`。

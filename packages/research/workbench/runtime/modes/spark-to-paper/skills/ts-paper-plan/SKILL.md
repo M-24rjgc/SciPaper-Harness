@@ -11,11 +11,11 @@ Adapted from spark-to-paper-skills `ts-paper-plan` (MIT). The full upstream meth
 
 The suite is template-driven: every later stage reads `template.json` in the project root.
 
-1. Pick the venue: the one the user named, or ask (checkpoints) or choose and record it (automatic). `research_artifact` list-venues shows what is available; `ts_iieta` (Traitement du Signal) and `neurips` are the upstream demo templates.
-2. `research_artifact` apply-template with the venue: it copies `template.json`, `main.tex.tmpl` and the style files into the project and records the venue. This replaces the upstream `template_lint.py` + `cp` step; `research_check` scope `template-lint` validates the copy.
-3. Set `results_mode` in `template.json`: `data_aware` on the data route, `proposal` otherwise. Record the mode in `logs/1_plan.io.md`.
+1. Pick the venue: the one the user named, or ask (checkpoints) or choose and record it (automatic). `research_artifact` list-venues searches the platform's library of 139 CCF venues by name, family or tier (for example `neurips`, `CCF-A security`).
+2. `research_artifact` apply-template with the venue (stage review while drafting, final for camera-ready): it writes `template.json`, `main.tex.tmpl` and the venue's official style files into the project root, puts the kit, its example and the venue guide in `template/<venue>/`, and records the venue. This replaces the upstream `template_lint.py` + `cp` step; `research_check` scope `template-lint` validates the result. Read `template/<venue>/GUIDE.md` and any notes apply-template returns (a style file the library cannot bundle, a guide older than this year's call).
+3. Set `results_mode` in `template.json`: `data_aware` on the data route, `proposal` otherwise; applying a venue again keeps the mode already set. Record it in `logs/1_plan.io.md`.
 
-A demo template must be replaced by the venue's official files before a real submission; if no official template exists for the venue, say so (checkpoints: ask).
+Without an applied venue, assembly falls back to the upstream `ts_iieta` demo style, which is not a venue's kit. A venue outside the library needs its official files from the user (`research_artifact` import-template) — never hand-made ones; say so, and with checkpoints ask.
 
 ## The blueprint
 

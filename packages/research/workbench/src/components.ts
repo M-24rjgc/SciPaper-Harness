@@ -227,20 +227,29 @@ export class ComponentManager {
     })
   }
 
-  /** Install a missing TeX package into the private distribution only. */
-  async installTexPackage(file: string, signal: AbortSignal): Promise<void> {
+  /**
+   * Install the TeX package that ships a missing file, into the private distribution only.
+   * @param file - the missing file's name.
+   * @param signal - cancellation.
+   * @param guess - whether a file the distribution does not list may be tried as a package of its own name.
+   * @returns whether a package was installed; false when the file is in no known package and may not be guessed.
+   */
+  async installTexPackage(file: string, signal: AbortSignal, guess: boolean = true): Promise<boolean> {
     if (this.preferences().texBin) {
       throw new Error(`Install ${file} in your configured TeX distribution, or select the managed distribution`)
     }
-    if (!/^[A-Za-z0-9_.-]+\.(sty|cls|bst)$/.test(file)) throw new Error('Unsupported TeX dependency name')
+    if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(sty|cls|bst|clo|def|fd|tfm|pdf)$/.test(file)) throw new Error('Unsupported TeX dependency name')
     const bin = await this.latex(signal)
     const tlmgr = tlmgrCommand(bin, this.host.platform)
     // tlmgr locates its installation through the first kpsewhich on PATH; another TeX (MiKTeX) must not win.
     const options = { signal, timeoutMs: 600000, env: { PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter) } }
     // The file's package is looked up because many files ship in a package of another name.
     const search = await runProcess(tlmgr.command, [...tlmgr.args, 'search', '--global', '--file', `/${file}`], options)
-    const packageName = packageForFile(search.stdout, file) ?? basename(file).replace(/\.(sty|cls|bst)$/, '')
+    const found = packageForFile(search.stdout, file)
+    if (found === undefined && !guess) return false
+    const packageName = found ?? basename(file).replace(/\.[a-z]+$/, '')
     checked(await runProcess(tlmgr.command, [...tlmgr.args, 'install', packageName], options), `TeX package ${packageName}`)
+    return true
   }
 }
 
@@ -263,10 +272,14 @@ export function tlmgrCommand(bin: string, platform: NodeJS.Platform = process.pl
  */
 export function packageForFile(output: string, file: string): string | undefined {
   let current: string | undefined
+  let example: string | undefined
   for (const line of output.split(/\r?\n/)) {
     const header = /^([A-Za-z0-9_.-]+):\s*$/.exec(line)
     if (header) { current = header[1]; continue }
-    if (current && /^\s/.test(line) && line.trim().endsWith(`/${file}`)) return current
+    if (!current || !/^\s/.test(line) || !line.trim().endsWith(`/${file}`)) continue
+    // A copy under doc/ is some other package's example (confproc ships an IEEEtran.bst); the installed one wins.
+    if (!line.includes('/doc/')) return current
+    example ??= current
   }
-  return undefined
+  return example
 }

@@ -1,0 +1,28 @@
+{
+  "id": "acmart",
+  "name": "ACM acmart",
+  "from": "ACM-MM",
+  "files": [
+    "acmart.cls",
+    "ACM-Reference-Format.bst"
+  ],
+  "documentclass": "[sigconf,review,anonymous]{acmart}",
+  "isClass": true,
+  "stylePackage": null,
+  "citationStyle": "numeric",
+  "bibstyle": "ACM-Reference-Format",
+  "options": {
+    "review": "sigconf,review,anonymous",
+    "final": "sigconf"
+  },
+  "author": "\\author{@@authors@@}\n\\affiliation{\\institution{@@affil@@}\\country{}}\n\\email{@@email@@}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

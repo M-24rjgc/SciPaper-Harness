@@ -69,6 +69,8 @@ One service owns every project record in the `research_workbench` storage domain
 | [`src/mode-skills.ts`](src/mode-skills.ts) | The skill provider that lists the skills of each project's mode |
 | [`src/gates.ts`](src/gates.ts) | Pack gates and scripts: running them with the platform Python and reading their findings |
 | [`runtime/modes/`](runtime/modes) | The shipped mode packs: `general` and `spark-to-paper` (upstream skills, linters and template; see its `NOTICE.md`) |
+| [`src/venues.ts`](src/venues.ts) | The venue template library: listing venues and applying one to a project |
+| [`runtime/venues/`](runtime/venues) | 139 venues over 16 official style kits, with guides and examples, built by [`scripts/build_venues.py`](scripts/build_venues.py) |
 | [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`: loading graphs, recall, novelty, building and naming a project graph |
 | [`src/clustering.ts`](src/clustering.ts) | Tokens, BM25, term vectors, cosine, rank fusion, average-linkage and k-means clustering |
 | [`runtime/kg/`](runtime/kg) | The built-in research-pattern graph, distilled by [`scripts/build_kg.py`](scripts/build_kg.py) |

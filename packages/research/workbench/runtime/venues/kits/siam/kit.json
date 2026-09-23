@@ -1,0 +1,29 @@
+{
+  "id": "siam",
+  "name": "SIAM (siamltex)",
+  "from": "SIAM",
+  "files": [
+    "siamltex.cls",
+    "siam10.clo",
+    "siam.bst"
+  ],
+  "documentclass": "[final]{siamltex}",
+  "isClass": true,
+  "stylePackage": null,
+  "citationStyle": "numeric",
+  "bibstyle": "siam",
+  "options": {
+    "review": "final",
+    "final": "final"
+  },
+  "author": "\\author{@@authors@@\\thanks{@@affil@@ (@@email@@).}}",
+  "anonymousAuthor": "\\author{Anonymous Authors}",
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

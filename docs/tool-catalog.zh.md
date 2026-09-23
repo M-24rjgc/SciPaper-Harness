@@ -2628,7 +2628,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_artifact`
 
-论文文件、LaTeX 与导出。用普通文件工具写下的文件同样计入；register-artifact {path, kind} 记录文件由什么产生（证据关联，以及输入文件，例如一张图背后的数据和脚本）。save-artifact {path, content, kind} 写入并记录；expectedRevision 可选，只用于防止覆盖更新的编辑。类型：manuscript、diagram、figure、code、bibliography、supplement、image。compile {path?, engine}：构建 PDF（path 默认为主 .tex）。render-pages {maxPages?}：最新 PDF 的 PNG 页面，逐页用 read_image 查看。import-template {paths}：把投稿模板复制到 template/。run-script {script, args?}：在项目文件夹里运行项目所在模式声明的某个脚本（模式的技能会点名）。export {}：包含源文件、PDF、数据清单与检查报告的压缩包。
+论文文件、LaTeX 与导出。用普通文件工具写下的文件同样计入；register-artifact {path, kind} 记录文件由什么产生（证据关联，以及输入文件，例如一张图背后的数据和脚本）。save-artifact {path, content, kind} 写入并记录；expectedRevision 可选，只用于防止覆盖更新的编辑。类型：manuscript、diagram、figure、code、bibliography、supplement、image。compile {path?, engine}：构建 PDF（path 默认为主 .tex）。render-pages {maxPages?}：最新 PDF 的 PNG 页面，逐页用 read_image 查看。list-venues {query?}：模板库，139 个 CCF 会议（可用 "neurips"、"CCF-A"、"security" 这样的词检索）。apply-template {venue, stage?: review|final}：把该会议的官方样式文件、示例与指南放进 template/<venue>/（写在那里、或项目里任何位置的论文都能找到它们），并把 template.json、main.tex.tmpl 和样式文件放进项目根目录，供拼装论文使用；review 阶段在会议要求匿名时匿名。import-template {paths}：把你手头的模板文件复制到 template/。run-script {script, args?}：在项目文件夹里运行项目所在模式声明的某个脚本（模式的技能会点名）。export {}：包含源文件、PDF、数据清单与检查报告的压缩包。
 
 ```json
 {
@@ -2640,6 +2640,8 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
         "save-artifact",
         "register-artifact",
         "read-artifact",
+        "list-venues",
+        "apply-template",
         "import-template",
         "compile",
         "render-pages",
@@ -2712,6 +2714,22 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "maxPages": {
       "type": "integer",
       "description": "render-pages: page cap"
+    },
+    "query": {
+      "type": "string",
+      "description": "list-venues: words matched against venue id, name, family and CCF tier"
+    },
+    "venue": {
+      "type": "string",
+      "description": "apply-template: a venue id from list-venues"
+    },
+    "stage": {
+      "type": "string",
+      "description": "apply-template: review (the default; anonymous where the venue is) or final",
+      "enum": [
+        "review",
+        "final"
+      ]
     },
     "script": {
       "type": "string",

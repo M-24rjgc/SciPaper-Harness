@@ -1,0 +1,2087 @@
+{
+ "version": 1,
+ "source": "CCFA-Skills ccf-latex-templates and venue guides (MIT)",
+ "venues": [
+  {
+   "id": "aaai",
+   "name": "AAAI",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "aaai",
+   "anonymous": true,
+   "url": "https://aaai.org/conference/aaai/aaai-26",
+   "guide": "aaai.md",
+   "example": "examples/aaai",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "acl",
+   "name": "ACL",
+   "family": null,
+   "tier": null,
+   "kit": "acl",
+   "anonymous": true,
+   "url": null,
+   "guide": "acl.md",
+   "example": "examples/acl",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Not bundled: acl_natbib.bst; get it from the venue's official kit",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "acm",
+   "name": "ACM (acmart)",
+   "family": "Publisher",
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "acm-mm",
+   "name": "ACM MM",
+   "family": "Multimedia",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.acmmm.org/2026",
+   "guide": "acm-mm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ase",
+   "name": "ASE",
+   "family": "SE",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://conf.researchr.org/track/ase-2026/ase-2026-papers",
+   "guide": "ase.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "asiacrypt",
+   "name": "ASIACRYPT",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "asplos",
+   "name": "ASPLOS",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "asplos.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "bibm",
+   "name": "BIBM",
+   "family": "Bioinformatics / AI",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://ieeebibm.org",
+   "guide": "bibm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "cade",
+   "name": "CADE",
+   "family": "Theorem Proving",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://cade2026.compute.dela",
+   "guide": "cade.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "cav",
+   "name": "CAV",
+   "family": "Theory",
+   "tier": "CCF-A",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://cavconference.org/2026",
+   "guide": "cav.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ccc",
+   "name": "CCC",
+   "family": "Complexity",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": "https://computationalcomplexity.org",
+   "guide": "ccc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ccs",
+   "name": "CCS",
+   "family": "Security",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.sigsac.org/ccs/CCS2026",
+   "guide": "ccs.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ches",
+   "name": "CHES",
+   "family": "Security",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://ches.iacr.org/2026",
+   "guide": "ches.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "chi",
+   "name": "CHI",
+   "family": "HCI",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://chi2026.acm.org",
+   "guide": "chi.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "cikm",
+   "name": "CIKM",
+   "family": "DB/Mining",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.cikm2026.org",
+   "guide": "cikm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "cluster",
+   "name": "CLUSTER",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "cluster.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "coling",
+   "name": "COLING",
+   "family": null,
+   "tier": null,
+   "kit": "acl",
+   "anonymous": true,
+   "url": null,
+   "guide": "coling.md",
+   "example": "examples/acl",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Not bundled: acl_natbib.bst; get it from the venue's official kit",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "concur",
+   "name": "CONCUR",
+   "family": "Concurrency",
+   "tier": "CCF-B",
+   "kit": "lipics",
+   "anonymous": false,
+   "url": "https://concur2026.compute.dela",
+   "guide": "concur.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Kit corrected from the upstream mapping to LIPIcs v2021",
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "conext",
+   "name": "CoNEXT",
+   "family": "Networks",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://conext2026.sigcomm.org",
+   "guide": "conext.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "conll",
+   "name": "CoNLL",
+   "family": null,
+   "tier": null,
+   "kit": "acl",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": "examples/acl",
+   "verified": null,
+   "notes": [
+    "Not bundled: acl_natbib.bst; get it from the venue's official kit"
+   ]
+  },
+  {
+   "id": "crypto",
+   "name": "CRYPTO",
+   "family": "Security",
+   "tier": "CCF-A",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://crypto.iacr.org/2026",
+   "guide": "crypto.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "cscw",
+   "name": "CSCW",
+   "family": "HCI",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://cscw.acm.org/2026",
+   "guide": "cscw.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Published in a PACM journal: single-column acmsmall format",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ],
+   "classOptions": {
+    "review": "acmsmall,screen,review,anonymous",
+    "final": "acmsmall,screen"
+   }
+  },
+  {
+   "id": "cvpr",
+   "name": "CVPR",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "cvpr",
+   "anonymous": true,
+   "url": "https://cvpr2026.thecvf.com",
+   "guide": "cvpr.md",
+   "example": "examples/cvpr",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "dac",
+   "name": "DAC",
+   "family": "Architecture",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.dac.com",
+   "guide": "dac.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "dasfaa",
+   "name": "DASFAA",
+   "family": "DB",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://dasfaa2026.github.io/",
+   "guide": "dasfaa.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "date",
+   "name": "DATE",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "date.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "eccv",
+   "name": "ECCV",
+   "family": "AI",
+   "tier": "CCF-B",
+   "kit": "eccv",
+   "anonymous": true,
+   "url": "https://eccv.ecva.net/Conferences/2026",
+   "guide": "eccv.md",
+   "example": "examples/eccv",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ecml-pkdd",
+   "name": "ECML PKDD",
+   "family": "ML/DB",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://ecmlpkdd.org/2026",
+   "guide": "ecml-pkdd.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ecoop",
+   "name": "ECOOP",
+   "family": "SE/PL",
+   "tier": "CCF-B",
+   "kit": "lipics",
+   "anonymous": true,
+   "url": "https://www.ecoop.org",
+   "guide": "ecoop.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Kit corrected from the upstream mapping to LIPIcs v2021",
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "emnlp",
+   "name": "EMNLP",
+   "family": null,
+   "tier": null,
+   "kit": "acl",
+   "anonymous": true,
+   "url": null,
+   "guide": "emnlp.md",
+   "example": "examples/acl",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Not bundled: acl_natbib.bst; get it from the venue's official kit",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "esa",
+   "name": "ESA",
+   "family": "Algorithms",
+   "tier": "CCF-B",
+   "kit": "lipics",
+   "anonymous": false,
+   "url": "https://esa2026.compute.dela",
+   "guide": "esa.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Kit corrected from the upstream mapping to LIPIcs v2021",
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "esorics",
+   "name": "ESORICS",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "euro-par",
+   "name": "Euro-Par",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "eurocrypt",
+   "name": "EUROCRYPT",
+   "family": "Security",
+   "tier": "CCF-A",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://eurocrypt.iacr.org/2026",
+   "guide": "eurocrypt.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "eurosys",
+   "name": "EuroSys",
+   "family": "Systems",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://2026.eurosys.org",
+   "guide": "eurosys.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "fast",
+   "name": "FAST",
+   "family": "Systems",
+   "tier": "CCF-A",
+   "kit": "usenix",
+   "anonymous": true,
+   "url": "https://www.usenix.org/conference/fast26",
+   "guide": "fast.md",
+   "example": "examples/fast",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "fm",
+   "name": "FM",
+   "family": "SE",
+   "tier": "CCF-A",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://formal-methods-26.weebly.com",
+   "guide": "fm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "focs",
+   "name": "FOCS",
+   "family": "Theory",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://focs2026.eecs.stanford.edu",
+   "guide": "focs.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "fse",
+   "name": "ESEC/FSE",
+   "family": "SE",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://conf.researchr.org/track/fse-2026/fse-2026-papers",
+   "guide": "fse.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "globecom",
+   "name": "GLOBECOM",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "hotnets",
+   "name": "HotNets",
+   "family": "Networks",
+   "tier": "CCF-C",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://conext2026.sigcomm.org/hotnets",
+   "guide": "hotnets.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "hotstorage",
+   "name": "HotStorage",
+   "family": null,
+   "tier": null,
+   "kit": "usenix",
+   "anonymous": false,
+   "url": null,
+   "guide": "hotstorage.md",
+   "example": "examples/fast",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "hpca",
+   "name": "HPCA",
+   "family": "Architecture",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://hpca2026.ece.ufl.edu",
+   "guide": "hpca.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "hpdc",
+   "name": "HPDC",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "icalp",
+   "name": "ICALP",
+   "family": "Theory",
+   "tier": "CCF-B",
+   "kit": "lipics",
+   "anonymous": false,
+   "url": "https://icalp2026.compute.dela",
+   "guide": "icalp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Kit corrected from the upstream mapping to LIPIcs v2021",
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icassp",
+   "name": "ICASSP",
+   "family": "Signal Processing",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": "https://2026.ieeeicassp.org/",
+   "guide": "icassp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icc",
+   "name": "ICC",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "iccad",
+   "name": "ICCAD",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "iccad.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "iccd",
+   "name": "ICCD",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "iccd.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "iccv",
+   "name": "ICCV",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "iccv",
+   "anonymous": true,
+   "url": "https://iccv2026.thecvf.com",
+   "guide": "iccv.md",
+   "example": "examples/cvpr",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icdar",
+   "name": "ICDAR",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "icdcs",
+   "name": "ICDCS",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "icdcs.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icde",
+   "name": "ICDE",
+   "family": "DB",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://icde2026.github.io",
+   "guide": "icde.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icdm",
+   "name": "ICDM",
+   "family": "Data Mining",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": "https://icdm.e宏观.us/2026",
+   "guide": "icdm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icfp",
+   "name": "ICFP",
+   "family": "SE/PL",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://icfp24.icfp-conf.org",
+   "guide": "icfp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Published in a PACM journal: single-column acmsmall format",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ],
+   "classOptions": {
+    "review": "acmsmall,screen,review,anonymous",
+    "final": "acmsmall,screen"
+   }
+  },
+  {
+   "id": "icip",
+   "name": "ICIP",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "iclr",
+   "name": "ICLR",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "iclr",
+   "anonymous": true,
+   "url": "https://iclr.cc/Conferences/2027/AuthorGuidelines",
+   "guide": "iclr.md",
+   "example": null,
+   "verified": "Verified 2026-09-16; reverify before submission",
+   "notes": [
+    "Not bundled: iclr2026_conference.bst (plainnat is used instead); get it from the venue's official kit"
+   ]
+  },
+  {
+   "id": "icme",
+   "name": "ICME",
+   "family": "Multimedia",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://2026.ieeeicme.org/",
+   "guide": "icme.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icml",
+   "name": "ICML",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "icml",
+   "anonymous": true,
+   "url": "https://icml.cc/2026",
+   "guide": "icml.md",
+   "example": "examples/icml",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icnp",
+   "name": "ICNP",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "icpp",
+   "name": "ICPP",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "icpp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icpr",
+   "name": "ICPR",
+   "family": "Pattern Recognition / AI",
+   "tier": "CCF-C",
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": "https://icpr2026.org",
+   "guide": "icpr.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icra",
+   "name": "ICRA",
+   "family": "Robotics",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://www.ieee-icra.org",
+   "guide": "icra.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ics",
+   "name": "ICS",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "ics.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "icse",
+   "name": "ICSE",
+   "family": "SE",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://conf.researchr.org/track/icse-2026/icse-2026-papers",
+   "guide": "icse.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ictac",
+   "name": "ICTAC",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "ieee",
+   "name": "IEEE (IEEEtran)",
+   "family": "Publisher",
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "ijcai",
+   "name": "IJCAI",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "ijcai",
+   "anonymous": true,
+   "url": "https://2026.ijcai.org",
+   "guide": "ijcai.md",
+   "example": "examples/ijcai",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "imc",
+   "name": "IMC",
+   "family": "Networks",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.imc2026.org",
+   "guide": "imc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Kit corrected from the upstream mapping to ACM acmart",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "infocom",
+   "name": "INFOCOM",
+   "family": "Networks",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://infocom2026.ieee-infocom.org",
+   "guide": "infocom.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ipco",
+   "name": "IPCO",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "ipdps",
+   "name": "IPDPS",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": null,
+   "guide": "ipdps.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "iros",
+   "name": "IROS",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "isaac",
+   "name": "ISAAC",
+   "family": null,
+   "tier": null,
+   "kit": "lipics",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": [
+    "Kit corrected from the upstream mapping to LIPIcs v2021",
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice"
+   ]
+  },
+  {
+   "id": "isca",
+   "name": "ISCA",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "isca.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "iscas",
+   "name": "ISCAS",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "iscas.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "iscc",
+   "name": "ISCC",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "ismb",
+   "name": "ISMB",
+   "family": "Computational Biology",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://www.iscb.org/ismb2026",
+   "guide": "ismb.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "issta",
+   "name": "ISSTA",
+   "family": "SE",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://issta.org/issta2026",
+   "guide": "issta.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "lcn",
+   "name": "LCN",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "lics",
+   "name": "LICS",
+   "family": "Theory",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://lics.siglogic.org/2026",
+   "guide": "lics.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "lipics",
+   "name": "LIPIcs (Dagstuhl)",
+   "family": "Publisher",
+   "tier": null,
+   "kit": "lipics",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": [
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice"
+   ]
+  },
+  {
+   "id": "lisa",
+   "name": "LISA",
+   "family": null,
+   "tier": null,
+   "kit": "usenix",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": "examples/fast",
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "mfcs",
+   "name": "MFCS",
+   "family": null,
+   "tier": null,
+   "kit": "lipics",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": [
+    "Kit corrected from the upstream mapping to LIPIcs v2021",
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice"
+   ]
+  },
+  {
+   "id": "miccai",
+   "name": "MICCAI",
+   "family": "Medical Imaging / AI",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://miccai2026.org",
+   "guide": "miccai.md",
+   "example": "examples/miccai",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "micro",
+   "name": "MICRO",
+   "family": "Architecture",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.microarch.org/micro59",
+   "guide": "micro.md",
+   "example": "examples/micro",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "mobicom",
+   "name": "MobiCom",
+   "family": "Networks",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.sigmobile.org/mobicom/2026",
+   "guide": "mobicom.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "mobihoc",
+   "name": "MobiHoc",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "mobisys",
+   "name": "MobiSys",
+   "family": "Networks",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.sigmobile.org/mobisys/2026",
+   "guide": "mobisys.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "msst",
+   "name": "MSST",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "msst.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "naacl",
+   "name": "NAACL",
+   "family": null,
+   "tier": null,
+   "kit": "acl",
+   "anonymous": true,
+   "url": null,
+   "guide": "naacl.md",
+   "example": "examples/acl",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Not bundled: acl_natbib.bst; get it from the venue's official kit",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ndss",
+   "name": "NDSS 2026",
+   "family": "Security",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://www.ndss-symposium.org/ndss2026",
+   "guide": "ndss.md",
+   "example": "examples/ndss",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "neurips",
+   "name": "NeurIPS",
+   "family": "AI",
+   "tier": "CCF-A",
+   "kit": "neurips",
+   "anonymous": true,
+   "url": "https://nips.cc/Conferences/2026",
+   "guide": "neurips.md",
+   "example": "examples/neurips",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Camera-ready uses the main track (option main); position, eandd and creativeai are the other tracks",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "nsdi",
+   "name": "NSDI",
+   "family": null,
+   "tier": null,
+   "kit": "usenix",
+   "anonymous": true,
+   "url": null,
+   "guide": "nsdi.md",
+   "example": "examples/fast",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "oopsla",
+   "name": "OOPSLA",
+   "family": "SE/PL",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://2026.esec-fse.org/track/oopsla-2026",
+   "guide": "oopsla.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Published in a PACM journal: single-column acmsmall format",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ],
+   "classOptions": {
+    "review": "acmsmall,screen,review,anonymous",
+    "final": "acmsmall,screen"
+   }
+  },
+  {
+   "id": "osdi",
+   "name": "OSDI",
+   "family": "SE/Systems",
+   "tier": "CCF-A",
+   "kit": "usenix",
+   "anonymous": true,
+   "url": "https://www.usenix.org/conference/osdi26",
+   "guide": "osdi.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Kit corrected from the upstream mapping to USENIX (usenix-2020-09)",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "pakdd",
+   "name": "PAKDD",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "percom",
+   "name": "PerCom",
+   "family": "Pervasive / HCI",
+   "tier": "CCF-B",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://www.computer.org/percom",
+   "guide": "percom.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "pkc",
+   "name": "PKC",
+   "family": "Security",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://pkc.iacr.org/2026",
+   "guide": "pkc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "pldi",
+   "name": "PLDI",
+   "family": "SE/PL",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://dl.acm.org/conference/pldi",
+   "guide": "pldi.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Published in a PACM journal: single-column acmsmall format",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ],
+   "classOptions": {
+    "review": "acmsmall,screen,review,anonymous",
+    "final": "acmsmall,screen"
+   }
+  },
+  {
+   "id": "pods",
+   "name": "PODS",
+   "family": "DB",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://sigmod.org/pods2026",
+   "guide": "pods.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "popl",
+   "name": "POPL",
+   "family": "SE/PL",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://dl.acm.org/conference/popl",
+   "guide": "popl.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Published in a PACM journal: single-column acmsmall format",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ],
+   "classOptions": {
+    "review": "acmsmall,screen,review,anonymous",
+    "final": "acmsmall,screen"
+   }
+  },
+  {
+   "id": "ppopp",
+   "name": "PPoPP",
+   "family": "Architecture",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://ppopp26.sigplan.org/",
+   "guide": "ppopp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "raid",
+   "name": "RAID",
+   "family": "Security",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://raid2026.cs.ucalgary.ca",
+   "guide": "raid.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "recomb",
+   "name": "RECOMB",
+   "family": "Computational Biology",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://recomb2026.w",
+   "guide": "recomb.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "rtas",
+   "name": "RTAS",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": "rtas.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "rtss",
+   "name": "RTSS",
+   "family": "Real-Time",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://2026.rtss.org",
+   "guide": "rtss.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sas",
+   "name": "SAS",
+   "family": "SE",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://sas.myqen.com",
+   "guide": "sas.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sc",
+   "name": "SC",
+   "family": "HPC",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://sc26.supercomputing.org",
+   "guide": "sc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "secon",
+   "name": "SECON",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "sensys",
+   "name": "SenSys",
+   "family": "Networks",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.sigmobile.org/sensys/2026",
+   "guide": "sensys.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "siam",
+   "name": "SIAM",
+   "family": "Publisher",
+   "tier": null,
+   "kit": "siam",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "sigcomm",
+   "name": "SIGCOMM",
+   "family": "Networks",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://sigcomm2026.sigcomm.org",
+   "guide": "sigcomm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "siggraph",
+   "name": "SIGGRAPH",
+   "family": "Graphics",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://s2026.siggraph.org",
+   "guide": "siggraph.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sigir",
+   "name": "SIGIR",
+   "family": "IR",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://sigir.org/sigir2026",
+   "guide": "sigir.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sigkdd",
+   "name": "SIGKDD",
+   "family": "DB/Mining",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://kdd.org/kdd2026",
+   "guide": "sigkdd.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sigmetrics",
+   "name": "SIGMETRICS",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "sigmetrics.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sigmod",
+   "name": "SIGMOD",
+   "family": "DB",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://sigmod.org/sigmod-2026",
+   "guide": "sigmod.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "socc",
+   "name": "SoCC",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "socc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "socg",
+   "name": "SoCG",
+   "family": "Theory/Geometry",
+   "tier": "CCF-B",
+   "kit": "socg",
+   "anonymous": true,
+   "url": "https://socg.compute.dgeo.de",
+   "guide": "socg.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sosp",
+   "name": "SOSP",
+   "family": "SE/Systems",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://sosp2026.mpi-sws.org",
+   "guide": "sosp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "sp",
+   "name": "IEEE S&P",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": null,
+   "guide": "sp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "springer",
+   "name": "Springer LNCS",
+   "family": "Publisher",
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "stoc",
+   "name": "STOC",
+   "family": "Theory",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.acm.org/stoc2026",
+   "guide": "stoc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "tcc",
+   "name": "TCC",
+   "family": "Security",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": true,
+   "url": "https://tcc.iacr.org/2026",
+   "guide": "tcc.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "ubicomp",
+   "name": "UbiComp",
+   "family": "Pervasive / HCI",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://ubicomp.org",
+   "guide": "ubicomp.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "Published in a PACM journal: single-column acmsmall format",
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ],
+   "classOptions": {
+    "review": "acmsmall,screen,review,anonymous",
+    "final": "acmsmall,screen"
+   }
+  },
+  {
+   "id": "uist",
+   "name": "UIST",
+   "family": "HCI",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://uist.org",
+   "guide": "uist.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "usenix",
+   "name": "USENIX",
+   "family": "Publisher",
+   "tier": null,
+   "kit": "usenix",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "usenix-atc",
+   "name": "USENIX-ATC",
+   "family": null,
+   "tier": null,
+   "kit": "usenix",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": "examples/fast",
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "usenix-security",
+   "name": "USENIX Security",
+   "family": "Security",
+   "tier": "CCF-A",
+   "kit": "usenix",
+   "anonymous": true,
+   "url": "https://www.usenix.org/conference/usenixsecurity26",
+   "guide": "usenix-security.md",
+   "example": "examples/fast",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "vee",
+   "name": "VEE",
+   "family": null,
+   "tier": null,
+   "kit": "acmart",
+   "anonymous": true,
+   "url": null,
+   "guide": "vee.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "vldb",
+   "name": "VLDB",
+   "family": "DB",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": false,
+   "url": "https://vldb.org/2026",
+   "guide": "vldb.md",
+   "example": "examples/vldb",
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "vmcai",
+   "name": "VMCAI",
+   "family": "SE",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://vmcai.sigplan.org",
+   "guide": "vmcai.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "vr",
+   "name": "VR",
+   "family": "VR",
+   "tier": "CCF-A",
+   "kit": "ieeetran",
+   "anonymous": true,
+   "url": "https://ieeevr.org/2026",
+   "guide": "vr.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "wcnc",
+   "name": "WCNC",
+   "family": null,
+   "tier": null,
+   "kit": "ieeetran",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "wine",
+   "name": "WINE",
+   "family": "Game Theory / Economics / AI",
+   "tier": "CCF-B",
+   "kit": "llncs",
+   "anonymous": false,
+   "url": "https://wine2026.cs.umass.edu",
+   "guide": "wine.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "wise",
+   "name": "WISE",
+   "family": null,
+   "tier": null,
+   "kit": "llncs",
+   "anonymous": false,
+   "url": null,
+   "guide": null,
+   "example": null,
+   "verified": null,
+   "notes": []
+  },
+  {
+   "id": "wsdm",
+   "name": "WSDM",
+   "family": "DB/Mining",
+   "tier": "CCF-B",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www.wsdm-conference.org/2026",
+   "guide": "wsdm.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  },
+  {
+   "id": "www",
+   "name": "WWW",
+   "family": "Web",
+   "tier": "CCF-A",
+   "kit": "acmart",
+   "anonymous": true,
+   "url": "https://www2026.thewebconf.org",
+   "guide": "www.md",
+   "example": null,
+   "verified": "Legacy migration 2026-06-06; reverify official policy",
+   "notes": [
+    "The guide predates this year's call for papers: check page limits and anonymity there"
+   ]
+  }
+ ]
+}

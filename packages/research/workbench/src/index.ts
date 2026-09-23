@@ -25,6 +25,7 @@ import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
 import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
+import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
 import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isInside, projectPath, readText, sameDirectory, truncateBytes, writeNew } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
@@ -135,6 +136,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset('kg/ai-kg.json.gz'))
   /** The installed mode packs, loaded once at start. */
   modes!: ModeRegistry
+  private venueLibrary: Promise<VenueLibrary> | undefined
   private refreshResourceRoutes!: () => Promise<void>
 
   /** Bind the research API and its private tooling directory. */
@@ -294,6 +296,12 @@ export class ResearchWorkbench extends TypertRemoteService {
   /** Runs a mode pack's gates with the installed platform Python; a check never installs it. */
   private gates(signal: AbortSignal): GateRunner {
     return createGateRunner(() => this.components.installedPython(), signal)
+  }
+
+  /** The venue template library, read on first use. */
+  private venues(): Promise<VenueLibrary> {
+    this.venueLibrary ??= loadVenues(runtimeAsset('venues'))
+    return this.venueLibrary
   }
 
   /** The configured embedding endpoint with its key, or undefined when either is missing. */
@@ -614,6 +622,27 @@ export class ResearchWorkbench extends TypertRemoteService {
         return (project) => {
           project.lastCheck = check
           return { message: result.final ? 'Submission package exported' : 'Draft exported; the bundled check report lists what is still open', path: result.path, check }
+        }
+      }
+      case 'list-venues': {
+        const venues = listVenues(await this.venues(), request.query)
+        return { message: `${venues.length} venue(s)${request.query ? ` match "${request.query}"` : ''}`, content: JSON.stringify(venues) }
+      }
+      case 'apply-template': {
+        const applied = await applyVenue(await this.venues(), this.record(id).root, request.venue, request.stage)
+        const { venue, kit, stage } = applied
+        const holds = `the kit${venue.example ? ', its example' : ''}${venue.guide ? ' and GUIDE.md' : ''}`
+        const notes = venue.notes.length ? `. Notes: ${venue.notes.join('; ')}` : ''
+        return (project) => {
+          project.venue = venue.id
+          return {
+            message: `${venue.name} template applied for ${stage} (${kit.name}): template/${venue.id}/ holds ${holds}; `
+              + `template.json, main.tex.tmpl and the style files are in the project root${notes}`,
+            paths: applied.written,
+            content: JSON.stringify({
+              venue: venue.id, kit: kit.id, stage, anonymous: venue.anonymous, url: venue.url, notes: venue.notes,
+            }),
+          }
         }
       }
       case 'graph-status': {

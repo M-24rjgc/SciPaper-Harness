@@ -7,7 +7,7 @@ import { zipSync, strToU8 } from 'fflate'
 import { z } from 'zod'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { ComponentManager, runtimeAsset } from './components.ts'
-import { atomicWrite, hashFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
+import { atomicWrite, errorText, hashFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
 import { bibliographyFiles, findMainManuscript, flattenPaper, graphicReferences, listProjectFiles, paperDigest } from './latex.ts'
 import { checked, runProcess } from './process.ts'
 import { invalidate, validateLinks } from './project.ts'
@@ -266,6 +266,29 @@ export function texExecutable(bin: string, name: string, platform: NodeJS.Platfo
   return join(bin, platform === 'win32' ? `${name}.exe` : name)
 }
 
+/** Distinct files a compile may install before it gives up; a venue class such as acmart pulls in several. */
+const MAX_TEX_INSTALLS = 12
+
+/**
+ * The TeX file one pass reported missing: a style, class or bibliography
+ * style; the metric file of a font the distribution lacks; or a graphic a
+ * class draws from a TeX package (the LIPIcs placeholder logos). Only the
+ * first kind may be guessed to live in a package of its own name; the others
+ * are installed only when the distribution names the package that ships them,
+ * so a missing figure of the paper's own stays a plain LaTeX error.
+ * @param output - the pass's console output.
+ * @returns the file name and whether its package may be guessed, or undefined when nothing was missing.
+ */
+export function missingTexFile(output: string): { file: string; guess: boolean } | undefined {
+  const file = /File [`']([^'`]+\.(?:sty|cls|bst|clo|def|fd))['`] not found/.exec(output)?.[1]
+  if (file) return { file, guess: true }
+  const font = /Font \\[^=\s]+=([A-Za-z0-9_.-]+)(?: at [^ ]+)? not loadable: Metric \(TFM\) file not found/.exec(output)?.[1]
+    ?? /\(file ([A-Za-z0-9_.-]+)\): Font \1 at \d+ not found/.exec(output)?.[1]
+  if (font) return { file: `${font}.tfm`, guess: false }
+  const graphic = /LaTeX Error: File `([A-Za-z0-9_-]+)' not found/.exec(output)?.[1]
+  return graphic ? { file: `${graphic}.pdf`, guess: false } : undefined
+}
+
 /** TeX search path entries for each top-level source directory, relative to a working directory. */
 async function searchPath(project: ResearchProject, from: string): Promise<string> {
   const base = relative(from, project.root).replaceAll('\\', '/') || '.'
@@ -310,12 +333,17 @@ export async function compilePaper(
   // A PDF left by an earlier compile of the same inputs must not pass for this one.
   await rm(pdf, { force: true })
   let log = ''
-  for (let attempt = 0; attempt < 4; attempt++) {
+  const installed = new Set<string>()
+  for (let attempt = 0; attempt <= MAX_TEX_INSTALLS; attempt++) {
     const first = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
     log += first.stdout + first.stderr
     if (first.code !== 0) {
-      const missing = /File [`']([^'`]+\.(?:sty|cls|bst))['`] not found/.exec(log)?.[1]
-      if (missing && attempt < 3) { await components.installTexPackage(missing, signal); continue }
+      // Only this pass's output: an earlier pass's missing file is installed already.
+      const missing = missingTexFile(first.stdout + first.stderr)
+      if (missing && !installed.has(missing.file) && attempt < MAX_TEX_INSTALLS) {
+        installed.add(missing.file)
+        if (await components.installTexPackage(missing.file, signal, missing.guess)) continue
+      }
       break
     }
     const stem = basename(source, '.tex')
@@ -324,7 +352,17 @@ export async function compilePaper(
       const result = await runProcess(texExecutable(bin, 'biber'), [stem], { cwd: build, env, signal, timeoutMs: 180000 })
       log += result.stdout + result.stderr
     } else if (existsSync(auxPath) && (await readFile(auxPath, 'utf8')).includes('\\bibdata')) {
-      const result = await runProcess(texExecutable(bin, 'bibtex'), [stem], { cwd: build, env, signal, timeoutMs: 180000 })
+      const bibtex = (): Promise<{ stdout: string; stderr: string }> => runProcess(texExecutable(bin, 'bibtex'), [stem], { cwd: build, env, signal, timeoutMs: 180000 })
+      let result = await bibtex()
+      // A venue's bibliography style may be one the distribution installs on request.
+      const style = /I couldn't open style file ([A-Za-z0-9_-][A-Za-z0-9_.-]*\.bst)/.exec(result.stdout)?.[1]
+      if (style && !installed.has(style)) {
+        installed.add(style)
+        try {
+          await components.installTexPackage(style, signal)
+          result = await bibtex()
+        } catch (error) { log += `\nCould not install ${style}: ${errorText(error)}\n` }
+      }
       log += result.stdout + result.stderr
     }
     for (let round = 0; round < 2; round++) {

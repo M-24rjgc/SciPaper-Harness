@@ -3,7 +3,7 @@
 
 Scans `workspace/experiments/` and `outputs/` for CSV/JSON metric files. When a
 `seed` field is present, it groups numeric metrics by seed and reports the
-per-metric mean/std across seeds. This is an AID for the Result Provenance Audit
+per-metric mean/std across seeds. This is an AID for the Result Traceability Audit
 (SKILL Step 5) — it helps confirm that reported table/figure values can be
 recomputed from raw logs. It does NOT edit the manuscript and writes only to
 `outputs/reports/RESULT_RECOMPUTATION_CHECK.md`.
@@ -112,7 +112,7 @@ def main() -> int:
         "",
         f"_Generated: {generated}_",
         "",
-        "_Aid for the Result Provenance Audit (GR-019): per-seed aggregation of raw "
+        "_Aid for the Result Traceability Audit (GR-019): per-seed aggregation of raw "
         "logs. Confirm each reported table/figure value matches these recomputed values._",
         "",
     ]

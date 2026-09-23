@@ -1,0 +1,27 @@
+{
+  "id": "ieeetran",
+  "name": "IEEE IEEEtran (conference)",
+  "from": "IEEE",
+  "files": [
+    "IEEEtran.cls"
+  ],
+  "documentclass": "[conference]{IEEEtran}",
+  "isClass": true,
+  "stylePackage": null,
+  "citationStyle": "numeric",
+  "bibstyle": "IEEEtran",
+  "options": {
+    "review": "conference",
+    "final": "conference"
+  },
+  "author": "\\author{\\IEEEauthorblockN{@@authors@@}\n\\IEEEauthorblockA{@@affil@@\\\\\n@@email@@}}",
+  "anonymousAuthor": "\\author{\\IEEEauthorblockN{Anonymous Authors}}",
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

@@ -1,0 +1,34 @@
+\documentclass{article}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+\usepackage[<<classoptions>>]{icml2026}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{adjustbox}
+\providecommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
+\icmltitlerunning{@@title@@}
+\begin{document}
+\twocolumn[
+  \icmltitle{@@title@@}
+  \begin{icmlauthorlist}
+    \icmlauthor{@@authors@@}{aff}
+  \end{icmlauthorlist}
+  \icmlaffiliation{aff}{@@affil@@}
+  \icmlcorrespondingauthor{@@authors@@}{@@email@@}
+  \icmlkeywords{@@keywords@@}
+  \vskip 0.3in
+]
+\printAffiliationsAndNotice{}
+\begin{abstract}
+@@abstract@@
+\end{abstract}
+
+@@sections@@
+
+\bibliographystyle{icml2026}
+\bibliography{refs}
+\end{document}

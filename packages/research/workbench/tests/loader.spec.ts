@@ -24,6 +24,9 @@ const processes = vi.hoisted(() => ({
   launchFails: false,
   /** Compile variants: a missing style on the first pass, a pass that fails, no final log. */
   missingSty: false,
+  /** Outputs of the next failing engine passes, and of the next bibtex runs. */
+  latexFailures: [] as string[],
+  bibtexOutputs: [] as string[],
   /** Successful engine passes left before the next one fails; undefined never fails. */
   passesBeforeFailure: undefined as number | undefined,
   noLog: false,
@@ -68,9 +71,11 @@ vi.mock('../src/process.ts', async (original) => {
         const output = args.find(arg => arg.startsWith('-output-directory='))?.slice('-output-directory='.length) ?? ''
         const stem = String(args.at(-1)).replace(/\.tex$/, '')
         const build = path.resolve(options.cwd ?? '.', output)
-        if (/biber|bibtex/.test(path.basename(command))) return ok('')
+        if (/biber|bibtex/.test(path.basename(command))) return ok(processes.bibtexOutputs.shift() ?? '')
         if (processes.compileFails || !output) return { code: 1, stdout: '! Undefined control sequence.', stderr: '' }
         if (processes.missingSty) { processes.missingSty = false; return { code: 1, stdout: '! LaTeX Error: File `venue.sty\' not found.', stderr: '' } }
+        const failure = processes.latexFailures.shift()
+        if (failure !== undefined) return { code: 1, stdout: failure, stderr: '' }
         if (processes.passesBeforeFailure === 0) return { code: 1, stdout: '! Emergency stop.', stderr: '' }
         if (processes.passesBeforeFailure !== undefined) processes.passesBeforeFailure--
         const source = await read(path.resolve(options.cwd ?? '.', `${stem}.tex`), 'utf8')
@@ -96,6 +101,7 @@ beforeEach(() => {
   processes.calls.length = 0; processes.runner = { status: 'completed', metrics: { accuracy: 0.8123 } }
   processes.compileFails = false; processes.launchFails = false; processes.holds.clear()
   processes.missingSty = false; processes.passesBeforeFailure = undefined; processes.noLog = false
+  processes.latexFailures.length = 0; processes.bibtexOutputs.length = 0
   processes.ssh = undefined; processes.extracted = undefined
 })
 
@@ -568,7 +574,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(submission.path).toMatch(/submission-\d+\.zip$/)
 
     // Bibliography engines, a missing style fetched on the way, a later pass that fails, a missing final log.
-    const installs = vi.spyOn(service.components, 'installTexPackage').mockResolvedValue(undefined)
+    const installs = vi.spyOn(service.components, 'installTexPackage').mockResolvedValue(true)
     await write(join(p.root, 'paper/main.tex'), '\\documentclass{article}\\usepackage{biblatex}\\addbibresource{refs.bib}')
     processes.missingSty = true
     expect((await run({ action: 'compile', engine: 'pdflatex' })).message).toMatch(/PDF built/)
@@ -585,6 +591,55 @@ describe('the research service records; it never drives the agent', () => {
     processes.noLog = false
     await write(join(p.root, 'main.tex'), '\\documentclass{article}')
     expect((await run({ action: 'compile', path: 'main.tex', engine: 'pdflatex' })).path).toMatch(/\.pdf$/)
+
+    // A bibliography style is installed on request and bibtex runs again; one that cannot be installed is logged.
+    installs.mockClear()
+    const compileMain = () => run({ action: 'compile', path: 'main.tex', engine: 'pdflatex' })
+    await write(join(p.root, 'main.tex'), '\\documentclass{article}\\bibliography{refs}')
+    processes.bibtexOutputs.push('I couldn\'t open style file venue.bst\n')
+    await compileMain()
+    expect(installs.mock.calls.map(call => call[0])).toEqual(['venue.bst'])
+    installs.mockRejectedValueOnce(new Error('no such package'))
+    processes.bibtexOutputs.push('I couldn\'t open style file other.bst\n')
+    await compileMain()
+    const logged = service.getProject(p.id).compilations.at(-1)!.logPath
+    expect(await readFile(join(p.root, logged), 'utf8')).toMatch(/Could not install other\.bst: no such package/)
+    // A missing font is looked up by its metric file. A file no package ships ends the retries,
+    // and so does one still missing after its install.
+    installs.mockClear()
+    installs.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    processes.latexFailures.push(
+      '! Font \\T1/LinBiolinumT-TLF/m/n/10=LinBiolinumT-tlf-t1 at 10.0pt not loadable: Metric (TFM) file not found.',
+      '! LaTeX Error: File `example-image-plain\' not found.',
+    )
+    expect((await compileMain()).message).toMatch(/No PDF was produced/)
+    expect(installs.mock.calls.map(call => [call[0], call[2]])).toEqual([['LinBiolinumT-tlf-t1.tfm', false], ['example-image-plain.pdf', false]])
+    installs.mockClear()
+    processes.latexFailures.push('! LaTeX Error: File `venue.sty\' not found.', '! LaTeX Error: File `venue.sty\' not found.')
+    expect((await compileMain()).message).toMatch(/No PDF was produced/)
+    expect(installs.mock.calls.map(call => [call[0], call[2]])).toEqual([['venue.sty', true]])
+  })
+
+  it('lists the venue library and applies a venue template, recording the venue', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-venues-'))
+    const { service } = await boot(new MemoryMediaPool())
+    const p = await service.create({ title: 'Venue', root: join(root, 'p'), brief: '', mode: 'spark-to-paper' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    expect((await run({ action: 'list-venues' })).message).toBe('139 venue(s)')
+    const found = await run({ action: 'list-venues', query: 'neurips' })
+    expect(found.message).toBe('1 venue(s) match "neurips"')
+    expect(JSON.parse(found.content ?? '[]')).toEqual([expect.objectContaining({ id: 'neurips' })])
+    const applied = await run({ action: 'apply-template', venue: 'neurips', stage: 'final' })
+    expect(applied.message).toMatch(/^NeurIPS template applied for final \(NeurIPS 2026\): /)
+    expect(applied.message).toMatch(/template\/neurips\/ holds the kit, its example and GUIDE\.md; template\.json/)
+    expect(applied.paths).toEqual(expect.arrayContaining(['template.json', 'main.tex.tmpl', 'neurips_2026.sty']))
+    expect(service.getProject(p.id).venue).toBe('neurips')
+    expect(JSON.parse(applied.content ?? '{}')).toMatchObject({ venue: 'neurips', kit: 'neurips', stage: 'final' })
+    const plain = await run({ action: 'apply-template', venue: 'asiacrypt' })
+    expect(plain.message).toMatch(/^ASIACRYPT template applied for review \(Springer LNCS \(llncs\)\): /)
+    expect(plain.message).toMatch(/template\/asiacrypt\/ holds the kit; template\.json.*root$/)
+    expect((await run({ action: 'apply-template', venue: 'acl' })).message).toMatch(/Notes: Not bundled: acl_natbib\.bst/)
+    await expect(run({ action: 'apply-template', venue: 'nowhere' })).rejects.toThrow(/Unknown venue nowhere/)
   })
 
   it('sends pages to a separate vision model only when one is configured, and generates images under the fixed credential', async () => {

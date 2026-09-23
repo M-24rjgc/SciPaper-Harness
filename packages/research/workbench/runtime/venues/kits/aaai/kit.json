@@ -1,0 +1,28 @@
+{
+  "id": "aaai",
+  "name": "AAAI 2026",
+  "from": "AAAI",
+  "files": [
+    "aaai2026.sty",
+    "aaai2026.bst"
+  ],
+  "documentclass": "[letterpaper]{article}",
+  "isClass": false,
+  "stylePackage": "aaai2026",
+  "citationStyle": "author_year",
+  "bibstyle": "aaai2026",
+  "options": {
+    "review": "submission",
+    "final": ""
+  },
+  "author": "\\author{@@authors@@}\n\\affiliations{@@affil@@\\\\\n@@email@@}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

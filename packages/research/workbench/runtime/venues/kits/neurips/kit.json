@@ -1,0 +1,30 @@
+{
+  "id": "neurips",
+  "name": "NeurIPS 2026",
+  "from": "NeurIPS",
+  "files": [
+    "neurips_2026.sty",
+    "checklist.tex"
+  ],
+  "documentclass": "{article}",
+  "isClass": false,
+  "stylePackage": "neurips_2026",
+  "citationStyle": "author_year",
+  "bibstyle": "plainnat",
+  "options": {
+    "review": "",
+    "final": "final,main"
+  },
+  "author": "\\author{@@authors@@ \\\\\n@@affil@@ \\\\\n\\texttt{@@email@@}}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": [
+    "Camera-ready uses the main track (option main); position, eandd and creativeai are the other tracks"
+  ]
+}

@@ -26,6 +26,7 @@ vi.mock('../src/process.ts', async (original) => {
 })
 
 const { COMPONENT_RELEASES, ComponentManager, downloadAsset, packageForFile, runtimeAsset, tlmgrCommand } = await import('../src/components.ts')
+const { missingTexFile } = await import('../src/artifacts.ts')
 type Host = ComponentHost
 
 const signal = new AbortController().signal
@@ -187,6 +188,13 @@ describe('managed tools on a Windows x64 host', () => {
     await manager.installTexPackage('orphan.sty', signal)
     expect(scripted.calls.at(-1)?.args.at(-1)).toBe('orphan')
     await expect(manager.installTexPackage('../../evil.sty', signal)).rejects.toThrow(/Unsupported TeX dependency/)
+    // A font or graphic no package lists is not guessed: nothing is installed.
+    scripted.calls.length = 0
+    expect(await manager.installTexPackage('example-image-plain.pdf', signal, false)).toBe(false)
+    expect(scripted.calls.some(call => call.args.includes('install'))).toBe(false)
+    scripted.answer = (_command, args) => ({ code: 0, stdout: args.includes('search') ? 'mwe:\n\ttexmf-dist/tex/latex/mwe/example-image-plain.pdf\n' : '', stderr: '' })
+    expect(await manager.installTexPackage('example-image-plain.pdf', signal, false)).toBe(true)
+    expect(scripted.calls.at(-1)?.args.at(-1)).toBe('mwe')
     await expect(new ComponentManager(root, () => ({ texBin: 'C:/texlive/bin' }), windows(root, {})).installTexPackage('a.sty', signal)).rejects.toThrow(/configured TeX distribution/)
   })
 })
@@ -222,7 +230,19 @@ describe('configured and unsupported hosts', () => {
     expect(tlmgrCommand(join('TinyTeX', 'bin', 'windows'), 'win32').args[0]).toMatch(/tlmgr\.pl$/)
     expect(packageForFile('booktabs:\n  texmf-dist/tex/latex/booktabs/booktabs.sty\nother:\n  x/other.sty', 'booktabs.sty')).toBe('booktabs')
     expect(packageForFile('  stray/booktabs.sty\n', 'booktabs.sty')).toBeUndefined()
+    // Another package's example copy under doc/ loses to the installed file, and is used only when it is all there is.
+    const ieee = 'confproc:\n\ttexmf-dist/doc/latex/confproc/example/IEEEtran.bst\nieeetran:\n\ttexmf-dist/bibtex/bst/ieeetran/IEEEtran.bst\n'
+    expect(packageForFile(ieee, 'IEEEtran.bst')).toBe('ieeetran')
+    expect(packageForFile('confproc:\n\ttexmf-dist/doc/latex/confproc/example/IEEEtran.bst\n', 'IEEEtran.bst')).toBe('confproc')
     expect(runtimeAsset('documents.py')).toMatch(/runtime[\\/]documents\.py$/)
+    // What one compile pass reported missing, and whether its package may be guessed from its name.
+    expect(missingTexFile('! LaTeX Error: File `acmart.cls\' not found.')).toEqual({ file: 'acmart.cls', guess: true })
+    expect(missingTexFile('! Font \\T1/LinBiolinumT-TLF/m/n/10=LinBiolinumT-tlf-t1 at 10.0pt not loadable: Metric (TFM) file not found.'))
+      .toEqual({ file: 'LinBiolinumT-tlf-t1.tfm', guess: false })
+    expect(missingTexFile('!pdfTeX error: pdflatex.exe (file LinBiolinumT-tlf-t1--base): Font LinBiolinumT-tlf-t1--base at 600 not found'))
+      .toEqual({ file: 'LinBiolinumT-tlf-t1--base.tfm', guess: false })
+    expect(missingTexFile('./main.tex:27: LaTeX Error: File `example-image-plain\' not found.')).toEqual({ file: 'example-image-plain.pdf', guess: false })
+    expect(missingTexFile('! Undefined control sequence.')).toBeUndefined()
     expect(COMPONENT_RELEASES.uv.url).toMatch(/^https:\/\//)
     expect(new ComponentManager('root', none).root).toBe('root')
   })

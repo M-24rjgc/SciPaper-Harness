@@ -1,0 +1,34 @@
+{
+  "id": "socg",
+  "name": "SoCG (LIPIcs v2021 with socg-lipics-v2021)",
+  "from": "SoCG",
+  "files": [
+    "socg-lipics-v2021.cls"
+  ],
+  "extra": {
+    "LIPIcs": {
+      "lipics.cls": "lipics-v2021.cls",
+      "lipics-logo-bw.pdf": "lipics-logo-bw.pdf"
+    }
+  },
+  "documentclass": "[a4paper,UKenglish,cleveref,autoref,notab]{socg-lipics-v2021}",
+  "isClass": true,
+  "stylePackage": null,
+  "citationStyle": "numeric",
+  "bibstyle": "plainurl",
+  "options": {
+    "review": "a4paper,UKenglish,cleveref,autoref,anonymous,notab",
+    "final": "a4paper,UKenglish,cleveref,autoref,notab"
+  },
+  "author": "\\author{@@authors@@}{@@affil@@}{@@email@@}{}{}\n\\authorrunning{@@authors@@}\n\\Copyright{@@authors@@}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": [
+    "Option thm-restate is left off: with current thmtools the class then defines its theorem counters twice"
+  ]
+}

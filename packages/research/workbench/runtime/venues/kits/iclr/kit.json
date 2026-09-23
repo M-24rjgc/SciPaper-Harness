@@ -1,0 +1,29 @@
+{
+  "id": "iclr",
+  "name": "ICLR 2026 conference style",
+  "from": "ICLR",
+  "files": [
+    "iclr2026_conference.sty"
+  ],
+  "documentclass": "{article}",
+  "isClass": false,
+  "stylePackage": "iclr2026_conference",
+  "citationStyle": "author_year",
+  "bibstyle": "plainnat",
+  "options": {
+    "review": "",
+    "final": ""
+  },
+  "stage": {
+    "review": "",
+    "final": "\\iclrfinalcopy"
+  },
+  "author": "\\author{@@authors@@ \\\\\n@@affil@@ \\\\\n\\texttt{@@email@@}}",
+  "anonymousAuthor": null,
+  "missing": [
+    "iclr2026_conference.bst (plainnat is used instead)"
+  ],
+  "rename": {},
+  "extra": {},
+  "notes": []
+}

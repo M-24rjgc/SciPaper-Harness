@@ -1,0 +1,27 @@
+{
+  "id": "usenix",
+  "name": "USENIX (usenix-2020-09)",
+  "from": "USENIX",
+  "files": [
+    "usenix-2020-09.sty"
+  ],
+  "documentclass": "[letterpaper,twocolumn,10pt]{article}",
+  "isClass": false,
+  "stylePackage": "usenix-2020-09",
+  "citationStyle": "numeric",
+  "bibstyle": "plain",
+  "options": {
+    "review": "letterpaper,twocolumn,10pt",
+    "final": "letterpaper,twocolumn,10pt"
+  },
+  "author": "\\author{{\\rm @@authors@@}\\\\\n@@affil@@}",
+  "anonymousAuthor": "\\author{Anonymous Submission}",
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

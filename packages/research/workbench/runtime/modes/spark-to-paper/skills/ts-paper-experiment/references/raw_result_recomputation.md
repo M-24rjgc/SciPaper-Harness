@@ -3,7 +3,7 @@
 # Raw-Result Recomputation
 
 Promoted from candidate **CAND-008**; enforced by **GR-019**. Used inside the Code–Experiment–Paper
-Consistency Gate (SKILL Step 5, `RESULT_PROVENANCE_AUDIT.md`).
+Consistency Gate (SKILL Step 5, `RESULT_TRACEABILITY_AUDIT.md`).
 
 Purpose: every aggregated number in a table/figure must be **recomputable from the per-seed raw
 logs** — not copied from memory, a chat, or a stale draft.

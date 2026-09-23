@@ -365,6 +365,10 @@ export type ResearchCommand =
   /** Run one of the scripts the project's mode pack declares, with arguments after the manifest's own. */
   | { action: 'run-script'; projectId: ProjectId; script: string; args?: string[] | undefined }
   | { action: 'export'; projectId: ProjectId }
+  /** The venues of the template library matching `query`. */
+  | { action: 'list-venues'; projectId: ProjectId; query?: string | undefined }
+  /** Apply a venue's template: `review` (anonymous where the venue is) or `final`. */
+  | { action: 'apply-template'; projectId: ProjectId; venue: string; stage?: 'review' | 'final' | undefined }
   /** The knowledge graphs available to the project, and whether ranking can be semantic. */
   | { action: 'graph-status'; projectId: ProjectId }
   /** Rank research patterns for an idea; `path` saves the result as JSON in the project. */

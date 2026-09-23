@@ -17,7 +17,7 @@ manuscript except to weaken/remove claims that fail the audit. It produces six r
 
 ---
 
-## 1. Result provenance → `RESULT_PROVENANCE_AUDIT.md`
+## 1. Result traceability → `RESULT_TRACEABILITY_AUDIT.md`
 
 Every numeric value in every table/figure must trace to all of:
 
@@ -135,14 +135,14 @@ A single overall verdict, exactly one of:
 # Experiment Truthfulness Verdict
 
 Verdict: <one label>
-Basis: provenance (Step 5.1), completeness (5.2), code-paper (5.3), design (5.4), artifacts (5.5).
+Basis: traceability (Step 5.1), completeness (5.2), code-paper (5.3), design (5.4), artifacts (5.5).
 Blocking issues: <list, or none>
 Required actions before reporting these numbers: <list>
 ```
 
 ## Enforcement (GR-018)
 
-- **Never write a number that fails provenance.**
+- **Never write a number that fails traceability.**
 - If anything is `CLAIMED_BUT_NOT_RUN`, or the verdict is `CODE_PAPER_MISMATCH` or
   `UNVERIFIED_RESULTS_RISK`, **weaken or remove the affected claim, or stop and ask the user**.
 - Do **not** fabricate, and do **not** quietly downgrade a problem. A repaired paper is not

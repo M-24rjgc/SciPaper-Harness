@@ -91,7 +91,7 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(errors(report, 'compile').map(f => f.message)).toEqual(['The paper has not been compiled yet'])
     expect(errors(report, 'structure')).toMatchObject([{ message: '\\input target not found: sections/ghost', file: 'paper/main.tex', line: 16 }])
     expect(warnings(report, 'structure').map(f => f.message)).toEqual(expect.arrayContaining([
-      'The paper uses a generic document class; import the venue template (import-template) before submission',
+      'The paper uses a generic document class; apply the venue template (apply-template) before submission',
     ]))
     expect(warnings(report, 'review').map(f => f.message)).toEqual([expect.stringMatching(/No review yet/)])
     expect(report.findings.findIndex(f => f.severity === 'warning')).toBeGreaterThan(report.findings.findLastIndex(f => f.severity === 'error'))

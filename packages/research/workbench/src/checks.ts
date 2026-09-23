@@ -307,7 +307,7 @@ function checkStructure(context: Context, paper: FlatPaper): void {
     if (!titles.some(title => expected.pattern.test(title))) add(context, 'structure', 'warning', `No ${expected.label} section`, paper.main)
   }
   if (['article', 'report', 'ctexart'].includes(documentClass(paper) ?? '')) {
-    add(context, 'structure', 'warning', 'The paper uses a generic document class; import the venue template (import-template) before submission', paper.main)
+    add(context, 'structure', 'warning', 'The paper uses a generic document class; apply the venue template (apply-template) before submission', paper.main)
   }
 }
 

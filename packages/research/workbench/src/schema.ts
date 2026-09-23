@@ -279,6 +279,8 @@ export const commandSchema = z.discriminatedUnion('action', [
   }),
   z.object({ ...base, action: z.literal('run-script'), script: id, args: z.array(z.string()).max(40).optional() }),
   z.object({ ...base, action: z.literal('export') }),
+  z.object({ ...base, action: z.literal('list-venues'), query: z.string().optional() }),
+  z.object({ ...base, action: z.literal('apply-template'), venue: id, stage: z.enum(['review', 'final']).optional() }),
   z.object({ ...base, action: z.literal('graph-status') }),
   z.object({ ...base, action: z.literal('recall'), query: id, topK: z.number().int().min(1).max(20).optional(), path: id.optional() }),
   z.object({ ...base, action: z.literal('novelty'), story: id.optional(), path: id.optional() }),
