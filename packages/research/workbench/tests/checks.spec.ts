@@ -12,9 +12,9 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 
-// The shipped packs, so these checks run against the phases users actually get.
+// A paper pipeline of base checks only; the shipped packs' Python gates are covered by spark-pack.spec.
 let registry: ModeRegistry
-beforeAll(async () => { registry = await ModeRegistry.load([join(import.meta.dirname, '../runtime/modes')], { warn: (...args: unknown[]) => { throw new Error(args.join(' ')) } }) })
+beforeAll(async () => { registry = await ModeRegistry.load([join(import.meta.dirname, 'fixtures/modes')], { warn: (...args: unknown[]) => { throw new Error(args.join(' ')) } }) })
 const runChecks = (project: ResearchProject, limit: number, scope?: string) => runWithMode(project, limit, scope, registry.resolve(project))
 type Route = 'idea' | 'proposal' | 'data'
 

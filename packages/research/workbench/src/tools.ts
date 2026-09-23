@@ -49,12 +49,13 @@ const FAMILIES: Family[] = [
   {
     name: 'research_artifact',
     title: 'Research files',
-    actions: ['save-artifact', 'register-artifact', 'read-artifact', 'import-template', 'compile', 'render-pages', 'export'],
+    actions: ['save-artifact', 'register-artifact', 'read-artifact', 'import-template', 'compile', 'render-pages', 'run-script', 'export'],
     description: 'Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records '
       + 'what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; '
       + 'expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. '
       + 'compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. '
-      + 'import-template {paths}: copy a venue template into template/. export {}: zip of sources, PDF, data manifest and the check report.',
+      + 'import-template {paths}: copy a venue template into template/. run-script {script, args?}: run one of the scripts the project\'s mode declares '
+      + '(its skills name them) in the project folder. export {}: zip of sources, PDF, data manifest and the check report.',
     fields: {
       path: text('save-artifact / register-artifact / compile: project-relative path'),
       content: text('save-artifact: full file text'),
@@ -67,6 +68,8 @@ const FAMILIES: Family[] = [
       paths: list('import-template: template files or directories'),
       engine: { type: 'string', enum: ['pdflatex', 'xelatex', 'lualatex'], description: 'compile (xelatex for CJK text)' },
       maxPages: { type: 'integer', description: 'render-pages: page cap' },
+      script: text('run-script: a script id of the current mode'),
+      args: list('run-script: arguments added after the script\'s own'),
     },
   },
   {
@@ -119,6 +122,27 @@ const FAMILIES: Family[] = [
       references: list('generate-image: up to 4 project image paths used as style or layout references'),
       arxivIds: list('fetch-reference-figures: new-style arXiv ids, at most 6'),
       label: text('fetch-reference-figures: the figure these references are for, e.g. method-overview'),
+    },
+  },
+  {
+    name: 'research_knowledge',
+    title: 'Research knowledge graph',
+    actions: ['graph-status', 'recall', 'novelty', 'build-graph', 'name-patterns'],
+    description: 'Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers '
+      + 'machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. '
+      + 'recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; '
+      + 'path saves the result. novelty {story?, path?}: compares story.json with retrieved_papers.json abstracts and the closest graph papers, '
+      + 'writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, '
+      + 'base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the '
+      + 'project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.',
+    fields: {
+      query: text('recall: the idea as a search-friendly English query'),
+      topK: { type: 'integer', description: 'recall: how many patterns (default 8, at most 20)' },
+      path: text('recall: project-relative JSON file to save the result to; novelty: report path (default novelty_report.json)'),
+      story: text('novelty: the story file (default story.json)'),
+      papers: text('build-graph: the extracted corpus, JSON lines'),
+      domain: text('build-graph: the corpus domain label, e.g. hci'),
+      names: text('name-patterns: the cluster names file (default cluster_meta.json)'),
     },
   },
 ]

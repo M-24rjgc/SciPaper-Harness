@@ -35,6 +35,14 @@
 
 阶段要求使用一组固定的事实：文件通配（`file`，可带 `min`）、`manuscript`、`bibEntries`、`sections`、`figures`、`diagram`、`pagesInspected`、`reviewCurrent`、`runsCollected`、`noActiveRuns`、`dataEvidence` 与 `resultsOrData`。以列表给出的要求，其中任意一项成立即视为满足。
 
+门禁是模式包里的 Python 脚本。它用平台 Python 在项目根目录运行（`python -I -X utf8`，不经过 shell，按参数向量传参），输出的最后一行是 `{"findings": [{severity, message, file?, line?}]}`；除此之外的任何输出都记为一条错误发现。检查从不安装 Python：没有它时，每个门禁都报告自己无法运行。`research_artifact` 的 run-script 以同样方式运行模式包为项目当前路线声明的脚本，并返回脚本的输出。spark-to-paper 模式包通过这样一个适配器原样运行上游的检查脚本；它的 `NOTICE.md` 列出了取用、修补和替换了哪些内容。
+
+## 知识图谱
+
+`research_knowledge` 读取科研模式图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式，做法沿用 spark-to-paper 的图谱构建。内置图谱从上游的 AI 语料精简而来，以 `runtime/kg/ai-kg.json.gz` 随包发布：包含模式、带故事字段与五个最近邻的论文，不含向量。`scripts/build_kg.py` 离线转换上游压缩包，读取其中的 networkx pickle 时使用不执行文件中任何代码的反序列化器。项目也可以用 agent 抽取好的语料自建图谱（先 `build-graph`，再 `name-patterns`），存放在 `.research/kg/`。
+
+排序使用对模式与论文文本的 BM25，再加上图谱里的论文近邻。配置了嵌入接口（`preferences.embedding`，密钥 `RESEARCH_EMBEDDING_API_KEY`）后，对模式文本的余弦相似度通过倒数排名融合加入排序；新颖性检查在嵌入空间里把故事与最接近的工作比较，沿用上游 0.88 / 0.82 的分档；项目图谱改用平均链接聚类而不是 k-means。每个结果都会注明依据。图谱在首次使用时加载，闲置十分钟后释放。
+
 ## 检查
 
 `research_check` 对磁盘上的文件和台账做确定性检查并给出报告；它定义的是“完成”，而不是许可。下列基础检查在每种模式下都会运行；模式包再加上自己的阶段与门禁。阶段的要求成立、且决定它的检查没有错误时即为完成。整篇论文（scope 为 `all`）只有在没有任何检查报告错误、并且当前模式在当前路线上的每个阶段都已完成时，才算通过。
@@ -59,7 +67,7 @@
 - 从凭据与密钥目录导入；agent 从项目之外导入时需等待用户批准；
 - 对已记录的实验标识再次提交，以及猜测运行状态（无法确认的运行记为 `unknown`）；
 - 引文在其定位处并不存在的证据关联；
-- 除科研凭据之外的生图提供方凭据；
+- 除两个科研凭据（生图密钥与嵌入密钥）之外的提供方凭据；
 - 位于磁盘根目录、用户主目录或系统目录的项目根目录。
 
 ## 并发
@@ -117,10 +125,11 @@ async createProject(request: CreateProjectRequest, sessionId?: string): Promise<
 @Remote async configure(preferences: ResearchPreferences): Promise<ResearchPreferences>
 
 /**
- * Store the image-provider API key under its fixed research credential name.
+ * Store a provider's API key under its fixed research credential name.
+ * @param kind - the image provider or the embedding endpoint; it must be configured first.
  * @param value - the API key.
  */
-@Remote async setImageCredential(value: string): Promise<void>
+@Remote async setCredential(kind: 'image' | 'embedding', value: string): Promise<void>
 
 /**
  * Provision a tool component as a queryable background operation.

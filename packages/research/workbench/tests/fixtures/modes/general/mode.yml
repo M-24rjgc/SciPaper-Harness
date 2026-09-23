@@ -1,0 +1,4 @@
+id: general
+order: 0
+name: { en: General, zh: 通用 }
+summary: { en: Every tool and no pipeline., zh: 所有工具，没有流水线。 }

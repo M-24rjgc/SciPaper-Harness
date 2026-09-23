@@ -42,7 +42,8 @@ export interface ResearchInjected {
   create(request: CreateProjectRequest): Promise<ResearchProject>
   run(request: ResearchCommand): Promise<ResearchResponse>
   refresh(): Promise<void>
-  configure(preferences: ResearchPreferences, imageKey: string): Promise<void>
+  /** Save the preferences, then store each provider key that was typed; an empty key leaves the stored one alone. */
+  configure(preferences: ResearchPreferences, keys: { image: string; embedding: string }): Promise<void>
   install(component: 'python' | 'uv' | 'latex' | 'drawio'): Promise<void>
   openConversation(sessionId: string): Promise<void>
   /**

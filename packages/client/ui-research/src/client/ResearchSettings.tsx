@@ -20,6 +20,8 @@ interface RoleFields {
 /** The image endpoint a fresh configuration starts from (OpenAI, gpt-image-2); the person only adds the key. */
 const IMAGE_START = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', size: '1536x1024', quality: 'high', apiStyle: 'images' } as const
 const IMAGE_QUALITIES = ['low', 'medium', 'high', 'auto'] as const
+/** The embedding endpoint a key alone enables: OpenAI's small embedding model. */
+const EMBEDDING_START = { baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small' } as const
 const IMAGE_STYLES = ['images', 'chat'] as const
 
 function text(form: FormData, name: string): string {
@@ -119,6 +121,7 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const endpoint = text(form, 'imageEndpoint') || (text(form, 'imageKey') ? IMAGE_START.baseUrl : '')
+    const embeddingEndpoint = text(form, 'embeddingEndpoint') || (text(form, 'embeddingKey') ? EMBEDDING_START.baseUrl : '')
     const next: ResearchPreferences = {
       ...(text(form, 'mainModel') ? { main: { provider: text(form, 'mainProvider'), model: text(form, 'mainModel') } } : {}),
       ...(text(form, 'visionModel') ? { vision: { provider: text(form, 'visionProvider'), model: text(form, 'visionModel') } } : {}),
@@ -132,11 +135,12 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
           },
         }
         : {}),
+      ...(embeddingEndpoint ? { embedding: { baseUrl: embeddingEndpoint, model: text(form, 'embeddingModel') || EMBEDDING_START.model } } : {}),
       ...(text(form, 'pythonPath') ? { python: text(form, 'pythonPath') } : {}),
       ...(text(form, 'uvPath') ? { uv: text(form, 'uvPath') } : {}),
       ...(text(form, 'texPath') ? { texBin: text(form, 'texPath') } : {}),
     }
-    void props.configure(next, text(form, 'imageKey')).catch(() => {})
+    void props.configure(next, { image: text(form, 'imageKey'), embedding: text(form, 'embeddingKey') }).catch(() => {})
   }
   const values: Partial<Record<ResearchKey, string | undefined>> = {
     mainProvider: preferences.main?.provider,
@@ -146,6 +150,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
     imageEndpoint: preferences.image?.baseUrl,
     imageModel: preferences.image?.model ?? IMAGE_START.model,
     imageSize: preferences.image?.size ?? IMAGE_START.size,
+    embeddingEndpoint: preferences.embedding?.baseUrl,
+    embeddingModel: preferences.embedding?.model ?? EMBEDDING_START.model,
     pythonPath: preferences.python,
     uvPath: preferences.uv,
     texPath: preferences.texBin,
@@ -184,6 +190,15 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
         fields={{ provider: 'imageEndpoint', model: 'imageModel' }}
         values={values}
       />
+      <Role
+        t={t}
+        title={t('roleEmbedding')}
+        body={t('roleEmbeddingBody')}
+        standing={preferences.embedding === undefined ? t('roleEmbeddingOff') : preferences.embedding.model}
+        note={t('roleEmbeddingNote')}
+        fields={{ provider: 'embeddingEndpoint', model: 'embeddingModel' }}
+        values={values}
+      />
       <details><summary className={styles.groupHint}>{t('advancedSettings')}</summary>
         <div className={styles.roleFields}>
           <Field label={t('imageSize')} name="imageSize" defaultValue={preferences.image?.size ?? IMAGE_START.size} />
@@ -196,6 +211,7 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
             options={IMAGE_STYLES} optionKey={style => `imageApiStyle_${style}`}
           />
           <Field label={t('imageKey')} name="imageKey" type="password" />
+          <Field label={t('embeddingKey')} name="embeddingKey" type="password" />
         </div>
         <div className={styles.roleFields}>
           <Field label={t('pythonPath')} name="pythonPath" {...(values.pythonPath ? { defaultValue: values.pythonPath } : {})} />

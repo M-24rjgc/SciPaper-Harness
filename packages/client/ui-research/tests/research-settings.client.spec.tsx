@@ -23,7 +23,7 @@ import { zh } from '../src/client/locales.ts'
 /** What the page asked the plugin to do, in the order it asked. */
 interface Recorded {
   installs: ComponentStatus['id'][]
-  saves: { preferences: ResearchPreferences; imageKey: string }[]
+  saves: { preferences: ResearchPreferences; keys: { image: string; embedding: string } }[]
 }
 
 const roots: string[] = []
@@ -36,6 +36,7 @@ const configured: ResearchPreferences = {
   main: { provider: 'deepseek', model: 'deepseek-chat' },
   vision: { provider: 'openai-compatible', model: 'qwen-vl' },
   image: { baseUrl: 'https://images.example.com/v1', model: 'flux-1', size: '1536x1024' },
+  embedding: { baseUrl: 'https://embed.example.com/v1', model: 'bge-m3' },
   python: 'C:/Python312/python.exe',
   uv: 'C:/tools/uv.exe',
   texBin: 'C:/texlive/2025/bin',
@@ -109,8 +110,8 @@ function propsFor(view: ResearchView, recorded: Recorded, refuse = false): Workb
       recorded.installs.push(component)
       return refuse ? Promise.reject(new Error('the component store is unreachable')) : Promise.resolve()
     },
-    configure: (preferences: ResearchPreferences, imageKey: string) => {
-      recorded.saves.push({ preferences, imageKey })
+    configure: (preferences: ResearchPreferences, keys: { image: string; embedding: string }) => {
+      recorded.saves.push({ preferences, keys })
       return refuse ? Promise.reject(new Error('the credential store is unreachable')) : Promise.resolve()
     },
   } as unknown as WorkbenchProps
@@ -133,6 +134,7 @@ describe('research settings is the one place research is configured', () => {
     expect(page.getByText(zh.roleUnset)).toBeTruthy()
     expect(page.getByText(zh.roleVisionFollow)).toBeTruthy()
     expect(page.getByText(zh.roleImageOff)).toBeTruthy()
+    expect(page.getByText(zh.roleEmbeddingOff)).toBeTruthy()
     expect(page.getByText(zh.noEnvironments)).toBeTruthy()
     expect(page.queryByText(zh.installed)).toBeNull()
     expect(page.queryByRole('button', { name: zh.notInstalled })).toBeNull()
@@ -148,6 +150,9 @@ describe('research settings is the one place research is configured', () => {
     expect((page.getByLabelText(zh.imageApiStyle) as HTMLSelectElement).value).toBe('images')
     // The key never becomes readable text, here or in the saved record.
     expect(input(page.getByLabelText(zh.imageKey)).type).toBe('password')
+    expect(input(page.getByLabelText(zh.embeddingKey)).type).toBe('password')
+    expect(input(page.getByLabelText(zh.embeddingModel)).value).toBe('text-embedding-3-small')
+    expect(input(page.getByLabelText(zh.embeddingEndpoint)).value).toBe('')
   })
 
   it('asks the backend to store nothing at all when the form is untouched', async () => {
@@ -159,7 +164,7 @@ describe('research settings is the one place research is configured', () => {
 
     // Every binding is conditional, so an untouched form sends an empty
     // record rather than one full of empty strings the schema would reject.
-    expect(recorded.saves).toEqual([{ preferences: {}, imageKey: '' }])
+    expect(recorded.saves).toEqual([{ preferences: {}, keys: { image: '', embedding: '' } }])
     expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual({})
     // The plugin refused; the page is still standing and still unbound.
     expect(page.getByText(zh.roleUnset)).toBeTruthy()
@@ -172,11 +177,13 @@ describe('research settings is the one place research is configured', () => {
     expect(page.getByText('deepseek · deepseek-chat')).toBeTruthy()
     expect(page.getByText('openai-compatible · qwen-vl')).toBeTruthy()
     expect(page.getByText('flux-1')).toBeTruthy()
+    expect(page.getByText('bge-m3')).toBeTruthy()
     expect(page.queryByText(zh.roleUnset)).toBeNull()
     expect(input(page.getByLabelText(zh.mainModel)).value).toBe('deepseek-chat')
     expect(input(page.getByLabelText(zh.visionProvider)).value).toBe('openai-compatible')
     expect(input(page.getByLabelText(zh.imageEndpoint)).value).toBe('https://images.example.com/v1')
     expect(input(page.getByLabelText(zh.imageSize)).value).toBe('1536x1024')
+    expect(input(page.getByLabelText(zh.embeddingEndpoint)).value).toBe('https://embed.example.com/v1')
     expect(input(page.getByLabelText(zh.pythonPath)).value).toBe('C:/Python312/python.exe')
     expect(input(page.getByLabelText(zh.uvPath)).value).toBe('C:/tools/uv.exe')
     expect(input(page.getByLabelText(zh.texPath)).value).toBe('C:/texlive/2025/bin')
@@ -192,6 +199,8 @@ describe('research settings is the one place research is configured', () => {
     fireEvent.change(page.getByLabelText(zh.imageKey), { target: { value: 'sk-live-image-key' } })
     fireEvent.change(page.getByLabelText(zh.imageQuality), { target: { value: 'medium' } })
     fireEvent.change(page.getByLabelText(zh.imageApiStyle), { target: { value: 'chat' } })
+    fireEvent.change(page.getByLabelText(zh.embeddingModel), { target: { value: 'bge-large' } })
+    fireEvent.change(page.getByLabelText(zh.embeddingKey), { target: { value: 'sk-embed' } })
     fireEvent.change(page.getByLabelText(zh.pythonPath), { target: { value: '/usr/bin/python3' } })
     fireEvent.change(page.getByLabelText(zh.uvPath), { target: { value: '/usr/local/bin/uv' } })
     fireEvent.change(page.getByLabelText(zh.texPath), { target: { value: '/usr/local/texlive/2025/bin' } })
@@ -205,13 +214,14 @@ describe('research settings is the one place research is configured', () => {
         baseUrl: 'https://images.example.com/v2', model: 'flux-2',
         size: '2048x2048', quality: 'medium', apiStyle: 'chat',
       },
+      embedding: { baseUrl: 'https://embed.example.com/v1', model: 'bge-large' },
       python: '/usr/bin/python3',
       uv: '/usr/local/bin/uv',
       texBin: '/usr/local/texlive/2025/bin',
     }
     // The key travels beside the record, never inside it: the record names
     // only the credential slot the backend will read it back from.
-    expect(recorded.saves).toEqual([{ preferences: expected, imageKey: 'sk-live-image-key' }])
+    expect(recorded.saves).toEqual([{ preferences: expected, keys: { image: 'sk-live-image-key', embedding: 'sk-embed' } }])
     expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual(expected)
   })
 
@@ -229,7 +239,7 @@ describe('research settings is the one place research is configured', () => {
     await settle()
 
     const saved = recorded.saves[0]!
-    expect(saved.imageKey).toBe('')
+    expect(saved.keys.image).toBe('')
     expect(saved.preferences).toEqual({
       image: {
         baseUrl: 'https://images.example.com/v3', model: 'flux-3',
@@ -239,10 +249,12 @@ describe('research settings is the one place research is configured', () => {
     expect(preferencesSchema.parse(saved.preferences)).toEqual(saved.preferences)
   })
 
-  it('turns image generation on with OpenAI and gpt-image-2 when only a key is given', async () => {
+  it('turns image generation and embeddings on with OpenAI defaults when only their keys are given', async () => {
     const recorded = blank()
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), recorded)} />)
     fireEvent.change(page.getByLabelText(zh.imageKey), { target: { value: 'sk-only-key' } })
+    fireEvent.change(page.getByLabelText(zh.embeddingKey), { target: { value: 'sk-embed-only' } })
+    fireEvent.change(page.getByLabelText(zh.embeddingModel), { target: { value: '' } })
     fireEvent.change(page.getByLabelText(zh.imageModel), { target: { value: '' } })
     fireEvent.change(page.getByLabelText(zh.imageSize), { target: { value: '' } })
     // A value the select never offers reads as the default rather than reaching the record.
@@ -255,8 +267,11 @@ describe('research settings is the one place research is configured', () => {
     fireEvent.click(page.getByRole('button', { name: zh.save }))
     await settle()
     expect(recorded.saves).toEqual([{
-      preferences: { image: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', size: '1536x1024', quality: 'high', apiStyle: 'images' } },
-      imageKey: 'sk-only-key',
+      preferences: {
+        image: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', size: '1536x1024', quality: 'high', apiStyle: 'images' },
+        embedding: { baseUrl: 'https://api.openai.com/v1', model: 'text-embedding-3-small' },
+      },
+      keys: { image: 'sk-only-key', embedding: 'sk-embed-only' },
     }])
     expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual(recorded.saves[0]!.preferences)
   })

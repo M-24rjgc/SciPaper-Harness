@@ -35,6 +35,14 @@ The general mode is a pack with no phases and no skills: every research tool, no
 
 Phase requirements use a fixed set of facts: a file glob (`file`, with an optional `min`), `manuscript`, `bibEntries`, `sections`, `figures`, `diagram`, `pagesInspected`, `reviewCurrent`, `runsCollected`, `noActiveRuns`, `dataEvidence` and `resultsOrData`. A requirement given as a list holds when any one of them holds.
 
+A gate is a Python script in the pack. It runs with the platform Python (`python -I -X utf8`, no shell, an argument vector) in the project root, and its last line of output is `{"findings": [{severity, message, file?, line?}]}`; anything else it prints becomes one error finding. A check never installs Python: without it, each gate reports that it could not run. `research_artifact` run-script runs a script the pack declares for the project's route the same way and returns what it printed. The spark-to-paper pack runs its upstream linters unchanged through such an adapter; its `NOTICE.md` lists what was taken, patched and replaced.
+
+## Knowledge graphs
+
+`research_knowledge` reads research-pattern graphs: reusable problem → solution → story patterns mined from papers, after spark-to-paper's graph builder. A built-in graph distilled from the upstream AI corpus ships as `runtime/kg/ai-kg.json.gz` — patterns, papers with their story fields and five nearest neighbours, no vectors. `scripts/build_kg.py` converts the upstream archive offline and reads its networkx pickle with an unpickler that runs no code from the file. A project builds its own graph from a corpus the agent extracted (`build-graph`, then `name-patterns`) into `.research/kg/`.
+
+Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. With an embedding endpoint configured (`preferences.embedding`, key `RESEARCH_EMBEDDING_API_KEY`), cosine similarity over pattern texts joins in by reciprocal-rank fusion, novelty compares the story with the closest works in embedding space against the upstream 0.88 / 0.82 bands, and a project graph clusters by average linkage instead of k-means. Every result names its basis. Graphs load on first use and are released after ten idle minutes.
+
 ## Checks
 
 `research_check` runs deterministic checks over the files on disk and the ledger, and reports; it is the definition of done, not a permission. The base checks below run in every mode; a pack adds its phases and gates. A phase is done when its requirements hold and its checks carry no errors. The whole paper (scope `all`) is clean only when no check reports an error and every phase of its mode on its route is done.
@@ -59,7 +67,7 @@ The service refuses only what would be unsafe or untrue, never work in progress:
 - imports from credential and key directories; the agent's imports from outside the project wait for the user's approval;
 - a second launch for an experiment identity already recorded, and guessed run states (an unconfirmed run is `unknown`);
 - evidence links whose quote does not appear at its locator;
-- image-provider credentials other than the research credential;
+- provider credentials other than the two research credentials (the image and the embedding key);
 - a project root that is a drive root, the home directory or a system directory.
 
 ## Concurrency
@@ -117,10 +125,11 @@ async createProject(request: CreateProjectRequest, sessionId?: string): Promise<
 @Remote async configure(preferences: ResearchPreferences): Promise<ResearchPreferences>
 
 /**
- * Store the image-provider API key under its fixed research credential name.
+ * Store a provider's API key under its fixed research credential name.
+ * @param kind - the image provider or the embedding endpoint; it must be configured first.
  * @param value - the API key.
  */
-@Remote async setImageCredential(value: string): Promise<void>
+@Remote async setCredential(kind: 'image' | 'embedding', value: string): Promise<void>
 
 /**
  * Provision a tool component as a queryable background operation.

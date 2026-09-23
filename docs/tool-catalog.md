@@ -43,7 +43,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_knowledge`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
 
 <a id="deepseek-aidsh-mcp-resources"></a>
 
@@ -2620,7 +2620,7 @@ web_search and web_fetch keep provider selection behind ctx.web so model-visible
 
 ### `research_artifact`
 
-Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. import-template {paths}: copy a venue template into template/. export {}: zip of sources, PDF, data manifest and the check report.
+Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. import-template {paths}: copy a venue template into template/. run-script {script, args?}: run one of the scripts the project's mode declares (its skills name them) in the project folder. export {}: zip of sources, PDF, data manifest and the check report.
 
 ```json
 {
@@ -2635,6 +2635,7 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
         "import-template",
         "compile",
         "render-pages",
+        "run-script",
         "export"
       ]
     },
@@ -2703,6 +2704,17 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
     "maxPages": {
       "type": "integer",
       "description": "render-pages: page cap"
+    },
+    "script": {
+      "type": "string",
+      "description": "run-script: a script id of the current mode"
+    },
+    "args": {
+      "type": "array",
+      "description": "run-script: arguments added after the script's own",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [
@@ -2871,6 +2883,65 @@ Independent experiment runs that survive the chat and the app. experiment {reque
     "timeoutSeconds": {
       "type": "integer",
       "description": "experiment-wait"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_knowledge`
+
+Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. novelty {story?, path?}: compares story.json with retrieved_papers.json abstracts and the closest graph papers, writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "graph-status",
+        "recall",
+        "novelty",
+        "build-graph",
+        "name-patterns"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "query": {
+      "type": "string",
+      "description": "recall: the idea as a search-friendly English query"
+    },
+    "topK": {
+      "type": "integer",
+      "description": "recall: how many patterns (default 8, at most 20)"
+    },
+    "path": {
+      "type": "string",
+      "description": "recall: project-relative JSON file to save the result to; novelty: report path (default novelty_report.json)"
+    },
+    "story": {
+      "type": "string",
+      "description": "novelty: the story file (default story.json)"
+    },
+    "papers": {
+      "type": "string",
+      "description": "build-graph: the extracted corpus, JSON lines"
+    },
+    "domain": {
+      "type": "string",
+      "description": "build-graph: the corpus domain label, e.g. hci"
+    },
+    "names": {
+      "type": "string",
+      "description": "name-patterns: the cluster names file (default cluster_meta.json)"
     }
   },
   "required": [

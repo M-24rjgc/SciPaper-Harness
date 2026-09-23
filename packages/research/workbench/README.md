@@ -67,7 +67,11 @@ One service owns every project record in the `research_workbench` storage domain
 | [`src/checks.ts`](src/checks.ts) | `research_check`: every base check, a mode's gates through the runner the service supplies, and phase progress from the mode's requirements |
 | [`src/modes.ts`](src/modes.ts) | Mode packs: manifest validation, the registry, routes and the mode a project resolves to |
 | [`src/mode-skills.ts`](src/mode-skills.ts) | The skill provider that lists the skills of each project's mode |
-| [`runtime/modes/`](runtime/modes) | The shipped mode packs: `general` and `spark-to-paper` |
+| [`src/gates.ts`](src/gates.ts) | Pack gates and scripts: running them with the platform Python and reading their findings |
+| [`runtime/modes/`](runtime/modes) | The shipped mode packs: `general` and `spark-to-paper` (upstream skills, linters and template; see its `NOTICE.md`) |
+| [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`: loading graphs, recall, novelty, building and naming a project graph |
+| [`src/clustering.ts`](src/clustering.ts) | Tokens, BM25, term vectors, cosine, rank fusion, average-linkage and k-means clustering |
+| [`runtime/kg/`](runtime/kg) | The built-in research-pattern graph, distilled by [`scripts/build_kg.py`](scripts/build_kg.py) |
 | [`src/latex.ts`](src/latex.ts) | Manuscript discovery, input flattening, bibliography and graphic resolution |
 | [`src/artifacts.ts`](src/artifacts.ts) | Imports, file revisions, compile, page renders, export |
 | [`src/experiments.ts`](src/experiments.ts) | Run admission, input snapshots, launch, observation, output collection |
@@ -97,7 +101,7 @@ One service owns every project record in the `research_workbench` storage domain
 
 #### What the model sees
 
-The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): eight tools, `research_project` (current, create, list, modes, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_media`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
+The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): nine tools, `research_project` (current, create, list, modes, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_media`, `research_knowledge`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
 
 #### Token effect
 
@@ -129,7 +133,7 @@ The skills of the project's mode pack, listed in the session's skill catalog bes
 
 #### Token effect
 
-One catalog line per pack skill (spark-to-paper adds three). A skill's body costs tokens only when the model loads it.
+One catalog line per pack skill (spark-to-paper adds thirteen). A skill's body costs tokens only when the model loads it, and its `references/` only when it reads them.
 
 #### KV Cache effect
 

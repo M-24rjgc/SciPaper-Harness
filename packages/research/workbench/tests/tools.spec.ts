@@ -131,7 +131,7 @@ describe('research tools find the project from the working directory', () => {
     const valid: Record<string, unknown> = {
       research_project: { action: 'current' }, research_check: {}, research_task: { jobId: 'j' }, research_evidence: { action: 'import' },
       research_artifact: { action: 'export' }, research_environment: { action: 'environment' }, research_experiment: { action: 'experiment-logs' },
-      research_media: { action: 'visual-review' },
+      research_media: { action: 'visual-review' }, research_knowledge: { action: 'graph-status' },
     }
     for (const tool of h.tools.values()) expect(tool.presentCall(valid[tool.name])?.title).toBeTruthy()
     expect(h.tools.get('research_check')!.output.render({}, { clean: true })).toEqual([{ type: 'text', text: '{"clean":true}' }])
@@ -206,7 +206,7 @@ describe('the project brief the model reads', () => {
     }
     expect(routed.guide[0]).toMatch(/Next unfinished phase: plan\.$/)
     expect(routed.phases).toHaveLength(2)
-    expect(routed.phaseSkills.data).toEqual(['results-ingest'])
+    expect(routed.phaseSkills.data).toEqual(['ts-paper-data', 'results-ingest'])
     expect(routed.lastCompile).toEqual({ status: 'completed', pdfPath: 'x.pdf' })
     expect(routed.decisions).toEqual([{ question: 'Q', answer: 'A', by: 'user', rationale: '' }])
     expect(routed.artifacts).toEqual([{ id: 'a', path: 'paper/main.tex', kind: 'manuscript', revision: 2, stale: false }])

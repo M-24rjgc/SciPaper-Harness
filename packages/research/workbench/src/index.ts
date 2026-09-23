@@ -18,11 +18,13 @@ import { ComponentManager, runtimeAsset } from './components.ts'
 import { autonomies, commandSchema, locatorSchema, preferencesSchema, researchDomain } from './schema.ts'
 import { invalidate, newProject, putClaim, runView, searchEvidence } from './project.ts'
 import { compilePaper, compileTarget, exportPaper, extractText, importEvidence, importTemplate, renderPages, writeArtifact } from './artifacts.ts'
-import { runChecks } from './checks.ts'
+import { runChecks, type GateRunner } from './checks.ts'
+import { createGateRunner, runPackScript } from './gates.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
 import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
+import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
 import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isInside, projectPath, readText, sameDirectory, truncateBytes, writeNew } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
@@ -46,13 +48,16 @@ export interface Config {
 
 /** The only credential the image provider may use; it cannot name any other stored secret. */
 export const IMAGE_CREDENTIAL = 'RESEARCH_IMAGE_API_KEY'
+/** The only credential the embedding endpoint may use. */
+export const EMBEDDING_CREDENTIAL = 'RESEARCH_EMBEDDING_API_KEY'
 /** Runs in these states are still in progress from the agent's point of view. */
 const ACTIVE_RUN_STATES = new Set(['queued', 'running', 'unknown'])
 /** Actions the desktop follows as background jobs instead of waiting on. */
 const LONG_ACTIONS = new Set<ResearchCommand['action']>([
   'import', 'import-template', 'refresh-evidence', 'literature-search', 'literature-import',
   'environment', 'experiment', 'experiment-refresh', 'experiment-cancel',
-  'compile', 'render-pages', 'visual-review', 'generate-image', 'fetch-reference-figures', 'export',
+  'compile', 'render-pages', 'visual-review', 'generate-image', 'fetch-reference-figures', 'run-script', 'export',
+  'recall', 'novelty', 'build-graph',
 ])
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait'
@@ -126,6 +131,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   private readonly evidenceText = new Map<string, EvidenceRecord['chunks']>()
   private readonly lifetime = new AbortController()
   readonly components: ComponentManager
+  /** The research-pattern graphs: the built-in one and each project's own. */
+  readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset('kg/ai-kg.json.gz'))
   /** The installed mode packs, loaded once at start. */
   modes!: ModeRegistry
   private refreshResourceRoutes!: () => Promise<void>
@@ -197,6 +204,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     }, this.config.pollIntervalMs)
     this.ctx.effect(() => async () => {
       clearInterval(timer)
+      this.knowledge.dispose()
       this.lifetime.abort()
       await Promise.allSettled([...this.operations, ...this.tails.values()])
       await this.domain.close()
@@ -283,6 +291,19 @@ export class ResearchWorkbench extends TypertRemoteService {
     return structuredClone(project)
   }
 
+  /** Runs a mode pack's gates with the installed platform Python; a check never installs it. */
+  private gates(signal: AbortSignal): GateRunner {
+    return createGateRunner(() => this.components.installedPython(), signal)
+  }
+
+  /** The configured embedding endpoint with its key, or undefined when either is missing. */
+  private async embedder(): Promise<Embedder | undefined> {
+    const binding = this.domain.global.get().embedding
+    if (!binding) return undefined
+    const credential = await this.ctx.credentials.resolve(credentialRef(EMBEDDING_CREDENTIAL))
+    return credential ? createEmbedder(binding, credential.value) : undefined
+  }
+
   /** Tell listeners (the mode's skill catalog) which mode a project now records. */
   private announceMode(id: ProjectId): void {
     const { root, mode, route } = this.record(id)
@@ -302,14 +323,15 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /**
-   * Store the image-provider API key under its fixed research credential name.
+   * Store a provider's API key under its fixed research credential name.
+   * @param kind - the image provider or the embedding endpoint; it must be configured first.
    * @param value - the API key.
    */
   @Remote
-  async setImageCredential(value: string): Promise<void> {
-    if (!this.domain.global.get().image) throw new Error('Configure the image provider before setting its credential')
+  async setCredential(kind: 'image' | 'embedding', value: string): Promise<void> {
+    if (!this.domain.global.get()[kind]) throw new Error(`Configure the ${kind} provider before setting its credential`)
     if (!value.trim()) throw new Error('The API key is empty')
-    await this.ctx.credentials.set(credentialRef(IMAGE_CREDENTIAL), value.trim())
+    await this.ctx.credentials.set(credentialRef(kind === 'image' ? IMAGE_CREDENTIAL : EMBEDDING_CREDENTIAL), value.trim())
   }
 
   /**
@@ -445,7 +467,8 @@ export class ResearchWorkbench extends TypertRemoteService {
         return this.clipped({ message: 'Experiment logs', content: await experimentLogs(project, run, signal) })
       }
       case 'check': {
-        const check = await runChecks(this.getProject(project.id), this.config.maxSourceBytes, request.scope, this.modes.resolve(project))
+        const snapshot = this.getProject(project.id)
+        const check = await runChecks(snapshot, this.config.maxSourceBytes, request.scope, this.modes.resolve(snapshot), this.gates(signal))
         await this.mutate(project.id, (current) => { current.lastCheck = check })
         return { message: check.clean ? 'Clean' : 'Not done yet: fix the errors and check again', check }
       }
@@ -565,15 +588,61 @@ export class ResearchWorkbench extends TypertRemoteService {
         }
       }
       case 'visual-review': return this.visualReview(id, request.artifactId, signal)
+      case 'run-script': {
+        const snapshot = this.record(id)
+        const mode = this.modes.resolve(snapshot)
+        const { route } = mode
+        const onRoute = (routes: string[] | undefined): boolean => routes === undefined || (route !== undefined && routes.includes(route))
+        const script = mode.pack.scripts.find(item => item.id === request.script && onRoute(item.routes))
+        if (!script) {
+          const available = mode.pack.scripts.map(item => item.id)
+          throw new Error(`Mode ${mode.pack.id} has no script ${request.script}${available.length ? `; its scripts: ${available.join(', ')}` : ''}`)
+        }
+        const python = await this.components.python(signal)
+        const result = await runPackScript(python, script, mode, snapshot, request.args ?? [], signal)
+        return {
+          message: result.code === 0 ? `${script.id} finished` : `${script.id} exited with code ${result.code}; see its output`,
+          content: `${result.stdout}${result.stderr ? `\n[stderr]\n${result.stderr}` : ''}`,
+        }
+      }
       case 'generate-image': return this.generateImage(id, request, signal)
       case 'fetch-reference-figures': return this.referenceFigures(id, request, signal)
       case 'export': {
         const snapshot = this.getProject(id)
-        const check = await runChecks(snapshot, limit, 'all', this.modes.resolve(snapshot))
+        const check = await runChecks(snapshot, limit, 'all', this.modes.resolve(snapshot), this.gates(signal))
         const result = await exportPaper(snapshot, limit, check)
         return (project) => {
           project.lastCheck = check
           return { message: result.final ? 'Submission package exported' : 'Draft exported; the bundled check report lists what is still open', path: result.path, check }
+        }
+      }
+      case 'graph-status': {
+        const status = await this.knowledge.status(this.record(id).root, this.domain.global.get().embedding?.model)
+        return { message: 'Knowledge graphs available to this project', content: JSON.stringify(status) }
+      }
+      case 'recall': {
+        const root = this.record(id).root
+        const result = await this.knowledge.recall(root, request.query, request.topK ?? 8, await this.embedder(), signal)
+        if (request.path) await atomicWrite(await projectPath(root, request.path), `${JSON.stringify({ query: request.query, ...result }, null, 1)}\n`)
+        return {
+          message: `${result.patterns.length} pattern(s) recalled (${result.basis})${request.path ? `; saved to ${request.path}` : ''}`,
+          content: JSON.stringify(result), ...request.path ? { path: request.path } : {},
+        }
+      }
+      case 'novelty': {
+        const path = request.path ?? 'novelty_report.json'
+        const report = await this.knowledge.novelty(this.record(id).root, request.story ?? 'story.json', path, await this.embedder(), signal, limit)
+        return { message: `Novelty risk ${report.risk_level} (${report.basis}); report saved to ${path}`, path, content: JSON.stringify(report) }
+      }
+      case 'build-graph': {
+        const result = await this.knowledge.build(this.record(id).root, request.papers, request.domain, await this.embedder(), signal)
+        return { message: `${result.clusters.length} cluster(s) from ${result.papers} papers (${result.basis})`, path: PROJECT_CLUSTERS, content: JSON.stringify(result) }
+      }
+      case 'name-patterns': {
+        const result = await this.knowledge.namePatterns(this.record(id).root, request.names ?? 'cluster_meta.json', limit)
+        return {
+          message: result.issues.length ? `Project graph written with ${result.issues.length} problem(s) to fix` : 'Project graph written and valid',
+          path: PROJECT_GRAPH, content: JSON.stringify(result),
         }
       }
       default: {

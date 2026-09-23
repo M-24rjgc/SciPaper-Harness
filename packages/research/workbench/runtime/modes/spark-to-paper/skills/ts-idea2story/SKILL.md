@@ -1,41 +1,31 @@
 ---
 name: ts-idea2story
-description: Use on the idea route of spark-to-paper to turn a bare idea into a structured research story (story.json) grounded in the closest existing work, before any planning or writing.
+description: Use on the idea route of spark-to-paper to turn a raw idea into a grounded 8-field research story (story.json, story_proposal.md, retrieved_papers.json) — recall patterns from the knowledge graph, search the closest work, reframe, critique, check novelty.
 ---
 
 # From an idea to a research story
 
-Output: `story.json` and `story_proposal.md` in the project root. The story is the input to the plan, and the first thing the user reviews.
+Adapted from spark-to-paper-skills `ts-idea2story` (MIT). The full upstream method — packaging the idea, three-axis reasoning over recalled patterns, intent-tagged search packs, reframe-not-combine, the blind comparative critique loop with its pass bar, the novelty bands and the `retrieved_papers.json` schema — is in `references/upstream.md`; read it and follow it. The idea is the protagonist; a recalled pattern is the tool it wields.
 
-## Steps
+## With the research tools
 
-1. **Restate the idea** in one sentence, then name the problem it addresses in the terms a reviewer in that field would use.
-2. **Find the closest work.** Run 3–6 `research_evidence` literature-search queries (crossref, openalex, arxiv) with different phrasings. Read the abstracts of the closest hits and keep the best in `retrieved_papers.json` (title, year, venue, identifier, abstract, why it is close). Import the closest two to four with literature-import — they seed the citations.
-3. **Judge novelty honestly.** If the closest work already does it, say so and pivot to the nearest open variant — at most two pivots before you ask the user. Never pretend novelty.
-4. **Write the story** (below).
-5. **Check it** against the rules, fix, and write `story_proposal.md`: the same story as prose a reader can review in two minutes.
+| Upstream step | Do it with |
+|---|---|
+| `kg_recall.py --idea … --kg …` | `research_knowledge` recall with the retrieval query, `topK` 8, `path` `recall.json`. It searches the built-in AI graph and any project graph (ts-kg-build); the result says whether the score was semantic (an embedding endpoint is configured in the research settings) or lexical — treat lexical hits as weaker |
+| WebSearch / WebFetch query packs | `research_evidence` literature-search (crossref, openalex, arxiv) for each intent pack — core method, task setting, contrast, evaluation, plus the literal idea — and the web search tool where it helps. Import the closest two to four papers with literature-import; they seed the citations |
+| `novelty_check.py <workdir>` | `research_knowledge` novelty: it compares `story.json` with the `retrieved_papers.json` abstracts and the recalled exemplars and always writes `novelty_report.json`. On a semantic basis act on the bands (≥ 0.88 pivot, ≥ 0.82 sharpen, at most two pivots); on a lexical basis it lists the closest works and you judge |
+| `story_lint.py <workdir>` | `research_check` scope `story` (the `story-lint` gate) |
 
-## story.json — eight fields
+## Steps, in short
 
-```json
-{
-  "title": "specific; at most 20 words",
-  "abstract": "problem, gap, approach, what the evaluation will show — no numbers",
-  "problem_framing": "the problem in the field's terms and why it matters",
-  "gap_pattern": "what the closest work cannot do, assumes, or has not measured — one gap, cited",
-  "solution": "the idea in a paragraph",
-  "method_skeleton": "the method's components and how they connect; at least 12 words",
-  "experiments_plan": "datasets, baselines, metrics, ablations; realistic for the compute available",
-  "innovation_claims": ["at most three things the paper will deliver"]
-}
-```
-
-## Rules the story must pass
-
-- Every field is filled with real content — no "TBD", "N/A", "…", "placeholder" or lorem ipsum.
-- No fabricated results. A story is written before anything is measured: no percentages, no "outperforms X by", no "state-of-the-art by", no "from 0.6 to 0.8", no "3× faster". A forecast must read as one ("we expect", "we will test whether").
-- The gap is backed by the works you found, cited by title.
+1. Write `idea_brief.json` — motivation, problem, stated and inferred assumptions kept apart, constraints, an English retrieval query.
+2. Recall, then reason over the candidates in one pass on stability, novelty and domain distance.
+3. Search, and record every real paper in `retrieved_papers.json` — never an invented paper or abstract (`abstract_source: "missing"` when there is none).
+4. Pick a stable near-domain seed pattern; keep novel and far ones in reserve.
+5. Write the eight fields — reframe, never combine; a title that names the insight; forward-looking plans and claims with no numbers.
+6. Critique blind against exemplar stories and refine, at most three rounds, keeping the global best.
+7. Run novelty, write `story.json` and `story_proposal.md`, and make the story phase of `research_check` clean.
 
 ## Then
 
-With `checkpoints` autonomy, ask the user to confirm the story (`ask_user_question`, recommendation first), then record-decision. With `automatic`, record the decision and your rationale. Log the stage in `logs/idea2story.io.md` (INPUT, DECISIONS, OUTPUT).
+With checkpoints autonomy, ask the user to confirm the story (`ask_user_question`, your recommendation first) and record-decision; with automatic, record the decision and why. Write `logs/idea2story.io.md` as `references/upstream.md` specifies, then hand `story_proposal.md` to ts-paper-plan.

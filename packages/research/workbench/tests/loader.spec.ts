@@ -60,6 +60,9 @@ vi.mock('../src/process.ts', async (original) => {
         return ok(JSON.stringify([path.join(destination, 'page-001.png')]))
       }
       if (joined.includes('documents.py')) return ok(processes.extracted ?? JSON.stringify([{ text: 'metric,value\naccuracy,0.8123', locator: { line: 1 } }]))
+      if (joined.includes('run_gate.py')) return ok(JSON.stringify({ findings: [{ severity: 'error', message: `${String(args[4])} found a problem`, file: 'blueprint.json' }] }))
+      if (joined.includes('assemble_paper.py')) return { code: 0, stdout: '{"ok": true}', stderr: 'copied ts_iieta.sty' }
+      if (joined.includes('blueprint_lint.py')) return { code: 1, stdout: '{"ok": false}', stderr: '' }
       if (/latex|biber|bibtex/.test(path.basename(command))) {
         await processes.holds.get('latex')
         const output = args.find(arg => arg.startsWith('-output-directory='))?.slice('-output-directory='.length) ?? ''
@@ -82,7 +85,7 @@ vi.mock('../src/process.ts', async (original) => {
   }
 })
 
-const { default: ResearchWorkbench, IMAGE_CREDENTIAL } = await import('../src/index.ts')
+const { default: ResearchWorkbench, EMBEDDING_CREDENTIAL, IMAGE_CREDENTIAL } = await import('../src/index.ts')
 const AgentTools = await import('../src/agent-tools.ts')
 const { default: SkillRegistry } = await import('@deepseek-ai/dsh-skill')
 
@@ -169,7 +172,8 @@ describe('the research service records; it never drives the agent', () => {
     root = await mkdtemp(join(tmpdir(), 'research-loader-'))
     const pool = new MemoryMediaPool(), first = await boot(pool)
     expect([...first.registry.keys()].sort()).toEqual([
-      'research_artifact', 'research_check', 'research_environment', 'research_evidence', 'research_experiment', 'research_media', 'research_project', 'research_task',
+      'research_artifact', 'research_check', 'research_environment', 'research_evidence', 'research_experiment', 'research_knowledge', 'research_media',
+      'research_project', 'research_task',
     ])
     const announced: unknown[] = []
     ctx!.on('research/mode', (event) => { announced.push(event) })
@@ -209,7 +213,10 @@ describe('the research service records; it never drives the agent', () => {
     expect(await names(join(root, 'elsewhere'))).toEqual([])
     expect(await names()).toEqual([])
     await service.execute({ projectId: p.id, action: 'set-mode', mode: 'spark-to-paper', route: 'idea' }, signal, 'agent')
-    expect(await names(join(p.root, 'paper'))).toEqual(['ts-idea2story', 'ts-paper', 'ts-paper-plan'])
+    expect(await names(join(p.root, 'paper'))).toEqual([
+      'ts-figure-svg', 'ts-idea2story', 'ts-kg-build', 'ts-paper', 'ts-paper-cite', 'ts-paper-data', 'ts-paper-experiment',
+      'ts-paper-figure', 'ts-paper-latex', 'ts-paper-plan', 'ts-paper-refine', 'ts-paper-review', 'ts-paper-write',
+    ])
     const loaded = await ctx!.skills.get('ts-paper', { cwd: p.root })
     expect(loaded).toMatchObject({ name: 'ts-paper', provider: 'research-modes', source: 'bundled', resourceBase: { kind: 'directory' } })
     expect(loaded?.content).toMatch(/^\s*# spark-to-paper/)
@@ -224,6 +231,72 @@ describe('the research service records; it never drives the agent', () => {
     await write(join(root, 'extra', 'SKILL.md'), '---\nname: extra\ndescription: An extra skill.\n---\nBody')
     expect(await modeSkillDefinition({ name: 'extra', description: 'An extra skill.', whenToUse: 'Rarely', directory: join(root, 'extra') }))
       .toMatchObject({ whenToUse: 'Rarely', content: 'Body' })
+  })
+
+  it('runs a mode\'s gates in a check and its declared scripts on request, with the platform Python', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-scripts-'))
+    const { service } = await boot(new MemoryMediaPool())
+    const p = await service.create({ title: 'Scripts', root: join(root, 'p'), brief: '', mode: 'spark-to-paper', route: 'data' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    // A check never installs Python: without it a gate reports, and no process starts.
+    const without = await run({ action: 'check', scope: 'plan' })
+    expect(without.check?.findings.filter(f => f.check === 'template-lint').map(f => f.message)).toEqual([expect.stringMatching(/needs the platform Python/)])
+    expect(processes.calls.some(call => call.args.join(' ').includes('run_gate.py'))).toBe(false)
+    const python = join(root, 'python.exe')
+    await write(python, '')
+    await service.configure({ python })
+    const checked = await run({ action: 'check', scope: 'plan' })
+    expect(checked.check?.findings.filter(f => f.check === 'blueprint-lint')).toEqual([{ check: 'blueprint-lint', severity: 'error', message: 'blueprint found a problem', file: 'blueprint.json' }])
+    const gate = processes.calls.find(call => call.args.includes('blueprint'))!
+    expect(gate).toMatchObject({ command: python, options: { cwd: p.root } })
+    expect(gate.args.slice(0, 3)).toEqual(['-I', '-X', 'utf8'])
+    // A declared script runs with the agent's extra arguments; its exit code and both streams come back.
+    const assembled = await run({ action: 'run-script', script: 'assemble-paper', args: ['--backup'] })
+    expect(assembled).toMatchObject({ message: 'assemble-paper finished', content: '{"ok": true}\n[stderr]\ncopied ts_iieta.sty' })
+    expect(processes.calls.at(-1)?.args.slice(-3)).toEqual([p.root, '--no-compile', '--backup'])
+    expect(await run({ action: 'run-script', script: 'blueprint-fix' })).toMatchObject({ message: 'blueprint-fix exited with code 1; see its output', content: '{"ok": false}' })
+    // Scripts are the mode's own, and route-limited ones only exist on their routes.
+    await expect(run({ action: 'run-script', script: 'recompute-results' })).rejects.toThrow(/Mode spark-to-paper has no script recompute-results; its scripts: blueprint-fix, /)
+    await run({ action: 'set-mode', mode: 'general' })
+    await expect(run({ action: 'run-script', script: 'assemble-paper' })).rejects.toThrow(/^Mode general has no script assemble-paper$/)
+  })
+
+  it('recalls from the built-in graph, checks novelty and builds a project graph, semantically once an embedding key is stored', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-knowledge-'))
+    const harness = await boot(new MemoryMediaPool())
+    const { service } = harness
+    const p = await service.create({ title: 'Knowledge', root: join(root, 'p'), brief: '' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    const status = JSON.parse((await run({ action: 'graph-status' })).content ?? '{}') as { builtin: { patterns: number }; embedding: { configured: boolean } }
+    expect(status.builtin.patterns).toBeGreaterThan(300)
+    expect(status.embedding.configured).toBe(false)
+    const recalled = await run({ action: 'recall', query: 'continual category discovery for e-commerce agents', topK: 3, path: 'recall.json' })
+    expect(recalled).toMatchObject({ message: '3 pattern(s) recalled (lexical); saved to recall.json', path: 'recall.json' })
+    expect(JSON.parse(await readFile(join(p.root, 'recall.json'), 'utf8'))).toMatchObject({ query: 'continual category discovery for e-commerce agents', basis: 'lexical' })
+    expect((await run({ action: 'recall', query: 'graph neural networks' })).message).toBe('8 pattern(s) recalled (lexical)')
+    await write(join(p.root, 'story.json'), JSON.stringify({ title: 'Continual category discovery', abstract: 'New product categories appear over time' }))
+    const novelty = await run({ action: 'novelty' })
+    expect(novelty).toMatchObject({ path: 'novelty_report.json', message: expect.stringMatching(/^Novelty risk unknown \(lexical/) as unknown })
+    // With an embedding endpoint and its key, the same actions rank semantically.
+    await expect(service.setCredential('embedding', 'key')).rejects.toThrow(/Configure the embedding provider/)
+    await service.configure({ embedding: { baseUrl: 'https://emb.example/v1', model: 'emb-small' } })
+    expect((await run({ action: 'recall', query: 'agents', topK: 1 })).message).toMatch(/\(lexical\)/)
+    await service.setCredential('embedding', ' emb-secret ')
+    expect(harness.credentials.get(EMBEDDING_CREDENTIAL)).toBe('emb-secret')
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const { input } = JSON.parse(init.body as string) as { input: string[] }
+      return new Response(JSON.stringify({ data: input.map((text, index) => ({ index, embedding: [text.length % 7, 1, text.includes('soil') ? 5 : 0] })) }))
+    }))
+    expect((await run({ action: 'novelty', story: 'story.json', path: 'reports/novelty.json' })).message).toMatch(/^Novelty risk (high|medium|low) \(semantic \(emb-small\)/)
+    const corpus = ['a', 'b', 'c'].map(id => JSON.stringify({ paper_id: id, title: `Soil ${id}`, story: `soil story ${id}`, base_problem: 'soil', solution_pattern: 'soil' }))
+    await write(join(p.root, 'papers.jsonl'), corpus.join('\n'))
+    const built = await run({ action: 'build-graph', papers: 'papers.jsonl', domain: 'soil' })
+    expect(built).toMatchObject({ path: '.research/kg/clusters.json', message: expect.stringMatching(/cluster\(s\) from 3 papers \(embedding\)$/) as unknown })
+    const clusters = (JSON.parse(built.content ?? '{}') as { clusters: { id: string }[] }).clusters
+    await write(join(p.root, 'cluster_meta.json'), JSON.stringify(Object.fromEntries(clusters.map(cluster => [cluster.id, { name: 'Soil as a ledger', summary: 's', tier: 'A' }]))))
+    expect(await run({ action: 'name-patterns' })).toMatchObject({ path: '.research/kg/graph.json', message: 'Project graph written and valid' })
+    await write(join(p.root, 'bad.json'), JSON.stringify({ ghost: { name: 'x' } }))
+    expect((await run({ action: 'name-patterns', names: 'bad.json' })).message).toMatch(/^Project graph written with \d+ problem\(s\) to fix$/)
   })
 
   it('keeps managed tools in the product home unless a component root is configured', async () => {
@@ -554,11 +627,11 @@ describe('the research service records; it never drives the agent', () => {
     expect(pngReviews[2]?.findings).toMatch(/Superseded/)
 
     await expect(run({ action: 'generate-image', prompt: 'x', path: 'figures/g.png' })).rejects.toThrow(/Configure an image/)
-    await expect(service.setImageCredential('key')).rejects.toThrow(/Configure the image provider/)
+    await expect(service.setCredential('image', 'key')).rejects.toThrow(/Configure the image provider/)
     await service.configure({ python: 'python', image: { baseUrl: 'https://img.example/v1/', model: 'm', size: '1024x1024' } })
-    await expect(service.setImageCredential('  ')).rejects.toThrow(/empty/)
+    await expect(service.setCredential('image', '  ')).rejects.toThrow(/empty/)
     await expect(run({ action: 'generate-image', prompt: 'x', path: 'figures/g.png' })).rejects.toThrow(/credential has not been configured/)
-    await service.setImageCredential(' secret ')
+    await service.setCredential('image', ' secret ')
     expect([...harness.credentials.entries()]).toEqual([[IMAGE_CREDENTIAL, 'secret']])
     const fetches: string[] = []
     vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {

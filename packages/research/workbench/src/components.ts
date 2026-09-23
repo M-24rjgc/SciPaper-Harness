@@ -129,6 +129,16 @@ export class ComponentManager {
     }))
   }
 
+  /**
+   * The platform Python when it is already installed or configured; never
+   * installs anything, so a check that needs it stays quick.
+   * @returns the interpreter path, or undefined without one.
+   */
+  async installedPython(): Promise<string | undefined> {
+    const python = (await this.status()).find(item => item.id === 'python')
+    return python?.installed ? python.path : undefined
+  }
+
   /** Resolve or provision uv without relying on the user's package manager. */
   async uv(signal: AbortSignal): Promise<string> {
     return this.once('uv', async () => {

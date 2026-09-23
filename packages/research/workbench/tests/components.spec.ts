@@ -130,6 +130,11 @@ describe('managed tools on a Windows x64 host', () => {
     expect(statuses.map(status => [status.id, status.installed, status.version])).toEqual([
       ['uv', true, 'uv-test'], ['python', true, '3.12'], ['latex', true, 'latex-test'], ['drawio', true, 'drawio-test'],
     ])
+    // A check asks only for an installed Python, and never installs one.
+    expect(await manager.installedPython()).toBe(python)
+    scripted.calls.length = 0
+    expect(await new ComponentManager(await temporary(), none, windows(await temporary(), {})).installedPython()).toBeUndefined()
+    expect(scripted.calls).toEqual([])
   })
 
   it('creates the platform Python from a bundled interpreter when the app ships one', async () => {

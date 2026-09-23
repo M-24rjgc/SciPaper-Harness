@@ -145,7 +145,7 @@ async function bench(history: ResearchTask[] = []) {
     create: vi.fn((_request: CreateProjectRequest): Answer<ResearchProject> => Promise.resolve(ok(PROJECT))),
     command: vi.fn((_request: ResearchCommand, _signal: AbortSignal): Answer<ResearchResponse> => Promise.resolve(ok(OUTCOME))),
     configure: vi.fn((_preferences: unknown): Answer<unknown> => Promise.resolve(ok({}))),
-    setImageCredential: vi.fn((_key: string): Answer<void> => Promise.resolve(ok(undefined))),
+    setCredential: vi.fn((_kind: 'image' | 'embedding', _key: string): Answer<void> => Promise.resolve(ok(undefined))),
     installComponent: vi.fn((_component: string): Answer<ResearchResponse> => Promise.resolve(ok(OUTCOME))),
   }
   const directoryPicker = {
@@ -412,13 +412,13 @@ describe('the research plugin', () => {
     expect(b.remote.command.mock.calls[0]![1]).toBeInstanceOf(AbortSignal)
     expect(b.face.hooks.research.getSnapshot().response).toBe(OUTCOME)
 
-    // No image key, no credential write.
-    await b.face.configure({ python: '/usr/bin/python3' }, '')
+    // No key, no credential write.
+    await b.face.configure({ python: '/usr/bin/python3' }, { image: '', embedding: '' })
     expect(b.remote.configure).toHaveBeenCalledWith({ python: '/usr/bin/python3' })
-    expect(b.remote.setImageCredential).not.toHaveBeenCalled()
+    expect(b.remote.setCredential).not.toHaveBeenCalled()
 
-    await b.face.configure({}, 'sk-image-key')
-    expect(b.remote.setImageCredential).toHaveBeenCalledWith('sk-image-key')
+    await b.face.configure({}, { image: 'sk-image-key', embedding: 'sk-embed-key' })
+    expect(b.remote.setCredential.mock.calls).toEqual([['image', 'sk-image-key'], ['embedding', 'sk-embed-key']])
 
     b.remote.installComponent.mockResolvedValueOnce(ok({ message: 'python ready' }))
     await b.face.install('python')

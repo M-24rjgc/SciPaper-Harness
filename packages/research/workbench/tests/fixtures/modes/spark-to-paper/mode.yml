@@ -1,0 +1,82 @@
+# A paper pipeline built only from base checks, with the shipped pack's id and
+# routes, so checks.spec tests the base checks and phase progress without the
+# upstream gates (those run through Python; spark-pack.spec covers them).
+id: spark-to-paper
+order: 10
+name: { en: spark-to-paper, zh: spark-to-paper }
+summary: { en: A fixture pipeline, zh: 测试流水线 }
+source: { repo: https://example.org/spark, version: 1.0.0, license: MIT }
+routes:
+  - { id: idea, name: { en: Idea, zh: 想法 }, summary: { en: An idea, zh: 想法 } }
+  - { id: proposal, name: { en: Proposal, zh: 提案 }, summary: { en: A proposal, zh: 提案 } }
+  - { id: data, name: { en: Data, zh: 数据 }, summary: { en: Measured results, zh: 实测结果 } }
+defaultRoute: proposal
+phases:
+  - id: story
+    label: { en: Story, zh: 研究故事 }
+    routes: [idea]
+    requires:
+      - when: [{ file: story.json }, { file: "{idea,story,proposal,brief}*.md" }]
+        message: Build the story from the idea and write story.json
+  - id: data
+    label: { en: Data, zh: 数据 }
+    routes: [data]
+    requires:
+      - when: dataEvidence
+  - id: plan
+    label: { en: Plan, zh: 规划 }
+    checks: [structure]
+    requires:
+      - when: [{ file: blueprint.json }, { file: "{outline,plan}*.md" }, { sections: 4 }]
+        message: Write the blueprint (blueprint.json or outline.md)
+  - id: cite
+    label: { en: Citations, zh: 引用 }
+    checks: [cite]
+    requires:
+      - when: { bibEntries: 1 }
+  - id: write
+    label: { en: Write, zh: 写作 }
+    routes: [idea, proposal]
+    checks: [structure, cite, numbers]
+    requires:
+      - when: manuscript
+  - id: write
+    label: { en: Write, zh: 写作 }
+    routes: [data]
+    checks: [structure, cite, numbers, placeholders]
+    requires:
+      - when: manuscript
+  - id: refine
+    label: { en: Refine, zh: 润色 }
+    requires:
+      - when: manuscript
+  - id: review
+    label: { en: Review, zh: 评审 }
+    checks: [review]
+    requires:
+      - when: reviewCurrent
+        message: No current review — run the adversarial review and write reviews/review.md
+  - id: figures
+    label: { en: Figures, zh: 图表 }
+    checks: [figures]
+    requires:
+      - when: diagram
+  - id: latex
+    label: { en: LaTeX, zh: 编译排版 }
+    checks: [compile, visual]
+    requires:
+      - when: pagesInspected
+  - id: experiments
+    label: { en: Experiments, zh: 实验 }
+    routes: [idea, proposal]
+    checkpoint: true
+    checks: [placeholders, numbers, figures, compile]
+    requires:
+      - when: resultsOrData
+      - when: noActiveRuns
+  - id: submission
+    label: { en: Submission, zh: 投稿 }
+    checks: all
+    requires:
+      - when: reviewCurrent
+      - when: pagesInspected

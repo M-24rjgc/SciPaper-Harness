@@ -47,7 +47,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_knowledge`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
 
 <a id="deepseek-aidsh-mcp-resources"></a>
 
@@ -2628,7 +2628,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_artifact`
 
-论文文件、LaTeX 与导出。用普通文件工具写下的文件同样计入；register-artifact {path, kind} 记录文件由什么产生（证据关联，以及输入文件，例如一张图背后的数据和脚本）。save-artifact {path, content, kind} 写入并记录；expectedRevision 可选，只用于防止覆盖更新的编辑。类型：manuscript、diagram、figure、code、bibliography、supplement、image。compile {path?, engine}：构建 PDF（path 默认为主 .tex）。render-pages {maxPages?}：最新 PDF 的 PNG 页面，逐页用 read_image 查看。import-template {paths}：把投稿模板复制到 template/。export {}：包含源文件、PDF、数据清单与检查报告的压缩包。
+论文文件、LaTeX 与导出。用普通文件工具写下的文件同样计入；register-artifact {path, kind} 记录文件由什么产生（证据关联，以及输入文件，例如一张图背后的数据和脚本）。save-artifact {path, content, kind} 写入并记录；expectedRevision 可选，只用于防止覆盖更新的编辑。类型：manuscript、diagram、figure、code、bibliography、supplement、image。compile {path?, engine}：构建 PDF（path 默认为主 .tex）。render-pages {maxPages?}：最新 PDF 的 PNG 页面，逐页用 read_image 查看。import-template {paths}：把投稿模板复制到 template/。run-script {script, args?}：在项目文件夹里运行项目所在模式声明的某个脚本（模式的技能会点名）。export {}：包含源文件、PDF、数据清单与检查报告的压缩包。
 
 ```json
 {
@@ -2643,6 +2643,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
         "import-template",
         "compile",
         "render-pages",
+        "run-script",
         "export"
       ]
     },
@@ -2711,6 +2712,17 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "maxPages": {
       "type": "integer",
       "description": "render-pages: page cap"
+    },
+    "script": {
+      "type": "string",
+      "description": "run-script: a script id of the current mode"
+    },
+    "args": {
+      "type": "array",
+      "description": "run-script: arguments added after the script's own",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [
@@ -2879,6 +2891,65 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "timeoutSeconds": {
       "type": "integer",
       "description": "experiment-wait"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
+### `research_knowledge`
+
+科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。novelty {story?, path?}：把 story.json 与 retrieved_papers.json 中的摘要和图谱里最接近的论文比较，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "graph-status",
+        "recall",
+        "novelty",
+        "build-graph",
+        "name-patterns"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "query": {
+      "type": "string",
+      "description": "recall: the idea as a search-friendly English query"
+    },
+    "topK": {
+      "type": "integer",
+      "description": "recall: how many patterns (default 8, at most 20)"
+    },
+    "path": {
+      "type": "string",
+      "description": "recall: project-relative JSON file to save the result to; novelty: report path (default novelty_report.json)"
+    },
+    "story": {
+      "type": "string",
+      "description": "novelty: the story file (default story.json)"
+    },
+    "papers": {
+      "type": "string",
+      "description": "build-graph: the extracted corpus, JSON lines"
+    },
+    "domain": {
+      "type": "string",
+      "description": "build-graph: the corpus domain label, e.g. hci"
+    },
+    "names": {
+      "type": "string",
+      "description": "name-patterns: the cluster names file (default cluster_meta.json)"
     }
   },
   "required": [

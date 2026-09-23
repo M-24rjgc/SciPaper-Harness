@@ -67,7 +67,11 @@ kind: "package-reference"
 | [`src/checks.ts`](src/checks.ts) | `research_check`：每一项基础检查、通过服务提供的执行器运行的模式门禁，以及按模式要求得出的阶段进度 |
 | [`src/modes.ts`](src/modes.ts) | 模式包：清单校验、注册表、路线，以及项目最终落到的模式 |
 | [`src/mode-skills.ts`](src/mode-skills.ts) | 按项目所在模式列出技能的技能提供者 |
-| [`runtime/modes/`](runtime/modes) | 随包发布的模式包：`general` 与 `spark-to-paper` |
+| [`src/gates.ts`](src/gates.ts) | 模式包的门禁与脚本：用平台 Python 运行它们并读取其发现 |
+| [`runtime/modes/`](runtime/modes) | 随包发布的模式包：`general` 与 `spark-to-paper`（上游技能、检查脚本与模板，见其 `NOTICE.md`） |
+| [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`：加载图谱、召回、新颖性、构建并命名项目图谱 |
+| [`src/clustering.ts`](src/clustering.ts) | 分词、BM25、词项向量、余弦、排名融合、平均链接与 k-means 聚类 |
+| [`runtime/kg/`](runtime/kg) | 内置科研模式图谱，由 [`scripts/build_kg.py`](scripts/build_kg.py) 精简而来 |
 | [`src/latex.ts`](src/latex.ts) | 主稿发现、输入展开、参考文献与插图解析 |
 | [`src/artifacts.ts`](src/artifacts.ts) | 导入、文件修订、编译、页面渲染、导出 |
 | [`src/experiments.ts`](src/experiments.ts) | 运行登记、输入快照、提交、观测、输出收集 |
@@ -97,7 +101,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共八个工具，`research_project`（current、create、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_media`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
+生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共九个工具，`research_project`（current、create、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
 
 #### Token effect
 
@@ -129,7 +133,7 @@ kind: "package-reference"
 
 #### Token effect
 
-每个模式包技能占目录中的一行（spark-to-paper 增加三行）。技能正文只在模型加载它时才消耗 token。
+每个模式包技能占目录中的一行（spark-to-paper 增加十三行）。技能正文只在模型加载它时才消耗 token，其 `references/` 只在模型读取时才消耗。
 
 #### KV Cache effect
 

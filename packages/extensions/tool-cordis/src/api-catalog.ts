@@ -1433,6 +1433,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'One durable owner for each project\'s evidence, files, decisions and execution records.',
     methods: [
       {
+        signature: 'readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset(\'kg/ai-kg.json.gz\'))',
+        description: 'The research-pattern graphs: the built-in one and each project\'s own.',
+        parameters: [],
+      },
+      {
         signature: 'modes!: ModeRegistry',
         description: 'The installed mode packs, loaded once at start.',
         parameters: [],
@@ -1468,9 +1473,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the preferences as stored.',
       },
       {
-        signature: '@Remote async setImageCredential(value: string): Promise<void>',
-        description: 'Store the image-provider API key under its fixed research credential name.',
-        parameters: [{ name: 'value', description: 'the API key.' }],
+        signature: '@Remote async setCredential(kind: \'image\' | \'embedding\', value: string): Promise<void>',
+        description: 'Store a provider\'s API key under its fixed research credential name.',
+        parameters: [{ name: 'kind', description: 'the image provider or the embedding endpoint; it must be configured first.' }, { name: 'value', description: 'the API key.' }],
       },
       {
         signature: '@Remote installComponent(component: \'python\' | \'uv\' | \'latex\' | \'drawio\'): Promise<ResearchResponse>',
@@ -4070,6 +4075,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type BrowserUseProviderName = Branded<\'BrowserUseProviderName\'>;',
   },
   {
+    name: 'BuildResult',
+    declaration: 'export interface BuildResult {\n    basis: \'embedding\' | \'terms\';\n    note: string;\n    papers: number;\n    rejected: string[];\n    unclustered: number;\n    saved: string;\n    clusters: {\n        id: string;\n        size: number;\n        coherence: number;\n        exemplars: Exemplar[];\n    }[];\n    next: string;\n}',
+  },
+  {
     name: 'CheckFinding',
     declaration: 'export interface CheckFinding {\n    check: string;\n    severity: \'error\' | \'warning\';\n    message: string;\n    file?: string | undefined;\n    line?: number | undefined;\n}',
   },
@@ -4084,6 +4093,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ClientArtifactBaseline',
     declaration: 'export interface ClientArtifactBaseline {\n    readonly path: string;\n    readonly mtimeMs: number;\n    readonly size: number;\n}',
+  },
+  {
+    name: 'ClosePaper',
+    declaration: 'export interface ClosePaper {\n    graph: string;\n    id: string;\n    title: string;\n    idea: string;\n    story: string;\n    pattern: string | null;\n    url?: string;\n    score: number | null;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -4450,6 +4463,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EditGoalRequest {\n    readonly objective?: string;\n    readonly maxGoalRounds?: number;\n}',
   },
   {
+    name: 'Embedder',
+    declaration: 'export interface Embedder {\n    model: string;\n    embed(texts: string[], signal: AbortSignal): Promise<Float32Array[]>;\n}',
+  },
+  {
+    name: 'EmbeddingBinding',
+    declaration: 'export interface EmbeddingBinding {\n    baseUrl: string;\n    model: string;\n}',
+  },
+  {
     name: 'EncodedFileAttachment',
     declaration: 'export interface EncodedFileAttachment {\n    data: string;\n    name?: string;\n}',
   },
@@ -4782,6 +4803,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type JsonValue = null | boolean | number | string | JsonValue[] | {\n    [key: string]: JsonValue;\n};',
   },
   {
+    name: 'KnowledgeBase',
+    declaration: 'export class KnowledgeBase {\n    constructor(private readonly builtinPath: string, private readonly idleMs = IDLE_MS);\n    dispose(): void;\n    async status(root: string, embedding: string | undefined): Promise<Record<string, unknown>>;\n    async recall(root: string, query: string, topK: number, embedder: Embedder | undefined, signal: AbortSignal): Promise<RecallResult>;\n    async novelty(root: string, storyPath: string, reportPath: string, embedder: Embedder | undefined, signal: AbortSignal, limit: number): Promise<NoveltyReport>;\n    async build(root: string, papersPath: string, domain: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<BuildResult>;\n    async namePatterns(root: string, namesPath: string, limit: number): Promise<NameResult>;\n}',
+  },
+  {
     name: 'KvFacet',
     declaration: 'export interface KvFacet {\n    open(descriptor: KvUnitDescriptor): Promise<KvUnit>;\n}',
   },
@@ -5082,6 +5107,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModeSummary {\n    id: string;\n    order: number;\n    name: LocalizedText;\n    summary: LocalizedText;\n    entry?: string | undefined;\n    preload: string[];\n    routes: {\n        id: string;\n        name: LocalizedText;\n        summary: LocalizedText;\n    }[];\n    defaultRoute?: string | undefined;\n    phases: {\n        id: string;\n        label: LocalizedText;\n        routes?: string[] | undefined;\n        checkpoint: boolean;\n        skills: string[];\n    }[];\n}',
   },
   {
+    name: 'NameResult',
+    declaration: 'export interface NameResult {\n    valid: boolean;\n    saved: string;\n    patterns: number;\n    papers: number;\n    domains: number;\n    tiers: Record<string, number>;\n    issues: string[];\n    next: string;\n}',
+  },
+  {
+    name: 'NoveltyReport',
+    declaration: 'export interface NoveltyReport {\n    ok: true;\n    basis: string;\n    max_similarity: number | null;\n    risk_level: \'high\' | \'medium\' | \'low\' | \'unknown\';\n    threshold_high: number;\n    threshold_medium: number;\n    top_similar: {\n        ref: string;\n        similarity: number;\n    }[];\n    verdict: string;\n    max_pivots: 2;\n    note?: string;\n}',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -5266,6 +5299,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecalledPattern',
+    declaration: 'export interface RecalledPattern {\n    graph: string;\n    id: string;\n    name: string;\n    tier: string;\n    domain: string;\n    subDomains: string[];\n    size: number;\n    coherence: number | null;\n    score: number;\n    summary: string;\n    details: string;\n    ideas: string[];\n    worksWellIn: {\n        domain: string;\n        effectiveness: number;\n        confidence: number;\n    }[];\n    exemplars: {\n        title: string;\n        story: string;\n        url?: string;\n        score: number | null;\n    }[];\n    matchedPapers: string[];\n}',
+  },
+  {
+    name: 'RecallResult',
+    declaration: 'export interface RecallResult {\n    basis: \'lexical\' | \'semantic+lexical\';\n    note: string;\n    patterns: RecalledPattern[];\n    closestPapers: ClosePaper[];\n}',
+  },
+  {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
   },
@@ -5319,7 +5360,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchPreferences',
-    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n}',
+    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    embedding?: EmbeddingBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n}',
   },
   {
     name: 'ResearchProject',

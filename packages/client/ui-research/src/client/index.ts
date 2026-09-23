@@ -118,9 +118,10 @@ export function apply(ctx: Context): void {
       state.update((s) => { s.response = response })
       return response
     }),
-    configure: (preferences, imageKey) => perform(async () => {
+    configure: (preferences, keys) => perform(async () => {
       unwrap(await ctx.remote.research.configure(preferences))
-      if (imageKey) unwrap(await ctx.remote.research.setImageCredential(imageKey))
+      if (keys.image) unwrap(await ctx.remote.research.setCredential('image', keys.image))
+      if (keys.embedding) unwrap(await ctx.remote.research.setCredential('embedding', keys.embedding))
     }),
     install: component => perform(async () => {
       const response = unwrap(await ctx.remote.research.installComponent(component))

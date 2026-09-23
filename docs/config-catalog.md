@@ -1936,7 +1936,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/research/workbench/src/index.ts:35`](../packages/research/workbench/src/index.ts)
+Source: [`packages/research/workbench/src/index.ts:38`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

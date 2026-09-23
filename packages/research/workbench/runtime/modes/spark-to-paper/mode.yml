@@ -2,6 +2,8 @@
 # in; a complete compiled paper out. Routes follow the upstream orchestrator's
 # Stage 0: an idea gets a story first; a proposal leaves result cells "--"
 # until experiments fill them; measured data means every number traces to it.
+# The gates are the upstream linters, run unchanged through gates/run_gate.py;
+# see NOTICE.md for the upstream commit and what was adapted.
 id: spark-to-paper
 order: 10
 name:
@@ -36,77 +38,84 @@ phases:
   - id: story
     label: { en: Story, zh: 研究故事 }
     routes: [idea]
-    skills: [ts-idea2story]
+    skills: [ts-idea2story, ts-kg-build]
+    checks: [story-lint]
     requires:
-      - when: [{ file: story.json }, { file: "{idea,story,proposal,brief}*.md" }]
-        message: Build the story from the idea (problem, gap, solution, method skeleton, experiment plan, claims) and write story.json
+      - when: { file: story.json }
+        message: Build the 8-field story from the idea and write story.json (ts-idea2story)
   - id: data
     label: { en: Data, zh: 数据 }
     routes: [data]
-    skills: [results-ingest]
+    skills: [ts-paper-data, results-ingest]
     requires:
       - when: dataEvidence
-        message: Import the measured results as data evidence; derived numbers come from a script
+        message: Import the measured results as data evidence (research_evidence import)
+      - when: { file: results.facts.json }
+        message: Write results.facts.json — the real numbers, produced by a script from the data — and import it as data evidence
   - id: plan
     label: { en: Plan, zh: 规划 }
     skills: [ts-paper-plan]
-    checks: [structure]
+    checks: [template-lint, blueprint-lint]
     requires:
-      - when: [{ file: blueprint.json }, { file: "{outline,plan}*.md" }, { sections: 4 }]
-        message: Write the blueprint (blueprint.json or outline.md) — title, contributions, notation, section word targets
+      - when: { file: blueprint.json }
+        message: Write blueprint.json against the venue's template.json (ts-paper-plan)
   - id: cite
     label: { en: Citations, zh: 引用 }
-    skills: [literature-review]
-    checks: [cite]
+    skills: [ts-paper-cite]
+    checks: [citations-bib]
     requires:
-      - when: { bibEntries: 1 }
+      - when: { file: refs.bib }
+        message: Build refs.bib from verified literature, with claims_map.json (ts-paper-cite)
   - id: write
     label: { en: Write, zh: 写作 }
-    routes: [idea, proposal]
-    skills: [paper-writing]
-    checks: [structure, cite, numbers]
+    skills: [ts-paper-write]
+    checks: [draft-lint, citations-lint]
     requires:
-      - when: manuscript
-  - id: write
-    label: { en: Write, zh: 写作 }
-    routes: [data]
-    skills: [paper-writing]
-    checks: [structure, cite, numbers, placeholders]
-    requires:
-      - when: manuscript
+      - when: { file: "sections/*.tex", min: 3 }
+        message: Write every section as sections/<id>.tex, plus sections/abstract.tex (ts-paper-write)
   - id: refine
     label: { en: Refine, zh: 润色 }
-    skills: [paper-writing]
+    skills: [ts-paper-refine]
+    checks: [draft-lint, citations-lint]
     requires:
-      - when: manuscript
+      - when: { file: logs/4_refine.io.md }
+        message: Run the refine pass (right-size, de-AI, logic self-check) and log it in logs/4_refine.io.md
   - id: review
     label: { en: Review, zh: 评审 }
-    skills: [paper-review]
+    skills: [ts-paper-review]
     checks: [review]
     requires:
       - when: reviewCurrent
-        message: No current review — run the adversarial review and write reviews/review.md
+        message: No current review — run the adversarial review panel and write reviews/review.md
+      - when: { file: logs/5_review.io.md }
+        message: Log the review round in logs/5_review.io.md (tier, issues found, closed, left for the author)
   - id: figures
     label: { en: Figures, zh: 图表 }
-    skills: [method-diagram, figures-from-data]
-    checks: [figures]
+    skills: [ts-paper-figure, ts-figure-svg, ts-paper-data]
+    checks: [vector-figures, figure-critique, figures]
     requires:
-      - when: diagram
+      - when: { file: figures/figures.manifest.json }
+        message: Draw every planned figure and record it in figures/figures.manifest.json (ts-paper-figure)
   - id: latex
     label: { en: LaTeX, zh: 编译排版 }
-    skills: [latex-compile-and-fix, visual-self-review]
-    checks: [compile, visual]
+    skills: [ts-paper-latex, latex-compile-and-fix, visual-self-review]
+    checks: [compile, visual, cite, structure]
     requires:
+      - when: { file: main.tex }
+        message: Assemble main.tex (research_artifact run-script assemble-paper), then compile it
       - when: pagesInspected
   - id: experiments
     label: { en: Experiments, zh: 实验 }
     routes: [idea, proposal]
     checkpoint: true
-    skills: [running-experiments, figures-from-data]
-    checks: [placeholders, numbers, figures, compile]
+    skills: [ts-paper-experiment, running-experiments]
+    checks: [placeholders, numbers, draft-lint, compile]
     requires:
       - when: resultsOrData
+        message: Run the feasible experiments and collect them (research_experiment), or import the author's results
       - when: noActiveRuns
+      - when: { file: results.facts.json }
+        message: Write results.facts.json from the collected results with a script, import it, and set results_mode to data_aware in template.json
   - id: submission
     label: { en: Submission, zh: 投稿 }
     skills: [submission-package]
@@ -114,3 +123,57 @@ phases:
     requires:
       - when: reviewCurrent
       - when: pagesInspected
+gates:
+  - id: story-lint
+    script: gates/run_gate.py
+    args: [story, --root, "{root}"]
+    routes: [idea]
+  - id: template-lint
+    script: gates/run_gate.py
+    args: [template, --root, "{root}"]
+  - id: blueprint-lint
+    script: gates/run_gate.py
+    args: [blueprint, --root, "{root}"]
+  - id: citations-bib
+    script: gates/run_gate.py
+    args: [citations, --root, "{root}", --stage, cite]
+  - id: citations-lint
+    script: gates/run_gate.py
+    args: [citations, --root, "{root}"]
+  - id: draft-lint
+    script: gates/run_gate.py
+    args: [draft, --root, "{root}"]
+  - id: vector-figures
+    script: gates/run_gate.py
+    args: [vector, --root, "{root}"]
+  - id: figure-critique
+    script: gates/run_gate.py
+    args: [critique, --root, "{root}"]
+scripts:
+  - id: blueprint-fix
+    script: upstream/ts-paper-plan/scripts/blueprint_lint.py
+    args: ["{root}", --fix]
+    description: Repair blueprint.json in place where the upstream linter can (citation-type aliases, missing template sections, word-band shape) and report what is left
+  - id: assemble-paper
+    script: upstream/ts-paper-latex/scripts/assemble_paper.py
+    args: ["{root}", --no-compile]
+    description: Build main.tex from template.json, blueprint.json and sections/*.tex (canonical headings, caption placement, cite merging, table width); compile it afterwards with research_artifact compile
+  - id: reflow-sections
+    script: upstream/ts-paper-write/scripts/reflow_tex.py
+    args: ["{root}"]
+    description: Normalize every sections/*.tex to one line per paragraph (PDF-neutral)
+  - id: plot-results
+    script: upstream/ts-paper-data/scripts/plot_results.py
+    timeoutSeconds: 300
+    description: "Run a matplotlib script in the house style and save a PNG and a vector PDF (args: --script code/plot_x.py --out figures/x.png)"
+  - id: consistency-check
+    script: upstream/ts-paper-experiment/scripts/consistency_check.py
+    description: "List risky wording (significant, robust, generalize, prove…) in a .tex file (args: the file)"
+  - id: recompute-results
+    script: upstream/ts-paper-experiment/scripts/check_result_recomputation.py
+    routes: [idea, proposal]
+    description: Tabulate every metric file under .research/runs, outputs and workspace/experiments (mean, std, seeds) into outputs/reports/RESULT_RECOMPUTATION_CHECK.md
+  - id: scan-code
+    script: upstream/ts-paper-experiment/scripts/check_code_paper_consistency.py
+    routes: [idea, proposal]
+    description: List which reproducibility artifacts (preprocessing, models, baselines, training, evaluation, plotting, config) code/ holds, into outputs/reports/CODE_PAPER_CONSISTENCY_SCAN.md

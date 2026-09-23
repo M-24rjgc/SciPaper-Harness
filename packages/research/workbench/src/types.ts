@@ -245,10 +245,16 @@ export interface ImageBinding {
   /** `images` for the OpenAI Images API (the default); `chat` for providers that return images from chat completions. */
   apiStyle?: 'images' | 'chat' | undefined
 }
+/** An OpenAI-compatible `/embeddings` endpoint for semantic recall, novelty and clustering. */
+export interface EmbeddingBinding {
+  baseUrl: string
+  model: string
+}
 export interface ResearchPreferences {
   main?: ModelBinding | undefined
   vision?: ModelBinding | undefined
   image?: ImageBinding | undefined
+  embedding?: EmbeddingBinding | undefined
   python?: string | undefined
   uv?: string | undefined
   texBin?: string | undefined
@@ -356,7 +362,19 @@ export type ResearchCommand =
     references?: string[] | undefined
   }
   | { action: 'fetch-reference-figures'; projectId: ProjectId; arxivIds: string[]; label: string }
+  /** Run one of the scripts the project's mode pack declares, with arguments after the manifest's own. */
+  | { action: 'run-script'; projectId: ProjectId; script: string; args?: string[] | undefined }
   | { action: 'export'; projectId: ProjectId }
+  /** The knowledge graphs available to the project, and whether ranking can be semantic. */
+  | { action: 'graph-status'; projectId: ProjectId }
+  /** Rank research patterns for an idea; `path` saves the result as JSON in the project. */
+  | { action: 'recall'; projectId: ProjectId; query: string; topK?: number | undefined; path?: string | undefined }
+  /** Compare story.json (or `story`) with the closest works and write novelty_report.json (or `path`). */
+  | { action: 'novelty'; projectId: ProjectId; story?: string | undefined; path?: string | undefined }
+  /** Cluster an extracted corpus (JSON lines) into candidate patterns. */
+  | { action: 'build-graph'; projectId: ProjectId; papers: string; domain: string }
+  /** Name the clusters (cluster_meta.json or `names`) and assemble the project graph. */
+  | { action: 'name-patterns'; projectId: ProjectId; names?: string | undefined }
 
 export interface ResearchTask {
   id: string
