@@ -84,7 +84,7 @@ describe('research tools find the project from the working directory', () => {
   it('lists the installed modes with their routes and the phases on each route', async () => {
     const h = harness()
     const catalog = await h.call('research_project', { action: 'modes' }) as { id: string; defaultRoute: string | null; phases: { route: string | null; phases: string[] }[] }[]
-    expect(catalog.map(mode => mode.id)).toEqual(['general', 'spark-to-paper'])
+    expect(catalog.map(mode => mode.id)).toEqual(['general', 'spark-to-paper', 'ccfa'])
     expect(catalog[0]).toMatchObject({ defaultRoute: null, routes: [], phases: [{ route: null, phases: [] }] })
     expect(catalog[1]?.defaultRoute).toBe('proposal')
     expect(catalog[1]?.phases.map(item => [item.route, item.phases[0]])).toEqual([['idea', 'story'], ['proposal', 'plan'], ['data', 'data']])

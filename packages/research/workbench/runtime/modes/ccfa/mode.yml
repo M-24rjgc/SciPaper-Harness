@@ -1,0 +1,195 @@
+# CCFA: research for CCF-A venues through specialist skills, with ccfa.yaml
+# as the project state. Upstream defines no fixed pipeline — the orchestrator
+# builds gates per task from the routes in approach-options.md — so the routes
+# below are those suggested routes, and `open` keeps the upstream freedom: any
+# single CCFA task, no phases. Every skill runs after the two preflights
+# (ccf-humanization, then ccf-common). The gates check the CCFA contracts the
+# skills write to, through gates/run_gate.py; see NOTICE.md for the upstream
+# commit and what was adapted.
+id: ccfa
+order: 20
+name:
+  en: CCFA
+  zh: CCFA
+summary:
+  en: CCF-A research through specialist skills — idea development and review, literature grounding, experiment design, writing, figures, integrity audit, reviewer-grade assessment, submission checks and rebuttals — with ccfa.yaml as the project state.
+  zh: 面向 CCF-A 会议的研究方法：由专职技能完成想法打磨与评审、文献调研、实验设计、写作、作图、诚信审计、审稿级评估、投稿检查和审稿回复，项目状态记在 ccfa.yaml。
+source:
+  repo: https://github.com/mikubaka88/CCFA-Skills
+  version: 0.10.0-r2
+  license: MIT
+entry: ccf-pipeline-orchestrator
+preload: [ccf-humanization, ccf-common]
+routes:
+  - id: full-paper
+    name: { en: Full paper, zh: 完整论文 }
+    summary:
+      en: From a direction or an idea to a submission-ready paper — idea, literature, experiment design and runs, writing, figures, integrity, review, submission checks.
+      zh: 从一个方向或想法到可投稿的论文：想法、文献、实验设计与运行、写作、作图、诚信审计、评审、投稿检查。
+  - id: manuscript-improvement
+    name: { en: Improve a manuscript, zh: 改进已有稿件 }
+    summary:
+      en: A manuscript exists; a reviewer-grade diagnosis drives the revision, then an integrity audit, a re-review and the submission checks.
+      zh: 稿件已有：先做审稿级诊断，据此修改，再做诚信审计、复审和投稿检查。
+  - id: post-review-response
+    name: { en: Respond to reviews, zh: 回复审稿意见 }
+    summary:
+      en: Reviews are in; a revision ledger tracks every comment through the response (rebuttal or letter), the revision and the resubmission package.
+      zh: 已收到审稿意见：用修订台账逐条跟踪每条意见，完成回复（rebuttal 或回复信）、修改和重投材料。
+  - id: open
+    name: { en: Open, zh: 自由任务 }
+    summary:
+      en: No stages — any single CCFA task (an idea review, a literature search, a figure, a paper review) with the CCFA skills and preflights.
+      zh: 不设阶段：用 CCFA 技能和前置规则完成任意一项任务，比如想法评审、文献检索、作图或审稿。
+defaultRoute: full-paper
+phases:
+  - id: scaffold
+    label: { en: Scaffold, zh: 项目搭建 }
+    routes: [full-paper, manuscript-improvement, post-review-response]
+    skills: [ccf-project-scaffolder, ccf-pipeline-orchestrator]
+    checks: [ccfa-yaml]
+    requires:
+      - when: { file: ccfa.yaml }
+        message: Scaffold the project — ccfa.yaml from the template with the project and venue filled in, and the venue template applied (ccf-project-scaffolder)
+  - id: idea
+    label: { en: Idea, zh: 想法 }
+    routes: [full-paper]
+    skills: [ccf-idea-optimizer, ccf-idea-reviewer]
+    requires:
+      - when: { file: "ccfa-workfiles/ideas/*/idea-card.md" }
+        message: Develop the direction into an idea card (ccf-idea-optimizer) at ccfa-workfiles/ideas/<idea>/idea-card.md
+      - when: { file: "ccfa-workfiles/ideas/*/idea-review.md" }
+        message: Review the idea concept-only (ccf-idea-reviewer) and save the report beside the card as idea-review.md
+  - id: literature
+    label: { en: Literature, zh: 文献 }
+    routes: [full-paper]
+    skills: [ccf-literature-searcher, ccf-literature-monitor]
+    requires:
+      - when: { file: "ccfa-workfiles/literature/*/papers.md" }
+        message: Search and verify the closest work (ccf-literature-searcher) into ccfa-workfiles/literature/<topic>/papers.md, importing each paper you will cite with literature-import
+  - id: design
+    label: { en: Experiment design, zh: 实验设计 }
+    routes: [full-paper]
+    skills: [ccf-experiment-designer]
+    requires:
+      - when: { file: experiments/design.md }
+        message: Design the smallest sufficient experiment package (ccf-experiment-designer) in experiments/design.md — claim-evidence matrix, baselines, metrics, ablations, execution priority
+  - id: experiments
+    label: { en: Experiments, zh: 实验 }
+    routes: [full-paper]
+    checkpoint: true
+    skills: [ccf-experiment-designer, running-experiments, results-ingest]
+    requires:
+      - when: resultsOrData
+        message: Run the designed experiments and collect them (research_experiment), or import the author's measured results
+      - when: noActiveRuns
+      - when: { file: "experiments/results.*" }
+        message: Write experiments/results.* from the collected metrics with a script, never by hand, and import it as data evidence
+  - id: diagnose
+    label: { en: Diagnosis, zh: 诊断评审 }
+    routes: [manuscript-improvement]
+    skills: [ccf-paper-reviewer]
+    requires:
+      - when: manuscript
+        message: Bring the manuscript into the project (its .tex sources, or import the PDF as evidence and rebuild the sources)
+      - when: { file: "ccfa-review-reports/*-review.md" }
+        message: Review the manuscript (ccf-paper-reviewer, full mode) into ccfa-review-reports/<paper-slug>-<venue>-review.md
+  - id: ledger
+    label: { en: Revision ledger, zh: 修订台账 }
+    routes: [post-review-response]
+    skills: [ccf-rebuttal-writer]
+    requires:
+      - when: { file: reviews/revision-ledger.md }
+        message: Import the reviews and parse every comment into reviews/revision-ledger.md (ccf-rebuttal-writer, revision-ledger mode)
+  - id: response
+    label: { en: Response, zh: 回复 }
+    routes: [post-review-response]
+    skills: [ccf-rebuttal-writer]
+    requires:
+      - when: { file: "ccfa-workfiles/responses/*/response.{tex,md}" }
+        message: Draft the rebuttal or response letter (ccf-rebuttal-writer) at ccfa-workfiles/responses/<paper>/response.tex or .md, promising only what the ledger holds
+  - id: writing
+    label: { en: Writing, zh: 写作 }
+    routes: [full-paper, manuscript-improvement]
+    skills: [ccf-paper-writer, ccf-paper-to-exemplar, latex-compile-and-fix, visual-self-review]
+    checks: [compile, cite, structure, placeholders, prose, visual]
+    requires:
+      - when: manuscript
+        message: Write the manuscript in the venue template (ccf-paper-writer, draft mode)
+      - when: pagesInspected
+  - id: revision
+    label: { en: Revision, zh: 修改 }
+    routes: [post-review-response]
+    skills: [ccf-paper-writer, ccf-rebuttal-writer, latex-compile-and-fix, visual-self-review]
+    checks: [revision-ledger, compile, cite, placeholders, visual]
+    requires:
+      - when: manuscript
+      - when: pagesInspected
+  - id: visuals
+    label: { en: Figures, zh: 图表 }
+    routes: [full-paper]
+    skills: [ccf-visual-composer, method-diagram, figures-from-data]
+    checks: [figures, visual]
+    requires:
+      - when: diagram
+        message: Compose the method figure (ccf-visual-composer — a gpt-image-2 draft, then an editable SVG or draw.io figure exported to a vector PDF) and include it in the paper
+  - id: integrity
+    label: { en: Integrity, zh: 诚信审计 }
+    routes: [full-paper, manuscript-improvement]
+    skills: [ccf-integrity-auditor]
+    checks: [cite, numbers, claims, placeholders]
+    requires:
+      - when: { file: ccfa-workfiles/checks/integrity/audit.md }
+        message: Audit claims, numbers and citations (ccf-integrity-auditor, full mode) into ccfa-workfiles/checks/integrity/audit.md
+  - id: review
+    label: { en: Review, zh: 评审 }
+    routes: [full-paper, manuscript-improvement]
+    skills: [ccf-paper-reviewer, ccf-paper-writer]
+    checks: [review-report, review]
+    requires:
+      - when: { file: "ccfa-review-reports/*-review.md" }
+        message: Review the paper (ccf-paper-reviewer) into ccfa-review-reports/<paper-slug>-<venue>-review.md
+  - id: submission
+    label: { en: Submission, zh: 投稿 }
+    routes: [full-paper, manuscript-improvement, post-review-response]
+    skills: [ccf-submission-checker, submission-package]
+    checks: all
+    requires:
+      - when: { file: submission/checks.md }
+        message: Check the venue rules and the package (ccf-submission-checker, full mode) into submission/checks.md
+      - when: pagesInspected
+gates:
+  - id: ccfa-yaml
+    script: gates/run_gate.py
+    args: [yaml, --root, "{root}"]
+    routes: [full-paper, manuscript-improvement, post-review-response]
+  - id: review-report
+    script: gates/run_gate.py
+    args: [review, --root, "{root}"]
+    routes: [full-paper, manuscript-improvement]
+  - id: revision-ledger
+    script: gates/run_gate.py
+    args: [ledger, --root, "{root}"]
+    routes: [post-review-response]
+  - id: submission-checks
+    script: gates/run_gate.py
+    args: [submission, --root, "{root}"]
+    routes: [full-paper, manuscript-improvement, post-review-response]
+  - id: path-privacy
+    script: gates/run_gate.py
+    args: [privacy, --root, "{root}"]
+    routes: [full-paper, manuscript-improvement, post-review-response]
+scripts:
+  - id: prose-quality
+    script: upstream/ccf-paper-writer/scripts/check_prose_quality.py
+    description: "Upstream prose linter for one file — defensive framing, filler openings, formulaic structure, uniform sentence and paragraph rhythm, semicolons, em dashes (args: the file, --scope paper|section|paragraph, --format json)"
+  - id: validate-comparison
+    script: upstream/ccf-paper-reviewer/scripts/validate_version_comparison.py
+    args: [--format, json]
+    description: "Validate a version-comparison JSON — the frozen contract, both scorecards, issue origins and traceable score decreases (args: the JSON file); a saved report is checked by research_check scope review-report"
+  - id: pdf-to-card
+    script: upstream/ccf-paper-to-exemplar/scripts/convert.py
+    description: "Extract a paper PDF into an exemplar card skeleton and its full text (args: the PDF, --output-dir ccfa-workfiles/exemplars/<paper>, --full-text, --full-text-dir ccfa-workfiles/exemplars/<paper>/cache)"
+  - id: plot-recipe
+    script: scripts/plot_recipe.py
+    description: "Draw one of the upstream plot recipes as an editable SVG from a JSON file of its arguments (args: --list, or <recipe> --spec <file.json> --out figures/<name>.svg [--palette ccfa])"

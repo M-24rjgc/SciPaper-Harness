@@ -51,6 +51,10 @@ Choose it when the agent should carry a paper from an idea or from existing resu
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-research-workbench) is the exhaustive source for every accepted field.
 
+### Adding a mode
+
+A mode is a directory, not code. To add one — a learning mode, say — create `runtime/modes/<id>/` with a `mode.yml` (identity, routes, phases with the facts each requires and the checks that decide it, gates and scripts), the skills under `skills/<name>/SKILL.md`, and any gate or script it runs with the platform Python; an adapted upstream method also carries its `LICENSE` and a `NOTICE.md`. The registry loads and validates it at start and skips it with a warning when it is broken, the skill provider shows its skills only in projects in that mode, and `research_check` runs its phases and gates. Add a line for it to the preset's `research-modes` skill and a spec like `tests/spark-pack.spec.ts`. Code changes only when a phase needs a kind of fact the requirement vocabulary does not have yet.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -68,7 +72,7 @@ One service owns every project record in the `research_workbench` storage domain
 | [`src/modes.ts`](src/modes.ts) | Mode packs: manifest validation, the registry, routes and the mode a project resolves to |
 | [`src/mode-skills.ts`](src/mode-skills.ts) | The skill provider that lists the skills of each project's mode |
 | [`src/gates.ts`](src/gates.ts) | Pack gates and scripts: running them with the platform Python and reading their findings |
-| [`runtime/modes/`](runtime/modes) | The shipped mode packs: `general` and `spark-to-paper` (upstream skills, linters and template; see its `NOTICE.md`) |
+| [`runtime/modes/`](runtime/modes) | The shipped mode packs: `general`, `spark-to-paper` and `ccfa` (upstream skills, gates and scripts; see each pack's `NOTICE.md`) |
 | [`src/figures.ts`](src/figures.ts) | SVG figures: the upstream audit and the export to a vector PDF with previews ([`runtime/figures/`](runtime/figures)) |
 | [`src/prose.ts`](src/prose.ts) | The prose check: tell phrases, defensive framing, hedges, formulaic contrasts, em dashes and promotional words |
 | [`src/venues.ts`](src/venues.ts) | The venue template library: listing venues and applying one to a project |
@@ -137,7 +141,7 @@ The skills of the project's mode pack, listed in the session's skill catalog bes
 
 #### Token effect
 
-One catalog line per pack skill (spark-to-paper adds thirteen). A skill's body costs tokens only when the model loads it, and its `references/` only when it reads them.
+One catalog line per pack skill (spark-to-paper adds thirteen, ccfa sixteen). A skill's body costs tokens only when the model loads it, and its `references/` only when it reads them.
 
 #### KV Cache effect
 

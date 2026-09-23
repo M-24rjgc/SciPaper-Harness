@@ -34,14 +34,15 @@ export const COMPONENT_RELEASES: Record<'uv' | 'drawio' | 'latex', ComponentRele
 
 /**
  * The platform Python's libraries: documents and page renders (pypdf, python-docx, pypdfium2),
- * plots (matplotlib) and SVG figures to vector PDF (svglib, reportlab). The desktop build bundles
- * the same list.
+ * plots (matplotlib), SVG figures to vector PDF (svglib, reportlab) and the YAML that mode packs'
+ * gates read (PyYAML). The desktop build bundles the same list.
  */
 export const PLATFORM_PYTHON_PACKAGES: readonly string[] = [
   'pypdf==6.0.0', 'python-docx==1.2.0', 'matplotlib==3.10.6', 'pypdfium2==4.30.0', 'svglib==2.2.0', 'reportlab==5.0.1',
+  'PyYAML==6.0.3',
 ]
 /** The modules that prove the platform Python has those libraries. */
-export const PLATFORM_PYTHON_IMPORTS: readonly string[] = ['pypdf', 'docx', 'matplotlib', 'pypdfium2', 'svglib', 'reportlab']
+export const PLATFORM_PYTHON_IMPORTS: readonly string[] = ['pypdf', 'docx', 'matplotlib', 'pypdfium2', 'svglib', 'reportlab', 'yaml']
 /** What the ready marker holds: the interpreter and the package list it was installed with. */
 const PLATFORM_PYTHON_MARKER = `python=3.12\n${PLATFORM_PYTHON_PACKAGES.join('\n')}\n`
 

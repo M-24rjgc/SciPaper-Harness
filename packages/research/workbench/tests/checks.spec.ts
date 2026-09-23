@@ -98,6 +98,15 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(report.findings.filter(f => f.check === 'prose')).toEqual([])
   })
 
+  it('counts a review report folder as a review, and a revision ledger as none', async () => {
+    const p = await fixture('proposal')
+    await write(p.root, 'reviews/revision-ledger.md', '| comment_id | status | location |\n| --- | --- | --- |\n')
+    expect(warnings(await runChecks(p, 100000, 'review'), 'review').map(f => f.message)).toEqual([expect.stringMatching(/^No review yet/)])
+    await write(p.root, 'ccfa-review-reports/checks-neurips-review.md', '# Review\n')
+    await utimes(join(p.root, 'ccfa-review-reports/checks-neurips-review.md'), new Date(Date.now() + 60000), new Date(Date.now() + 60000))
+    expect((await runChecks(p, 100000, 'review')).findings).toEqual([])
+  })
+
   it('reports prose worth reconsidering where it stands, as warnings only, and caps a long list', async () => {
     const p = await fixture('proposal')
     await write(p.root, 'paper/sections/method.tex', `The method.\n${'It is worth noting that it plays a crucial role. '.repeat(14)}\n`)

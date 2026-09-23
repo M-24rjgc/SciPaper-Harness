@@ -39,6 +39,9 @@ const EXPECTED_SECTIONS: { label: string; pattern: RegExp }[] = [
 ]
 const LENGTH_UNIT = /^\s*(?:pt|em|ex|cm|mm|in|bp|pc|sp|\\(?:line|text|column)width|\\textheight|\\hsize|\\baselineskip)/
 const MAX_FINDINGS_PER_CHECK = 25
+/** A review: Markdown in reviews/ or a *-review-reports/ folder, or named review*.md. A revision ledger tracks reviews but is not one. */
+const REVIEW_FILE = /(?:^|\/)(?:(?:reviews?|[\w-]+-review-reports?)\/[^/]+|review[\w-]*)\.md$/i
+const LEDGER_FILE = /(?:^|\/)revision-ledger\.md$/i
 
 interface Context {
   project: ResearchProject
@@ -322,9 +325,9 @@ function checkStructure(context: Context, paper: FlatPaper): void {
 
 async function checkReview(context: Context): Promise<void> {
   const { project, limit, paper } = context
-  const reviews = await listProjectFiles(project.root, path => /(^|\/)(reviews?\/[^/]+|review[\w-]*)\.md$/i.test(path), 3)
+  const reviews = await listProjectFiles(project.root, path => REVIEW_FILE.test(path) && !LEDGER_FILE.test(path), 3)
   if (!reviews.length) {
-    add(context, 'review', 'warning', 'No review yet: run the paper-review skill and write its findings to reviews/review.md')
+    add(context, 'review', 'warning', 'No review yet: review the paper with the review skill your mode names (paper-review in the general mode) and save the review under reviews/')
     return
   }
   context.reviewExists = true

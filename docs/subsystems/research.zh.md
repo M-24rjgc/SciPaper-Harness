@@ -37,6 +37,8 @@
 
 门禁是模式包里的 Python 脚本。它用平台 Python 在项目根目录运行（`python -I -X utf8`，不经过 shell，按参数向量传参），输出的最后一行是 `{"findings": [{severity, message, file?, line?}]}`；除此之外的任何输出都记为一条错误发现。检查从不安装 Python：没有它时，每个门禁都报告自己无法运行。`research_artifact` 的 run-script 以同样方式运行模式包为项目当前路线声明的脚本，并返回脚本的输出。spark-to-paper 模式包通过这样一个适配器原样运行上游的检查脚本；它的 `NOTICE.md` 列出了取用、修补和替换了哪些内容。
 
+CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前置技能（先 `ccf-humanization`，再 `ccf-common`）之后运行，项目状态记在 `ccfa.yaml`。它的路线是上游总控建议的路线（`full-paper`、`manuscript-improvement`、`post-review-response`），外加一条不设阶段、可做任意单项任务的 `open`。它的门禁检查这些技能写出的文件：`ccfa.yaml` 是否具备 v0.4.0 的字段；每份评审报告用上游的 `validate_version_comparison.py --report` 校验，并列出其中未解决的 critical 与 major 问题；修订台账；投稿就绪记录；以及源文件和发布文件夹里的本机用户目录路径。上游的交接模式跟随项目的自主度：`checkpoints` 在上游 partial 交接的触发点提问，`automatic` 不提问。
+
 ## 会议模板
 
 `research_artifact` 的 list-venues 与 apply-template 使用一个模板库：139 个 CCF 会议、16 套官方样式（`runtime/venues`，由 `scripts/build_venues.py` 从 CCFA-Skills 构建）。应用一个会议会把样式套件、该会议自己的示例和指南放进 `template/<venue>/`；项目的每个顶层文件夹都在 TeX 搜索路径上，所以项目里任何位置手写的论文都能找到该文档类。同时它把 `template.json`、`main.tex.tmpl` 和样式文件写进项目根目录，供 spark-to-paper 的拼装使用。review 阶段在会议要求匿名时匿名（通过文档类选项或匿名作者块）；final 使用终稿选项。编译时会把会议文档类需要的东西装进托管的 TeX Live：缺失的样式、文档类与参考文献样式文件按提供它们的包安装，字体和图片只在发行版能指出所属包时才安装。
@@ -63,7 +65,7 @@
 | `figures` | 缺失的插图文件、没有记录数据与脚本或为位图的结果图、未被引用的示意图 |
 | `compile` | 尚未编译、编译失败，或编译早于当前源文件；未定义的引用与溢出的盒子 |
 | `visual` | 自上次编译以来尚未渲染并查看过的页面 |
-| `review` | 没有评审、评审早于稿件，或仍有未关闭的 blocker/major 问题 |
+| `review` | 没有评审（`reviews/` 或 `*-review-reports/` 文件夹里的 Markdown，或名为 `review*.md` 的文件；修订台账不算评审）、评审早于稿件，或仍有未关闭的 blocker/major 问题 |
 | `stale` / `claims` | 过期的文件与资料、被证据推翻的论点、已无法解析的证据关联 |
 | `structure` | 缺失的输入文件；在有阶段的模式下，还包括应有却缺失的章节与通用文档类 |
 | `prose` | 只给警告：像机器写的套话、防御性表述、叠加的模糊限定、公式化的对比结构、过多的破折号和宣传性词语，覆盖中英文（spark-to-paper 的 AI 腔词表与 CCFA 的行文规范合并而来） |

@@ -51,6 +51,10 @@ kind: "package-reference"
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-research-workbench)是全部受支持字段的完整来源。
 
+### 新增一个模式
+
+模式是一个目录，不是代码。要新增一个模式（比如学习模式），就创建 `runtime/modes/<id>/`：一份 `mode.yml`（标识、路线、各阶段要求的事实与决定它的检查、门禁和脚本），`skills/<name>/SKILL.md` 下的技能，以及它用平台 Python 运行的门禁或脚本；改编自上游方法的模式还要带上它的 `LICENSE` 和一份 `NOTICE.md`。注册表在启动时加载并校验它，损坏时给出警告并跳过；技能提供者只在处于该模式的项目里显示它的技能；`research_check` 运行它的阶段与门禁。再在预设的 `research-modes` 技能里为它加一行，并仿照 `tests/spark-pack.spec.ts` 写一个测试。只有当某个阶段需要要求词汇里还没有的事实种类时，才需要改代码。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -68,7 +72,7 @@ kind: "package-reference"
 | [`src/modes.ts`](src/modes.ts) | 模式包：清单校验、注册表、路线，以及项目最终落到的模式 |
 | [`src/mode-skills.ts`](src/mode-skills.ts) | 按项目所在模式列出技能的技能提供者 |
 | [`src/gates.ts`](src/gates.ts) | 模式包的门禁与脚本：用平台 Python 运行它们并读取其发现 |
-| [`runtime/modes/`](runtime/modes) | 随包发布的模式包：`general` 与 `spark-to-paper`（上游技能、检查脚本与模板，见其 `NOTICE.md`） |
+| [`runtime/modes/`](runtime/modes) | 随包发布的模式包：`general`、`spark-to-paper` 与 `ccfa`（上游技能、门禁与脚本，见各包的 `NOTICE.md`） |
 | [`src/figures.ts`](src/figures.ts) | SVG 图：上游审计，以及导出为矢量 PDF 与预览图（[`runtime/figures/`](runtime/figures)） |
 | [`src/prose.ts`](src/prose.ts) | 行文检查：套话、防御性表述、模糊限定、公式化对比、破折号和宣传性词语 |
 | [`src/venues.ts`](src/venues.ts) | 会议模板库：列出会议，并把某个会议的模板应用到项目 |
@@ -137,7 +141,7 @@ kind: "package-reference"
 
 #### Token effect
 
-每个模式包技能占目录中的一行（spark-to-paper 增加十三行）。技能正文只在模型加载它时才消耗 token，其 `references/` 只在模型读取时才消耗。
+每个模式包技能占目录中的一行（spark-to-paper 增加十三行，ccfa 增加十六行）。技能正文只在模型加载它时才消耗 token，其 `references/` 只在模型读取时才消耗。
 
 #### KV Cache effect
 
