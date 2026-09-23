@@ -62,7 +62,7 @@ async function response(url: string, signal: AbortSignal, timeoutMs = 30000): Pr
  * braced twice so bibliography styles keep its capitals (SummaC, BART).
  */
 function withBibtex(item: Omit<LiteratureItem, 'bibtex'>, venue?: Venue, eprint?: string): LiteratureItem {
-  const key = `${item.provider}_${item.id.replace(/[^A-Za-z0-9]/g, '_')}`
+  const key = `${item.provider}_${item.id.replace(/^https?:\/\/(?:openalex\.org|arxiv\.org\/abs)\//, '').replace(/[^A-Za-z0-9]/g, '_')}`
   const lines = [
     `@${venue?.type ?? 'misc'}{${key},`,
     `  title={{${bib(item.title)}}},`,

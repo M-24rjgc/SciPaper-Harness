@@ -1,0 +1,10 @@
+measure,length,value
+annotator_kappa,all,0.71
+summac_auc,all,0.76
+summac_auc,short,0.81
+summac_auc,medium,0.77
+summac_auc,long,0.69
+qafacteval_auc,all,0.74
+qafacteval_auc,short,0.76
+qafacteval_auc,medium,0.74
+qafacteval_auc,long,0.72

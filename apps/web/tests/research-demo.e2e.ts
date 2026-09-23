@@ -2,9 +2,16 @@
  * Builds the example projects Research Workbench opens onto: the material for
  * promotion, guided onboarding and the beginner tutorial. A scripted model plays
  * the assistant against the shipped host, so every conversation, ledger record,
- * compile, experiment and question card is one the product itself produced; only
- * the words are fixed. Numbers are example values and the reading notes are the
- * researcher's own paraphrases, as each project's data/README.md says.
+ * compile, citation import, experiment, check and question card is one the
+ * product itself produced; only the words are fixed. The two projects show the
+ * two installed modes: a finished evaluation carried to a submission-ready paper
+ * by spark-to-paper, automatically, and an idea carried by CCFA from a reviewed
+ * idea to running experiments, with checkpoints. Numbers are example values and
+ * the reading notes are the researcher's own paraphrases, as each project's
+ * data/README.md says; the references are real papers, imported through the
+ * providers, so generation needs the network.
+ *
+ * The texts the assistant writes live beside this file in research-demo/.
  *
  * Runs only when DSH_RESEARCH_DEMO_HOME names the Research Workbench home to
  * write into (normally ~/.research-workbench, with the app closed). The previous
@@ -15,6 +22,7 @@ import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/pro
 import { existsSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { expect, it } from 'vitest'
 import { LlmAdapter, ToolCallId, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type {
@@ -28,10 +36,14 @@ import { launchWebScaffold, type WebScaffold } from './scaffold.ts'
 
 const HOME = process.env.DSH_RESEARCH_DEMO_HOME
 const TEX_BIN = process.env.DSH_RESEARCH_TEST_TEX_BIN
+const FIXTURES = join(import.meta.dirname, 'research-demo')
 
 interface Call { name: string; args: Record<string, unknown> }
 interface Reply { text?: string; calls?: Call[]; again?: boolean }
 type Step = () => Reply | Promise<Reply>
+/** A reference the assistant imports: a Crossref DOI or an OpenAlex work, with the key the paper cites it by. */
+interface Reference { key: string; title: string; year?: number; doi?: string; openalex?: string }
+interface ReviewFix { file: string; issue: string; draft: string; final: string }
 
 /** Plays the scripted assistant turns in order; a step may repeat itself until the state it waits for arrives. */
 class ScriptAdapter extends LlmAdapter {
@@ -74,229 +86,36 @@ class ScriptAdapter extends LlmAdapter {
   }
 }
 
-const PHASE_ZH: Record<string, string> = {
-  idea: '想法', literature: '文献', plan: '规划', draft: '完整初稿', experiments: '实验', results: '结果',
-  polish: '打磨与审阅', submission: '投稿', ingest: '导入结果', write: '写作', figures: '图表',
+const fixture = (path: string): Promise<string> => readFile(join(FIXTURES, path), 'utf8')
+const skill = (name: string): Call => ({ name: 'skill', args: { name } })
+const check = (scope?: string): Call => ({ name: 'research_check', args: scope ? { scope } : {} })
+const save = (path: string, content: string, kind: string, extra: Record<string, unknown> = {}): Call =>
+  ({ name: 'research_artifact', args: { action: 'save-artifact', path, kind, content, ...extra } })
+const script = (id: string, args: string[] = []): Call => ({ name: 'research_artifact', args: { action: 'run-script', script: id, args } })
+
+/** The item literature-search would have returned: the import re-fetches it by DOI or OpenAlex id. */
+function literatureItem(reference: Reference): Record<string, unknown> {
+  return reference.openalex
+    ? { id: reference.openalex, provider: 'openalex', title: reference.title, authors: [], url: reference.openalex, abstract: '', bibtex: '' }
+    : { id: reference.doi, provider: 'crossref', title: reference.title, authors: [], doi: reference.doi, url: `https://doi.org/${reference.doi}`, abstract: '', bibtex: '' }
 }
 
-// ── Sparse attention scaling study: the researcher's materials ──────────────
-
-const SPARSE_README = `# 关于本目录的数据
-
-这是 Research Workbench 的示例项目，用来演示一项研究从想法走到论文的过程。
-
-- notes/ 里是研究者读论文时写的笔记，是自己的转述和判断，不是论文原文摘录。
-- pilot-8k.csv 和 code/train_eval.py 输出的实验数值都是演示用的示例数值，不是真实测量。
-- 参考文献（paper/refs.bib）是真实存在的论文。
-`
-
-const LONGFORMER_NOTES = `# 读书笔记：Longformer（Beltagy 等，2020）
-
-- 注意力模式：滑动窗口的局部注意力，加上少量按任务指定的全局注意力。
-- 复杂度随序列长度线性增长，可以直接替换标准自注意力。
-- 评测：长文档问答、共指消解、文档分类，文档长度大约在 4K token 这一档。
-- 我的疑问：窗口固定时，32K 以上的远距离依赖只能靠全局 token 传递，论文没有测到这个长度。
-`
-
-const BIGBIRD_NOTES = `# 读书笔记：BigBird（Zaheer 等，2020）
-
-- 稀疏模式：随机注意力 + 窗口注意力 + 全局 token 三者组合。
-- 理论部分证明这种稀疏注意力保留了全注意力的表达能力（通用逼近、图灵完备）。
-- 实验序列长度到 4096，问答和长文摘要上优于只能看短上下文的模型。
-- 块的划分是固定的，不按内容选块。
-`
-
-const RULER_NOTES = `# 读书笔记：RULER（Hsieh 等，2024）
-
-- 合成评测，四类任务：检索、多跳追踪、聚合、问答；上下文长度可以从 4K 调到 128K。
-- 结论：很多声称支持长上下文的模型，有效上下文远短于标称长度。
-- 我自己的判断：聚合类任务要把分散在全文的信息汇总起来，最可能暴露稀疏注意力的短板。
-- 对本项目：32K 和 64K 两档都要测，聚合类任务单独报告。
-`
-
-const PILOT_CSV = `method,context,accuracy,relative_flops
-full,8192,0.842,1.00
-fixed-block-4x,8192,0.836,0.26
-dynamic-block-4x,8192,0.841,0.27
-`
-
-const SPARSE_BIB = String.raw`@article{beltagy2020longformer,
-  title = {Longformer: The Long-Document Transformer},
-  author = {Beltagy, Iz and Peters, Matthew E. and Cohan, Arman},
-  journal = {arXiv preprint arXiv:2004.05150},
-  year = {2020},
-  doi = {10.48550/arXiv.2004.05150}
+/** The verified BibTeX of each imported reference, keyed as the paper cites it. */
+function bibliography(project: ResearchProject, references: Reference[]): string {
+  return `${references.map((reference) => {
+    const source = project.evidence.find(item => item.kind === 'literature'
+      && (reference.doi ? item.doi?.toLowerCase() === reference.doi.toLowerCase() : item.title === reference.title))
+    const bibtex = source?.chunks.find(chunk => chunk.locator.key === 'bibtex')?.text
+    if (!bibtex) throw new Error(`${reference.key} was not imported`)
+    return bibtex.trim().replace(/^@(\w+)\{[^,]+,/, (_, type: string) => `@${type}{${reference.key},`)
+  }).join('\n\n')}\n`
 }
 
-@inproceedings{zaheer2020bigbird,
-  title = {Big Bird: Transformers for Longer Sequences},
-  author = {Zaheer, Manzil and Guruganesh, Guru and Dubey, Avinava and Ainslie, Joshua and Alberti, Chris and Ontanon, Santiago and Pham, Philip and Ravula, Anirudh and Wang, Qifan and Yang, Li and Ahmed, Amr},
-  booktitle = {Advances in Neural Information Processing Systems},
-  year = {2020},
-  doi = {10.48550/arXiv.2007.14062}
-}
-
-@inproceedings{hsieh2024ruler,
-  title = {{RULER}: What's the Real Context Size of Your Long-Context Language Models?},
-  author = {Hsieh, Cheng-Ping and Sun, Simeng and Kriman, Samuel and Acharya, Shantanu and Rekesh, Dima and Jia, Fei and Zhang, Yang and Ginsburg, Boris},
-  booktitle = {Conference on Language Modeling},
-  year = {2024},
-  doi = {10.48550/arXiv.2404.06654}
-}
-
-@article{bai2023longbench,
-  title = {{LongBench}: A Bilingual, Multitask Benchmark for Long Context Understanding},
-  author = {Bai, Yushi and Lv, Xin and Zhang, Jiajie and Lyu, Hongchang and Tang, Jiankai and Huang, Zhidian and Du, Zhengxiao and Liu, Xiao and Zeng, Aohan and Hou, Lei and Dong, Yuxiao and Tang, Jie and Li, Juanzi},
-  journal = {arXiv preprint arXiv:2308.14508},
-  year = {2023},
-  doi = {10.48550/arXiv.2308.14508}
-}
-
-@article{shah2024flashattention3,
-  title = {{FlashAttention-3}: Fast and Accurate Attention with Asynchrony and Low-precision},
-  author = {Shah, Jay and Bikshandi, Ganesh and Zhang, Ying and Thakkar, Vijay and Ramani, Pradeep and Dao, Tri},
-  journal = {arXiv preprint arXiv:2407.08608},
-  year = {2024},
-  doi = {10.48550/arXiv.2407.08608}
-}
-`
-
-const ARCHITECTURE_DRAWIO = `<mxfile host="Research Workbench">
-  <diagram id="architecture" name="Architecture">
-    <mxGraphModel dx="900" dy="420" grid="1" gridSize="10" guides="1" page="0">
-      <root>
-        <mxCell id="0"/>
-        <mxCell id="1" parent="0"/>
-        <mxCell id="blocks" value="Query / key blocks&lt;br&gt;(64 tokens each)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#68675f;fillColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="0" y="40" width="150" height="56" as="geometry"/>
-        </mxCell>
-        <mxCell id="score" value="Block scores&lt;br&gt;(mean-pooled keys)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#68675f;fillColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="200" y="40" width="150" height="56" as="geometry"/>
-        </mxCell>
-        <mxCell id="select" value="Top-k block selection&lt;br&gt;(k = n / 4)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#15635f;fillColor=#e6efed;fontColor=#104f4c;" vertex="1" parent="1">
-          <mxGeometry x="400" y="40" width="150" height="56" as="geometry"/>
-        </mxCell>
-        <mxCell id="attention" value="Block-sparse attention" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#68675f;fillColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="600" y="40" width="150" height="56" as="geometry"/>
-        </mxCell>
-        <mxCell id="fixed" value="Fixed blocks&lt;br&gt;(baseline)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;strokeColor=#b65328;fillColor=#f7e9df;fontColor=#8a3d1d;" vertex="1" parent="1">
-          <mxGeometry x="300" y="150" width="150" height="56" as="geometry"/>
-        </mxCell>
-        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;strokeColor=#68675f;" edge="1" parent="1" source="blocks" target="score"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;strokeColor=#68675f;" edge="1" parent="1" source="score" target="select"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;strokeColor=#68675f;" edge="1" parent="1" source="select" target="attention"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;dashed=1;strokeColor=#b65328;" edge="1" parent="1" source="blocks" target="fixed"><mxGeometry relative="1" as="geometry"/></mxCell>
-        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;dashed=1;strokeColor=#b65328;" edge="1" parent="1" source="fixed" target="attention"><mxGeometry relative="1" as="geometry"/></mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
-</mxfile>
-`
-
-const OUTLINE = `# 论文规划：块稀疏注意力在长上下文下的准确率
-
-## 研究问题
-在 4× 稀疏、32K 上下文下，块稀疏注意力的长文准确率能否保持在全注意力的 1 个点以内？
-按注意力得分动态选块，相对固定分块的优势会不会随长度消失？
-
-## 贡献
-1. 在 32K / 64K 两档上下文下，系统比较固定分块与动态选块两种块稀疏注意力。
-2. 一个"选块策略 × 上下文长度"的消融，用来分辨动态选块的优势从哪个长度开始消失。
-3. 按 RULER 任务类别拆开报告，单独看聚合类任务。
-
-## 章节
-1. Introduction：问题、预实验中的矛盾、贡献
-2. Related Work：Longformer、BigBird、RULER、FlashAttention-3
-3. Method：块打分、Top-k 选块、固定分块基线（图 1 为架构图）
-4. Experimental Setup：数据、基线、种子、指标
-5. Results：主表（32K / 64K）、准确率-计算量图、消融
-6. Limitations
-7. Conclusion
-
-## 实验方案
-- 数据：RULER（32K、64K 两档）与 LongBench-E。去掉 PG-19：它与预训练语料重叠，留着会把泄漏算进结论。
-- 方法：全注意力（基线）、固定分块 4×、动态选块 4×。
-- 种子：13、42、97，各跑一遍；先跑 RULER 32K，结果出来再跑 64K 和 LongBench-E。
-- 指标：准确率、困惑度、相对 FLOPs、峰值显存。
-- 环境：本机 default（Python 3.12）；实验室 lab-a100 作为补充。
-`
-
-const TRAIN_EVAL = `"""示例项目的实验脚本（替身）。
-
-真实项目里，这里是块稀疏注意力的训练与评测代码。为了让示例项目在任何机器上
-几秒钟就能复现，本脚本不训练模型，而是输出预先给定的示例数值（EXAMPLE_RESULTS），
-并像真实脚本一样把指标写进 $RESEARCH_METRICS_PATH。这些数值不是测量结果。
-"""
-import argparse
-import json
-import os
-import time
-from pathlib import Path
-
-EXAMPLE_RESULTS = {
-    ('full', 42): {'accuracy': 0.821, 'perplexity': 6.18, 'relative_flops': 1.0, 'peak_memory_gb': 61.5},
-    ('fixed', 42): {'accuracy': 0.811, 'perplexity': 6.29, 'relative_flops': 0.25, 'peak_memory_gb': 37.9},
-    ('dynamic', 42): {'accuracy': 0.814, 'perplexity': 6.32, 'relative_flops': 0.26, 'peak_memory_gb': 38.2},
-    ('dynamic', 97): {'accuracy': 0.806, 'perplexity': 6.41, 'relative_flops': 0.26, 'peak_memory_gb': 38.4},
-    ('dynamic', 13): {'accuracy': 0.809, 'perplexity': 6.36, 'relative_flops': 0.26, 'peak_memory_gb': 38.3},
-}
-
-
-def main():
-    parser = argparse.ArgumentParser(description='Block-sparse attention evaluation on RULER (example stand-in).')
-    parser.add_argument('--variant', choices=['full', 'fixed', 'dynamic'], required=True)
-    parser.add_argument('--context', type=int, default=32768)
-    parser.add_argument('--seed', type=int, required=True)
-    args = parser.parse_args()
-    print(f'variant={args.variant} context={args.context} seed={args.seed}', flush=True)
-    for step in range(200, 1401, 200):
-        time.sleep(0.15)
-        print(f'step {step}/1400', flush=True)
-    metrics = EXAMPLE_RESULTS[(args.variant, args.seed)]
-    target = Path(os.environ.get('RESEARCH_METRICS_PATH', 'metrics.json'))
-    target.write_text(json.dumps(metrics), encoding='utf-8')
-    print('run-complete', json.dumps(metrics), flush=True)
-
-
-if __name__ == '__main__':
-    main()
-`
-
-const PLOT_ACCURACY = `"""Accuracy against relative FLOPs at 32K tokens, from data/results-32k.csv."""
-import csv
-from pathlib import Path
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-COLORS = {'full': '#68675f', 'fixed': '#b65328', 'dynamic': '#15635f'}
-LABELS = {'full': 'Full attention', 'fixed': 'Fixed blocks (4x)', 'dynamic': 'Dynamic blocks (4x)'}
-
-rows = list(csv.DictReader(Path('data/results-32k.csv').open(encoding='utf-8')))
-fig, ax = plt.subplots(figsize=(4.2, 3.0))
-for method in ('full', 'fixed', 'dynamic'):
-    points = [row for row in rows if row['method'] == method]
-    ax.scatter([float(p['relative_flops']) for p in points], [float(p['accuracy']) for p in points],
-               s=46, color=COLORS[method], label=LABELS[method], zorder=3)
-    for p in points:
-        ax.annotate(f"seed {p['seed']}", (float(p['relative_flops']), float(p['accuracy'])),
-                    textcoords='offset points', xytext=(6, -3), fontsize=7, color='#68675f')
-ax.set_xlabel('Relative FLOPs (full attention = 1)')
-ax.set_ylabel('RULER accuracy, 32K tokens')
-ax.grid(True, color='#eeebe4', zorder=0)
-ax.legend(frameon=False, fontsize=7, loc='lower right')
-for side in ('top', 'right'):
-    ax.spines[side].set_visible(False)
-fig.tight_layout()
-Path('figures').mkdir(exist_ok=True)
-fig.savefig('figures/accuracy_vs_flops.pdf')
-print('wrote figures/accuracy_vs_flops.pdf')
-`
+// ── Sparse attention scaling study (CCFA): the paper ────────────────────────
 
 interface SparseResult { method: 'full' | 'fixed' | 'dynamic'; seed: number; accuracy: number; flops: number; memory: number }
 
-/** The method paper; before the runs every result cell is "--" and every result sentence a placeholder. */
+/** The measurement paper in the NeurIPS template; before the runs every result cell is "--" and every result sentence a placeholder. */
 function sparsePaper(results?: SparseResult[]): string {
   const find = (method: string, seed: number) => results?.find(item => item.method === method && item.seed === seed)
   const cell = (value: number | undefined, digits: number) => value === undefined ? '--' : value.toFixed(digits)
@@ -323,41 +142,43 @@ function sparsePaper(results?: SparseResult[]): string {
     : String.raw`\tbd{32K and 64K accuracy, compute and memory once the runs are in}
 
 \tbd{accuracy against relative FLOPs, one point per run}`
-  return String.raw`\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{amsmath}
-\usepackage{booktabs}
-\usepackage{graphicx}
+  return String.raw`\documentclass{article}
+\usepackage[]{neurips_2026}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
 \usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{xcolor}
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta}
-\usepackage[numbers]{natbib}
-\usepackage{hyperref}
 \graphicspath{{../figures/}}
-\newcommand{\tbd}[1]{\textcolor{red}{[#1]}}
+\providecommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
 
-\title{Does Block-Sparse Attention Keep Long-Context Accuracy\\at a Quarter of the FLOPs?}
-\author{Research Workbench example project}
-\date{}
+\title{When Does Content-Based Block Selection Pay Off?\\Block-Sparse Attention at 32K and 64K Tokens}
+\author{Anonymous Author(s)}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Block-sparse attention cuts the cost of self-attention by letting each query block attend to a few key blocks. The sparse patterns that made long documents tractable were evaluated around 4K tokens \cite{beltagy2020longformer,zaheer2020bigbird}, and whether choosing blocks by content keeps its advantage over fixed blocks at 32K tokens and beyond is open. We compare fixed and dynamic block selection at 4$\times$ sparsity on RULER \cite{hsieh2024ruler} and LongBench-E \cite{bai2023longbench} at 32K and 64K tokens. ${abstractResult}
+Block-sparse attention cuts the cost of self-attention by letting each query block attend to a few key blocks. Fixed patterns were evaluated around 4K tokens \citep{beltagy2020longformer,zaheer2020bigbird}, and recent methods choose blocks from the input \citep{jiang2024minference,lu2025moba,yuan2025nsa}, each comparing one mechanism with full attention. Whether choosing blocks by content keeps its advantage over fixed blocks as the context grows has not been measured on its own. We hold the sparsity, the block size and the model fixed and compare fixed and dynamic block selection at 4$\times$ sparsity on RULER \citep{hsieh2024ruler} and LongBench-E \citep{bai2024longbench} at 32K and 64K tokens. ${abstractResult}
 \end{abstract}
 
 \section{Introduction}
-Long-context models pay for every token twice: in the quadratic attention cost and in the memory that holds keys and values. Block-sparse attention keeps a fixed fraction of the key blocks for every query block, so compute and memory fall with the sparsity ratio. The open question is accuracy. Our pilot at 8K tokens shows fixed blocks losing more than dynamic, content-scored blocks, but the published sparse patterns were measured at about 4K tokens and the benchmark that separates task types at long lengths \cite{hsieh2024ruler} suggests aggregation tasks are where sparsity should hurt first.
+Long-context models pay for every token twice: in the quadratic attention cost and in the memory that holds keys and values. Block-sparse attention keeps a fixed fraction of the key blocks for every query block, so compute and memory fall with the sparsity ratio. The open question is accuracy. Our pilot at 8K tokens shows fixed blocks losing more than dynamic, content-scored blocks, but the fixed patterns were measured at about 4K tokens, and the benchmark that separates task types at long lengths \citep{hsieh2024ruler} suggests aggregation tasks are where sparsity should hurt first.
 
-We ask two questions. Can block-sparse attention stay within one point of full attention at 32K tokens and 4$\times$ sparsity? And does the advantage of dynamic over fixed block selection survive as the context grows?
+Content-based selection is not new. MInference picks a sparse pattern per head at inference time \citep{jiang2024minference}, MoBA routes each query to its top key blocks \citep{lu2025moba}, and NSA trains compressed, selected and sliding branches together \citep{yuan2025nsa}. Each proposes a mechanism and compares it with full attention. We ask a narrower question with a controlled design: at the same sparsity and block size, does the advantage of dynamic over fixed block selection survive as the context grows, and can block-sparse attention stay within one point of full attention at 32K tokens?
 
 \section{Related Work}
-Longformer combines sliding-window attention with a few global tokens and scales linearly with length \cite{beltagy2020longformer}. BigBird adds random attention to windows and global tokens and proves the pattern keeps the expressiveness of full attention \cite{zaheer2020bigbird}. Both fix the sparsity pattern in advance. RULER measures the effective context of long-context models with retrieval, multi-hop tracing, aggregation and question answering tasks \cite{hsieh2024ruler}; LongBench covers natural long-document tasks \cite{bai2023longbench}. FlashAttention-3 makes dense attention itself faster on current GPUs \cite{shah2024flashattention3}, which raises the bar a sparse method has to clear.
+Longformer combines sliding-window attention with a few global tokens and scales linearly with length \citep{beltagy2020longformer}. BigBird adds random attention to windows and global tokens and proves the pattern keeps the expressiveness of full attention \citep{zaheer2020bigbird}. Both fix the sparsity pattern in advance. MInference, MoBA and NSA choose blocks or tokens from the input \citep{jiang2024minference,lu2025moba,yuan2025nsa}. RULER measures the effective context of long-context models with retrieval, multi-hop tracing, aggregation and question answering tasks \citep{hsieh2024ruler}; LongBench covers natural long-document tasks \citep{bai2024longbench}. FlashAttention-3 makes dense attention itself faster on current GPUs \citep{shah2024flashattention3}, which raises the bar a sparse method has to clear.
 
 \section{Method}
 \subsection{Block scoring and selection}
-We split queries and keys into blocks of 64 tokens. For each query block we score every key block by the dot product of their mean-pooled representations and keep the top quarter of key blocks, always including the diagonal block. Attention is then computed only inside the kept blocks (Figure~\ref{fig:arch}).
+We split queries and keys into blocks of 64 tokens. For each query block we score every key block by the dot product of their mean-pooled representations and keep the top quarter of key blocks, always including the diagonal block. Attention is then computed only inside the kept blocks (Figure~\ref{fig:arch}). The scoring is deliberately simple: our question concerns selection by content as such, and the conclusions apply to this pooled scoring.
 
 \subsection{Fixed blocks}
 The baseline keeps the same number of blocks per query in a fixed pattern: the local window plus evenly strided blocks, chosen before seeing the input.
@@ -382,7 +203,7 @@ The baseline keeps the same number of blocks per query in a fixed pattern: the l
 \end{figure}
 
 \section{Experimental Setup}
-We evaluate on RULER at 32K and 64K tokens and on LongBench-E. We leave out PG-19 because it overlaps the pretraining corpus. Every method runs with seeds 13, 42 and 97. We report accuracy, perplexity, FLOPs relative to full attention and peak memory.
+We evaluate on RULER at 32K and 64K tokens and on LongBench-E. We leave out PG-19 because it overlaps the pretraining corpus. Every method runs with seeds 13, 42 and 97. We report accuracy, FLOPs relative to full attention and peak memory.
 
 \section{Results}
 \subsection{Accuracy at 32K and 64K tokens}
@@ -408,7 +229,7 @@ ${row('Dynamic blocks (4$\\times$)', 'dynamic', 97)}
 \tbd{ablation: fixed versus dynamic selection at 32K and 64K, per RULER task category}
 
 \section{Limitations}
-We study one sparsity ratio and one block size, and a single model family. RULER's tasks are synthetic; LongBench-E checks that the conclusions carry over to natural documents.
+We study one sparsity ratio, one block size and one scoring rule, with a single model family. RULER's tasks are synthetic; LongBench-E checks that the conclusions carry over to natural documents.
 
 \section{Conclusion}
 \tbd{answer both questions once the 64K runs are in}
@@ -419,151 +240,43 @@ We study one sparsity ratio and one block size, and a single model family. RULER
 `
 }
 
-// ── Long-summary consistency evaluation: an evaluation already done ─────────
-
-const SUMMARY_README = `# 关于本目录的数据
-
-这是 Research Workbench 的示例项目，演示"已经有结果，直接写成论文"的做法。
-
-- results/consistency.csv 里的分数是演示用的示例数值，不是真实测量。
-- notes.md 是研究者自己的评测笔记。
-- 参考文献（paper/refs.bib）是真实存在的论文。
-`
-
-const SUMMARY_CSV = `system,summac,qafacteval,human_consistent_rate
-lead-3,0.712,0.638,0.91
-bart-large,0.583,0.521,0.74
-bart-large-rl,0.641,0.577,0.82
-`
-
-const SUMMARY_NOTES = `# 评测笔记
-
-- 语料：200 篇长文（新闻特稿和机构报告），每篇生成一段摘要。
-- 三个系统：lead-3（抽取式基线）、bart-large（抽象式）、bart-large-rl（加了一致性奖励的强化学习微调）。
-- 人工标注：每篇摘要由两名标注者判断是否与原文一致，分歧由第三人裁决；表里是被判为一致的比例。
-- 自动指标：SummaC（基于 NLI）和 QAFactEval（基于问答）。
-- 观察：两个自动指标给出的系统排序与人工一致，但分数和人工一致率不在同一个尺度上，不能直接比大小。
-`
-
-const SUMMARY_BIB = String.raw`@article{laban2022summac,
-  title = {{SummaC}: Re-Visiting {NLI}-based Models for Inconsistency Detection in Summarization},
-  author = {Laban, Philippe and Schnabel, Tobias and Bennett, Paul N. and Hearst, Marti A.},
-  journal = {Transactions of the Association for Computational Linguistics},
-  volume = {10},
-  year = {2022},
-  doi = {10.1162/tacl_a_00453}
-}
-
-@inproceedings{fabbri2022qafacteval,
-  title = {{QAFactEval}: Improved {QA}-Based Factual Consistency Evaluation for Summarization},
-  author = {Fabbri, Alexander R. and Wu, Chien-Sheng and Liu, Wenhao and Xiong, Caiming},
-  booktitle = {Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics},
-  year = {2022},
-  doi = {10.18653/v1/2022.naacl-main.187}
-}
-`
-
-const PLOT_CONSISTENCY = `"""Automatic metrics and human judgement per system, from data/results/consistency.csv."""
-import csv
-from pathlib import Path
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-
-rows = list(csv.DictReader(Path('data/results/consistency.csv').open(encoding='utf-8')))
-systems = [row['system'] for row in rows]
-series = [('summac', 'SummaC', '#15635f'), ('qafacteval', 'QAFactEval', '#7bc4bb'), ('human_consistent_rate', 'Human: consistent', '#b65328')]
-fig, ax = plt.subplots(figsize=(4.4, 2.9))
-width = 0.26
-for index, (key, label, color) in enumerate(series):
-    xs = [position + (index - 1) * width for position in range(len(rows))]
-    ax.bar(xs, [float(row[key]) for row in rows], width=width, color=color, label=label, zorder=3)
-ax.set_xticks(range(len(rows)), systems)
-ax.set_ylabel('Score / rate')
-ax.grid(True, axis='y', color='#eeebe4', zorder=0)
-ax.legend(frameon=False, fontsize=7, loc='upper right')
-for side in ('top', 'right'):
-    ax.spines[side].set_visible(False)
-fig.tight_layout()
-Path('figures').mkdir(exist_ok=True)
-fig.savefig('figures/consistency.pdf')
-print('wrote figures/consistency.pdf')
-`
-
-interface SummaryRow { system: string; summac: string; qafacteval: string; human: string }
-
-function summaryPaper(rows: SummaryRow[]): string {
-  const [lead, base, rl] = rows as [SummaryRow, SummaryRow, SummaryRow]
-  const table = rows.map(row => String.raw`${row.system} & ${row.summac} & ${row.qafacteval} & ${row.human} \\`).join('\n')
-  return String.raw`\documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
-\usepackage{booktabs}
-\usepackage{graphicx}
-\usepackage{microtype}
-\usepackage[numbers]{natbib}
-\usepackage{hyperref}
-\graphicspath{{../figures/}}
-
-\title{Do Automatic Consistency Metrics Rank Long-Document Summarizers Like People Do?}
-\author{Research Workbench example project}
-\date{}
-
-\begin{document}
-\maketitle
-
-\begin{abstract}
-Automatic factual-consistency metrics are routinely used to compare summarization systems, but they were developed on short news summaries. We score three summarizers of long documents with SummaC \cite{laban2022summac} and QAFactEval \cite{fabbri2022qafacteval} and compare the metrics with human consistency judgements. Both metrics order the systems exactly as the annotators do, with the extractive lead-3 baseline first (human consistency rate ${lead.human}); their scores, however, sit on a different scale from the human rate and should not be read as one.
-\end{abstract}
-
-\section{Introduction}
-Abstractive summarizers write fluent text that can drift from the source, and long documents give them more room to drift. Evaluations therefore report automatic consistency metrics next to, or instead of, human judgement. We ask whether those metrics still rank systems the way people do when the source is a long document rather than a news article.
-
-\section{Evaluation Setup}
-We summarize long feature articles and institutional reports with three systems: lead-3, an extractive baseline; bart-large, an abstractive model; and bart-large-rl, the same model fine-tuned with a consistency reward. Two annotators judge whether each summary is consistent with its source, and a third resolves disagreements. We report the share of summaries judged consistent. The automatic metrics are SummaC, which aggregates natural-language-inference scores over sentence pairs \cite{laban2022summac}, and QAFactEval, which compares answers to questions generated from the summary \cite{fabbri2022qafacteval}.
-
-\section{Results}
-Table~\ref{tab:main} and Figure~\ref{fig:scores} give the scores. The human consistency rate is ${lead.human} for lead-3, ${rl.human} for bart-large-rl and ${base.human} for bart-large. SummaC gives ${lead.summac}, ${rl.summac} and ${base.summac}, and QAFactEval gives ${lead.qafacteval}, ${rl.qafacteval} and ${base.qafacteval} for the same systems: both metrics reproduce the human ordering.
-
-\begin{table}[t]
-\centering
-\caption{Automatic metrics and the human consistency rate per system.}
-\label{tab:main}
-\begin{tabular}{lccc}
-\toprule
-System & SummaC & QAFactEval & Human: consistent \\
-\midrule
-${table}
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.66\linewidth]{consistency.pdf}
-\caption{Automatic metrics and the human consistency rate per system.}
-\label{fig:scores}
-\end{figure}
-
-\section{Discussion}
-The metrics agree with people on which system is more faithful, which supports using them to compare systems on long documents. They do not agree on how faithful a system is: a SummaC score is not a probability that a summary is consistent. The consistency reward moves bart-large-rl towards the extractive baseline on every measure, which is the behaviour the reward was designed to produce.
-
-\section{Conclusion}
-For long-document summarization, SummaC and QAFactEval rank systems as human annotators do but are not calibrated to the human consistency rate. Report them for comparisons, and keep human judgement for absolute claims about faithfulness.
-
-\bibliographystyle{plainnat}
-\bibliography{refs}
-\end{document}
+/** The CCFA project state as the orchestrator keeps it. */
+function sparseState(stage: string, gate: string, date: string, experiments: string): string {
+  return `version: "0.4.0"
+project:
+  title: "When Does Content-Based Block Selection Pay Off? Block-Sparse Attention at 32K and 64K Tokens"
+  short_name: "sparse-attention-scaling"
+  root: "."
+target_venue:
+  name: "NeurIPS"
+  year: "2026"
+  mode: "review"
+stage:
+  current: "${stage}"
+  gate: "${gate}"
+  updated_at: "${date}"
+artifacts:
+  manuscript: "paper/main.tex"
+  bibliography: "paper/refs.bib"
+  figures: "figures/"
+  tables: "tables/"
+  experiments: "experiments/"
+  reviews: "reviews/"
+  submission: "submission/"
+claims:
+  - id: "dynamic-advantage-fades"
+    text: "The advantage of dynamic over fixed block selection fades above 32K tokens."
+    status: "proposed"
+experiments:${experiments}
+reviews: []
+revision_ledger:
+  path: "reviews/revision-ledger.md"
+  status: "not_started"
+submission_checks:
+  path: "submission/checks.md"
+  status: "not_started"
 `
 }
-
-const SUMMARY_REVIEW = `# 自查（paper-review）
-
-- [x] [major] 表 1 与 data/results/consistency.csv 逐格核对，一致。
-- [x] [major] 结论只说"排序一致"，没有说"分数可以直接比"。
-- [x] [minor] 引用的两个指标都有完整条目（作者、题目、年份、DOI）。
-- [ ] [minor] 讨论部分可以补一句：二元一致性标注的粒度较粗。
-`
 
 // ── Generation ──────────────────────────────────────────────────────────────
 
@@ -586,6 +299,7 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
   if (!existsSync(python)) throw new Error(`The platform Python is missing: ${python}`)
   if (!TEX_BIN) throw new Error('Set DSH_RESEARCH_TEST_TEX_BIN to the TeX binaries')
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const today = new Date().toISOString().slice(0, 10)
   const backup = join(home, 'backups', `demo-${stamp}`)
   await mkdir(backup, { recursive: true })
   if (existsSync(demo)) await rename(demo, join(backup, 'demo'))
@@ -593,18 +307,27 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
 
   const sparseRoot = join(demo, 'sparse-attention-scaling')
   const summaryRoot = join(demo, 'long-summary-consistency')
-  await writeFiles(sparseRoot, {
-    'data/README.md': SPARSE_README,
-    'data/notes/longformer.md': LONGFORMER_NOTES,
-    'data/notes/bigbird.md': BIGBIRD_NOTES,
-    'data/notes/ruler.md': RULER_NOTES,
-    'data/pilot-8k.csv': PILOT_CSV,
+  // The fixtures keep data/README.md as ABOUT.md, so the repository does not take them for its own documentation.
+  const materials = async (project: string, paths: string[]): Promise<Record<string, string>> => ({
+    'data/README.md': await fixture(`${project}/data/ABOUT.md`),
+    ...Object.fromEntries(await Promise.all(paths.map(async path => [path, await fixture(`${project}/${path}`)] as const))),
   })
-  await writeFiles(summaryRoot, {
-    'data/README.md': SUMMARY_README,
-    'data/results/consistency.csv': SUMMARY_CSV,
-    'data/notes.md': SUMMARY_NOTES,
-  })
+  await writeFiles(sparseRoot, await materials('sparse', ['data/notes/longformer.md', 'data/notes/bigbird.md', 'data/notes/ruler.md', 'data/pilot-8k.csv']))
+  await writeFiles(summaryRoot, await materials('summary', ['data/notes.md', 'data/results/consistency.csv', 'data/results/by_length.csv', 'data/results/agreement.csv']))
+  const summaryReferences = JSON.parse(await fixture('summary/references.json')) as Reference[]
+  const sparseReferences = JSON.parse(await fixture('sparse/references.json')) as Reference[]
+  const reviewFixes = JSON.parse(await fixture('summary/review-fixes.json')) as ReviewFix[]
+  const summarySections = ['abstract', 'introduction', 'related_work', 'method', 'experiments', 'conclusion']
+  const finalSection = Object.fromEntries(await Promise.all(summarySections.map(async id => [id, await fixture(`summary/sections/${id}.tex`)] as const)))
+  // The first draft differs from the final text exactly where the review found something to fix.
+  const draftSection = Object.fromEntries(summarySections.map((id) => {
+    let text = finalSection[id]!
+    for (const fix of reviewFixes.filter(item => item.file === `sections/${id}.tex`)) {
+      if (!text.includes(fix.final)) throw new Error(`review fix ${fix.issue} does not match sections/${id}.tex`)
+      text = text.replace(fix.final, fix.draft)
+    }
+    return [id, text]
+  }))
 
   const overlay = join(backup, 'overlay.yml')
   await writeFile(overlay, '- id: agent-default-model\n  config:\n    provider: deepseek-official\n    model: deepseek-flash\n')
@@ -631,7 +354,7 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
       if (event.type === 'user/message') {
         const content = data.content as { type: string; text?: string }[]
         const text = content.filter(block => block.type === 'text').map(block => block.text).join('')
-        if (!text.startsWith('Current runtime context')) transcript.push(`\n## 用户\n${text}`)
+        if (!text.startsWith('Current runtime context') && !text.startsWith('<system-reminder>')) transcript.push(`\n## 用户\n${text}`)
       } else if (event.type === 'tool/call') {
         transcript.push(`- 调用 ${String(data.name)} ${String(data.arguments).slice(0, 300)}`)
       } else if (event.type === 'tool/result') {
@@ -645,6 +368,8 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
       }
     })
     await ctx.research.configure({ main: { provider: 'deepseek-official', model: 'deepseek-flash' }, python, texBin: TEX_BIN })
+    const { modes } = await ctx.research.snapshot()
+    const phaseLabels = new Map(modes.flatMap(mode => mode.phases.map(phase => [phase.id, phase.label.zh] as const)))
 
     const signal = new AbortController().signal
     const command = async (request: ResearchCommand): Promise<ResearchResponse> => {
@@ -659,7 +384,7 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
     const turn = async (sessionId: SessionId, text: string, steps: Step[], questionAnswers: string[][] = []): Promise<void> => {
       adapter.steps.push(...steps)
       answers.push(...questionAnswers)
-      const settled = scaffold.whenTurnSettled(600000)
+      const settled = scaffold.whenTurnSettled(900000)
       await ctx.sessionController.prompt({
         sessionId, requestId: randomUUID() as SessionRequestId, mode: 'queue', content: [{ type: 'text', text }],
       }, signal)
@@ -687,83 +412,174 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
       return { id: artifact.id, revision: artifact.revision }
     }
     const phaseLine = (project: ResearchProject): string => (project.lastCheck?.phases ?? [])
-      .map(phase => `${PHASE_ZH[phase.id] ?? phase.id} ${phase.done ? '✓' : '…'}`).join(' · ')
+      .map(phase => `${phaseLabels.get(phase.id) ?? phase.id} ${phase.done ? '✓' : '…'}`).join(' · ')
+    // pdfTeX keeps page objects in compressed object streams, so the count comes from pypdf in the platform Python.
+    const pdfPages = (project: ResearchProject): number => {
+      const pdf = project.compilations.at(-1)?.pdfPath
+      if (!pdf) return 0
+      const count = execFileSync(python, ['-c', 'import sys, pypdf; print(len(pypdf.PdfReader(sys.argv[1]).pages))', join(project.root, pdf)], { encoding: 'utf8' })
+      return Number(count.trim())
+    }
 
-    // ── Project 2: from-results, fully automatic ──
+    // ── Project 1: a finished evaluation, carried by spark-to-paper, fully automatic ──
     const summary = await ctx.research.create({
       title: '长文摘要一致性评测', root: summaryRoot, autonomy: 'automatic',
-      brief: '三个摘要系统在长文上的一致性评测，结果和笔记都已经有了',
+      brief: '三个摘要系统在长文上的一致性评测，结果和笔记都已经有了，要写成能投 AAAI 的完整论文',
     })
     const summarySession = summary.sessionId as SessionId
     // Named before the first message: a title the user set is never replaced by the automatic one.
-    await ctx.sessionController.rename({ sessionId: summarySession, title: '从结果直接写成短论文' })
+    await ctx.sessionController.rename({ sessionId: summarySession, title: '从结果写成论文（spark-to-paper）' })
     const liveSession = sessions.get(summarySession)
     if (liveSession) (ctx as unknown as { permissionPresets: { set(session: unknown, name: string): void } }).permissionPresets.set(liveSession, 'research-auto')
     const summaryProject = () => ctx.research.getProject(summary.id)
-    await turn(summarySession, 'data 里是我做完的长文摘要一致性评测：结果表和笔记。直接写成一篇短论文，中间你自己拿主意，不用停下来问我。', [
+    const summaryFile = (path: string) => readFile(join(summaryRoot, path), 'utf8')
+    const plots = [
+      { label: 'overall', data: ['consistency.csv', 'lead-3'] },
+      { label: 'length', data: ['by_length.csv', '"bart-large", "long"'] },
+      { label: 'auc', data: ['agreement.csv', '"summac_auc", "long"'] },
+    ] as const
+    await turn(summarySession, 'data 里是我做完的长文摘要一致性评测：三张结果表和一份笔记。写成一篇能投 AAAI 的完整论文，中间你自己拿主意，不用停下来问我。', [
       () => ({ text: '先看项目。', calls: [{ name: 'research_project', args: { action: 'current' } }] }),
       () => ({
-        text: '结果已经齐了，走"基于结果"：先把结果收成数据证据，论文里的每个数都从这里取。',
+        text: '结果已经齐了，论文里的每个数都要从这几张表取——这正是 spark-to-paper 的 data 路线：数据、规划、引用、写作、润色、评审、图表、编译，最后投稿检查。全自动模式，我直接切过去，理由记下来。',
         calls: [
-          { name: 'research_project', args: { action: 'set-mode', mode: 'from-results', reason: '评测已经做完，有完整的结果表和笔记' } },
-          { name: 'research_evidence', args: { action: 'import', paths: ['data/results/consistency.csv', 'data/notes.md'] } },
+          { name: 'research_project', args: { action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: '评测已经做完：三张结果表和评测笔记都在，论文里的数字全部来自这些结果' } },
+          { name: 'research_project', args: { action: 'record-decision', question: '模式与路线', answer: 'spark-to-paper · data（从实测结果写成论文）', rationale: '结果齐全，每个数都要能追溯到结果表' } },
         ],
       }),
-      () => ({
-        text: '全自动模式，关键的两处我自己定，理由记下来。',
+      () => ({ calls: [skill('ts-paper')] }),
+      async () => ({
+        text: '按 ts-paper 先做预检：三张图都是结果图，用数据和脚本画，不需要生图接口；这是评测研究，不用知识图谱；平台 Python 和 TeX 已就绪。开始数据阶段，把结果收成数据证据。',
         calls: [
-          { name: 'research_project', args: { action: 'record-decision', question: '主结论怎么表述', answer: '只说自动指标的系统排序与人工一致，不说分数可以直接比较',
-            rationale: '笔记写明两个指标与人工一致率不在同一尺度上' } },
-          { name: 'research_project', args: { action: 'record-decision', question: '论文形式', answer: '4 页短论文：引言、评测设置、结果、讨论、结论',
-            rationale: '只有一张结果表和一组对照，篇幅不需要更长' } },
-          { name: 'research_artifact', args: { action: 'save-artifact', path: 'paper/refs.bib', kind: 'bibliography', content: SUMMARY_BIB } },
-          { name: 'research_artifact', args: { action: 'save-artifact', path: 'code/plot_consistency.py', kind: 'code', content: PLOT_CONSISTENCY } },
+          skill('ts-paper-data'),
+          { name: 'research_evidence', args: { action: 'import', paths: ['data/results/consistency.csv', 'data/results/by_length.csv', 'data/results/agreement.csv', 'data/notes.md'] } },
+          save('logs/0_route.io.md', await fixture('summary/logs/0_route.io.md'), 'supplement'),
+          save('code/facts.py', await fixture('summary/code/facts.py'), 'code'),
         ],
       }),
-      () => ({ calls: [{ name: 'pwsh', args: { command: `& '${python}' code/plot_consistency.py`, description: '从 data/results/consistency.csv 画对照图' } }] }),
-      () => {
+      () => ({ calls: [{ name: 'pwsh', args: { command: `& '${python}' code/facts.py`, description: '从三张结果表生成 results.facts.json（含要报告的差值）' } }] }),
+      async () => {
         const project = summaryProject()
-        const data = linkTo(project, 'consistency.csv', 'lead-3')
-        const rows = SUMMARY_CSV.trim().split('\n').slice(1).map((line) => {
-          const [system, summac, qafacteval, human] = line.split(',') as [string, string, string, string]
-          return { system, summac, qafacteval, human }
-        })
         return {
-          text: '图画好了，登记来源，再写论文。',
+          text: 'results.facts.json 里是论文可以用的全部数字，差值由脚本算出。把它也收成数据证据，并记下这篇论文的核心论点。',
           calls: [
-            { name: 'research_artifact', args: { action: 'register-artifact', path: 'figures/consistency.pdf', kind: 'figure', evidence: [data],
-              inputArtifacts: [artifactRef(project, 'code/plot_consistency.py')] } },
-            { name: 'research_artifact', args: { action: 'save-artifact', path: 'paper/main.tex', kind: 'manuscript', content: summaryPaper(rows), evidence: [data] } },
+            { name: 'research_evidence', args: { action: 'import', paths: ['results.facts.json'] } },
+            { name: 'research_evidence', args: { action: 'claim', claim: {
+              id: 'ranking-holds-by-length', kind: 'empirical', state: 'supported',
+              text: '在每个长度档里，SummaC 和 QAFactEval 给出的系统排序都与人工一致率的排序相同。',
+              evidence: [linkTo(project, 'by_length.csv', '"lead-3", "long"'), linkTo(project, 'by_length.csv', '"bart-large", "long"'), linkTo(project, 'by_length.csv', '"bart-large-rl", "long"')],
+              artifactIds: [],
+            } } },
+            save('logs/0_data.io.md', await fixture('summary/logs/0_data.io.md'), 'supplement'),
           ],
         }
       },
-      () => ({ calls: [{ name: 'research_artifact', args: { action: 'compile', engine: 'pdflatex' } }] }),
-      () => ({ calls: [{ name: 'research_artifact', args: { action: 'render-pages', maxPages: 6 } }] }),
+      () => ({ text: '规划阶段：先从会议库里找 AAAI 的官方模板。', calls: [skill('ts-paper-plan'), { name: 'research_artifact', args: { action: 'list-venues', query: 'aaai' } }] }),
+      () => ({ calls: [{ name: 'research_artifact', args: { action: 'apply-template', venue: 'aaai', stage: 'review' } }] }),
+      async () => {
+        const template = JSON.parse(await summaryFile('template.json')) as Record<string, unknown>
+        template.results_mode = 'data_aware'
+        return {
+          text: '模板套上了（审稿版，匿名）。data 路线要把 template.json 的 results_mode 设为 data_aware，再写 blueprint：两张结果表、三张结果图、三条贡献。',
+          calls: [
+            save('template.json', `${JSON.stringify(template, null, 2)}\n`, 'supplement'),
+            save('blueprint.json', await fixture('summary/blueprint.json'), 'supplement'),
+            save('logs/1_plan.io.md', await fixture('summary/logs/1_plan.io.md'), 'supplement'),
+          ],
+        }
+      },
+      () => ({ calls: [check('plan')] }),
       () => ({
-        text: '逐页看过版面。按 paper-review 的清单自查一遍，写进 reviews/review.md。',
-        calls: [{ name: 'research_artifact', args: { action: 'save-artifact', path: 'reviews/review.md', kind: 'supplement', content: SUMMARY_REVIEW } }],
+        text: `规划阶段的检查通过。引用阶段：${summaryReferences.length} 篇文献逐篇按 DOI 向 Crossref 重新取回，BibTeX 用返回的记录。`,
+        calls: [skill('ts-paper-cite'), ...summaryReferences.map(reference => ({ name: 'research_evidence', args: { action: 'literature-import', item: literatureItem(reference) } }))],
       }),
-      () => ({ calls: [{ name: 'research_check', args: {} }] }),
+      async () => ({
+        text: '全部核实。refs.bib 只把键名换成易读的形式；claims_map.json 写明每条引用支撑的论点和所在章节。',
+        calls: [
+          save('refs.bib', bibliography(summaryProject(), summaryReferences), 'bibliography'),
+          save('claims_map.json', await fixture('summary/claims_map.json'), 'supplement'),
+          save('logs/2_cite.io.md', await fixture('summary/logs/2_cite.io.md'), 'supplement'),
+        ],
+      }),
+      () => ({ calls: [check('cite')] }),
+      async () => ({
+        text: '引用阶段通过。按模板的写作顺序写六个部分，正文里的小数只用 results.facts.json 里的值。',
+        calls: [
+          skill('ts-paper-write'),
+          ...summarySections.map(id => save(`sections/${id}.tex`, draftSection[id]!, 'manuscript')),
+          save('logs/3_write.io.md', await fixture('summary/logs/3_write.io.md'), 'supplement'),
+        ],
+      }),
+      () => ({ calls: [check('write')] }),
+      () => ({ text: '写作阶段通过。润色：先列出风险措辞，再逐条看。', calls: [skill('ts-paper-refine'), script('consistency-check', ['sections/experiments.tex'])] }),
+      async () => ({ calls: [save('logs/4_refine.io.md', await fixture('summary/logs/4_refine.io.md'), 'supplement'), check('refine')] }),
+      async () => ({
+        text: '对抗式评审：三个视角各读全文，每条问题带原文引语和关闭标准，再逐条反驳。找到两处 major、两处 minor；三处当场改掉，一处留给你决定。',
+        calls: [
+          skill('ts-paper-review'),
+          ...reviewFixes.map(fix => save(fix.file, finalSection[fix.file.replace(/^sections\/|\.tex$/g, '')]!, 'manuscript')),
+          save('reviews/review.md', await fixture('summary/reviews/review.md'), 'supplement'),
+          save('logs/5_review.io.md', await fixture('summary/logs/5_review.io.md'), 'supplement'),
+        ],
+      }),
+      () => ({ calls: [check('review'), check('write')] }),
+      async () => ({
+        text: '评审阶段通过，改过的地方重新检查也没有问题。图表阶段：三张结果图都用 plot-results 从数据画，出矢量 PDF。',
+        calls: [skill('ts-paper-figure'), ...await Promise.all(plots.map(async plot => save(`code/plot_${plot.label}.py`, await fixture(`summary/code/plot_${plot.label}.py`), 'code')))],
+      }),
+      () => ({ calls: plots.map(plot => script('plot-results', ['--script', `code/plot_${plot.label}.py`, '--out', `figures/${plot.label}.png`])) }),
+      async () => {
+        const project = summaryProject()
+        return {
+          text: '三张图都画好了。登记每张图的数据和脚本，写图表清单。',
+          calls: [
+            ...plots.map(plot => ({ name: 'research_artifact', args: {
+              action: 'register-artifact', path: `figures/${plot.label}.pdf`, kind: 'figure',
+              evidence: [linkTo(project, plot.data[0], plot.data[1])], inputArtifacts: [artifactRef(project, `code/plot_${plot.label}.py`)],
+            } })),
+            save('figures/figures.manifest.json', await fixture('summary/figures/figures.manifest.json'), 'supplement'),
+            save('logs/6_figures.io.md', await fixture('summary/logs/6_figures.io.md'), 'supplement'),
+          ],
+        }
+      },
+      () => ({ calls: [check('figures')] }),
+      () => ({ text: '图表阶段通过。编译排版：用 assemble-paper 拼出 main.tex，再编译。', calls: [skill('ts-paper-latex'), script('assemble-paper')] }),
+      () => ({ calls: [{ name: 'research_artifact', args: { action: 'compile', path: 'main.tex', engine: 'pdflatex' } }] }),
+      () => ({ calls: [{ name: 'research_artifact', args: { action: 'render-pages', maxPages: 10 } }] }),
+      () => ({ calls: [check('latex')] }),
+      async () => {
+        const pages = pdfPages(summaryProject())
+        const review = `${await fixture('summary/reviews/review.md')}- [x] [minor] I-05 latex: 终稿逐页检查（AAAI 格式，${pages} 页）：两张表、三张图和参考文献都正常，没有溢出。\n`
+        return {
+          text: `编译通过，${pages} 页逐页看过。评审里补记终稿检查，写完过程记录，然后跑一遍完整检查。`,
+          calls: [
+            save('reviews/review.md', review, 'supplement'),
+            save('logs/7_latex.io.md', await fixture('summary/logs/7_latex.io.md'), 'supplement'),
+            save('logs/index.md', await fixture('summary/logs/index.md'), 'supplement'),
+          ],
+        }
+      },
+      () => ({ calls: [check()] }),
       () => summaryProject().lastCheck?.clean
         ? { text: '检查全部通过，打包投稿文件。', calls: [{ name: 'research_artifact', args: { action: 'export' } }] }
         : { calls: [{ name: 'research_project', args: { action: 'current' } }] },
-      () => {
+      async () => {
         const project = summaryProject()
         const check = project.lastCheck
+        const pages = pdfPages(project)
         return { text: check?.clean
-          ? `写完了，检查全部通过（${phaseLine(project)}），投稿包在 exports/ 里。\n\n- **结论**：SummaC 和 QAFactEval 给出的系统排序与人工完全一致（lead-3 > bart-large-rl > bart-large），但分数和人工一致率不在一个尺度上，论文里只说排序一致。\n- **我替你定的两件事**：主结论的表述、篇幅，理由都在右侧的决策记录里。\n- **数字**：表 1 和正文的每个数都来自 data/results/consistency.csv；图由 code/plot_consistency.py 从同一张表画出。\n- **自查**：reviews/review.md 里还留了一条小建议（补一句标注粒度的局限），不影响投稿。\n\n现在用的是通用的 article 模板；要投具体会议，给我模板文件，我换上再检查一遍。`
+          ? `写完了，spark-to-paper 的每个阶段都通过（${phaseLine(project)}），投稿包在 exports/ 里。\n\n- **论文**：AAAI 2026 审稿版，${pages} 页，main.tex 由 sections/ 拼成。\n- **结论**：两个指标在每个长度档都给出与人工一致的系统排序；摘要级别上，SummaC 在长文档上的区分能力明显下降，QAFactEval 比较稳。\n- **数字**：正文和表里的每个数都来自 data/results/ 下的三张表，差值由 code/facts.py 算出。\n- **引用**：${summaryReferences.length} 篇，全部按 DOI 向 Crossref 核实后导入。\n- **图**：三张结果图由 code/plot_*.py 从数据画出，都是矢量 PDF，数据和脚本登记在图的来源里。\n- **评审**：找到的四个问题里三个已改；I-04（讨论大模型评估器）留给你决定。\n- **我替你定的事**：模式与路线、会议模板，理由都在右侧的决策记录里。`
           : `论文写好了，但检查还没全部通过：${phaseLine(project)}。${check?.findings.filter(finding => finding.severity === 'error').map(finding => finding.message).join('；') ?? ''}` }
       },
     ])
 
-
-    // ── Project 1: paper-first with checkpoints ──
+    // ── Project 2: an idea, carried by CCFA, with checkpoints ──
     const sparse = await ctx.research.create({
       title: 'Sparse attention scaling study', root: sparseRoot, autonomy: 'checkpoints',
       brief: '块稀疏注意力能否在 1/4 FLOPs 下保住长上下文准确率',
     })
     const sparseSession = sparse.sessionId as SessionId
-    await ctx.sessionController.rename({ sessionId: sparseSession, title: '块稀疏注意力：从想法到初稿' })
+    await ctx.sessionController.rename({ sessionId: sparseSession, title: '块稀疏注意力：CCFA 从想法到实验' })
     const current = () => ctx.research.getProject(sparse.id)
     // The researcher bound these earlier from settings: this machine, and a lab server that is unreachable today.
     await command({ action: 'environment', projectId: sparse.id, environment: {
@@ -776,42 +592,91 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
         details: JSON.stringify({ executable: '/usr/bin/python3', gpu: 'NVIDIA A100 80GB' }), isDefault: false,
       })
     })
-    const question = '在 4× 稀疏、32K 上下文下，块稀疏注意力的长文准确率能否保持在全注意力的 1 个点以内？按注意力得分动态选块，相对固定分块的优势会不会随长度消失？'
+    const idea = 'ccfa-workfiles/ideas/block-sparse-long-context'
+    const question = '在 4× 稀疏、32K 以上上下文下，块稀疏注意力的长文准确率能否保持在全注意力的 1 个点以内？按内容动态选块相对固定分块的优势，会不会随长度消失？'
 
-    await turn(sparseSession, '我只有一个想法：块稀疏注意力能不能在 1/4 的 FLOPs 下，保住长上下文的准确率？data 里是我读 Longformer、BigBird、RULER 的笔记，还有一份 8K 上的预实验。', [
+    await turn(sparseSession, '我只有一个想法：块稀疏注意力能不能在 1/4 的 FLOPs 下，保住长上下文的准确率？data 里是我读 Longformer、BigBird、RULER 的笔记，还有一份 8K 上的预实验。想做成一篇能投 NeurIPS 的论文。', [
       () => ({ text: '先看看这个项目现在的状态。', calls: [{ name: 'research_project', args: { action: 'current' } }] }),
       () => ({
-        text: '还没有定模式。你手上是一个想法、三份阅读笔记和一份预实验，还没有正式结果——按"先写论文"来走：先把方法论文写完整，结果的位置留空，跑完实验再填。先把材料收进证据库。',
+        text: '项目还在通用模式。你手上是一个想法、三份笔记和一份预实验，目标是 NeurIPS——整篇论文按一种方法走会更稳。装了两种，请你选：',
+        calls: [{ name: 'ask_user_question', args: { questions: [{
+          id: 'mode', header: '选择模式', question: '这篇论文按哪种方法推进？',
+          options: [
+            { label: 'CCFA · 完整论文 (Recommended)', description: '先打磨并评审想法、查清最接近的工作，再设计实验、跑实验、写作，按 CCF-A 的审稿标准检查每一步' },
+            { label: 'spark-to-paper · 从提案开始', description: '先写出完整初稿，结果格留空，初稿编译通过后再跑实验' },
+            { label: '先用通用模式', description: '不走流程，按你的指示一步步来' },
+          ],
+        }] } }],
+      }),
+      () => ({
+        text: '好，用 CCFA 的完整论文路线：项目搭建 → 想法 → 文献 → 实验设计 → 实验 → 写作 → 图表 → 诚信审计 → 评审 → 投稿。',
         calls: [
-          { name: 'research_project', args: { action: 'set-mode', mode: 'paper-first', reason: '只有一个想法、三份阅读笔记和一份 8K 预实验，还没有正式结果' } },
+          { name: 'research_project', args: { action: 'set-mode', mode: 'ccfa', route: 'full-paper', reason: '一个想法加阅读笔记和预实验，目标 NeurIPS；想法要先经过评审和文献核实' } },
+          { name: 'research_project', args: { action: 'record-decision', question: '模式', answer: 'CCFA · full-paper', decidedBy: 'user' } },
+        ],
+      }),
+      () => ({ calls: [skill('ccf-humanization'), skill('ccf-common'), skill('ccf-pipeline-orchestrator')] }),
+      () => ({
+        text: '先按 ccf-project-scaffolder 搭项目：材料收进证据库，套 NeurIPS 的官方模板，写 ccfa.yaml。',
+        calls: [
+          skill('ccf-project-scaffolder'),
           { name: 'research_evidence', args: { action: 'import', paths: ['data/notes/longformer.md', 'data/notes/bigbird.md', 'data/notes/ruler.md', 'data/pilot-8k.csv'] } },
+          { name: 'research_artifact', args: { action: 'list-venues', query: 'neurips' } },
         ],
       }),
       () => ({
-        text: '材料都收进来了，每份都留了版本和行号。研究问题我先收成一句能被证伪的话，请你定一下。',
+        calls: [
+          { name: 'research_artifact', args: { action: 'apply-template', venue: 'neurips', stage: 'review' } },
+          save('ccfa.yaml', sparseState('scaffolded', 'passed', today, ' []'), 'supplement'),
+        ],
+      }),
+      () => ({
+        text: '项目搭好了。想法阶段：先用内置的科研模式图谱找最接近的已有工作。',
+        calls: [skill('ccf-idea-optimizer'), { name: 'research_knowledge', args: {
+          action: 'recall', query: 'block-sparse attention that keeps long-context accuracy at a quarter of the FLOPs, dynamic block selection versus fixed blocks',
+          topK: 5, path: `${idea}/recall.json`,
+        } }],
+      }),
+      async () => {
+        const recall = JSON.parse(await readFile(join(sparseRoot, idea, 'recall.json'), 'utf8')) as { patterns: { name: string; exemplars: { title: string }[] }[] }
+        const [top] = recall.patterns
+        return {
+          text: `图谱召回的最近模式是 "${top?.name ?? '?'}"，范例里有 ${top?.exemplars.slice(0, 3).map(item => item.title.split(':')[0]).join('、') ?? '?'}——按内容动态选块已经有专门的方法了。想法卡片按这个来写：贡献放在"动态相对固定的优势怎样随长度变化"这一测量上。再请 ccf-idea-reviewer 只看概念做一次评审。`,
+          calls: [save(`${idea}/idea-card.md`, await fixture(`sparse/${idea}/idea-card.md`), 'supplement'), skill('ccf-idea-reviewer')],
+        }
+      },
+      async () => ({ calls: [save(`${idea}/idea-review.md`, await fixture(`sparse/${idea}/idea-review.md`), 'supplement')] }),
+      () => ({
+        text: '评审结论是 revise，加权 3.55：问题具体、可证伪，但如果写成"提出动态选块"，会和 MInference、MoBA、NSA 直接重叠。改成控制变量的测量研究后，两问都值得保留——第二问恰好是已有方法没测过的部分。研究问题请你定：',
         calls: [{ name: 'ask_user_question', args: { questions: [{
           id: 'research-question', header: '研究问题', question,
           options: [
-            { label: '就按这个定 (Recommended)', description: '两问都保留：能否保住准确率，以及动态选块的优势会不会随长度消失' },
-            { label: '只保留第一问', description: '先不比较动态和固定选块，实验更少' },
+            { label: '两问都保留，定位为测量研究 (Recommended)', description: '固定机制，只测动态相对固定的差距怎样随长度变化' },
+            { label: '只保留第一问', description: '只看块稀疏能否保住准确率，实验更少，但与已有方法的区别变弱' },
+            { label: '改成提出新的选块方法', description: '需要新的机制，与 MInference、MoBA、NSA 正面竞争' },
           ],
         }] } }],
       }),
       () => ({
         calls: [
-          { name: 'research_project', args: { action: 'record-decision', question: '研究问题', answer: question, decidedBy: 'user' } },
-          { name: 'research_artifact', args: { action: 'save-artifact', path: 'paper/refs.bib', kind: 'bibliography', content: SPARSE_BIB } },
+          { name: 'research_project', args: { action: 'record-decision', question: '研究问题', answer: `${question}（定位为控制变量的测量研究）`, decidedBy: 'user' } },
+          save('ccfa.yaml', sparseState('idea', 'passed', today, ' []'), 'supplement'),
+          check('idea'),
         ],
       }),
-      () => ({ text: '研究问题定下来了，记在决策记录里。\n\n参考文献先放了 5 篇：Longformer、BigBird、RULER、LongBench，以及 FlashAttention-3——稠密注意力本身也在变快，稀疏方法要跟它比才有意义。条目的作者、题目、年份和 DOI 都齐，但还没有联网核实，检查会把它们标成"未核实"。\n\n下一步我会先对照你的笔记和预实验，看看现有证据在"稀疏模式怎么选"上到底说了什么，再写方法。' }),
-    ], [['就按这个定 (Recommended)']])
+      () => ({ text: '研究问题定下来了，记在决策记录里；想法阶段的检查已通过。\n\n- **想法卡片**：`ccfa-workfiles/ideas/block-sparse-long-context/idea-card.md`\n- **想法评审**：同目录的 `idea-review.md`，新颖性暂定 3 分，要等文献阶段核实。\n\n下一步是文献阶段：把最接近的工作逐篇查清、核实并导入，再对照你的笔记和预实验，看看现有证据在"稀疏模式怎么选"上说了什么。' }),
+    ], [['CCFA · 完整论文 (Recommended)'], ['两问都保留，定位为测量研究 (Recommended)']])
 
-    await turn(sparseSession, '先别急着写方法。把那几份材料里关于稀疏模式的结论摆出来，看看谁和谁矛盾。', [
-      () => ({ calls: [{ name: 'research_evidence', args: { action: 'search-evidence', query: 'block 固定 聚合 4K' } }] }),
-      () => {
+    await turn(sparseSession, '先别急着写方法。把材料里关于稀疏模式的结论摆出来，看看谁和谁矛盾。', [
+      () => ({ calls: [skill('ccf-literature-searcher'), { name: 'research_evidence', args: { action: 'search-evidence', query: 'block 固定 聚合 4K' } }] }),
+      () => ({
+        text: `笔记里提到和图谱召回到的 ${sparseReferences.length} 篇关键论文，逐篇向 OpenAlex 和 Crossref 核实后导入。`,
+        calls: sparseReferences.map(reference => ({ name: 'research_evidence', args: { action: 'literature-import', item: literatureItem(reference) } })),
+      }),
+      async () => {
         const project = current()
         return {
-          text: '有一处对不上，我把它记成一条待验证的论点，并把方法草图画出来，里面留一个能分辨它的消融。',
+          text: '有一处对不上，我把它记成一条待验证的论点；文献清单写进 papers.md；方法草图画成可编辑的 draw.io。',
           calls: [
             { name: 'research_evidence', args: { action: 'claim', claim: {
               id: 'dynamic-advantage-fades', kind: 'hypothesis', state: 'proposed',
@@ -819,35 +684,46 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
               evidence: [linkTo(project, 'pilot-8k.csv', 'dynamic-block-4x'), linkTo(project, 'ruler.md', '聚合类任务')],
               artifactIds: [],
             } } },
-            { name: 'research_artifact', args: { action: 'save-artifact', path: 'figures/architecture.drawio', kind: 'diagram', content: ARCHITECTURE_DRAWIO } },
+            save('ccfa-workfiles/literature/block-sparse-attention/papers.md', (await fixture('sparse/ccfa-workfiles/literature/block-sparse-attention/papers.md')).replace('{{date}}', today), 'supplement'),
+            save('paper/refs.bib', bibliography(project, sparseReferences), 'bibliography'),
+            save('figures/architecture.drawio', await fixture('sparse/figures/architecture.drawio'), 'diagram'),
           ],
         }
       },
-      () => ({ text: '三份材料在"稀疏模式怎么选"上说的不是一回事：\n\n- **预实验（pilot-8k.csv）**：8K 上下文、4× 稀疏时，固定分块比全注意力低 0.6 个点，按注意力得分动态选块几乎无损——但只到 8K。\n- **Longformer、BigBird 笔记**：两篇的评测都停在 4K 左右，而且块是固定划分的，说明不了 32K 以上的事。\n- **RULER 笔记**：你记着聚合类任务最可能暴露稀疏注意力的短板，而长度越长，聚合越难。\n\n所以"动态选块更好"在 32K 以上还没有证据。我把它记成了一条**待验证**的论点，两条来源都挂在上面，点开能看到原文那一行。\n\n方法草图在 `figures/architecture.drawio`（可以直接打开改）：块打分 → Top-k 选块 → 块稀疏注意力，虚线是固定分块基线。实验里用"选块策略 × 上下文长度"这个消融来分辨这条论点。' }),
+      () => ({ calls: [check('literature')] }),
+      () => ({ text: '材料之间在"稀疏模式怎么选"上说的不是一回事：\n\n- **预实验（pilot-8k.csv）**：8K 上下文、4× 稀疏时，固定分块比全注意力低 0.6 个点，按内容动态选块几乎无损——但只到 8K。\n- **Longformer、BigBird 笔记**：评测都停在 4K 左右，块是固定划分的，说明不了 32K 以上的事。\n- **RULER 笔记**：你记着聚合类任务最可能暴露稀疏注意力的短板，而长度越长，聚合越难。\n- **动态选块的已有方法**：MInference、MoBA、NSA 都只拿自己的机制和全注意力比，没有在多个长度上对照固定分块——这就是这篇论文的位置。\n\n所以"动态选块更好"在 32K 以上还没有证据，我记成了一条**待验证**的论点，两条来源都挂在上面。8 篇文献全部核实导入，清单和三组最接近的工作在 `ccfa-workfiles/literature/block-sparse-attention/papers.md`。\n\n方法草图在 `figures/architecture.drawio`，可以直接打开改。按 ccf-visual-composer，新的方法图默认先用 gpt-image-2 出一版视觉稿；设置里还没配生图接口，这次先画可编辑版本，配好后可以再出一版。' }),
     ])
 
     await turn(sparseSession, '方法就这样。把实验方案和完整初稿写出来，结果先留空；方案我要确认了再跑。', [
-      () => ({
-        text: '先把规划、实验脚本和初稿写出来。',
+      async () => ({
+        text: '先按 ccf-experiment-designer 写实验方案。',
         calls: [
-          { name: 'research_project', args: { action: 'record-decision', question: '方法设计', answer: '固定分块与动态选块两套方法；架构图第 1 版定稿', decidedBy: 'user' } },
-          { name: 'research_artifact', args: { action: 'save-artifact', path: 'paper/outline.md', kind: 'supplement', content: OUTLINE } },
-          { name: 'research_artifact', args: { action: 'save-artifact', path: 'code/train_eval.py', kind: 'code', content: TRAIN_EVAL } },
-          { name: 'research_artifact', args: { action: 'save-artifact', path: 'paper/main.tex', kind: 'manuscript', content: sparsePaper(), claimIds: ['dynamic-advantage-fades'] } },
+          { name: 'research_project', args: { action: 'record-decision', question: '方法设计', answer: '固定分块与动态选块两套方法，同一稀疏度与块大小；架构图第 1 版定稿', decidedBy: 'user' } },
+          skill('ccf-experiment-designer'),
+          save('experiments/design.md', await fixture('sparse/experiments/design.md'), 'supplement'),
+          save('code/train_eval.py', await fixture('sparse/code/train_eval.py'), 'code'),
         ],
       }),
-      () => ({ text: '编译一下，再逐页看看版面。', calls: [{ name: 'research_artifact', args: { action: 'compile', engine: 'pdflatex' } }] }),
+      () => ({
+        text: '方案写好了。再按 ccf-paper-writer 在 NeurIPS 模板里写初稿，结果格留 "--"，没有的结论用占位标出。',
+        calls: [
+          skill('ccf-paper-writer'),
+          save('paper/main.tex', sparsePaper(), 'manuscript', { claimIds: ['dynamic-advantage-fades'] }),
+          save('ccfa.yaml', sparseState('design', 'passed', today, ' []'), 'supplement'),
+        ],
+      }),
+      () => ({ text: '编译一下，再逐页看看版面。', calls: [{ name: 'research_artifact', args: { action: 'compile', path: 'paper/main.tex', engine: 'pdflatex' } }] }),
       () => ({ calls: [{ name: 'research_artifact', args: { action: 'render-pages', maxPages: 8 } }] }),
-      () => ({ calls: [{ name: 'research_check', args: { scope: 'draft' } }] }),
+      () => ({ calls: [check('design')] }),
       () => {
-        const draft = current().lastCheck?.phases.find(phase => phase.id === 'draft')
+        const design = current().lastCheck?.phases.find(phase => phase.id === 'design')
         return {
-          text: draft?.done
-            ? '初稿编译通过，页面逐页看过，"完整初稿"这一阶段的检查已经通过。结果表里全是 "--"，结论和摘要里各留了一个占位——这些要等实验。开跑前请你确认方案：'
-            : `初稿已经写好并编译。"完整初稿"这一阶段还差：${draft?.missing.join('；') ?? '（未知）'}。开跑前请你确认方案：`,
+          text: design?.done
+            ? '实验设计阶段的检查通过，初稿也编译好、逐页看过了：结果表全是 "--"，摘要、消融和结论各留了一个占位。下一步是实验阶段，开跑前请你确认方案：'
+            : `初稿已经写好并编译。实验设计阶段还差：${design?.missing.join('；') ?? '（未知）'}。开跑前请你确认方案：`,
           calls: [{ name: 'ask_user_question', args: { questions: [{
             id: 'run-plan', header: '开跑前确认',
-            question: '实验方案在 paper/outline.md：RULER 32K 先跑全注意力基线、固定分块 4×、动态选块 4×（种子 42、97，本机）；种子 13 放到实验室的 lab-a100 上并行跑。PG-19 已去掉（与预训练语料重叠）。64K 和 LongBench-E 等 32K 结果出来再跑。现在开跑吗？',
+            question: '实验方案在 experiments/design.md：RULER 32K 先跑全注意力、固定分块 4×、动态选块 4×（种子 42、97，本机）；种子 13 放到实验室的 lab-a100 上并行跑。PG-19 已去掉（与预训练语料重叠）。64K 和 LongBench-E 等 32K 结果出来再跑。现在开跑吗？',
             options: [
               { label: '按方案跑 32K (Recommended)', description: '先拿到 32K 的结果，再决定 64K 怎么跑' },
               { label: '只跑一个种子', description: '更快，但看不出种子间的波动' },
@@ -856,7 +732,7 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
           }] } }],
         }
       },
-      async () => {
+      () => {
         const project = current()
         const local = project.environments.find(item => item.name === 'default')!
         const lab = project.environments.find(item => item.name === 'lab-a100')!
@@ -894,37 +770,24 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
         const runs = current().experiments
         const done = runs.filter(run => run.status === 'completed').length
         const lost = runs.find(run => run.status === 'unknown')
-        return { text: `提交了 5 次运行。本机的 ${done} 次已经跑完，指标都收成了数据证据。\n\n种子 13 那次放在 lab-a100 上，${lost ? '提交时连不上那台机器，回执没有回来——它可能起来了，也可能没有。我不会换个编号重新提交，那样同一组配置可能跑两遍；等机器能连上，再确认它到底有没有在跑。' : '也已经提交。'}\n\n代码和数据在提交那一刻都锁了快照，之后改文件不会影响这几次运行。结果要我现在填进论文吗？` }
+        return { text: `提交了 5 次运行。本机的 ${done} 次已经跑完，指标都收成了数据证据。\n\n种子 13 那次放在 lab-a100 上，${lost ? '提交时连不上那台机器，回执没有回来——它可能起来了，也可能没有。我不会换个编号重新提交，那样同一组配置可能跑两遍；等机器能连上，再确认它到底有没有在跑。' : '也已经提交。'}\n\n代码和数据在提交那一刻都锁了快照，之后改文件不会影响这几次运行。结果要我现在整理进论文吗？` }
       },
     ], [['按方案跑 32K (Recommended)']])
 
-    await turn(sparseSession, '填吧，画张图。13 那次先不管，等实验室机器好了再说。', [
+    await turn(sparseSession, '整理吧，画张图。13 那次先不管，等实验室机器好了再说。', [
       () => ({ calls: [{ name: 'research_project', args: { action: 'current' } }] }),
-      () => {
-        const project = current()
-        const results = collectSparse(project)
-        const csv = ['run,method,seed,accuracy,relative_flops,peak_memory_gb',
-          ...results.map(item => `ruler-32k-${item.method} · seed ${item.seed},${item.method},${item.seed},${item.accuracy},${item.flops},${item.memory}`)].join('\n') + '\n'
-        return {
-          text: '把四次运行的指标整理成一张表，再用脚本从这张表画图。',
-          calls: [
-            { name: 'research_artifact', args: { action: 'save-artifact', path: 'data/results-32k.csv', kind: 'supplement', content: csv,
-              evidence: results.map(item => metricLink(project, item, 'accuracy')) } },
-            { name: 'research_artifact', args: { action: 'save-artifact', path: 'code/plot_accuracy.py', kind: 'code', content: PLOT_ACCURACY } },
-          ],
-        }
-      },
-      () => ({ calls: [{ name: 'pwsh', args: { command: `& '${python}' code/plot_accuracy.py`, description: '从 data/results-32k.csv 画准确率-计算量图' } }] }),
-      () => {
-        const project = current()
-        return {
-          calls: [
-            { name: 'research_artifact', args: { action: 'register-artifact', path: 'figures/accuracy_vs_flops.pdf', kind: 'figure',
-              evidence: collectSparse(project).map(item => metricLink(project, item, 'accuracy')),
-              inputArtifacts: [artifactRef(project, 'code/plot_accuracy.py'), artifactRef(project, 'data/results-32k.csv')] } },
-          ],
-        }
-      },
+      async () => ({
+        text: '先用脚本把收集到的运行指标整理成 experiments/results.csv——不手抄；以后 64K 的运行也进这张表。',
+        calls: [save('code/collect_results.py', await fixture('sparse/code/collect_results.py'), 'code')],
+      }),
+      () => ({ calls: [{ name: 'pwsh', args: { command: `& '${python}' code/collect_results.py`, description: '从本机运行记录整理结果表' } }] }),
+      async () => ({
+        calls: [
+          { name: 'research_evidence', args: { action: 'import', paths: ['experiments/results.csv'] } },
+          save('code/plot_accuracy.py', await fixture('sparse/code/plot_accuracy.py'), 'code'),
+        ],
+      }),
+      () => ({ calls: [{ name: 'pwsh', args: { command: `& '${python}' code/plot_accuracy.py`, description: '从 experiments/results.csv 画准确率-计算量图' } }] }),
       () => {
         const project = current()
         const results = collectSparse(project)
@@ -932,11 +795,13 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
         const dynamic = results.find(item => item.method === 'dynamic' && item.seed === 42)!
         return {
           calls: [
+            { name: 'research_artifact', args: { action: 'register-artifact', path: 'figures/accuracy_vs_flops.pdf', kind: 'figure',
+              evidence: [linkTo(project, 'results.csv', '"dynamic", "32768", "42"')], inputArtifacts: [artifactRef(project, 'code/plot_accuracy.py')] } },
             { name: 'research_evidence', args: { action: 'claim', claim: {
               id: 'within-one-point-32k', kind: 'empirical', state: 'supported',
               text: '在 4× 稀疏、32K 上下文下，动态选块的准确率与全注意力相差不到 1 个点（种子 42）。',
               evidence: [metricLink(project, dynamic, 'accuracy'), metricLink(project, full, 'accuracy')],
-              artifactIds: [artifactRef(project, 'figures/accuracy_vs_flops.pdf').id],
+              artifactIds: [],
             } } },
           ],
         }
@@ -944,17 +809,22 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
       () => {
         const project = current()
         return {
-          text: '结果写进 4.1 节和表 1，图放在结果部分。',
-          calls: [{ name: 'research_artifact', args: {
-            action: 'save-artifact', path: 'paper/main.tex', kind: 'manuscript', content: sparsePaper(collectSparse(project)),
-            claimIds: ['dynamic-advantage-fades', 'within-one-point-32k'],
-            inputArtifacts: [artifactRef(project, 'figures/accuracy_vs_flops.pdf'), artifactRef(project, 'data/results-32k.csv')],
-          } }],
+          text: '结果写进 6.1 节和表 1，图放在结果部分；ccfa.yaml 的阶段更新为写作。',
+          calls: [
+            save('paper/main.tex', sparsePaper(collectSparse(project)), 'manuscript', {
+              claimIds: ['dynamic-advantage-fades', 'within-one-point-32k'], inputArtifacts: [artifactRef(project, 'figures/accuracy_vs_flops.pdf')],
+            }),
+            save('ccfa.yaml', sparseState('writing', 'open', today, `
+  - id: "ruler-32k"
+    status: "collected"
+    runs: 4
+    pending: ["seed 13 on lab-a100 (state unknown)", "RULER 64K", "LongBench-E"]`), 'supplement'),
+          ],
         }
       },
-      () => ({ calls: [{ name: 'research_artifact', args: { action: 'compile', engine: 'pdflatex' } }] }),
+      () => ({ calls: [{ name: 'research_artifact', args: { action: 'compile', path: 'paper/main.tex', engine: 'pdflatex' } }] }),
       () => ({ calls: [{ name: 'research_artifact', args: { action: 'render-pages', maxPages: 8 } }] }),
-      () => ({ calls: [{ name: 'research_check', args: {} }] }),
+      () => ({ calls: [check()] }),
       () => {
         const project = current()
         const results = collectSparse(project)
@@ -962,15 +832,14 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
         const fixed = results.find(item => item.method === 'fixed')!
         const dynamic = results.find(item => item.method === 'dynamic' && item.seed === 42)!
         const second = results.find(item => item.method === 'dynamic' && item.seed === 97)!
-        const check = project.lastCheck
-        const errors = check?.findings.filter(finding => finding.severity === 'error').length ?? 0
         const line = (label: string, item: SparseResult) =>
           `| ${label} | ${item.accuracy.toFixed(3)} | ${item.flops.toFixed(2)} | ${item.memory.toFixed(1)} GB |`
         const table = [
           line('全注意力 · 种子 42', full), line('固定分块 · 种子 42', fixed),
           line('动态选块 · 种子 42', dynamic), line('动态选块 · 种子 97', second),
         ].join('\n')
-        return { text: `填好了，也重新编译过。\n\n| 运行 | 准确率（32K） | 相对 FLOPs | 峰值显存 |\n| --- | --- | --- | --- |\n${table}\n\n在 32K 上，两种块稀疏都和全注意力相差不到 1 个点，计算量约为四分之一，显存少了三分之一以上。我把"相差不到 1 个点"记成了一条**有证据支持**的论点，挂着两次运行的原始指标；论文里的每个数都能追到这几次运行。\n\n图在 \`figures/accuracy_vs_flops.pdf\`，由 \`code/plot_accuracy.py\` 从 \`data/results-32k.csv\` 画出，数据和脚本都登记在图的来源里。\n\n检查结果：${phaseLine(project)}。还有 ${errors} 个错误没清掉，主要是 64K 那一列和消融、结论里的占位——要等 64K 的运行。"动态选块的优势会不会随长度消失"这条论点仍是待验证：32K 上它比固定分块只高一点点，得看 64K。` }
+        const open = (project.lastCheck?.phases ?? []).filter(phase => !phase.done && phase.id !== 'writing').map(phase => phaseLabels.get(phase.id) ?? phase.id)
+        return { text: `整理好了，也重新编译过。\n\n| 运行 | 准确率（32K） | 相对 FLOPs | 峰值显存 |\n| --- | --- | --- | --- |\n${table}\n\n在 32K 上，两种块稀疏都和全注意力相差不到 1 个点，计算量约为四分之一，显存少了三分之一以上。我把"相差不到 1 个点"记成了一条**有证据支持**的论点，挂着两次运行的原始指标；表和图都来自 \`experiments/results.csv\`，这张表由 \`code/collect_results.py\` 从运行记录生成。\n\n按 CCFA 的阶段看：${phaseLine(project)}。写作阶段还没完成——64K 那一列、消融和结论还是占位，要等 64K 的运行${open.length ? `；之后还有${open.join('、')}` : ''}。"动态选块的优势会不会随长度消失"仍是待验证：32K 上它比固定分块只高一点点，得看 64K。` }
       },
     ])
 
@@ -988,7 +857,7 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
     await writeFile(join(backup, 'transcript.md'), transcript.join('\n'), 'utf8').catch(() => {})
     await scaffold.close()
   }
-}, 1_800_000)
+}, 3_600_000)
 
 function collectSparse(project: ResearchProject): SparseResult[] {
   const order = [['full', 42], ['fixed', 42], ['dynamic', 42], ['dynamic', 97]] as const

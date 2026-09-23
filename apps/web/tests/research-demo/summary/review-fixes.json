@@ -1,0 +1,20 @@
+[
+  {
+    "file": "sections/conclusion.tex",
+    "issue": "I-01",
+    "draft": "For comparing systems on long documents either metric can replace human judgement;",
+    "final": "For comparing systems on long documents either metric gives the ranking annotators give;"
+  },
+  {
+    "file": "sections/experiments.tex",
+    "issue": "I-02",
+    "draft": "One further caveat applies. Lead-3 summaries are almost always judged consistent, so the pooled AUC is driven mostly by the abstractive systems, and extractive faithfulness has failure modes of its own that a binary judgement may miss \\citep{zhang2023extractive}.",
+    "final": "Two further caveats apply. Lead-3 summaries are almost always judged consistent, so the pooled AUC is driven mostly by the abstractive systems, and extractive faithfulness has failure modes of its own that a binary judgement may miss \\citep{zhang2023extractive}. And the long bucket holds 60 documents, so its AUC values carry more uncertainty than the overall ones."
+  },
+  {
+    "file": "sections/method.tex",
+    "issue": "I-03",
+    "draft": "The buckets are fixed before any summary is scored, and every analysis below is reported for the whole corpus and for each bucket separately.",
+    "final": "The buckets are fixed before any summary is scored, and every analysis below is reported for the whole corpus and for each bucket separately. We do not claim that 6,000 tokens is a natural boundary; it is where the longest third of our corpus begins."
+  }
+]

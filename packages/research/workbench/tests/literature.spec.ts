@@ -83,7 +83,11 @@ describe('scholarly metadata comes from the providers, never from the model', ()
     const openalex = (await searchLiterature('openalex', 'q', signal)).map(result => `${result.bibtex.split('\n')[0] as string}${result.bibtex.match(/ {2}(journal|booktitle|howpublished)=\{[^}]*\}/)?.[0] ?? ''}`)
     expect(openalex).toEqual(['@article{openalex_W1,  journal={Nature}', '@inproceedings{openalex_W2,  booktitle={NeurIPS}', '@misc{openalex_W3,  howpublished={arXiv}', '@misc{openalex_W4,'])
     const [arxiv] = await searchLiterature('arxiv', 'longformer', signal)
+    // Keys name the work, not the URL it was fetched from.
+    expect(arxiv?.bibtex).toMatch(/^@misc\{arxiv_2004_05150v2,/)
     expect(arxiv?.bibtex).toContain('  howpublished={arXiv preprint arXiv:2004.05150},\n  eprint={2004.05150},\n  archivePrefix={arXiv},\n  url={https://arxiv.org/abs/2004.05150v2}')
+    serve({ 'https://api.openalex.org/works/W9': json({ id: 'https://openalex.org/W9', title: 'Nine', doi: null, publication_year: 2020, authorships: [] }) })
+    expect((await verifyLiterature({ ...item, doi: undefined, provider: 'openalex', id: 'https://openalex.org/W9' }, signal)).bibtex).toMatch(/^@misc\{openalex_W9,/)
   })
 
   it('reads arXiv feeds with one, many or no entries and authors', async () => {

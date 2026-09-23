@@ -1,0 +1,40 @@
+{
+  "paper_title": "Do Consistency Metrics Rank Long-Document Summarizers the Way Annotators Do?",
+  "keywords": ["summarization", "factual consistency", "evaluation metrics", "long documents", "human evaluation"],
+  "authors": [{"name": "Anonymous", "affil": "Anonymous institution", "corresponding": true}],
+  "contributions": [
+    "A human consistency annotation of 600 summaries of 200 long documents from three systems, with two annotators and adjudication.",
+    "A system-level and summary-level comparison of SummaC and QAFactEval with the human judgements, overall and in three document-length buckets.",
+    "Evidence that both metrics keep the human ranking of systems at every length while the summary-level discrimination of SummaC weakens on the longest documents."
+  ],
+  "section_order": ["introduction", "related_work", "method", "experiments", "conclusion"],
+  "sections": {
+    "introduction": {
+      "title": "Introduction", "target_words": [600, 1000], "citation_types": ["CONTEXT", "CORE", "METRIC"],
+      "claims": ["abstractive summarizers drift from long sources", "consistency metrics were built on short news", "the question: do they still rank systems as people do"]
+    },
+    "related_work": {
+      "title": "Related Work", "target_words": [400, 800], "citation_types": ["CORE", "CONTEXT", "METRIC"],
+      "themes": ["factual consistency metrics and their meta-evaluation", "long-document summarization and its evaluation"]
+    },
+    "method": {
+      "title": "Method", "target_words": [1000, 1800], "citation_types": ["CORE", "BASELINE", "METRIC", "DEFINITION"],
+      "claims": ["corpus and length buckets", "three systems", "annotation protocol", "metrics", "system-level and summary-level analysis"]
+    },
+    "experiments": {
+      "title": "Experiments", "target_words": [900, 1600], "citation_types": ["METRIC", "BASELINE"],
+      "tables": [
+        {"label": "tab:main_results", "rows": ["lead-3", "bart-large", "bart-large-rl"], "cols": ["summac", "qafacteval", "human_consistent_rate"], "data": "data/results/consistency.csv"},
+        {"label": "tab:ablation_results", "rows": ["system x length"], "cols": ["documents", "summac", "qafacteval", "human_consistent_rate"], "data": "data/results/by_length.csv"}
+      ],
+      "figures": [
+        {"label": "overall", "type": "plot", "data": "data/results/consistency.csv"},
+        {"label": "length", "type": "plot", "data": "data/results/by_length.csv"},
+        {"label": "auc", "type": "plot", "data": "data/results/agreement.csv"}
+      ]
+    },
+    "conclusion": {
+      "title": "Conclusion", "target_words": [120, 250], "citation_types": []
+    }
+  }
+}

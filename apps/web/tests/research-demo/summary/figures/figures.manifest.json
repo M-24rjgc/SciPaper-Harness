@@ -1,0 +1,7 @@
+{
+  "figures": [
+    {"label": "overall", "type": "plot", "engine": "matplotlib", "section": "experiments", "script": "code/plot_overall.py", "data": "data/results/consistency.csv", "pdf": "figures/overall.pdf"},
+    {"label": "length", "type": "plot", "engine": "matplotlib", "section": "experiments", "script": "code/plot_length.py", "data": "data/results/by_length.csv", "pdf": "figures/length.pdf"},
+    {"label": "auc", "type": "plot", "engine": "matplotlib", "section": "experiments", "script": "code/plot_auc.py", "data": "data/results/agreement.csv", "pdf": "figures/auc.pdf"}
+  ]
+}

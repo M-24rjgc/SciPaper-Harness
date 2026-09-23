@@ -105,11 +105,14 @@ export async function flattenPaper(root: string, main: string, limit: number): P
   const missingInputs: FlatPaper['missingInputs'] = []
   const mainDirectory = posix.dirname(main)
   let total = 0
+  // As TeX does: a name with its own suffix is tried as given and then with .tex (build/intro.proc is build/intro.proc.tex).
   const resolveInput = (name: string, from: string): string | undefined => {
-    const withExtension = extname(name) ? name : `${name}.tex`
+    const spellings = !extname(name) ? [`${name}.tex`] : extname(name) === '.tex' ? [name] : [name, `${name}.tex`]
     for (const base of [mainDirectory, posix.dirname(from)]) {
-      const candidate = posix.normalize(posix.join(base, withExtension))
-      if (!candidate.startsWith('../') && !isMetadataPath(candidate) && existsSync(join(root, candidate))) return candidate
+      for (const spelling of spellings) {
+        const candidate = posix.normalize(posix.join(base, spelling))
+        if (!candidate.startsWith('../') && !isMetadataPath(candidate) && existsSync(join(root, candidate))) return candidate
+      }
     }
     return undefined
   }

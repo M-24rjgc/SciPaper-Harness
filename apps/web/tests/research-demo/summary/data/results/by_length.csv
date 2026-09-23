@@ -1,0 +1,10 @@
+system,length,documents,summac,qafacteval,human_consistent_rate
+lead-3,short,70,0.741,0.662,0.943
+lead-3,medium,70,0.709,0.640,0.914
+lead-3,long,60,0.680,0.607,0.867
+bart-large,short,70,0.631,0.566,0.829
+bart-large,medium,70,0.586,0.524,0.743
+bart-large,long,60,0.522,0.465,0.633
+bart-large-rl,short,70,0.679,0.611,0.871
+bart-large-rl,medium,70,0.645,0.580,0.829
+bart-large-rl,long,60,0.592,0.534,0.750

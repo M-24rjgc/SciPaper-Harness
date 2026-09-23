@@ -1,0 +1,77 @@
+We first compare the three systems over the whole corpus, then repeat the comparison within each length bucket, and finally look at how well each metric separates individual consistent and inconsistent summaries. The two first-round annotators agreed with a Cohen's kappa of 0.71 before adjudication, which we take as sufficient for the binary judgement to serve as the reference.
+
+\subsection{System-Level Agreement}
+Table~\ref{tab:main_results} gives the mean metric scores and the human consistency rate of each system over all 200 documents, and Figure~\ref{fig:overall} shows the same numbers side by side. The annotators judged 0.910 of the lead-3 summaries consistent, 0.820 of the bart-large-rl summaries and 0.740 of the bart-large summaries. SummaC gives 0.712, 0.641 and 0.583 to the same three systems, and QAFactEval gives 0.638, 0.577 and 0.521. Both metrics therefore reproduce the human order exactly: the extractive baseline first, the consistency-rewarded model second and the plain abstractive model last.
+
+\begin{table}[t]
+\centering
+\caption{Mean metric scores and the human consistency rate per system over all documents. Higher is more consistent for every column.}
+\label{tab:main_results}
+\begin{tabular}{lccc}
+\toprule
+System & SummaC & QAFactEval & Human \\
+\midrule
+lead-3 & 0.712 & 0.638 & 0.910 \\
+bart-large & 0.583 & 0.521 & 0.740 \\
+bart-large-rl & 0.641 & 0.577 & 0.820 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/overall.pdf}
+\caption{Mean SummaC and QAFactEval scores and the human consistency rate per system over all documents.}
+\label{fig:overall}
+\end{figure}
+
+The consistency reward moves bart-large-rl towards the extractive baseline on all three measures, which is the behaviour the reward was designed to produce and not an artefact of one metric: the human rate moves in the same direction as both automatic scores. The agreement concerns order, not scale. The scores sit well below the human rates for every system, and the distance differs between the metrics, so neither score can be read as the share of consistent summaries.
+
+The reward-trained model deserves a closer look, because it is where a metric could be flattered. Its reward comes from an entailment model, and SummaC is itself built on entailment, so an improvement in SummaC alone could reflect a model that learned what entailment models reward rather than what readers accept. The human judgements rule this out on our data: annotators accepted more bart-large-rl summaries than bart-large summaries, and QAFactEval, which does not use entailment, moves in the same direction. The gain from the reward is real at the system level, not a product of evaluating a model with a relative of its own reward.
+
+\subsection{Effect of Document Length}
+Table~\ref{tab:ablation_results} repeats the comparison within each length bucket and Figure~\ref{fig:length} plots it. Every measure falls as documents get longer, and the fall is largest for the abstractive model. Between the short and the long bucket, the human consistency rate of bart-large drops by 0.196, from 0.829 to 0.633, against 0.121 for bart-large-rl and 0.076 for lead-3. The consistency reward thus helps most where the plain model struggles most, on the longest documents, where bart-large-rl keeps a rate of 0.750. Lead-3 declines least, which fits what it is: it copies sentences instead of composing them, so its errors come from missing context rather than from invented content, and a longer document mostly means that the opening sentences cover less of it. The abstractive models, by contrast, see only the leading window of a long document and still write about all of it, which is where unsupported statements enter.
+
+\begin{table}[t]
+\centering
+\caption{Mean metric scores and the human consistency rate per system in each length bucket: short documents are under 3,000 tokens, medium ones between 3,000 and 6,000, long ones above.}
+\label{tab:ablation_results}
+\begin{tabular}{llcccc}
+\toprule
+System & Length & Docs & SummaC & QAFactEval & Human \\
+\midrule
+lead-3 & short & 70 & 0.741 & 0.662 & 0.943 \\
+lead-3 & medium & 70 & 0.709 & 0.640 & 0.914 \\
+lead-3 & long & 60 & 0.680 & 0.607 & 0.867 \\
+bart-large & short & 70 & 0.631 & 0.566 & 0.829 \\
+bart-large & medium & 70 & 0.586 & 0.524 & 0.743 \\
+bart-large & long & 60 & 0.522 & 0.465 & 0.633 \\
+bart-large-rl & short & 70 & 0.679 & 0.611 & 0.871 \\
+bart-large-rl & medium & 70 & 0.645 & 0.580 & 0.829 \\
+bart-large-rl & long & 60 & 0.592 & 0.534 & 0.750 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/length.pdf}
+\caption{The human consistency rate and the two metric scores per system in each document-length bucket.}
+\label{fig:length}
+\end{figure*}
+
+The metrics follow the same pattern. SummaC falls by 0.109 for bart-large, 0.087 for bart-large-rl and 0.061 for lead-3 between the short and the long bucket, and QAFactEval by 0.101, 0.077 and 0.055. In every bucket both metrics keep the human order of the three systems. At the system level, then, length widens the differences between systems without reordering them, and the metrics register the widening in the same direction as the annotators. This is the result that matters for the most common use of these metrics, comparing systems in a results table: on our data, choosing the better system by either metric gives the same answer as choosing it by human judgement, whatever the document length.
+
+\subsection{Summary-Level Discrimination}
+Ranking systems is an average over many summaries; flagging an individual unfaithful summary is harder. Figure~\ref{fig:auc} shows the ROC AUC of each metric against the adjudicated human label, pooled over the three systems. Over the whole corpus SummaC reaches 0.76 and QAFactEval 0.74, comparable to what meta-evaluations report on news \citep{honovich2022true}. The buckets tell a different story for each metric. SummaC falls from 0.81 on short documents to 0.77 on medium and 0.69 on long ones, a drop of 0.12. QAFactEval falls from 0.76 to 0.74 and 0.72, a drop of 0.04, and on the long bucket it is the better of the two.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/auc.pdf}
+\caption{ROC AUC of each metric against the adjudicated human label, pooled over systems, per length bucket. The dashed line marks a metric that orders summaries at random.}
+\label{fig:auc}
+\end{figure}
+
+We read this as a consequence of how each metric looks for evidence, although our data cannot establish the mechanism. SummaC scores each summary sentence against every source sentence and keeps the strongest support, so a long source offers more chances for a spurious high-entailment match, which would raise the scores of inconsistent summaries and blur the separation. QAFactEval answers each question from the passage it retrieves and is less exposed to the number of candidate sentences. Chunking studies of entailment metrics on long documents point in the same direction \citep{lattimer2023scale}. Two further caveats apply. Lead-3 summaries are almost always judged consistent, so the pooled AUC is driven mostly by the abstractive systems, and extractive faithfulness has failure modes of its own that a binary judgement may miss \citep{zhang2023extractive}. And the long bucket holds 60 documents, so its AUC values carry more uncertainty than the overall ones. Even so, the direction is consistent across both analyses: length leaves the system ranking intact but weakens the summary-level signal of the sentence-pair metric \citep{laban2022summac} more than that of the question answering metric \citep{fabbri2022qafacteval}.
+
+The practical consequence concerns thresholds. A team that filters summaries by a SummaC threshold tuned on short documents would, on long documents, pass more inconsistent summaries and reject more consistent ones than it expects, because the scores of the two groups overlap more. Reporting the AUC per length bucket, as we do here, costs one extra annotation pass on a sample of long documents and tells a reader whether a metric's summary-level signal holds at the lengths the paper evaluates.

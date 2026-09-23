@@ -98,6 +98,16 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(report.findings.filter(f => f.check === 'prose')).toEqual([])
   })
 
+  it('resolves an input with its own suffix as TeX does, trying the name and then the name with .tex', async () => {
+    const p = await fixture('proposal')
+    await write(p.root, 'paper/build/intro.proc.tex', 'Processed introduction.\n')
+    await write(p.root, 'paper/notes.txt', 'Plain notes.\n')
+    await write(p.root, 'paper/main.tex', MAIN.replace('\\input{sections/ghost}', '\\input{build/intro.proc}\n\\input{notes.txt}\n\\input{sections/method.tex}'))
+    const flat = await flattenPaper(p.root, 'paper/main.tex', 100000)
+    expect(flat.files).toEqual(expect.arrayContaining(['paper/build/intro.proc.tex', 'paper/notes.txt', 'paper/sections/method.tex']))
+    expect(flat.missingInputs).toEqual([])
+  })
+
   it('does not take the definition of a placeholder macro for a placeholder', async () => {
     const p = await fixture('proposal')
     const definitions = String.raw`\providecommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
