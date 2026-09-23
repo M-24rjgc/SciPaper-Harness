@@ -69,6 +69,8 @@ kind: "package-reference"
 | [`src/mode-skills.ts`](src/mode-skills.ts) | 按项目所在模式列出技能的技能提供者 |
 | [`src/gates.ts`](src/gates.ts) | 模式包的门禁与脚本：用平台 Python 运行它们并读取其发现 |
 | [`runtime/modes/`](runtime/modes) | 随包发布的模式包：`general` 与 `spark-to-paper`（上游技能、检查脚本与模板，见其 `NOTICE.md`） |
+| [`src/figures.ts`](src/figures.ts) | SVG 图：上游审计，以及导出为矢量 PDF 与预览图（[`runtime/figures/`](runtime/figures)） |
+| [`src/prose.ts`](src/prose.ts) | 行文检查：套话、防御性表述、模糊限定、公式化对比、破折号和宣传性词语 |
 | [`src/venues.ts`](src/venues.ts) | 会议模板库：列出会议，并把某个会议的模板应用到项目 |
 | [`runtime/venues/`](runtime/venues) | 139 个会议、16 套官方样式，附指南与示例，由 [`scripts/build_venues.py`](scripts/build_venues.py) 构建 |
 | [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`：加载图谱、召回、新颖性、构建并命名项目图谱 |

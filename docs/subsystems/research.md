@@ -41,6 +41,10 @@ A gate is a Python script in the pack. It runs with the platform Python (`python
 
 `research_artifact` list-venues and apply-template draw on a library of 139 CCF venues over 16 official style kits (`runtime/venues`, built by `scripts/build_venues.py` from CCFA-Skills). Applying a venue puts the kit, the venue's own example and its guide in `template/<venue>/`; every top-level folder of the project is on the TeX search path, so a hand-written paper anywhere in the project finds the class. It also writes `template.json`, `main.tex.tmpl` and the style files into the project root, which spark-to-paper's assembly builds against. The review stage is anonymous where the venue is, through the class option or an anonymous author block; `final` gives the camera-ready options. A compile installs what a venue class needs into the managed TeX Live: missing style, class and bibliography-style files by the package that ships them, and fonts and graphics only when the distribution names their package.
 
+## SVG figures
+
+`research_media` audit-svg runs spark-to-paper's own SVG audit (`runtime/figures/audit_svg.py`, unchanged) with the platform Python: overflow, overlapping text, shapes over labels, stroke-scaled or clipped arrowheads, dangling connectors, type below a pixel floor, glyphs outside Times and traced path soup. With `save` it keeps the report where spark-to-paper's figure gate reads it. export-figure writes a vector PDF with live text through svglib and reportlab, expanding `<marker>` references into shapes because svglib draws none and embedding Times New Roman when the system has it, and renders previews at 1440 and 480 pixels.
+
 ## Knowledge graphs
 
 `research_knowledge` reads research-pattern graphs: reusable problem → solution → story patterns mined from papers, after spark-to-paper's graph builder. A built-in graph distilled from the upstream AI corpus ships as `runtime/kg/ai-kg.json.gz` — patterns, papers with their story fields and five nearest neighbours, no vectors. `scripts/build_kg.py` converts the upstream archive offline and reads its networkx pickle with an unpickler that runs no code from the file. A project builds its own graph from a corpus the agent extracted (`build-graph`, then `name-patterns`) into `.research/kg/`.
@@ -62,6 +66,7 @@ Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. W
 | `review` | no review, a review older than the manuscript, open blocker or major issues |
 | `stale` / `claims` | out-of-date files and sources, contradicted claims, evidence links that no longer resolve |
 | `structure` | missing inputs; in a mode with phases, missing expected sections and a generic document class |
+| `prose` | warnings only: machine-written tell phrases, defensive framing, stacked hedges, formulaic contrasts, em-dash overuse and promotional words, in English and Chinese (spark-to-paper's AI-tell list with CCFA's prose guardrails) |
 
 ## What is refused
 

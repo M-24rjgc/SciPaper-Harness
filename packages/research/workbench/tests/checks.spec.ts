@@ -95,6 +95,18 @@ describe('research checks report on the paper as it is on disk', () => {
     ]))
     expect(warnings(report, 'review').map(f => f.message)).toEqual([expect.stringMatching(/No review yet/)])
     expect(report.findings.findIndex(f => f.severity === 'warning')).toBeGreaterThan(report.findings.findLastIndex(f => f.severity === 'error'))
+    expect(report.findings.filter(f => f.check === 'prose')).toEqual([])
+  })
+
+  it('reports prose worth reconsidering where it stands, as warnings only, and caps a long list', async () => {
+    const p = await fixture('proposal')
+    await write(p.root, 'paper/sections/method.tex', `The method.\n${'It is worth noting that it plays a crucial role. '.repeat(14)}\n`)
+    const report = await runChecks(p, 100000, 'prose')
+    const prose = report.findings.filter(f => f.check === 'prose')
+    expect(prose.every(f => f.severity === 'warning')).toBe(true)
+    expect(prose[0]).toMatchObject({ message: expect.stringMatching(/^"It is worth noting that" reads as machine-written/) as unknown, file: 'paper/sections/method.tex', line: 2 })
+    expect(prose).toHaveLength(26)
+    expect(prose.at(-1)?.message).toBe('…and 4 more prose findings')
   })
 
   it('traces numbers to data evidence, run metrics and code, and goes clean once the paper is finished', async () => {

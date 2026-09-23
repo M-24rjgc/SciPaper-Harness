@@ -41,6 +41,10 @@
 
 `research_artifact` 的 list-venues 与 apply-template 使用一个模板库：139 个 CCF 会议、16 套官方样式（`runtime/venues`，由 `scripts/build_venues.py` 从 CCFA-Skills 构建）。应用一个会议会把样式套件、该会议自己的示例和指南放进 `template/<venue>/`；项目的每个顶层文件夹都在 TeX 搜索路径上，所以项目里任何位置手写的论文都能找到该文档类。同时它把 `template.json`、`main.tex.tmpl` 和样式文件写进项目根目录，供 spark-to-paper 的拼装使用。review 阶段在会议要求匿名时匿名（通过文档类选项或匿名作者块）；final 使用终稿选项。编译时会把会议文档类需要的东西装进托管的 TeX Live：缺失的样式、文档类与参考文献样式文件按提供它们的包安装，字体和图片只在发行版能指出所属包时才安装。
 
+## SVG 图
+
+`research_media` 的 audit-svg 用平台 Python 原样运行 spark-to-paper 自带的 SVG 审计（`runtime/figures/audit_svg.py`）：越界、文字重叠、图形压住标签、随线宽缩放或被裁掉的箭头、悬空的连线、低于像素下限的字号、Times 覆盖不到的字符，以及描摹出来的大量路径。带 `save` 时，报告保存在 spark-to-paper 的图门禁读取的位置。export-figure 通过 svglib 和 reportlab 导出保留可编辑文字的矢量 PDF：svglib 不画 `<marker>`，所以先把箭头等标记展开成普通图形；系统有 Times New Roman 时嵌入该字体；并渲染 1440 与 480 像素宽的预览图。
+
 ## 知识图谱
 
 `research_knowledge` 读取科研模式图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式，做法沿用 spark-to-paper 的图谱构建。内置图谱从上游的 AI 语料精简而来，以 `runtime/kg/ai-kg.json.gz` 随包发布：包含模式、带故事字段与五个最近邻的论文，不含向量。`scripts/build_kg.py` 离线转换上游压缩包，读取其中的 networkx pickle 时使用不执行文件中任何代码的反序列化器。项目也可以用 agent 抽取好的语料自建图谱（先 `build-graph`，再 `name-patterns`），存放在 `.research/kg/`。
@@ -62,6 +66,7 @@
 | `review` | 没有评审、评审早于稿件，或仍有未关闭的 blocker/major 问题 |
 | `stale` / `claims` | 过期的文件与资料、被证据推翻的论点、已无法解析的证据关联 |
 | `structure` | 缺失的输入文件；在有阶段的模式下，还包括应有却缺失的章节与通用文档类 |
+| `prose` | 只给警告：像机器写的套话、防御性表述、叠加的模糊限定、公式化的对比结构、过多的破折号和宣传性词语，覆盖中英文（spark-to-paper 的 AI 腔词表与 CCFA 的行文规范合并而来） |
 
 ## 会被拒绝的操作
 

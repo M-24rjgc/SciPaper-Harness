@@ -16,7 +16,7 @@ export const evidenceLinkSchema = z.object({ evidenceId: id, revision: integer, 
 export const artifactKinds = ['manuscript', 'diagram', 'figure', 'code', 'bibliography', 'supplement', 'image'] as const
 export const autonomies = ['checkpoints', 'automatic'] as const
 /** The base checks; mode packs add gates under their own ids. */
-export const checkIds = ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'review', 'stale', 'claims', 'structure'] as const satisfies readonly CheckId[]
+export const checkIds = ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'review', 'stale', 'claims', 'structure', 'prose'] as const satisfies readonly CheckId[]
 const dependency = z.object({ id, revision: integer })
 
 export const experimentSpecSchema = z.object({
@@ -277,6 +277,8 @@ export const commandSchema = z.discriminatedUnion('action', [
     arxivIds: z.array(z.string().regex(/^\d{4}\.\d{4,5}(v\d+)?$/, 'a new-style arXiv identifier such as 1706.03762')).min(1).max(6),
     label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase words joined by hyphens'),
   }),
+  z.object({ ...base, action: z.literal('audit-svg'), path: id, save: z.boolean().optional(), minFontPx: z.number().min(4).max(64).optional() }),
+  z.object({ ...base, action: z.literal('export-figure'), path: id, output: id.optional() }),
   z.object({ ...base, action: z.literal('run-script'), script: id, args: z.array(z.string()).max(40).optional() }),
   z.object({ ...base, action: z.literal('export') }),
   z.object({ ...base, action: z.literal('list-venues'), query: z.string().optional() }),

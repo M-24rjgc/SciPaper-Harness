@@ -119,14 +119,21 @@ describe('managed tools on a Windows x64 host', () => {
     const python = await manager.python(signal)
     expect(python).toBe(join(root, 'platform-python', 'Scripts/python.exe'))
     expect(scripted.calls.some(call => call.args.includes('venv') && call.args.includes('3.12'))).toBe(true)
-    expect(await readFile(join(root, 'platform-python', '.research-ready'), 'utf8')).toMatch(/pypdf=6.0.0/)
+    expect(await readFile(join(root, 'platform-python', '.research-ready'), 'utf8')).toMatch(/pypdf==6\.0\.0\n[\s\S]*svglib==2\.2\.0\nreportlab==5\.0\.1\n$/)
     // A ready platform Python is reused; one whose environment exists but lacks the marker only gets its packages.
     await write(python)
+    scripted.calls.length = 0
     expect(await manager.python(signal)).toBe(python)
+    expect(scripted.calls).toEqual([])
     await rm(join(root, 'platform-python', '.research-ready'))
+    await manager.python(signal)
+    expect(scripted.calls.map(call => call.args[0])).toEqual(['pip'])
+    // A marker from an older package list installs the current one.
+    await write(join(root, 'platform-python', '.research-ready'), 'python=3.12\npypdf=6.0.0\n')
     scripted.calls.length = 0
     await manager.python(signal)
     expect(scripted.calls.map(call => call.args[0])).toEqual(['pip'])
+    expect(scripted.calls[0]?.args).toEqual(expect.arrayContaining(['svglib==2.2.0', 'reportlab==5.0.1']))
     const statuses = await manager.status()
     expect(statuses.map(status => [status.id, status.installed, status.version])).toEqual([
       ['uv', true, 'uv-test'], ['python', true, '3.12'], ['latex', true, 'latex-test'], ['drawio', true, 'drawio-test'],

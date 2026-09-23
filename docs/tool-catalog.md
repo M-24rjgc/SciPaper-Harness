@@ -2745,7 +2745,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_check`
 
-Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode, one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure) or one of the mode's gates. It reports and never blocks. Not clean means not done: fix the errors and check again.
+Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode, one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure, prose) or one of the mode's gates. It reports and never blocks. Not clean means not done: fix the errors and check again.
 
 ```json
 {
@@ -2972,7 +2972,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_media`
 
-visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. generate-image {prompt, path, size?, quality?, background?, references?}: a raster image from the configured image API (gpt-image-2 by default); references are project images sent as style or layout references; the prompt is saved beside the image. Use it for artwork and for the visual draft of a method diagram, then redraw the diagram as an editable draw.io or SVG figure; result plots come from scripts and real data. fetch-reference-figures {arxivIds, label}: overview figures of published papers (ar5iv) saved under figures/refs/ to study, never to copy into the paper.
+visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. generate-image {prompt, path, size?, quality?, background?, references?}: a raster image from the configured image API (gpt-image-2 by default); references are project images sent as style or layout references; the prompt is saved beside the image. Use it for artwork and for the visual draft of a method diagram, then redraw the diagram as an editable draw.io or SVG figure; result plots come from scripts and real data. fetch-reference-figures {arxivIds, label}: overview figures of published papers (ar5iv) saved under figures/refs/ to study, never to copy into the paper. audit-svg {path, save?, minFontPx?}: checks a hand-drawn SVG figure for overflow, overlapping text, shapes over labels, oversized or clipped arrowheads, dangling connectors, small type, glyphs outside Times, and traced path soup; save writes figures/audit_logs/<name>.audit.json. export-figure {path, output?}: the SVG as a vector PDF with live text (beside it unless output names the PDF) and PNG previews at 1440 and 480 px under figures/previews for read_image.
 
 ```json
 {
@@ -2984,7 +2984,9 @@ visual-review {artifactId}: send rendered pages to a separate vision model — o
         "visual-review",
         "complete-visual-review",
         "generate-image",
-        "fetch-reference-figures"
+        "fetch-reference-figures",
+        "audit-svg",
+        "export-figure"
       ]
     },
     "projectId": {
@@ -3010,10 +3012,6 @@ visual-review {artifactId}: send rendered pages to a separate vision model — o
     "prompt": {
       "type": "string",
       "description": "generate-image: what to draw, with exact labels and layout; keep private material out"
-    },
-    "path": {
-      "type": "string",
-      "description": "generate-image: new .png/.jpg/.webp path"
     },
     "size": {
       "type": "string",
@@ -3055,6 +3053,22 @@ visual-review {artifactId}: send rendered pages to a separate vision model — o
     "label": {
       "type": "string",
       "description": "fetch-reference-figures: the figure these references are for, e.g. method-overview"
+    },
+    "path": {
+      "type": "string",
+      "description": "generate-image: new .png/.jpg/.webp path; audit-svg / export-figure: the .svg figure"
+    },
+    "save": {
+      "type": "boolean",
+      "description": "audit-svg: keep the report under figures/audit_logs"
+    },
+    "minFontPx": {
+      "type": "number",
+      "description": "audit-svg: smallest legible type in px at the SVG's own width (default 20)"
+    },
+    "output": {
+      "type": "string",
+      "description": "export-figure: the PDF path (default: beside the SVG)"
     }
   },
   "required": [

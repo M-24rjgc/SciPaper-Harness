@@ -17,6 +17,7 @@ import {
 } from './latex.ts'
 import type { ModeCondition, ModePhase, ModeScript, ResolvedMode } from './modes.ts'
 import { validateLinks } from './project.ts'
+import { proseFindings } from './prose.ts'
 import { checkIds } from './schema.ts'
 import type { CheckFinding, CheckId, CheckReport, PhaseStatus, ResearchProject } from './types.ts'
 
@@ -80,6 +81,7 @@ export async function runChecks(
     await checkFigures(context, paper)
     await checkCompile(context, paper)
     checkStructure(context, paper)
+    checkProse(context, paper)
   }
   await checkReview(context)
   checkLedger(context)
@@ -295,6 +297,13 @@ async function checkCompile(context: Context, paper: FlatPaper): Promise<void> {
   if (overfull) add(context, 'compile', 'warning', `${overfull} overfull box(es) in the compiled PDF`, paper.main)
   const inspected = project.visualReviews.some(review => ['rendered', 'reviewed'].includes(review.status) && review.inputDigest === latest.inputDigest)
   if (!inspected) add(context, 'visual', 'warning', 'The compiled pages have not been looked at since the last compile: render-pages, then read_image each page', latest.pdfPath)
+}
+
+/** Phrases that read as machine-written or defensive; warnings only, since whether a phrase earns its place is a judgement. */
+function checkProse(context: Context, paper: FlatPaper): void {
+  const findings = proseFindings(paper.text)
+  for (const finding of findings.slice(0, MAX_FINDINGS_PER_CHECK)) addAt(context, paper, 'prose', 'warning', finding.message, finding.offset)
+  if (findings.length > MAX_FINDINGS_PER_CHECK) add(context, 'prose', 'warning', `…and ${findings.length - MAX_FINDINGS_PER_CHECK} more prose findings`, paper.main)
 }
 
 function checkStructure(context: Context, paper: FlatPaper): void {

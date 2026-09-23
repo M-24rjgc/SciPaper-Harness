@@ -64,6 +64,20 @@ vi.mock('../src/process.ts', async (original) => {
       }
       if (joined.includes('documents.py')) return ok(processes.extracted ?? JSON.stringify([{ text: 'metric,value\naccuracy,0.8123', locator: { line: 1 } }]))
       if (joined.includes('run_gate.py')) return ok(JSON.stringify({ findings: [{ severity: 'error', message: `${String(args[4])} found a problem`, file: 'blueprint.json' }] }))
+      if (joined.includes('audit_svg.py')) {
+        const target = String(args[args.indexOf('--json') + 1])
+        await make(path.dirname(target), { recursive: true })
+        const clean = !joined.includes('messy')
+        await write(target, JSON.stringify({ ok: clean, svg: 'abs', stats: {}, errors: clean ? [] : [{ code: 'text_overlap', detail: 'd' }], warnings: [] }))
+        return { code: clean ? 0 : 1, stdout: '', stderr: '' }
+      }
+      if (joined.includes('export_figure.py')) {
+        const bare = joined.includes('bare')
+        return ok(JSON.stringify({
+          pdf: args[5], previews: [path.join(String(args[6]), 'x.1440.png')], fonts: bare ? [] : ['Times-Roman'],
+          embedded: joined.includes('arch.svg'), text: !bare, images: 0, markers: bare ? 0 : 1,
+        }))
+      }
       if (joined.includes('assemble_paper.py')) return { code: 0, stdout: '{"ok": true}', stderr: 'copied ts_iieta.sty' }
       if (joined.includes('blueprint_lint.py')) return { code: 1, stdout: '{"ok": false}', stderr: '' }
       if (/latex|biber|bibtex/.test(path.basename(command))) {
@@ -618,6 +632,29 @@ describe('the research service records; it never drives the agent', () => {
     processes.latexFailures.push('! LaTeX Error: File `venue.sty\' not found.', '! LaTeX Error: File `venue.sty\' not found.')
     expect((await compileMain()).message).toMatch(/No PDF was produced/)
     expect(installs.mock.calls.map(call => [call[0], call[2]])).toEqual([['venue.sty', true]])
+  })
+
+  it('audits SVG figures and exports them to vector PDFs with previews', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-figures-'))
+    const { service } = await boot(new MemoryMediaPool())
+    await service.configure({ python: 'python' })
+    const p = await service.create({ title: 'Figures', root: join(root, 'p'), brief: '' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    await write(join(p.root, 'figures/arch.svg'), '<svg/>')
+    await write(join(p.root, 'figures/messy.svg'), '<svg/>')
+    expect(await run({ action: 'audit-svg', path: 'figures/arch.svg' })).toMatchObject({ message: 'SVG audit passed: 0 error(s), 0 warning(s)' })
+    const saved = await run({ action: 'audit-svg', path: 'figures/messy.svg', save: true })
+    expect(saved).toMatchObject({ message: 'SVG audit failed: 1 error(s), 0 warning(s); report saved to figures/audit_logs/messy.audit.json', path: 'figures/audit_logs/messy.audit.json' })
+    expect(JSON.parse(saved.content ?? '{}')).toMatchObject({ ok: false, errors: [{ code: 'text_overlap' }] })
+    const exported = await run({ action: 'export-figure', path: 'figures/arch.svg' })
+    expect(exported.message).toBe('Vector PDF written to figures/arch.pdf (embedded fonts Times-Roman; 1 marker(s) drawn as shapes); '
+      + 'previews figures/previews/x.1440.png: look at them with read_image')
+    expect(exported.paths).toEqual(['figures/arch.pdf', 'figures/previews/x.1440.png'])
+    await write(join(p.root, 'figures/plain.svg'), '<svg/>')
+    expect((await run({ action: 'export-figure', path: 'figures/plain.svg' })).message).toMatch(/\(unembedded fonts Times-Roman;/)
+    await write(join(p.root, 'figures/bare.svg'), '<svg/>')
+    expect((await run({ action: 'export-figure', path: 'figures/bare.svg', output: 'figures/final/bare.pdf' })).message)
+      .toMatch(/^Vector PDF written to figures\/final\/bare\.pdf \(NO live text: the labels were lost or outlined\); previews/)
   })
 
   it('lists the venue library and applies a venue template, recording the venue', async () => {

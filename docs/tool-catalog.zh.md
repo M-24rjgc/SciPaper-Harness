@@ -2753,7 +2753,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_check`
 
-按磁盘上的现状检查论文：引用可解析且完整，结果与表格中的每个数字都能追溯到收集的指标或数据，占位符（\tbd{}、"--" 单元格），引用的插图存在，最近一次编译是最新的，页面已查看过，评审是最新的，过期文件——再加上项目所在模式的门禁。scope：all（默认）、当前模式的某个阶段、某一项基础检查（cite、numbers、placeholders、figures、compile、visual、review、stale、claims、structure），或该模式的某个门禁。它只报告，从不拦截。未通过就是未完成：修正错误后再检查一次。
+按磁盘上的现状检查论文：引用可解析且完整，结果与表格中的每个数字都能追溯到收集的指标或数据，占位符（\tbd{}、"--" 单元格），引用的插图存在，最近一次编译是最新的，页面已查看过，评审是最新的，过期文件——再加上项目所在模式的门禁。scope：all（默认）、当前模式的某个阶段、某一项基础检查（cite、numbers、placeholders、figures、compile、visual、review、stale、claims、structure、prose），或该模式的某个门禁。它只报告，从不拦截。未通过就是未完成：修正错误后再检查一次。
 
 ```json
 {
@@ -2980,7 +2980,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_media`
 
-visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path, size?, quality?, background?, references?}：用配置的生图 API（默认 gpt-image-2）生成一张位图；references 是作为风格或版式参考发送的项目内图片；提示词保存在图片旁边。用于插画以及方法图的视觉草稿，之后再把方法图重画成可编辑的 draw.io 或 SVG 图；结果图来自脚本与真实数据。fetch-reference-figures {arxivIds, label}：已发表论文的总览图（来自 ar5iv），保存在 figures/refs/ 下供研究参考，绝不直接放进论文。
+visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path, size?, quality?, background?, references?}：用配置的生图 API（默认 gpt-image-2）生成一张位图；references 是作为风格或版式参考发送的项目内图片；提示词保存在图片旁边。用于插画以及方法图的视觉草稿，之后再把方法图重画成可编辑的 draw.io 或 SVG 图；结果图来自脚本与真实数据。fetch-reference-figures {arxivIds, label}：已发表论文的总览图（来自 ar5iv），保存在 figures/refs/ 下供研究参考，绝不直接放进论文。audit-svg {path, save?, minFontPx?}：检查手绘的 SVG 图是否越界、文字重叠、图形压住标签、箭头过大或被裁掉、连线悬空、字号过小、使用 Times 之外的字符，以及描摹出来的大量路径；save 把报告写到 figures/audit_logs/<name>.audit.json。export-figure {path, output?}：把 SVG 导出为保留可编辑文字的矢量 PDF（默认放在 SVG 旁边，output 可指定 PDF 路径），并在 figures/previews 下生成 1440 与 480 像素宽的 PNG 预览，供 read_image 查看。
 
 ```json
 {
@@ -2992,7 +2992,9 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
         "visual-review",
         "complete-visual-review",
         "generate-image",
-        "fetch-reference-figures"
+        "fetch-reference-figures",
+        "audit-svg",
+        "export-figure"
       ]
     },
     "projectId": {
@@ -3018,10 +3020,6 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     "prompt": {
       "type": "string",
       "description": "generate-image: what to draw, with exact labels and layout; keep private material out"
-    },
-    "path": {
-      "type": "string",
-      "description": "generate-image: new .png/.jpg/.webp path"
     },
     "size": {
       "type": "string",
@@ -3063,6 +3061,22 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     "label": {
       "type": "string",
       "description": "fetch-reference-figures: the figure these references are for, e.g. method-overview"
+    },
+    "path": {
+      "type": "string",
+      "description": "generate-image: new .png/.jpg/.webp path; audit-svg / export-figure: the .svg figure"
+    },
+    "save": {
+      "type": "boolean",
+      "description": "audit-svg: keep the report under figures/audit_logs"
+    },
+    "minFontPx": {
+      "type": "number",
+      "description": "audit-svg: smallest legible type in px at the SVG's own width (default 20)"
+    },
+    "output": {
+      "type": "string",
+      "description": "export-figure: the PDF path (default: beside the SVG)"
     }
   },
   "required": [

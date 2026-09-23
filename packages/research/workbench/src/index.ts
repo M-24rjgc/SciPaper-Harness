@@ -23,6 +23,7 @@ import { createGateRunner, runPackScript } from './gates.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
 import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
+import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
 import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
@@ -58,7 +59,7 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
   'import', 'import-template', 'refresh-evidence', 'literature-search', 'literature-import',
   'environment', 'experiment', 'experiment-refresh', 'experiment-cancel',
   'compile', 'render-pages', 'visual-review', 'generate-image', 'fetch-reference-figures', 'run-script', 'export',
-  'recall', 'novelty', 'build-graph',
+  'recall', 'novelty', 'build-graph', 'audit-svg', 'export-figure',
 ])
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait'
@@ -611,6 +612,24 @@ export class ResearchWorkbench extends TypertRemoteService {
         return {
           message: result.code === 0 ? `${script.id} finished` : `${script.id} exited with code ${result.code}; see its output`,
           content: `${result.stdout}${result.stderr ? `\n[stderr]\n${result.stderr}` : ''}`,
+        }
+      }
+      case 'audit-svg': {
+        const { report, saved } = await auditSvg(await this.components.python(signal), this.record(id).root, request.path, request, signal)
+        const counts = `${report.errors.length} error(s), ${report.warnings.length} warning(s)`
+        return {
+          message: `SVG audit ${report.ok ? 'passed' : 'failed'}: ${counts}${saved ? `; report saved to ${saved}` : ''}`,
+          content: JSON.stringify({ ok: report.ok, errors: report.errors, warnings: report.warnings, stats: report.stats }),
+          ...saved ? { path: saved } : {},
+        }
+      }
+      case 'export-figure': {
+        const figure = await exportFigure(await this.components.python(signal), this.record(id).root, request.path, request.output, signal)
+        const fonts = figure.text ? `${figure.embedded ? 'embedded' : 'unembedded'} fonts ${figure.fonts.join(', ')}` : 'NO live text: the labels were lost or outlined'
+        return {
+          message: `Vector PDF written to ${figure.pdf} (${fonts}${figure.markers ? `; ${figure.markers} marker(s) drawn as shapes` : ''}); `
+            + `previews ${figure.previews.join(', ')}: look at them with read_image`,
+          path: figure.pdf, paths: [figure.pdf, ...figure.previews], content: JSON.stringify(figure),
         }
       }
       case 'generate-image': return this.generateImage(id, request, signal)

@@ -11,7 +11,7 @@ export type EnvironmentId = Branded<'ResearchEnvironmentId'>
 export type Autonomy = 'checkpoints' | 'automatic'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'unknown'
 /** The checks every mode has; a mode pack may add gates of its own, reported under their own ids. */
-export type CheckId = 'cite' | 'numbers' | 'placeholders' | 'figures' | 'compile' | 'visual' | 'review' | 'stale' | 'claims' | 'structure'
+export type CheckId = 'cite' | 'numbers' | 'placeholders' | 'figures' | 'compile' | 'visual' | 'review' | 'stale' | 'claims' | 'structure' | 'prose'
 
 /** Text a mode pack supplies in each interface language. */
 export interface LocalizedText {
@@ -362,6 +362,10 @@ export type ResearchCommand =
     references?: string[] | undefined
   }
   | { action: 'fetch-reference-figures'; projectId: ProjectId; arxivIds: string[]; label: string }
+  /** Audit an SVG figure; `save` writes the report to figures/audit_logs/<name>.audit.json. */
+  | { action: 'audit-svg'; projectId: ProjectId; path: string; save?: boolean | undefined; minFontPx?: number | undefined }
+  /** Export an SVG figure to a vector PDF (beside it, or `output`) with PNG previews under figures/previews. */
+  | { action: 'export-figure'; projectId: ProjectId; path: string; output?: string | undefined }
   /** Run one of the scripts the project's mode pack declares, with arguments after the manifest's own. */
   | { action: 'run-script'; projectId: ProjectId; script: string; args?: string[] | undefined }
   | { action: 'export'; projectId: ProjectId }

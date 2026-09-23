@@ -1,6 +1,6 @@
 /** Versioned tool provisioning in product-owned directories. */
 import { existsSync, createWriteStream } from 'node:fs'
-import { mkdir, readdir, rename } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename } from 'node:fs/promises'
 import { basename, delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
@@ -31,6 +31,19 @@ export const COMPONENT_RELEASES: Record<'uv' | 'drawio' | 'latex', ComponentRele
     sha256: 'e82d8b78fcf5740639f10ac8518f0c83c9202830e6bba364c70104601c12c6be',
   },
 }
+
+/**
+ * The platform Python's libraries: documents and page renders (pypdf, python-docx, pypdfium2),
+ * plots (matplotlib) and SVG figures to vector PDF (svglib, reportlab). The desktop build bundles
+ * the same list.
+ */
+export const PLATFORM_PYTHON_PACKAGES: readonly string[] = [
+  'pypdf==6.0.0', 'python-docx==1.2.0', 'matplotlib==3.10.6', 'pypdfium2==4.30.0', 'svglib==2.2.0', 'reportlab==5.0.1',
+]
+/** The modules that prove the platform Python has those libraries. */
+export const PLATFORM_PYTHON_IMPORTS: readonly string[] = ['pypdf', 'docx', 'matplotlib', 'pypdfium2', 'svglib', 'reportlab']
+/** What the ready marker holds: the interpreter and the package list it was installed with. */
+const PLATFORM_PYTHON_MARKER = `python=3.12\n${PLATFORM_PYTHON_PACKAGES.join('\n')}\n`
 
 /** The host a manager provisions for: its platform, the bundled runtime assets, and the pinned releases. */
 export interface ComponentHost {
@@ -165,7 +178,7 @@ export class ComponentManager {
     return this.once('python', async () => {
       const configured = this.preferences().python
       if (configured) {
-        checked(await runProcess(configured, ['-c', 'import pypdf, docx, matplotlib, pypdfium2; print("ready")'], { signal }), 'Platform Python check')
+        checked(await runProcess(configured, ['-c', `import ${PLATFORM_PYTHON_IMPORTS.join(', ')}; print("ready")`], { signal }), 'Platform Python check')
         return configured
       }
       const bundledPython = await findFile(this.host.asset('components/platform-python'), 'python.exe', 3)
@@ -173,7 +186,8 @@ export class ComponentManager {
       const target = join(this.root, 'platform-python')
       const python = this.venvPython(target)
       const marker = join(target, '.research-ready')
-      if (existsSync(python) && existsSync(marker)) return python
+      // The marker names the packages installed; a changed list installs again.
+      if (existsSync(python) && existsSync(marker) && await readFile(marker, 'utf8') === PLATFORM_PYTHON_MARKER) return python
       const uv = await this.uv(signal)
       const bundled = await findFile(this.host.asset('components/python'), 'python.exe', 3)
       const pythonInstall = join(this.root, 'interpreters')
@@ -182,9 +196,8 @@ export class ComponentManager {
           signal, timeoutMs: 600000, env: { UV_PYTHON_INSTALL_DIR: pythonInstall },
         }), 'Platform Python creation')
       }
-      const dependencies = ['pypdf==6.0.0', 'python-docx==1.2.0', 'matplotlib==3.10.6', 'pypdfium2==4.30.0']
-      checked(await runProcess(uv, ['pip', 'install', '--python', python, ...dependencies], { signal, timeoutMs: 600000 }), 'Research document dependencies')
-      await atomicWrite(marker, 'python=3.12\npypdf=6.0.0\npython-docx=1.2.0\nmatplotlib=3.10.6\npypdfium2=4.30.0\n')
+      checked(await runProcess(uv, ['pip', 'install', '--python', python, ...PLATFORM_PYTHON_PACKAGES], { signal, timeoutMs: 600000 }), 'Research document dependencies')
+      await atomicWrite(marker, PLATFORM_PYTHON_MARKER)
       return python
     })
   }
