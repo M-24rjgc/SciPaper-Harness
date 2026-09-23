@@ -1,6 +1,6 @@
 ---
 name: paper-writing
-description: Use to write or revise the LaTeX paper — section by section from outline.md, with result placeholders in paper-first mode and traced numbers once results exist, then a self-review and de-AI pass.
+description: Use to write or revise the LaTeX paper — section by section from the plan, with result placeholders until results exist and traced numbers once they do, then a self-review and de-AI pass.
 ---
 
 # Writing the paper
@@ -9,7 +9,7 @@ The manuscript lives in `paper/main.tex` (sections may be `\input` from `paper/s
 
 ## Before writing
 
-Read `outline.md` and `idea.md`. Keep the notation table open: every symbol and component name is used exactly as defined there. If a venue template was imported (`template/`), use its document class.
+Read the plan and the idea as the project records them (`blueprint.json`, `outline.md`, `story.json`, `idea.md` — whichever exist). Keep the notation table open: every symbol and component name is used exactly as defined there. If a venue template was imported (`template/`), use its document class.
 
 ## Section recipes
 
@@ -22,8 +22,8 @@ Read `outline.md` and `idea.md`. Keep the notation table open: every symbol and 
 
 ## Numbers — the rule that matters most
 
-- **paper-first, before experiments**: every result cell is `--`; result prose is `\tbd{what will go here}` (define `\newcommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}` in the preamble, with `xcolor`). Write the analysis forward-looking: "we evaluate…", "we expect…". Never write a plausible-looking number.
-- **once results exist** (from-results, or after the experiments phase): every decimal and percentage in results, tables, the abstract and the conclusion must come from collected run metrics, imported data, or a script's output. Means, deltas, ratios and "x% better" come from a script that writes them to a file you import (see `results-ingest`), not from arithmetic in your head. Round consistently, as the data rounds.
+- **before any result exists**: every result cell is `--`; result prose is `\tbd{what will go here}` (define `\newcommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}` in the preamble, with `xcolor`). Write the analysis forward-looking: "we evaluate…", "we expect…". Never write a plausible-looking number.
+- **once results exist** (imported data, or runs completed): every decimal and percentage in results, tables, the abstract and the conclusion must come from collected run metrics, imported data, or a script's output. Means, deltas, ratios and "x% better" come from a script that writes them to a file you import (see `results-ingest`), not from arithmetic in your head. Round consistently, as the data rounds.
 - `research_check` scope `numbers` lists every number it cannot trace; `placeholders` lists what is still open.
 
 ## Revision pass (before calling a section done)
@@ -36,4 +36,4 @@ Read `outline.md` and `idea.md`. Keep the notation table open: every symbol and 
 
 ## Done when
 
-The phase's `research_check` is clean: in `draft`, structure, citations, figures, compile and numbers have no errors (placeholders allowed); in `results`/`write`, placeholders are gone too.
+`research_check` has no errors in structure, cite and numbers — and, once results exist, in placeholders. In a pack mode, the phase you are working on is clean.

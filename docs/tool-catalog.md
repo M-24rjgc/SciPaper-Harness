@@ -2715,7 +2715,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_check`
 
-Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files. scope: all (default), a phase of the current mode, or one check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure). It reports and never blocks. Not clean means not done: fix the errors and check again.
+Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode, one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure) or one of the mode's gates. It reports and never blocks. Not clean means not done: fix the errors and check again.
 
 ```json
 {
@@ -2727,7 +2727,7 @@ Check the paper as it is on disk: citations resolve and are complete, every numb
     },
     "scope": {
       "type": "string",
-      "description": "all, a phase id or a check id"
+      "description": "all, a phase id, a check id or a gate id"
     }
   }
 }
@@ -2936,7 +2936,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_project`
 
-The research project around your working directory. current: mode, autonomy, phases, decisions, files, runs — call it when you start work. create {title, brief?, root?, mode?, autonomy?}: make the working directory (or root) a research project. list: all projects. set-mode {mode: paper-first|from-results|free, reason}: route the project. set-autonomy {autonomy: checkpoints|automatic}. record-decision {question, answer, rationale?, decidedBy?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode.
+The research project around your working directory. current: mode, route, autonomy, phases, decisions, files, runs — call it when you start work. create {title, brief?, root?, mode?, route?, autonomy?}: make the working directory (or root) a research project. list: all projects. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason}: switch the project's mode; its skills follow. set-autonomy {autonomy: checkpoints|automatic}. record-decision {question, answer, rationale?, decidedBy?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode.
 
 ```json
 {
@@ -2948,6 +2948,7 @@ The research project around your working directory. current: mode, autonomy, pha
         "current",
         "create",
         "list",
+        "modes",
         "set-mode",
         "set-autonomy",
         "record-decision"
@@ -2971,12 +2972,11 @@ The research project around your working directory. current: mode, autonomy, pha
     },
     "mode": {
       "type": "string",
-      "description": "create / set-mode",
-      "enum": [
-        "paper-first",
-        "from-results",
-        "free"
-      ]
+      "description": "create / set-mode: a mode id from action modes (general when omitted on create)"
+    },
+    "route": {
+      "type": "string",
+      "description": "create / set-mode: one of the mode's routes; its default route when omitted"
     },
     "autonomy": {
       "type": "string",
@@ -2988,7 +2988,7 @@ The research project around your working directory. current: mode, autonomy, pha
     },
     "reason": {
       "type": "string",
-      "description": "set-mode: why this route"
+      "description": "set-mode: why this mode and route"
     },
     "question": {
       "type": "string",

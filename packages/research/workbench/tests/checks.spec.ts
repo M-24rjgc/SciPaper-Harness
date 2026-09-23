@@ -230,7 +230,7 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(errors(oversized, 'structure').map(f => f.message)).toEqual(['The manuscript could not be read: The manuscript and its inputs exceed the configured text limit'])
   })
 
-  it('covers verification matches, figure provenance, discovery order and compile edges', async () => {
+  it('covers verification matches, figure data and script records, discovery order and compile edges', async () => {
     const p = await fixture('proposal')
     await write(p.root, 'paper/main.tex', String.raw`% \documentclass{article}
 \begin{document}

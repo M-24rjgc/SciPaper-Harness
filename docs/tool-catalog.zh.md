@@ -2723,7 +2723,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_check`
 
-按磁盘上的现状检查论文：引用可解析且完整，结果与表格中的每个数字都能追溯到收集的指标或数据，占位符（\tbd{}、"--" 单元格），引用的插图存在，最近一次编译是最新的，页面已查看过，评审是最新的，过期文件。scope：all（默认）、当前模式的某个阶段，或某一项检查（cite、numbers、placeholders、figures、compile、visual、review、stale、claims、structure）。它只报告，从不拦截。未通过就是未完成：修正错误后再检查一次。
+按磁盘上的现状检查论文：引用可解析且完整，结果与表格中的每个数字都能追溯到收集的指标或数据，占位符（\tbd{}、"--" 单元格），引用的插图存在，最近一次编译是最新的，页面已查看过，评审是最新的，过期文件——再加上项目所在模式的门禁。scope：all（默认）、当前模式的某个阶段、某一项基础检查（cite、numbers、placeholders、figures、compile、visual、review、stale、claims、structure），或该模式的某个门禁。它只报告，从不拦截。未通过就是未完成：修正错误后再检查一次。
 
 ```json
 {
@@ -2735,7 +2735,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "scope": {
       "type": "string",
-      "description": "all, a phase id or a check id"
+      "description": "all, a phase id, a check id or a gate id"
     }
   }
 }
@@ -2944,7 +2944,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
 
 ### `research_project`
 
-你工作目录所在的科研项目。current：模式、自主度、阶段、决策、文件、运行——开始工作时调用。create {title, brief?, root?, mode?, autonomy?}：把工作目录（或 root）设为科研项目。list：全部项目。set-mode {mode: paper-first|from-results|free, reason}：为项目选择路线。set-autonomy {autonomy: checkpoints|automatic}。record-decision {question, answer, rationale?, decidedBy?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。
+你工作目录所在的科研项目。current：模式、路线、自主度、阶段、决策、文件、运行——开始工作时调用。create {title, brief?, root?, mode?, route?, autonomy?}：把工作目录（或 root）设为科研项目。list：全部项目。modes：已安装的模式及其路线与阶段——general 带齐全部工具、不走流水线；其他模式再加上自己的技能、阶段与检查。set-mode {mode, route?, reason}：切换项目的模式，技能随之切换。set-autonomy {autonomy: checkpoints|automatic}。record-decision {question, answer, rationale?, decidedBy?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。
 
 ```json
 {
@@ -2956,6 +2956,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
         "current",
         "create",
         "list",
+        "modes",
         "set-mode",
         "set-autonomy",
         "record-decision"
@@ -2979,12 +2980,11 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "mode": {
       "type": "string",
-      "description": "create / set-mode",
-      "enum": [
-        "paper-first",
-        "from-results",
-        "free"
-      ]
+      "description": "create / set-mode: a mode id from action modes (general when omitted on create)"
+    },
+    "route": {
+      "type": "string",
+      "description": "create / set-mode: one of the mode's routes; its default route when omitted"
     },
     "autonomy": {
       "type": "string",
@@ -2996,7 +2996,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "reason": {
       "type": "string",
-      "description": "set-mode: why this route"
+      "description": "set-mode: why this mode and route"
     },
     "question": {
       "type": "string",

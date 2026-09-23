@@ -64,7 +64,10 @@ kind: "package-reference"
 | 源码 | 内容 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 服务本体：项目生命周期、命令分派、项目队列、运行观测 |
-| [`src/checks.ts`](src/checks.ts) | `research_check`：各模式的阶段列表与每一项检查 |
+| [`src/checks.ts`](src/checks.ts) | `research_check`：每一项基础检查、通过服务提供的执行器运行的模式门禁，以及按模式要求得出的阶段进度 |
+| [`src/modes.ts`](src/modes.ts) | 模式包：清单校验、注册表、路线，以及项目最终落到的模式 |
+| [`src/mode-skills.ts`](src/mode-skills.ts) | 按项目所在模式列出技能的技能提供者 |
+| [`runtime/modes/`](runtime/modes) | 随包发布的模式包：`general` 与 `spark-to-paper` |
 | [`src/latex.ts`](src/latex.ts) | 主稿发现、输入展开、参考文献与插图解析 |
 | [`src/artifacts.ts`](src/artifacts.ts) | 导入、文件修订、编译、页面渲染、导出 |
 | [`src/experiments.ts`](src/experiments.ts) | 运行登记、输入快照、提交、观测、输出收集 |
@@ -93,7 +96,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共八个工具，`research_project`（current、create、list、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_media`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
+生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共八个工具，`research_project`（current、create、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_media`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
 
 #### Token effect
 
@@ -107,7 +110,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式及其理由、自主度、上次检查得出的阶段进度、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指出下一个未完成阶段以及何时应当提问的指引。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。
+结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、自主度、该路线上次检查得出的阶段进度、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一个未完成的阶段、该模式要先加载的技能，以及何时应当提问。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。
 
 #### Token effect
 
@@ -116,6 +119,20 @@ kind: "package-reference"
 #### KV Cache effect
 
 只追加；结果位于可复用的请求前缀之后，不会使任何缓存失效。
+
+### Skill catalog
+
+#### What the model sees
+
+项目所在模式包的技能，与预设自带的通用技能一起列在会话的技能目录里；处于通用模式的项目不会列出其中任何一个。模式变化后，下一步会发布一份替换目录。
+
+#### Token effect
+
+每个模式包技能占目录中的一行（spark-to-paper 增加三行）。技能正文只在模型加载它时才消耗 token。
+
+#### KV Cache effect
+
+模式变化会追加一条替换目录消息；此前的前缀仍可复用。
 
 ## Known Limitations and Deferred Work
 

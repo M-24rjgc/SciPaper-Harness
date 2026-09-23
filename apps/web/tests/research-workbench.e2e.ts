@@ -83,8 +83,8 @@ it('creates a project from the welcome screen, records evidence and opens a clai
   await expect.poll(async () => (await scaffold.ctx.research.snapshot()).projects.length).toBe(1)
   const project = (await scaffold.ctx.research.snapshot()).projects[0]!
   projectId = project.id
-  // Nothing starts on its own: creating a project asks the model nothing.
-  expect(project.mode).toBeUndefined()
+  // Nothing starts on its own: creating a project asks the model nothing, and it opens in the general mode.
+  expect(project.mode).toBe('general')
   expect(project.autonomy).toBe('checkpoints')
   const sourcePath = join(scaffold.workspaceCwd, 'source.csv')
   await writeFile(sourcePath, 'measurement,value\nsample,42\n')
@@ -115,17 +115,17 @@ it('creates a project from the welcome screen, records evidence and opens a clai
 it('steers mode and autonomy from the research tab and records every choice in the ledger', async () => {
   // Back from the project's files to its conversation, where the research tab sits beside the chat.
   await page.getByRole('button', { name: 'Research conversation', exact: true }).first().click()
-  const mode = page.locator('select').filter({ has: page.locator('option[value="paper-first"]') }).first()
+  const mode = page.locator('select').filter({ has: page.locator('option[value="spark-to-paper/proposal"]') }).first()
   await mode.waitFor({ timeout: 15000 })
-  await mode.selectOption('paper-first')
-  await expect.poll(() => scaffold.ctx.research.getProject(projectId).mode).toBe('paper-first')
-  expect(scaffold.ctx.research.getProject(projectId).modeSetBy).toBe('user')
+  await mode.selectOption('spark-to-paper/proposal')
+  await expect.poll(() => scaffold.ctx.research.getProject(projectId).mode).toBe('spark-to-paper')
+  expect(scaffold.ctx.research.getProject(projectId)).toMatchObject({ route: 'proposal', modeSetBy: 'user' })
   await page.locator('select').filter({ has: page.locator('option[value="automatic"]') }).first().selectOption('automatic')
   await expect.poll(() => scaffold.ctx.research.getProject(projectId).autonomy).toBe('automatic')
   // A pipeline mode offers to hand the pipeline to the assistant as a goal (not started here: the stub model never finishes one).
   await page.getByRole('button', { name: 'Run the pipeline', exact: true }).first().waitFor({ timeout: 15000 })
   await page.getByRole('button', { name: 'Run check', exact: true }).first().click()
-  await expect.poll(() => scaffold.ctx.research.getProject(projectId).lastCheck?.mode).toBe('paper-first')
+  await expect.poll(() => scaffold.ctx.research.getProject(projectId).lastCheck?.mode).toBe('spark-to-paper')
   // The project's file panel draws the same status while hidden; only the tab beside the conversation counts.
   await page.getByText(/^Still open/).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await saveFailureShot(page, 'research-tab-check')

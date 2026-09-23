@@ -43,4 +43,4 @@ Completed runs are collected automatically: metrics and `outputs/` files become 
 
 ## Done when
 
-The `experiments` phase is done (runs completed and collected, none in progress), and the `results` phase check shows no placeholders or untraced numbers.
+Done when the runs are completed and collected, none is in progress, and `research_check` shows no placeholders or untraced numbers.

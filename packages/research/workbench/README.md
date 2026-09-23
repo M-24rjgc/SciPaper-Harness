@@ -29,7 +29,7 @@ Mount it with the `ui-research` client plugin and the research agent preset; the
 
 ### When to choose it
 
-Choose it when the agent should carry a paper from an idea or from existing results to a submission, with provenance for every source, file and number. It records and checks; the agent, its goals and the research skills drive the work, so a general coding session gains nothing from it.
+Choose it when the agent should carry a paper from an idea or from existing results to a submission, recording where every source, file and number came from. It records and checks; the agent, its goals and the research skills drive the work, so a general coding session gains nothing from it.
 
 ### Minimal configuration
 
@@ -64,7 +64,10 @@ One service owns every project record in the `research_workbench` storage domain
 | Source | What it holds |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The service: project lifecycle, command dispatch, the per-project queue, run observation |
-| [`src/checks.ts`](src/checks.ts) | `research_check`: the phase lists per mode and every check |
+| [`src/checks.ts`](src/checks.ts) | `research_check`: every base check, a mode's gates through the runner the service supplies, and phase progress from the mode's requirements |
+| [`src/modes.ts`](src/modes.ts) | Mode packs: manifest validation, the registry, routes and the mode a project resolves to |
+| [`src/mode-skills.ts`](src/mode-skills.ts) | The skill provider that lists the skills of each project's mode |
+| [`runtime/modes/`](runtime/modes) | The shipped mode packs: `general` and `spark-to-paper` |
 | [`src/latex.ts`](src/latex.ts) | Manuscript discovery, input flattening, bibliography and graphic resolution |
 | [`src/artifacts.ts`](src/artifacts.ts) | Imports, file revisions, compile, page renders, export |
 | [`src/experiments.ts`](src/experiments.ts) | Run admission, input snapshots, launch, observation, output collection |
@@ -93,7 +96,7 @@ One service owns every project record in the `research_workbench` storage domain
 
 #### What the model sees
 
-The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): eight tools, `research_project` (current, create, list, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_media`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
+The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): eight tools, `research_project` (current, create, list, modes, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_media`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
 
 #### Token effect
 
@@ -107,7 +110,7 @@ Prefix-stable while the definitions and their visibility are unchanged.
 
 #### What the model sees
 
-Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode and the reason for it, autonomy, phase progress from the last check, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next unfinished phase and when to ask. Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`.
+Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode, route and the reason for them, autonomy, phase progress from the last check on that route, the skills each phase uses, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next unfinished phase, the mode's skills to load first and when to ask. Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`.
 
 #### Token effect
 
@@ -116,6 +119,20 @@ Grows with each call's result until compaction. Source searches and file reads a
 #### KV Cache effect
 
 Append-only; results follow the reusable request prefix and invalidate nothing.
+
+### Skill catalog
+
+#### What the model sees
+
+The skills of the project's mode pack, listed in the session's skill catalog beside the preset's general skills; a project in the general mode lists none of them. When the mode changes, the next step publishes a replacement catalog.
+
+#### Token effect
+
+One catalog line per pack skill (spark-to-paper adds three). A skill's body costs tokens only when the model loads it.
+
+#### KV Cache effect
+
+A mode change appends a replacement catalog message; the earlier prefix stays reusable.
 
 ## Known Limitations and Deferred Work
 

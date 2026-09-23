@@ -9,7 +9,7 @@ Self-review misses what the author believes. Isolated reviewers who did not writ
 
 ## Round
 
-1. **Spawn 2–3 reviewers** with the `subagent` tool, each with a distinct brief and no access to your reasoning — only the compiled PDF path / the `.tex` files and `outline.md`:
+1. **Spawn 2–3 reviewers** with the `subagent` tool, each with a distinct brief and no access to your reasoning — only the compiled PDF path / the `.tex` files and the plan (`blueprint.json` or `outline.md`):
    - *Methods reviewer*: correctness, missing assumptions, unjustified design choices, reproducibility.
    - *Experiments reviewer*: baselines, fairness of comparison, statistical support, claims beyond the evidence, missing ablations.
    - *Clarity reviewer*: structure, notation consistency, figures and tables, overclaiming language.

@@ -14,6 +14,7 @@ source:
   repo: https://github.com/Spark-To-Paper-Skills/spark-to-paper-skills
   version: 1.2.0
   license: MIT
+entry: ts-paper
 routes:
   - id: idea
     name: { en: From an idea, zh: 从想法开始 }
@@ -35,7 +36,7 @@ phases:
   - id: story
     label: { en: Story, zh: 研究故事 }
     routes: [idea]
-    skills: [idea-development]
+    skills: [ts-idea2story]
     requires:
       - when: [{ file: story.json }, { file: "{idea,story,proposal,brief}*.md" }]
         message: Build the story from the idea (problem, gap, solution, method skeleton, experiment plan, claims) and write story.json
@@ -48,7 +49,7 @@ phases:
         message: Import the measured results as data evidence; derived numbers come from a script
   - id: plan
     label: { en: Plan, zh: 规划 }
-    skills: [paper-plan]
+    skills: [ts-paper-plan]
     checks: [structure]
     requires:
       - when: [{ file: blueprint.json }, { file: "{outline,plan}*.md" }, { sections: 4 }]

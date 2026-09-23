@@ -8,24 +8,36 @@ Source: [`packages/research/workbench/src/types.ts`](../../packages/research/wor
 
 ## Project record
 
-A `ResearchProject` binds one canonical Workspace directory. It carries the evidence (imported sources, literature, collected run outputs), claims and their evidence links, registered files with revisions and inputs, environments, experiment runs, compilations, page renders and visual reviews, decisions, and the last check report. Two settings shape how the agent works:
+A `ResearchProject` binds one canonical Workspace directory. It carries the evidence (imported sources, literature, collected run outputs), claims and their evidence links, registered files with revisions and inputs, environments, experiment runs, compilations, page renders and visual reviews, decisions, and the last check report. Three settings shape how the agent works:
 
 | Field | Values | Meaning |
 |---|---|---|
-| `mode` | `paper-first`, `from-results`, `free`, or unset | The route. `paper-first` writes the complete method paper with experiment placeholders before running experiments; `from-results` writes from data that already exists; `free` follows no pipeline. Unset means the agent routes the project and records why. |
+| `mode` | an installed mode pack id; `general` by default | Which mode pack the project runs in (see below). |
+| `route` | one of the pack's routes | The path through the pack, such as starting from an idea, a proposal or measured results. |
 | `autonomy` | `checkpoints`, `automatic` | Whether the agent asks at key decisions (`ask_user_question`, which pauses a running goal) or decides and records its rationale. `automatic` pairs with the `research-auto` permission preset, which rejects sandbox escalations instead of waiting for approval. |
 
-Records live in the `research_workbench` storage domain (single-document layout, version 1). Records written by the earlier stage-based workbench are migrated when read: stages, the budget and the pause flag are dropped, and confirmed stages become user decisions. Extracted evidence text is kept beside the snapshots in `.research/chunks/<evidence>/<revision>.json` rather than in the record, so a mutation rewrites the ledger and not the text of every source.
+Records live in the `research_workbench` storage domain (single-document layout, version 1). Records of earlier shapes are migrated when read: stage-machine fields are dropped and confirmed stages become user decisions; the built-in `paper-first` and `from-results` modes become the spark-to-paper pack's `proposal` and `data` routes, and `free` or an unset mode becomes `general`. Mode, route, phase and check ids are stored as strings, so a record still opens when the pack it names is gone; the project then runs as `general`. Extracted evidence text is kept beside the snapshots in `.research/chunks/<evidence>/<revision>.json` rather than in the record, so a mutation rewrites the ledger and not the text of every source.
 
-## Modes and checks
+## Mode packs
 
-`research_check` runs deterministic checks over the files on disk and the ledger, and reports; it is the definition of done, not a permission. Each mode lists phases, and a phase is done when its checks are clean. The whole paper (scope `all`) is clean only when no check reports an error and every phase of its mode is done:
+A mode pack is a directory under `packages/research/workbench/runtime/modes/<id>/`: a `mode.yml` manifest, the skills the agent sees only while a project is in that mode, and the scripts its gates run. `ModeRegistry` (`src/modes.ts`) loads and validates the packs at start and skips a broken pack with a warning; the `general` pack must load.
 
-| Mode | Phases |
+| Manifest field | Meaning |
 |---|---|
-| `paper-first` | idea → literature → plan → draft → experiments → results → polish → submission |
-| `from-results` | ingest → plan → literature → write → figures → polish → submission |
-| `free` | none; named checks on demand |
+| `id`, `order`, `name`, `summary` | Identity and display, with names in English and Chinese |
+| `source` | The upstream repository, version and licence the pack follows |
+| `entry`, `preload` | The skill that runs the mode, and skills loaded before it |
+| `routes`, `defaultRoute` | Alternative paths through the mode |
+| `phases` | Each phase's label, routes, skills, whether it is a checkpoint, the checks that decide it, and the facts it requires |
+| `gates`, `scripts` | Python scripts the pack's checks run, and scripts the agent may run |
+
+The general mode is a pack with no phases and no skills: every research tool, no pipeline. A pack's skills reach the agent through a skill provider mounted with the research tools: it lists the skills of the mode of the project containing the session's working directory, so switching the mode swaps the catalog in the live session. `research/mode` tells the provider when a project's mode changed.
+
+Phase requirements use a fixed set of facts: a file glob (`file`, with an optional `min`), `manuscript`, `bibEntries`, `sections`, `figures`, `diagram`, `pagesInspected`, `reviewCurrent`, `runsCollected`, `noActiveRuns`, `dataEvidence` and `resultsOrData`. A requirement given as a list holds when any one of them holds.
+
+## Checks
+
+`research_check` runs deterministic checks over the files on disk and the ledger, and reports; it is the definition of done, not a permission. The base checks below run in every mode; a pack adds its phases and gates. A phase is done when its requirements hold and its checks carry no errors. The whole paper (scope `all`) is clean only when no check reports an error and every phase of its mode on its route is done.
 
 | Check | Reports |
 |---|---|
@@ -37,7 +49,7 @@ Records live in the `research_workbench` storage domain (single-document layout,
 | `visual` | pages not rendered and inspected since the last compile |
 | `review` | no review, a review older than the manuscript, open blocker or major issues |
 | `stale` / `claims` | out-of-date files and sources, contradicted claims, evidence links that no longer resolve |
-| `structure` | missing inputs, missing sections for the mode, a generic document class |
+| `structure` | missing inputs; in a mode with phases, missing expected sections and a generic document class |
 
 ## What is refused
 
@@ -154,6 +166,28 @@ async projectAt(directory: string): Promise<ResearchProject | undefined>
  * @returns the outcome.
  */
 async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse>
+```
+
+Source: [`packages/research/workbench/src/index.ts`](../../packages/research/workbench/src/index.ts)
+
+<a id="research-events"></a>
+
+### `research/*` events
+
+<a id="researchmode--emit"></a>
+
+#### `research/mode` — emit
+
+A project was created or its mode changed, after the change was stored. The mode's skills follow it into the project's sessions.
+
+```ts cordis-catalog
+/**
+ * A project was created or its mode changed, after the change was stored.
+ * The mode's skills follow it into the project's sessions.
+ * @param event - the project, its root and the mode now recorded.
+ * @mode emit
+ */
+'research/mode'(event: ResearchModeEvent): void
 ```
 
 Source: [`packages/research/workbench/src/index.ts`](../../packages/research/workbench/src/index.ts)

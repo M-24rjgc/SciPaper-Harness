@@ -22,4 +22,4 @@ A result plot is only as trustworthy as the data and code behind it, so both are
 
 ## Done when
 
-`research_check` scope `figures` has no errors, and no result plot is flagged for missing provenance or raster format.
+`research_check` scope `figures` has no errors, and no result plot is flagged for a missing data source or script, or for raster format.

@@ -84,6 +84,7 @@ vi.mock('../src/process.ts', async (original) => {
 
 const { default: ResearchWorkbench, IMAGE_CREDENTIAL } = await import('../src/index.ts')
 const AgentTools = await import('../src/agent-tools.ts')
+const { default: SkillRegistry } = await import('@deepseek-ai/dsh-skill')
 
 let ctx: Context | undefined
 let root: string | undefined
@@ -125,7 +126,7 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
-    ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools],
+    ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['skills', SkillRegistry],
     ['adapters', { inject: ['storage'], apply(c: Context) {
       const backend = new MemoryStorageBackend(pool)
       c.storage.backend.register('memory', backend)
@@ -148,6 +149,7 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
   const configuration = join(root ?? '', 'cordis.yml')
   await writeFile(configuration, [
     '- name: storage', '- name: adapters', '- name: domain', '  config:', '    backend: memory',
+    '- name: skills',
     '- name: research-tools',
     '- name: research', '  config:', '    maxSourceBytes: 100000', '    pollIntervalMs: 500', '    maxReviewPages: 4',
     ...options.componentRoot === false ? [] : [`    componentRoot: ${JSON.stringify(join(root ?? '', 'components'))}`],
@@ -195,6 +197,33 @@ describe('the research service records; it never drives the agent', () => {
     expect(await second.service.projectAt(join(p.root, 'paper', 'nested'))).toBeUndefined()
     expect((await second.service.projectAt(join(p.root, 'figures')))?.id).toBe(p.id)
     expect(() => second.service.getProject('missing' as never)).toThrow(/not found/)
+  })
+
+  it('shows a project\'s sessions the skills of its mode, and swaps them when the mode changes', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-skills-'))
+    const { service } = await boot(new MemoryMediaPool())
+    const names = async (cwd?: string): Promise<string[]> => (await ctx!.skills.list({ cwd })).map(skill => skill.name).sort()
+    const p = await service.create({ title: 'Skills', root: join(root, 'p'), brief: '' })
+    // The general mode adds no skills of its own; nothing outside a project gets mode skills either.
+    expect(await names(p.root)).toEqual([])
+    expect(await names(join(root, 'elsewhere'))).toEqual([])
+    expect(await names()).toEqual([])
+    await service.execute({ projectId: p.id, action: 'set-mode', mode: 'spark-to-paper', route: 'idea' }, signal, 'agent')
+    expect(await names(join(p.root, 'paper'))).toEqual(['ts-idea2story', 'ts-paper', 'ts-paper-plan'])
+    const loaded = await ctx!.skills.get('ts-paper', { cwd: p.root })
+    expect(loaded).toMatchObject({ name: 'ts-paper', provider: 'research-modes', source: 'bundled', resourceBase: { kind: 'directory' } })
+    expect(loaded?.content).toMatch(/^\s*# spark-to-paper/)
+    expect(loaded?.content).not.toMatch(/^---/)
+    await service.execute({ projectId: p.id, action: 'set-mode', mode: 'general' }, signal, 'user')
+    expect(await names(p.root)).toEqual([])
+    // A new project in a pack mode lists that pack's skills at once.
+    const q = await service.create({ title: 'Direct', root: join(root, 'q'), brief: '', mode: 'spark-to-paper' })
+    expect(await names(q.root)).toContain('ts-paper')
+    const { modeSkillDefinition } = await import('../src/mode-skills.ts')
+    expect(await modeSkillDefinition({ name: 'gone', description: 'd', directory: join(root, 'gone') })).toBeUndefined()
+    await write(join(root, 'extra', 'SKILL.md'), '---\nname: extra\ndescription: An extra skill.\n---\nBody')
+    expect(await modeSkillDefinition({ name: 'extra', description: 'An extra skill.', whenToUse: 'Rarely', directory: join(root, 'extra') }))
+      .toMatchObject({ whenToUse: 'Rarely', content: 'Body' })
   })
 
   it('keeps managed tools in the product home unless a component root is configured', async () => {

@@ -27,7 +27,7 @@ import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isInside, p
 import { registerResearchRoutes } from './routes.ts'
 import type {
   ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand,
-  ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask, VisualReview,
+  ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask, VisualReview,
 } from './types.ts'
 export type * from './types.ts'
 
@@ -85,14 +85,6 @@ async function readEvidenceText(root: string, evidence: EvidenceRecord): Promise
 /** Index of a run known to exist: runs are never removed, and the id was read from this project. */
 function runAt(project: ResearchProject, id: string): number {
   return project.experiments.findIndex(run => run.id === id)
-}
-
-/** A project's mode or route as just recorded. */
-export interface ResearchModeEvent {
-  projectId: ProjectId
-  root: string
-  mode: string
-  route?: string | undefined
 }
 
 declare module '@deepseek-ai/cordis' {

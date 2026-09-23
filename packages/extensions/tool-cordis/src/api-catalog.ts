@@ -1433,6 +1433,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'One durable owner for each project\'s evidence, files, decisions and execution records.',
     methods: [
       {
+        signature: 'modes!: ModeRegistry',
+        description: 'The installed mode packs, loaded once at start.',
+        parameters: [],
+      },
+      {
         signature: '@Remote async snapshot(): Promise<ResearchSnapshot>',
         description: 'Read detached project snapshots and non-secret component settings.',
         parameters: [],
@@ -3569,6 +3574,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [],
   },
   {
+    name: 'research/mode',
+    mode: 'emit',
+    signature: '\'research/mode\'(event: ResearchModeEvent): void',
+    summary: 'A project was created or its mode changed, after the change was stored.',
+    description: 'A project was created or its mode changed, after the change was stored. The mode\'s skills follow it into the project\'s sessions.',
+    parameters: [{ name: 'event', description: 'the project, its root and the mode now recorded.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -4058,15 +4071,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CheckFinding',
-    declaration: 'export interface CheckFinding {\n    check: CheckId;\n    severity: \'error\' | \'warning\';\n    message: string;\n    file?: string | undefined;\n    line?: number | undefined;\n}',
-  },
-  {
-    name: 'CheckId',
-    declaration: 'export type CheckId = \'cite\' | \'numbers\' | \'placeholders\' | \'figures\' | \'compile\' | \'visual\' | \'review\' | \'stale\' | \'claims\' | \'structure\';',
+    declaration: 'export interface CheckFinding {\n    check: string;\n    severity: \'error\' | \'warning\';\n    message: string;\n    file?: string | undefined;\n    line?: number | undefined;\n}',
   },
   {
     name: 'CheckReport',
-    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: ResearchMode | undefined;\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
+    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: string | undefined;\n    route?: string | undefined;\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
   },
   {
     name: 'ClaimRecord',
@@ -4278,7 +4287,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateProjectRequest',
-    declaration: 'export interface CreateProjectRequest {\n    title: string;\n    root: string;\n    mode?: ResearchMode | undefined;\n    autonomy?: Autonomy | undefined;\n    brief: string;\n}',
+    declaration: 'export interface CreateProjectRequest {\n    title: string;\n    root: string;\n    mode?: string | undefined;\n    route?: string | undefined;\n    autonomy?: Autonomy | undefined;\n    brief: string;\n}',
   },
   {
     name: 'CreateSessionOptions',
@@ -4861,6 +4870,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    fileRequestText(ref: FileAttachmentRef): string;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions) /* …truncated — full shape in source */',
   },
   {
+    name: 'LocalizedText',
+    declaration: 'export interface LocalizedText {\n    en: string;\n    zh: string;\n}',
+  },
+  {
     name: 'LspHover',
     declaration: 'export interface LspHover {\n    readonly contents: string;\n    readonly range?: LspRange;\n}',
   },
@@ -5045,6 +5058,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
+    name: 'ModePack',
+    declaration: 'export interface ModePack extends z.infer<typeof manifestSchema> {\n    directory: string;\n    skills: ModeSkill[];\n}',
+  },
+  {
+    name: 'ModePhase',
+    declaration: 'export type ModePhase = z.infer<typeof phaseSchema>;',
+  },
+  {
+    name: 'ModeRegistry',
+    declaration: 'export class ModeRegistry {\n    constructor(packs: ModePack[]);\n    static async load(roots: string[], logger: {\n        warn(format: string, ...args: unknown[]): void;\n    }): Promise<ModeRegistry>;\n    list(): ModePack[];\n    get(id: string): ModePack | undefined;\n    summaries(): ModeSummary[];\n    choose(mode: string, route?: string): {\n        mode: string;\n        route?: string;\n    };\n    resolve(project: Pick<ResearchProject, \'mode\' | \'route\'>): ResolvedMode;\n}',
+  },
+  {
+    name: 'ModeScript',
+    declaration: 'export type ModeScript = z.infer<typeof scriptSchema>;',
+  },
+  {
+    name: 'ModeSkill',
+    declaration: 'export interface ModeSkill {\n    name: string;\n    description: string;\n    whenToUse?: string | undefined;\n    directory: string;\n}',
+  },
+  {
+    name: 'ModeSummary',
+    declaration: 'export interface ModeSummary {\n    id: string;\n    order: number;\n    name: LocalizedText;\n    summary: LocalizedText;\n    entry?: string | undefined;\n    preload: string[];\n    routes: {\n        id: string;\n        name: LocalizedText;\n        summary: LocalizedText;\n    }[];\n    defaultRoute?: string | undefined;\n    phases: {\n        id: string;\n        label: LocalizedText;\n        routes?: string[] | undefined;\n        checkpoint: boolean;\n        skills: string[];\n    }[];\n}',
+  },
+  {
     name: 'ObjectJsonSchema',
     declaration: 'export type ObjectJsonSchema = JsonSchemaNode & {\n    type: \'object\';\n};',
   },
@@ -5061,12 +5098,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n}',
   },
   {
-    name: 'PhaseId',
-    declaration: 'export type PhaseId = \'idea\' | \'literature\' | \'plan\' | \'draft\' | \'experiments\' | \'results\' | \'polish\' | \'submission\' | \'ingest\' | \'write\' | \'figures\';',
-  },
-  {
     name: 'PhaseStatus',
-    declaration: 'export interface PhaseStatus {\n    id: PhaseId;\n    done: boolean;\n    missing: string[];\n}',
+    declaration: 'export interface PhaseStatus {\n    id: string;\n    done: boolean;\n    missing: string[];\n}',
   },
   {
     name: 'PostToolDecision',
@@ -5278,11 +5311,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchCommand',
-    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: ResearchMode;\n    reason?: string | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: ProjectId;\n} & ArtifactFields) | {\n    action: \'read-artifact\';\n    projectId: ProjectId;\n    artifactId: ArtifactId;\n} | {\n    action: \'environment\';\n    projectId: ProjectId;\n    environment: Omit<EnvironmentRecord, \'id\' |  /* …truncated — full shape in source */',
+    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: string;\n    route?: string | undefined;\n    reason?: string | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n    decidedBy?: \'user\' | \'agent\' | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: ProjectId;\n} & ArtifactFields) | {\n    action: \'read-artifact\';\n    projectId: ProjectId;\n    artifactId: ArtifactId;\n} | {\n    action: \'environment\';\n   /* …truncated — full shape in source */',
   },
   {
-    name: 'ResearchMode',
-    declaration: 'export type ResearchMode = \'paper-first\' | \'from-results\' | \'free\';',
+    name: 'ResearchModeEvent',
+    declaration: 'export interface ResearchModeEvent {\n    projectId: ProjectId;\n    root: string;\n    mode: string;\n    route?: string | undefined;\n}',
   },
   {
     name: 'ResearchPreferences',
@@ -5290,7 +5323,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchProject',
-    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    root: string;\n    mode?: ResearchMode | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    sessionId?: string | undefined;\n}',
+    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    root: string;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    sessionId?: string | undefined;\n}',
   },
   {
     name: 'ResearchResponse',
@@ -5298,7 +5331,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchSnapshot',
-    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n}',
+    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n}',
   },
   {
     name: 'ResearchTask',
@@ -5311,6 +5344,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResolvedCredential',
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
+  },
+  {
+    name: 'ResolvedMode',
+    declaration: 'export interface ResolvedMode {\n    pack: ModePack;\n    route?: string | undefined;\n    phases: ModePhase[];\n    gates: ModeScript[];\n    missing?: string | undefined;\n}',
   },
   {
     name: 'ResolvedNormalRetryPolicy',

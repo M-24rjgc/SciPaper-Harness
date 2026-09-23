@@ -5,7 +5,7 @@ description: Use to draw the paper's architecture or method overview figure as a
 
 # The architecture diagram
 
-The overview figure is usually the first thing a reviewer reads. It must match the method section exactly: same components, same names (from `outline.md`), same data flow.
+The overview figure is usually the first thing a reviewer reads. It must match the method section exactly: same components, same names (from the plan's notation), same data flow.
 
 ## Choose the medium
 

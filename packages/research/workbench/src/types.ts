@@ -255,6 +255,13 @@ export interface ComponentStatus {
   path: string
   version: string
 }
+/** A project's mode or route as just recorded; the payload of the `research/mode` event. */
+export interface ResearchModeEvent {
+  projectId: ProjectId
+  root: string
+  mode: string
+  route?: string | undefined
+}
 export interface ResearchSnapshot {
   projects: ResearchProject[]
   preferences: ResearchPreferences
