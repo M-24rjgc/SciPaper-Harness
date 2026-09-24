@@ -1,6 +1,6 @@
 ---
 name: running-experiments
-description: Use to run the planned experiments — set up the project environment, write runnable code, submit independent runs that survive the chat, wait for them, collect metrics and outputs, and fill the paper's placeholders from real results.
+description: Use to run the planned experiments — set up the project environment, write runnable code, submit independent runs that survive the chat, wait for them, lay out the experiment board, collect metrics and outputs, and fill the paper's placeholders from real results.
 ---
 
 # Running experiments
@@ -17,7 +17,8 @@ Put experiment code under `code/`. Each entry script:
 - takes its configuration from arguments or a config file (no edits between runs);
 - seeds everything from `$RESEARCH_SEED`;
 - writes final numeric metrics as a flat JSON object to `$RESEARCH_METRICS_PATH`;
-- writes deliverables (per-epoch curves, per-class tables, predictions for plots) to `$RESEARCH_OUTPUT_DIR` (a relative `outputs/` also works).
+- writes deliverables (per-epoch curves, per-class tables, predictions for plots) to `$RESEARCH_OUTPUT_DIR` (a relative `outputs/` also works);
+- appends one JSON object per line to `$RESEARCH_PROGRESS_PATH` as it goes (every epoch or every few hundred steps): the numbers worth watching, plus `progress` (0 to 1) and a short `note` such as `"fold 2/5"`. The run cards and the experiment board draw these lines live; skip it when the variable is unset.
 
 Smoke-test on a tiny setting first (a few steps, small subset) before a full run.
 
@@ -35,7 +36,16 @@ List the runs (configs × seeds), GPUs, and a time estimate. With `checkpoints` 
 
 Completed runs are collected automatically: metrics and `outputs/` files become verified data evidence.
 
-## 5. Use the results
+## 5. The experiment board
+
+The user follows the experiments on the board (Experiment board, in the conversation header). It already lists every run and each experiment machine; your part is the layout that says what the runs mean for this project, with `research_board` board-update. Lay it out once, when you plan the runs, and change it when the plan changes or a conclusion comes in — never after every run, and never with numbers typed in: scripts keep every number current, so no model call is spent watching.
+
+- The paper's result tables become `table` blocks whose cells follow runs by name (`{run: "main/cifar", metric: "acc", scale: 100, digits: 1}`); a name with several seeds shows the mean ± sd. Mark a target the method has to reach with `target`.
+- Group a batch of runs in a section with a `runs` block (`match: "ablation/*"`) and a `text` block with the batch's purpose; when it finishes, write its conclusion into that `text` block and fold superseded batches with `collapsed`.
+- Plot curves from the progress lines with `chart` blocks (`{run, key: "val_acc"}`).
+- When the runs are not submitted through `research_experiment` (a queue the user runs on a server, a results folder), write a small read-only collector script (standard library only) that reads those files and prints `{stats, sections, alerts}`, and add it to `collectors`. Check it with board-refresh until it reports no error.
+
+## 6. Use the results
 
 - Fill result tables and prose from the collected metrics (and a derive script for means/deltas — see `results-ingest`). Replace every `--` and `\tbd{}` the results answer.
 - Plot from the collected outputs (`figures-from-data`).

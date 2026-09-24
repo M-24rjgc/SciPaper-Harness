@@ -2,6 +2,7 @@
 import argparse
 import ctypes
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -80,6 +81,39 @@ def inspect(directory):
     return state
 
 
+PROGRESS_TAIL = 65536
+PROGRESS_VALUES = 40
+
+
+def latest_progress(directory):
+    """The last complete line of the run's progress file, or None before it writes one."""
+    path = Path(directory) / 'progress.jsonl'
+    try:
+        with path.open('rb') as stream:
+            stream.seek(0, 2)
+            stream.seek(max(0, stream.tell() - PROGRESS_TAIL))
+            lines = stream.read().decode('utf-8', errors='replace').splitlines()
+        changed = path.stat().st_mtime
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue  # the last line may still be in flight, the first one cut by the tail
+        if not isinstance(row, dict):
+            continue
+        values = {key: value for key, value in row.items() if key != 'progress' and isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)}
+        result = {'values': dict(list(values.items())[:PROGRESS_VALUES]), 'at': changed}
+        fraction = row.get('progress')
+        if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and 0 <= fraction <= 1:
+            result['fraction'] = fraction
+        if isinstance(row.get('note'), str):
+            result['note'] = row['note'][:200]
+        return result
+    return None
+
+
 def collect_outputs(written, collected):
     """Copy a script's cwd-relative outputs/ into the run's outputs/, where they are collected as evidence."""
     written, collected = Path(written).resolve(), Path(collected).resolve()
@@ -120,7 +154,7 @@ def worker(directory):
             environment.pop(key, None)
         outputs = directory / 'outputs'
         outputs.mkdir(exist_ok=True)
-        environment.update(CUDA_VISIBLE_DEVICES=','.join(spec['gpuIds']), PYTHONUNBUFFERED='1', PYTHONHASHSEED=str(spec['seed']), RESEARCH_RUN_DIR=str(directory), RESEARCH_OUTPUT_DIR=str(outputs), RESEARCH_SEED=str(spec['seed']), RESEARCH_METRICS_PATH=str(directory / 'metrics.json'))
+        environment.update(CUDA_VISIBLE_DEVICES=','.join(spec['gpuIds']), PYTHONUNBUFFERED='1', PYTHONHASHSEED=str(spec['seed']), RESEARCH_RUN_DIR=str(directory), RESEARCH_OUTPUT_DIR=str(outputs), RESEARCH_SEED=str(spec['seed']), RESEARCH_METRICS_PATH=str(directory / 'metrics.json'), RESEARCH_PROGRESS_PATH=str(directory / 'progress.jsonl'))
         arguments = [spec['python'] if argument == '{python}' else argument for argument in spec['argv']]
         options = {'cwd': spec['cwd'], 'env': environment, 'stdin': subprocess.DEVNULL}
         if os.name == 'nt':
@@ -212,6 +246,9 @@ def main():
             result['message'] = 'Cancellation requested; waiting for supervisor confirmation'
     else:
         result = inspect(args.directory)
+    progress = latest_progress(args.directory)
+    if progress is not None:
+        result['progress'] = progress
     print(json.dumps(result, ensure_ascii=True, allow_nan=False))
 
 

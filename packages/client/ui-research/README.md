@@ -1,5 +1,5 @@
 ---
-description: "Research edition browser surfaces: blank-session project entry, header status, the right-sidebar research tab with mode, autonomy, phases, check findings and decisions, the claim evidence sheet, experiment runs, the project file panel and research settings."
+description: "Research edition browser surfaces: blank-session project entry, header status, the right-sidebar research tab with mode, autonomy, phases, check findings and decisions, the claim evidence sheet, experiment runs and the experiment board, the project file panel and research settings."
 kind: "package-plugin"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Shows a research project beside the conversation and lets the person steer it: pick the mode and autonomy, run the check, start the pipeline, read the phases, findings and decisions, open a claim's sources, follow experiment runs, and edit, compile and export project files. Choosing automatic autonomy also selects the `research-auto` permission preset, and Run pipeline submits a `/goal` through the composer. It never drives the agent; it renders the host ledger and sends ordinary commands. Mount it with `@deepseek-ai/dsh-research-workbench`.
+Shows a research project beside the conversation and lets the person steer it: pick the mode and autonomy, run the check, start the pipeline, read the phases, findings and decisions, open a claim's sources, follow experiment runs on the experiment board, and edit, compile and export project files. Choosing automatic autonomy also selects the `research-auto` permission preset, and Run pipeline submits a `/goal` through the composer. It never drives the agent; it renders the host ledger and sends ordinary commands. Mount it with `@deepseek-ai/dsh-research-workbench`.
 
 ## Table of Contents
 
@@ -58,6 +58,7 @@ Every surface reads one polled snapshot of projects, preferences and components,
 | `ClaimSheet.tsx` | One claim and every source under it, over the whole frame |
 | `RunPanel.tsx`, `MetricsGrid.tsx` | Submitted experiments above the composer, with their metrics |
 | `Workbench.tsx`, `ContextCards.tsx` | The project's files: sources, manuscript and diagram editors, runs, export |
+| `Board.tsx`, `BoardBlocks.tsx`, `LineChart.tsx`, `boardValues.ts` | The experiment board tab: runs in flight, machines, the agent's sections resolved against the live record, every run, and the line charts |
 | `Gallery.tsx` | The figure gallery tab: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/` |
 | `ResearchSettings.tsx`, `EnvironmentForm.tsx` | Model roles, managed components, bound environments |
 | `Onboarding.tsx` | Skips the harness's first-run internal-testing notice |
@@ -87,7 +88,7 @@ These are current constraints of the package, not a task backlog.
 No runtime invariant companion is published because this package holds no independently observable relationship: it renders a snapshot the host owns, and every registration is an effect the slot registry already disposes.
 
 - **No source text in the browser** — the host strips evidence text from every snapshot; the claim sheet shows the quote the host validated at write time.
-- **Metrics arrive at exit** — a running experiment shows elapsed time; its metrics appear once the run finishes.
+- **Metrics arrive at exit** — a running experiment shows its progress line (or elapsed time when it writes none); its metrics appear once the run finishes.
 - **No settings deep link** — the settings panel has no plugin-facing open API, so the research tab names where environments are managed.
 - **No diagram export** — the draw.io editor saves `.drawio` files; exporting a diagram to PDF is not offered.
 

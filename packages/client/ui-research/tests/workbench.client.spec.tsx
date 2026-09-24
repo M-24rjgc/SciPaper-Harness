@@ -82,6 +82,8 @@ function harness(
     expand: () => {},
     configure: () => Promise.resolve(),
     pickDirectory: () => Promise.resolve(null),
+    // The board's own reads are covered with it; here they never answer.
+    board: () => new Promise(() => {}),
   } as unknown as WorkbenchProps
   return { props, commands, created, calls, view }
 }
@@ -311,7 +313,7 @@ describe('the workbench panel', () => {
     expect(ui.getByTitle(zh.diagram)).toBeTruthy()
   })
 
-  it('submits an experiment with a valid argument vector only, and acts on existing runs', async () => {
+  it('submits an experiment by hand below the board, with a valid argument vector only', async () => {
     const project = fixture()
     const h = harness([project], { claimId: null, projectId: project.id, panel: 'experiments' })
     const ui = render(<Workbench {...h.props} />)
@@ -327,11 +329,10 @@ describe('the workbench panel', () => {
     fireEvent.submit(form)
     await settle()
     expect(h.commands[0]).toMatchObject({ action: 'experiment', spec: { argv: ['{python}', 'code/train.py'], gpuIds: ['0', '1'], environmentId: 'env', codeArtifactIds: [] } })
-    for (const name of [zh.inspect, zh.stop, zh.logs]) fireEvent.click(ui.getByRole('button', { name }))
-    expect(h.commands.slice(1).map(command => command.action)).toEqual(['experiment-refresh', 'experiment-cancel', 'experiment-logs'])
+    expect(ui.getByText(zh.boardManualRun)).toBeTruthy()
     cleanup()
     const bare = newProject({ root: '/r', title: 'Bare', brief: '' }, 'w' as WorkspaceId)
-    expect(render(<Workbench {...harness([bare], { claimId: null, panel: 'experiments' }).props} />).getByText(zh.noExperiments)).toBeTruthy()
+    expect(render(<Workbench {...harness([bare], { claimId: null, panel: 'experiments' }).props} />).getByText(zh.boardEmpty)).toBeTruthy()
   })
 
   it('names the product in the native sidebar', () => {

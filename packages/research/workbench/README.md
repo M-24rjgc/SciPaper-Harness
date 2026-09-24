@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Gives the agent a research project ledger and the tools to work in it: import and search sources with page-level quotes, verify literature and fetch open-access full text, write and compile LaTeX, render pages to look at, build Python environments, run experiments that outlive the app and SSH, and export a submission archive. `research_check` reports whether each phase of the paper is done; nothing is refused for failing it. Choose it for the research edition; it needs a storage domain and the desktop or web host.
+Gives the agent a research project ledger and the tools to work in it: import and search sources with page-level quotes, verify literature and fetch open-access full text, write and compile LaTeX, render pages to look at, build Python environments, run experiments that outlive the app and SSH, lay out an experiment board that scripts keep current, and export a submission archive. `research_check` reports whether each phase of the paper is done; nothing is refused for failing it. Choose it for the research edition; it needs a storage domain and the desktop or web host.
 
 ## Table of Contents
 
@@ -85,6 +85,8 @@ One service owns every project record in the `research_workbench` storage domain
 | [`src/experiments.ts`](src/experiments.ts) | Run admission, input snapshots, launch, observation, output collection |
 | [`src/literature.ts`](src/literature.ts) | Crossref, OpenAlex and arXiv metadata; open-access PDF lookup |
 | [`src/images.ts`](src/images.ts) | Image generation (OpenAI Images API, gpt-image-2 by default, reference images through edits; chat-style providers) and reference figures from ar5iv |
+| [`src/board.ts`](src/board.ts) | The experiment board: the stored layout, machine probes, progress lines and collector scripts, read in the background |
+| [`runtime/board_probe.py`](runtime/board_probe.py) | The standard-library probe that reports one machine's GPUs, processors, memory, disk and runs' progress lines |
 | [`src/gallery.ts`](src/gallery.ts) | The figure gallery: search with filters, keywords and optional title embeddings; figures fetched on demand into a cache |
 | [`runtime/figure-gallery/`](runtime/figure-gallery) | The index of about 3,500 top-venue Figure 1s from Top-Conf Figure Gallery, built by [`scripts/build_figure_gallery.py`](scripts/build_figure_gallery.py); no images |
 | [`src/tools.ts`](src/tools.ts) | The model tools and the approval hook |
@@ -111,7 +113,7 @@ One service owns every project record in the `research_workbench` storage domain
 
 #### What the model sees
 
-The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): nine tools, `research_project` (current, create, list, modes, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_media`, `research_knowledge`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
+The generated [research tool schemas](../../../docs/tool-catalog.md#deepseek-aidsh-research-workbench): ten tools, `research_project` (current, create, list, modes, set-mode, set-autonomy, record-decision), `research_check` (scope), and one tool per family, each taking an `action` and typed fields: `research_evidence`, `research_artifact`, `research_environment`, `research_experiment`, `research_board`, `research_media`, `research_knowledge`, plus `research_task`. Descriptions name each action's fields in one line; `projectId` is optional because the project is resolved from the session's working directory.
 
 #### Token effect
 
@@ -160,6 +162,7 @@ No runtime invariant companion is published because every relationship the ledge
 - **Windows-first provisioning** — automatic installation of Python, uv, TeX and draw.io targets Windows x64; other platforms bind existing tools in settings.
 - **SSH without provisioning** — remote runs use explicitly configured OpenSSH authentication and a dedicated remote directory; accounts, cluster schedulers and a server's global Python are never touched.
 - **No draw.io export from the agent** — diagrams are edited in the built-in editor, but a vector export needs the desktop app's main process, which this package does not extend; the agent draws TikZ by default.
+- **NVIDIA-only GPU readings** — the board's machine probe reads GPUs through `nvidia-smi`, and reads no processor or memory use on macOS.
 - **Single-user projects** — one person's projects on one machine; collaborative accounts are out of scope.
 
 <a id="dev-note"></a>

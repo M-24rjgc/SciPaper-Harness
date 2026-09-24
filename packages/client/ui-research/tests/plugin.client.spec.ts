@@ -439,6 +439,16 @@ describe('the research plugin', () => {
     await expect(b.face.searchFigures(search)).rejects.toThrow(/returned no page/)
     b.remote.command.mockResolvedValueOnce(bad('gallery offline'))
     await expect(b.face.searchFigures(search)).rejects.toThrow('gallery offline')
+
+    // A board read answers with the board, and leaves the workbench alone the same way.
+    const read = { action: 'board-view' as const, projectId: PROJECT.id, refresh: true }
+    const board = { spec: { sections: [], collectors: [] }, refreshing: false, machines: [], series: {}, collected: {}, alerts: [] }
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'Experiment board', board }))
+    expect(await b.face.board(read)).toBe(board)
+    expect(b.remote.command).toHaveBeenLastCalledWith(read, expect.any(AbortSignal))
+    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ busy: false, response: { message: 'python ready' } })
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'nothing' }))
+    await expect(b.face.board(read)).rejects.toThrow(/returned nothing/)
   })
 
   it('moves the frame: back to a conversation, onto the panel, and onto one claim', async () => {

@@ -95,6 +95,7 @@ const FAMILIES: Family[] = [
       + 'argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], '
       + 'metricsPath: "metrics.json"}}. The code directory (codePaths, default code/) and the selected data are snapshotted. The script writes numeric '
       + 'metrics as JSON to $RESEARCH_METRICS_PATH and deliverables (tables, plot data) to $RESEARCH_OUTPUT_DIR (or ./outputs); both become data evidence. '
+      + 'While it runs, it appends one JSON object per line to $RESEARCH_PROGRESS_PATH (numeric fields, plus progress 0–1 and a short note) for the board. '
       + 'Reuse the same requestId to reconcile a lost response — never resubmit with a new one. experiment-wait {runIds, timeoutSeconds ≤ 1800} blocks '
       + 'until a run finishes. experiment-logs / -refresh / -cancel / -dismiss {runId}; dismiss only drops a run whose state is unknown.',
     fields: {
@@ -103,6 +104,31 @@ const FAMILIES: Family[] = [
       runId: text('refresh / cancel / dismiss / logs'),
       runIds: list('experiment-wait'),
       timeoutSeconds: { type: 'integer', description: 'experiment-wait' },
+    },
+  },
+  {
+    name: 'research_board',
+    title: 'Experiment board',
+    actions: ['board-get', 'board-update', 'board-refresh'],
+    description: 'The experiment board the user watches beside the chat. It already shows every run (status, progress, metrics, logs) and each '
+      + 'experiment machine (GPU, CPU, memory, disk). You lay out what this project\'s experiments mean, and scripts keep every number current: '
+      + 'never copy a number into the board, and update it only when the plan or a conclusion changes, not after each run. '
+      + 'board-update {board, replace?}: sections and collectors are replaced by id, {id, remove: true} drops one, replace starts empty. '
+      + 'board: {title?, summary?, tags?, sections: [{id, title, note?, collapsed?, blocks}], collectors: [{id, script, environmentId?, every?, args?}]}. '
+      + 'Blocks: stats {items: [{label, progress?, ...value}]}; table {columns: [{key, label, align?}], rows: [{cells: {<key>: value}}]}; '
+      + 'chart {series: [{run, key, label?} or {label, points: [[x, y]]}], x?, yLabel?, min?, max?}; list {items: [{title, status?, progress?, detail?, run?}]}; '
+      + 'runs {match: "ablation/*", metrics?, scale?, digits?}; text {text}; kv {items: [{label, value}]}; log {text}. '
+      + 'A value is fixed {value} or follows runs {run: a run id or name, seed?, metric, scale? (100 for percent), digits?, unit?, target?, better?}: '
+      + 'a name covers all its seeds and shows their mean ± sd. A chart line plots one field of a run\'s progress lines — the run script appends one '
+      + 'JSON object per line (e.g. {"epoch": 3, "val_acc": 0.81, "progress": 0.05, "note": "fold 1"}) to $RESEARCH_PROGRESS_PATH. '
+      + 'A collector is a read-only project Python script the board runs every `every` seconds (default 30) while it is open, with the environment\'s '
+      + 'interpreter: over SSH with $RESEARCH_REMOTE_ROOT for a remote one, else in the project folder with $RESEARCH_PROJECT_ROOT. It prints one '
+      + 'JSON object {stats?, sections?, alerts?: [{level, text}]}; a section with a board section\'s id fills it, others are appended. Use one for what '
+      + 'only this project can read, such as a queue the user runs on a server. board-refresh: probe the machines and run every collector now, '
+      + 'reporting each error. board-get: the layout as stored.',
+    fields: {
+      board: json('board-update: the layout, or the parts to change'),
+      replace: { type: 'boolean', description: 'board-update: start from an empty board' },
     },
   },
   {

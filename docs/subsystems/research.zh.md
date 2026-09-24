@@ -53,6 +53,12 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 图片留在配图库那边。fetch-reference-figures `{galleryIds, label}` 从配图库的仓库、CDN 镜像或它的网站取回选中的图，缓存在产品主目录（`research/cache/figure-gallery`），并保存为 `figures/refs/<label>.gallery_<id>.<ext>`，旁边附一份写明论文及其版权的 `.source.json`；配图库已下架的图会报告它已不存在。同一个动作带 `arxivIds` 时，从 ar5iv 取其他论文的总览图。工作台的「配图灵感」标签页浏览同一份索引，图片通过宿主路由 `/api/research/gallery/image?id=` 加载。这些图是各模式画图技能的排版参考，绝不作为论文素材。
 
+## 实验看板
+
+工作台的「实验看板」标签页是一块看板，页面打开期间每十五秒读取一次；看着它不花一次模型调用。它的固定部分每个项目都一样：按状态统计的运行、每个在跑的运行及其进度和曲线、每台实验机器，以及所有运行（含命令、指标和曲线）。其余部分是 agent 的布局，由 `research_board` board-update 保存在 `.research/board/board.json`：由八种积木（`stats`、`table`、`chart`、`list`、`runs`、`text`、`kv`、`log`）组成的分区。积木里的值要么固定，要么按 id 或按名称和种子跟随运行。页面对着实时的项目记录解析它，所以运行一结束对应的格子就填上；同一名称有多个已完成的种子时，显示它们的均值和样本标准差。
+
+一次读取会运行三类脚本：带 `refresh` 的 `board-view` 最多每十秒启动一次，`board-refresh` 立即运行一次。机器探针（`runtime/board_probe.py`，只用标准库）对活跃运行、采集脚本和默认环境所在的每台主机各运行一次，本地或经 SSH。它通过 `nvidia-smi` 报告 GPU，报告处理器和内存占用（有 cgroup 配额和上限时按配额和上限计算）以及实验目录所在的磁盘；每次读取都往六小时的历史里加一个采样点。运行把进度记录逐行追加到 `$RESEARCH_PROGRESS_PATH`：监督进程的状态把最后一行带进运行记录的 `progress`，探针读取远程在跑运行的进度记录，远程运行结束后，它的进度记录随日志一起取回本地。采集脚本是 agent 自己写的只读脚本，每 `every` 秒（默认 30）用某个环境的解释器从标准输入运行。每个脚本打印 `{stats?, sections?, alerts?}`；解析不了的部分会被丢弃并指明，其余部分照常保留。每次读取的结果保存在 `.research/board/snapshot.json`，重新打开看板时立刻就能显示。
+
 ## 知识图谱
 
 `research_knowledge` 读取科研模式图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式，做法沿用 spark-to-paper 的图谱构建。内置图谱从上游的 AI 语料精简而来，以 `runtime/kg/ai-kg.json.gz` 随包发布：包含模式、带故事字段与五个最近邻的论文，不含向量。`scripts/build_kg.py` 离线转换上游压缩包，读取其中的 networkx pickle 时使用不执行文件中任何代码的反序列化器。项目也可以用 agent 抽取好的语料自建图谱（先 `build-graph`，再 `name-patterns`），存放在 `.research/kg/`。

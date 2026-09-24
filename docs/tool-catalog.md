@@ -43,7 +43,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_knowledge`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_board`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_knowledge`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
 
 <a id="deepseek-aidsh-mcp-resources"></a>
 
@@ -2743,6 +2743,42 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
 
 Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
 
+### `research_board`
+
+The experiment board the user watches beside the chat. It already shows every run (status, progress, metrics, logs) and each experiment machine (GPU, CPU, memory, disk). You lay out what this project's experiments mean, and scripts keep every number current: never copy a number into the board, and update it only when the plan or a conclusion changes, not after each run. board-update {board, replace?}: sections and collectors are replaced by id, {id, remove: true} drops one, replace starts empty. board: {title?, summary?, tags?, sections: [{id, title, note?, collapsed?, blocks}], collectors: [{id, script, environmentId?, every?, args?}]}. Blocks: stats {items: [{label, progress?, ...value}]}; table {columns: [{key, label, align?}], rows: [{cells: {<key>: value}}]}; chart {series: [{run, key, label?} or {label, points: [[x, y]]}], x?, yLabel?, min?, max?}; list {items: [{title, status?, progress?, detail?, run?}]}; runs {match: "ablation/*", metrics?, scale?, digits?}; text {text}; kv {items: [{label, value}]}; log {text}. A value is fixed {value} or follows runs {run: a run id or name, seed?, metric, scale? (100 for percent), digits?, unit?, target?, better?}: a name covers all its seeds and shows their mean ± sd. A chart line plots one field of a run's progress lines — the run script appends one JSON object per line (e.g. {"epoch": 3, "val_acc": 0.81, "progress": 0.05, "note": "fold 1"}) to $RESEARCH_PROGRESS_PATH. A collector is a read-only project Python script the board runs every `every` seconds (default 30) while it is open, with the environment's interpreter: over SSH with $RESEARCH_REMOTE_ROOT for a remote one, else in the project folder with $RESEARCH_PROJECT_ROOT. It prints one JSON object {stats?, sections?, alerts?: [{level, text}]}; a section with a board section's id fills it, others are appended. Use one for what only this project can read, such as a queue the user runs on a server. board-refresh: probe the machines and run every collector now, reporting each error. board-get: the layout as stored.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "board-get",
+        "board-update",
+        "board-refresh"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "board": {
+      "description": "board-update: the layout, or the parts to change"
+    },
+    "replace": {
+      "type": "boolean",
+      "description": "board-update: start from an empty board"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
 ### `research_check`
 
 Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode, one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure, prose) or one of the mode's gates. It reports and never blocks. Not clean means not done: fix the errors and check again.
@@ -2859,7 +2895,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_experiment`
 
-Independent experiment runs that survive the chat and the app. experiment {requestId: a new UUID, spec: {environmentId, name, argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], metricsPath: "metrics.json"}}. The code directory (codePaths, default code/) and the selected data are snapshotted. The script writes numeric metrics as JSON to $RESEARCH_METRICS_PATH and deliverables (tables, plot data) to $RESEARCH_OUTPUT_DIR (or ./outputs); both become data evidence. Reuse the same requestId to reconcile a lost response — never resubmit with a new one. experiment-wait {runIds, timeoutSeconds ≤ 1800} blocks until a run finishes. experiment-logs / -refresh / -cancel / -dismiss {runId}; dismiss only drops a run whose state is unknown.
+Independent experiment runs that survive the chat and the app. experiment {requestId: a new UUID, spec: {environmentId, name, argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], metricsPath: "metrics.json"}}. The code directory (codePaths, default code/) and the selected data are snapshotted. The script writes numeric metrics as JSON to $RESEARCH_METRICS_PATH and deliverables (tables, plot data) to $RESEARCH_OUTPUT_DIR (or ./outputs); both become data evidence. While it runs, it appends one JSON object per line to $RESEARCH_PROGRESS_PATH (numeric fields, plus progress 0–1 and a short note) for the board. Reuse the same requestId to reconcile a lost response — never resubmit with a new one. experiment-wait {runIds, timeoutSeconds ≤ 1800} blocks until a run finishes. experiment-logs / -refresh / -cancel / -dismiss {runId}; dismiss only drops a run whose state is unknown.
 
 ```json
 {

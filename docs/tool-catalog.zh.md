@@ -47,7 +47,7 @@
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_knowledge`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_board`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_knowledge`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
 
 <a id="deepseek-aidsh-mcp-resources"></a>
 
@@ -2751,6 +2751,42 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
 
+### `research_board`
+
+用户在对话旁边看的实验看板。看板本身已经列出每次运行（状态、进度、指标、日志）和每台实验机器（GPU、CPU、内存、磁盘）。你来排布这个项目的实验意味着什么，每个数字都由脚本保持最新：绝不要把数字抄进看板，只在计划或结论变化时更新它，不要每跑完一次就改。board-update {board, replace?}：分区和采集脚本按 id 替换，{id, remove: true} 删除一项，replace 从空看板开始。board：{title?, summary?, tags?, sections: [{id, title, note?, collapsed?, blocks}], collectors: [{id, script, environmentId?, every?, args?}]}。积木：stats {items: [{label, progress?, ...value}]}；table {columns: [{key, label, align?}], rows: [{cells: {<key>: value}}]}；chart {series: [{run, key, label?} 或 {label, points: [[x, y]]}], x?, yLabel?, min?, max?}；list {items: [{title, status?, progress?, detail?, run?}]}；runs {match: "ablation/*", metrics?, scale?, digits?}；text {text}；kv {items: [{label, value}]}；log {text}。一个值要么固定为 {value}，要么跟随运行 {run: 运行 id 或名称, seed?, metric, scale?（百分比用 100）, digits?, unit?, target?, better?}：名称涵盖该名称的所有种子，显示它们的均值 ± 标准差。图表的一条线画的是某次运行进度记录中的一个字段——运行脚本每行向 $RESEARCH_PROGRESS_PATH 追加一个 JSON 对象（例如 {"epoch": 3, "val_acc": 0.81, "progress": 0.05, "note": "fold 1"}）。采集脚本是项目里的只读 Python 脚本，看板打开期间每 `every` 秒（默认 30）用环境的解释器运行一次：远程环境经 SSH 运行并设置 $RESEARCH_REMOTE_ROOT，否则在项目文件夹里运行并设置 $RESEARCH_PROJECT_ROOT。它打印一个 JSON 对象 {stats?, sections?, alerts?: [{level, text}]}；id 与看板分区相同的分区会填进该分区，其余的追加在后面。只有这个项目读得到的内容用它来读，比如用户自己在服务器上跑的队列。board-refresh：立即探测各台机器并运行每个采集脚本，报告每个错误。board-get：当前保存的布局。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "board-get",
+        "board-update",
+        "board-refresh"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "description": "Optional; defaults to the research project containing your working directory."
+    },
+    "board": {
+      "description": "board-update: the layout, or the parts to change"
+    },
+    "replace": {
+      "type": "boolean",
+      "description": "board-update: start from an empty board"
+    }
+  },
+  "required": [
+    "action"
+  ]
+}
+```
+
+来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
+
 ### `research_check`
 
 按磁盘上的现状检查论文：引用可解析且完整，结果与表格中的每个数字都能追溯到收集的指标或数据，占位符（\tbd{}、"--" 单元格），引用的插图存在，最近一次编译是最新的，页面已查看过，评审是最新的，过期文件——再加上项目所在模式的门禁。scope：all（默认）、当前模式的某个阶段、某一项基础检查（cite、numbers、placeholders、figures、compile、visual、review、stale、claims、structure、prose），或该模式的某个门禁。它只报告，从不拦截。未通过就是未完成：修正错误后再检查一次。
@@ -2867,7 +2903,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_experiment`
 
-独立于对话和应用存续的实验运行。experiment {requestId: 一个新的 UUID, spec: {environmentId, name, argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], metricsPath: "metrics.json"}}。代码目录（codePaths，默认 code/）与所选数据会留下快照。脚本把数值指标以 JSON 写入 $RESEARCH_METRICS_PATH，把交付物（表格、绘图数据）写入 $RESEARCH_OUTPUT_DIR（或 ./outputs）；两者都会成为数据证据。响应丢失时用同一个 requestId 对账，绝不用新的 requestId 重新提交。experiment-wait {runIds, timeoutSeconds ≤ 1800} 会一直等到某个运行结束。experiment-logs / -refresh / -cancel / -dismiss {runId}；dismiss 只放弃状态未知的运行。
+独立于对话和应用存续的实验运行。experiment {requestId: 一个新的 UUID, spec: {environmentId, name, argv: ["{python}", "code/train.py", ...], cwd: ".", seed, maxSeconds, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], codePaths?: ["code"], metricsPath: "metrics.json"}}。代码目录（codePaths，默认 code/）与所选数据会留下快照。脚本把数值指标以 JSON 写入 $RESEARCH_METRICS_PATH，把交付物（表格、绘图数据）写入 $RESEARCH_OUTPUT_DIR（或 ./outputs）；两者都会成为数据证据。运行期间，它每行向 $RESEARCH_PROGRESS_PATH 追加一个 JSON 对象（数值字段，外加 0–1 的 progress 和一句简短的 note），供看板使用。响应丢失时用同一个 requestId 对账，绝不用新的 requestId 重新提交。experiment-wait {runIds, timeoutSeconds ≤ 1800} 会一直等到某个运行结束。experiment-logs / -refresh / -cancel / -dismiss {runId}；dismiss 只放弃状态未知的运行。
 
 ```json
 {

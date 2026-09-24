@@ -131,7 +131,7 @@ describe('research tools find the project from the working directory', () => {
     const valid: Record<string, unknown> = {
       research_project: { action: 'current' }, research_check: {}, research_task: { jobId: 'j' }, research_evidence: { action: 'import' },
       research_artifact: { action: 'export' }, research_environment: { action: 'environment' }, research_experiment: { action: 'experiment-logs' },
-      research_media: { action: 'visual-review' }, research_knowledge: { action: 'graph-status' },
+      research_media: { action: 'visual-review' }, research_knowledge: { action: 'graph-status' }, research_board: { action: 'board-get' },
     }
     for (const tool of h.tools.values()) expect(tool.presentCall(valid[tool.name])?.title).toBeTruthy()
     expect(h.tools.get('research_check')!.output.render({}, { clean: true })).toEqual([{ type: 'text', text: '{"clean":true}' }])

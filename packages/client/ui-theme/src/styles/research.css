@@ -34,6 +34,13 @@ body[data-research-workbench]:not([data-ds-dark-theme]) {
   --dsw-alias-state-warn-label: #a26f18;
   --dsw-alias-state-warn-tertiary: #f7e9df;
   --dsw-alias-link: #15635f;
+  /* Chart series, in this order: validated together for colour-vision deficiency on the light card surface. */
+  --dsw-alias-chart-1: #2a78d6;
+  --dsw-alias-chart-2: #eb6834;
+  --dsw-alias-chart-3: #1baf7a;
+  --dsw-alias-chart-4: #eda100;
+  --dsw-alias-chart-5: #e87ba4;
+  --dsw-alias-chart-6: #008300;
 }
 body[data-research-workbench][data-ds-dark-theme] {
   --dsw-alias-bg-base: #1c211f;
@@ -43,4 +50,11 @@ body[data-research-workbench][data-ds-dark-theme] {
   --dsw-alias-state-warn-primary: #e99a72;
   --dsw-alias-state-warn-tertiary: #49352c;
   --dsw-alias-link: #7bc4bb;
+  /* The same hues stepped for the dark card surface. */
+  --dsw-alias-chart-1: #3987e5;
+  --dsw-alias-chart-2: #d95926;
+  --dsw-alias-chart-3: #199e70;
+  --dsw-alias-chart-4: #c98500;
+  --dsw-alias-chart-5: #d55181;
+  --dsw-alias-chart-6: #008300;
 }

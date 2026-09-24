@@ -123,6 +123,11 @@ export function apply(ctx: Context): void {
       if (!gallery) throw new Error('The figure gallery returned no page')
       return gallery
     },
+    board: async (request) => {
+      const { board } = unwrap(await ctx.remote.research.command(request, controller.signal))
+      if (!board) throw new Error('The experiment board returned nothing')
+      return board
+    },
     configure: (preferences, keys) => perform(async () => {
       unwrap(await ctx.remote.research.configure(preferences))
       if (keys.image) unwrap(await ctx.remote.research.setCredential('image', keys.image))

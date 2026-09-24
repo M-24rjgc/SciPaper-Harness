@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-为 agent（智能体）提供科研项目台账以及在其中工作的工具：导入并检索带页码级引文的资料，核实文献并获取开放获取全文，撰写并编译 LaTeX，渲染页面以便查看，构建 Python 环境，运行不受应用与 SSH 断开影响的实验，并导出投稿压缩包。`research_check` 报告论文各阶段是否完成；检查不通过也不会拒绝任何操作。科研版应选用它；它需要存储域以及桌面端或 Web 宿主。
+为 agent（智能体）提供科研项目台账以及在其中工作的工具：导入并检索带页码级引文的资料，核实文献并获取开放获取全文，撰写并编译 LaTeX，渲染页面以便查看，构建 Python 环境，运行不受应用与 SSH 断开影响的实验，排布由脚本保持最新的实验看板，并导出投稿压缩包。`research_check` 报告论文各阶段是否完成；检查不通过也不会拒绝任何操作。科研版应选用它；它需要存储域以及桌面端或 Web 宿主。
 
 ## 目录
 
@@ -85,6 +85,8 @@ kind: "package-reference"
 | [`src/experiments.ts`](src/experiments.ts) | 运行登记、输入快照、提交、观测、输出收集 |
 | [`src/literature.ts`](src/literature.ts) | Crossref、OpenAlex 与 arXiv 元数据；开放获取 PDF 查找 |
 | [`src/images.ts`](src/images.ts) | 生图（OpenAI 图像接口，默认 gpt-image-2，带参考图时走 edits；也支持返回图片的对话接口）与来自 ar5iv 的参考图 |
+| [`src/board.ts`](src/board.ts) | 实验看板：保存的布局、机器探针、进度记录和采集脚本，在后台读取 |
+| [`runtime/board_probe.py`](runtime/board_probe.py) | 只用标准库的探针，报告一台机器的 GPU、处理器、内存、磁盘以及各运行的进度记录 |
 | [`src/gallery.ts`](src/gallery.ts) | 配图库：按筛选条件、关键词和可选的标题嵌入检索；图片按需取回并缓存 |
 | [`runtime/figure-gallery/`](runtime/figure-gallery) | 来自 Top-Conf Figure Gallery 的约 3,500 张顶会 Figure 1 的索引，由 [`scripts/build_figure_gallery.py`](scripts/build_figure_gallery.py) 构建；不含图片 |
 | [`src/tools.ts`](src/tools.ts) | 模型工具与审批钩子 |
@@ -111,7 +113,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共九个工具，`research_project`（current、create、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
+生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
 
 #### Token effect
 
@@ -160,6 +162,7 @@ kind: "package-reference"
 - **优先面向 Windows 的装配**——Python、uv、TeX 与 draw.io 的自动安装面向 Windows x64；其他平台在设置中绑定已有工具。
 - **SSH 不做任何装配**——远程运行使用显式配置的 OpenSSH 认证和专用远程目录；从不创建账户、不接入集群调度器、不改动服务器的全局 Python。
 - **agent 一侧无法导出 draw.io**——图可以在内置编辑器中编辑，但矢量导出需要桌面应用的主进程，而这个包不扩展主进程；agent 默认用 TikZ 绘图。
+- **GPU 读数只支持 NVIDIA**——看板的机器探针通过 `nvidia-smi` 读取 GPU；在 macOS 上不读取处理器和内存占用。
 - **单用户项目**——一个人在一台机器上的项目；协作账户不在范围内。
 
 <a id="dev-note"></a>

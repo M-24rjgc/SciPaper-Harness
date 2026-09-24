@@ -1443,6 +1443,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly boards: ExperimentBoards',
+        description: 'Each project\'s experiment board: the agent\'s layout, filled by scripts on a timer.',
+        parameters: [],
+      },
+      {
         signature: 'modes!: ModeRegistry',
         description: 'The installed mode packs, loaded once at start.',
         parameters: [],
@@ -4068,6 +4073,78 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
   },
   {
+    name: 'BoardAlert',
+    declaration: 'export interface BoardAlert {\n    level: \'info\' | \'warning\' | \'error\';\n    text: string;\n}',
+  },
+  {
+    name: 'BoardBlock',
+    declaration: 'export type BoardBlock = BoardBlockBase & {\n    type: \'stats\';\n    items: BoardStat[];\n} | BoardBlockBase & {\n    type: \'table\';\n    columns: {\n        key: string;\n        label: string;\n        align?: \'left\' | \'center\' | \'right\' | undefined;\n    }[];\n    rows: {\n        cells: Record<string, BoardCell>;\n        tone?: BoardTone | undefined;\n    }[];\n} | BoardBlockBase & {\n    type: \'chart\';\n    x?: string | undefined;\n    xLabel?: string | undefined;\n    yLabel?: string | undefined;\n    min?: number | undefined;\n    max?: number | undefined;\n    series: BoardSeries[];\n} | BoardBlockBase & {\n    type: \'list\';\n    items: BoardListItem[];\n} | BoardBlockBase & {\n    type: \'runs\';\n    match: string;\n    metrics?: string[] | undefined;\n    scale?: number | undefined;\n    digits?: number | undefined;\n} | BoardBlockBase & {\n    type: \'text\';\n    text: string;\n    tone?: BoardTone | undefined;\n} | BoardBlockBase & {\n    type: \'kv\';\n    items: {\n        label: string;\n        value: string | number;\n        tone?: BoardTone | undefined;\n    }[];\n} | BoardBlockBase & {\n    type: \'log\';\n    text: string;\n};',
+  },
+  {
+    name: 'BoardCell',
+    declaration: 'export type BoardCell = string | number | null | BoardValue;',
+  },
+  {
+    name: 'BoardCollected',
+    declaration: 'export interface BoardCollected {\n    at: string;\n    ms: number;\n    stats: BoardStat[];\n    sections: BoardSection[];\n    alerts: BoardAlert[];\n    error?: string | undefined;\n}',
+  },
+  {
+    name: 'BoardCollector',
+    declaration: 'export interface BoardCollector {\n    id: string;\n    script: string;\n    environmentId?: string | undefined;\n    every?: number | undefined;\n    args?: string[] | undefined;\n}',
+  },
+  {
+    name: 'BoardListItem',
+    declaration: 'export interface BoardListItem {\n    title: string;\n    status?: string | undefined;\n    progress?: number | undefined;\n    detail?: string | undefined;\n    run?: string | undefined;\n    seed?: number | undefined;\n    tone?: BoardTone | undefined;\n}',
+  },
+  {
+    name: 'BoardMachine',
+    declaration: 'export interface BoardMachine {\n    key: string;\n    environments: string[];\n    at: string;\n    error?: string | undefined;\n    host?: string | undefined;\n    os?: string | undefined;\n    gpus: {\n        name: string;\n        util?: number | undefined;\n        memoryUsed?: number | undefined;\n        memoryTotal?: number | undefined;\n        temperature?: number | undefined;\n        power?: number | undefined;\n        powerLimit?: number | undefined;\n    }[];\n    cpu?: {\n        util?: number | undefined;\n        cores?: number | undefined;\n    } | undefined;\n    memory?: {\n        used: number;\n        total: number;\n    } | undefined;\n    disk?: {\n        path: string;\n        used: number;\n        total: number;\n        free: number;\n    } | undefined;\n    history: BoardSample[];\n}',
+  },
+  {
+    name: 'BoardOptions',
+    declaration: 'export interface BoardOptions {\n    localPython: () => Promise<string | undefined>;\n    signal: AbortSignal;\n    track: (operation: Promise<unknown>) => void;\n    warn: (message: string) => void;\n}',
+  },
+  {
+    name: 'BoardPatch',
+    declaration: 'export interface BoardPatch {\n    title?: string | undefined;\n    summary?: string | undefined;\n    tags?: string[] | undefined;\n    sections?: (BoardSection | {\n        id: string;\n        remove: true;\n    })[] | undefined;\n    collectors?: (BoardCollector | {\n        id: string;\n        remove: true;\n    })[] | undefined;\n}',
+  },
+  {
+    name: 'BoardReport',
+    declaration: 'export interface BoardReport {\n    capturedAt: string | undefined;\n    machines: {\n        key: string;\n        error?: string | undefined;\n        gpus: number;\n    }[];\n    collectors: {\n        id: string;\n        ok: boolean;\n        error?: string | undefined;\n        sections: number;\n        stats: number;\n        ms: number;\n    }[];\n    series: number;\n    alerts: BoardAlert[];\n}',
+  },
+  {
+    name: 'BoardSample',
+    declaration: 'export interface BoardSample {\n    t: number;\n    gpu?: number | undefined;\n    gpuMemory?: number | undefined;\n    cpu?: number | undefined;\n    memory?: number | undefined;\n}',
+  },
+  {
+    name: 'BoardSection',
+    declaration: 'export interface BoardSection {\n    id: string;\n    title: string;\n    note?: string | undefined;\n    collapsed?: boolean | undefined;\n    blocks: BoardBlock[];\n}',
+  },
+  {
+    name: 'BoardSeries',
+    declaration: 'export interface BoardSeries {\n    label?: string | undefined;\n    run?: string | undefined;\n    seed?: number | undefined;\n    key?: string | undefined;\n    points?: [\n        number,\n        number\n    ][] | undefined;\n}',
+  },
+  {
+    name: 'BoardSnapshot',
+    declaration: 'export interface BoardSnapshot {\n    spec: BoardSpec;\n    capturedAt?: string | undefined;\n    refreshing: boolean;\n    machines: BoardMachine[];\n    series: Record<string, Record<string, number>[]>;\n    collected: Record<string, BoardCollected>;\n    alerts: BoardAlert[];\n}',
+  },
+  {
+    name: 'BoardSpec',
+    declaration: 'export interface BoardSpec {\n    title?: string | undefined;\n    summary?: string | undefined;\n    tags?: string[] | undefined;\n    sections: BoardSection[];\n    collectors: BoardCollector[];\n    updatedAt?: string | undefined;\n}',
+  },
+  {
+    name: 'BoardStat',
+    declaration: 'export interface BoardStat extends BoardValue {\n    label: string;\n    progress?: number | undefined;\n}',
+  },
+  {
+    name: 'BoardTone',
+    declaration: 'export type BoardTone = \'good\' | \'warning\' | \'bad\' | \'muted\';',
+  },
+  {
+    name: 'BoardValue',
+    declaration: 'export interface BoardValue {\n    value?: string | number | undefined;\n    run?: string | undefined;\n    seed?: number | undefined;\n    metric?: string | undefined;\n    scale?: number | undefined;\n    digits?: number | undefined;\n    unit?: string | undefined;\n    target?: number | undefined;\n    better?: \'higher\' | \'lower\' | undefined;\n    sub?: string | undefined;\n    tone?: BoardTone | undefined;\n}',
+  },
+  {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
@@ -4516,12 +4593,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EvidenceRecord {\n    id: EvidenceId;\n    title: string;\n    kind: \'file\' | \'literature\' | \'experiment\';\n    path: string;\n    originalPath?: string | undefined;\n    sha256: string;\n    revision: number;\n    importedAt: string;\n    chunks: EvidenceChunk[];\n    sourceUrl?: string | undefined;\n    doi?: string | undefined;\n    fullTextPath?: string | undefined;\n    coverage: \'full-text\' | \'abstract\' | \'metadata\' | \'data\';\n    verified: boolean;\n    stale: boolean;\n}',
   },
   {
+    name: 'ExperimentBoards',
+    declaration: 'export class ExperimentBoards {\n    constructor(private readonly options: BoardOptions);\n    async layout(root: string): Promise<{\n        spec: BoardSpec;\n        problem?: string | undefined;\n    }>;\n    update(root: string, patch: BoardPatch, replace: boolean): Promise<BoardSpec>;\n    async view(project: ResearchProject, refresh: boolean, runs: string[] = []): Promise<BoardSnapshot>;\n    async refresh(project: ResearchProject, signal: AbortSignal): Promise<BoardReport>;\n}',
+  },
+  {
     name: 'ExperimentId',
     declaration: 'export type ExperimentId = Branded<\'ResearchExperimentId\'>;',
   },
   {
     name: 'ExperimentRecord',
-    declaration: 'export interface ExperimentRecord {\n    id: ExperimentId;\n    spec: ExperimentSpec;\n    status: RunStatus;\n    createdAt: string;\n    updatedAt: string;\n    directory: string;\n    inputRevision: number;\n    environmentFingerprint: string;\n    metrics: Record<string, number>;\n    exitCode?: number | undefined;\n    message: string;\n    snapshotPath: string;\n    collected: boolean;\n    startedAt?: string | undefined;\n    finishedAt?: string | undefined;\n    observeFailures?: number | undefined;\n    nextObserveAt?: number | undefined;\n}',
+    declaration: 'export interface ExperimentRecord {\n    id: ExperimentId;\n    spec: ExperimentSpec;\n    status: RunStatus;\n    createdAt: string;\n    updatedAt: string;\n    directory: string;\n    inputRevision: number;\n    environmentFingerprint: string;\n    metrics: Record<string, number>;\n    exitCode?: number | undefined;\n    message: string;\n    snapshotPath: string;\n    collected: boolean;\n    startedAt?: string | undefined;\n    finishedAt?: string | undefined;\n    observeFailures?: number | undefined;\n    nextObserveAt?: number | undefined;\n    progress?: RunProgress | undefined;\n}',
   },
   {
     name: 'ExperimentSpec',
@@ -5397,7 +5478,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
   },
   {
     name: 'ResearchSnapshot',
@@ -5446,6 +5527,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RunnerFailureRule',
     declaration: 'export interface RunnerFailureRule {\n    allowedExitCodes?: readonly number[];\n    fatalSignatures: readonly string[];\n    informationalLines?: readonly string[];\n}',
+  },
+  {
+    name: 'RunProgress',
+    declaration: 'export interface RunProgress {\n    values: Record<string, number>;\n    fraction?: number | undefined;\n    note?: string | undefined;\n    at: string;\n}',
   },
   {
     name: 'RunStatus',

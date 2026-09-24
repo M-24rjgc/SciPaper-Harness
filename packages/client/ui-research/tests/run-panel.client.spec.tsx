@@ -85,9 +85,10 @@ function addRun(project: ResearchProject, name: string, reported: Partial<Experi
 function mount(
   project: ResearchProject | null,
   respond: (command: ResearchCommand) => Promise<ResearchResponse> = () => Promise.resolve({ message: '' }),
-): { panel: ReturnType<typeof render>; commands: ResearchCommand[]; drafts: string[] } {
+): { panel: ReturnType<typeof render>; commands: ResearchCommand[]; drafts: string[]; expanded: string[] } {
   const commands: ResearchCommand[] = []
   const drafts: string[] = []
+  const expanded: string[] = []
   if (project) project.sessionId = SESSION
   const view = {
     snapshot: project === null ? null : { projects: [project], preferences: {}, components: [], modes: [] },
@@ -105,14 +106,14 @@ function mount(
     useFocus: () => ({ claimId: null }),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
     focusClaim: () => {},
-    expand: () => {},
+    expand: (projectId: string, panel: string) => { expanded.push(`${projectId}:${panel}`) },
     install: () => Promise.resolve(),
     configure: () => Promise.resolve(),
     refresh: () => Promise.resolve(),
     create: () => Promise.resolve(),
     openConversation: () => Promise.resolve(),
   } as unknown as WorkbenchProps & RunPanelOwnerProps & SessionSeatProps
-  return { panel: render(<ResearchRuns {...props} />), commands, drafts }
+  return { panel: render(<ResearchRuns {...props} />), commands, drafts, expanded }
 }
 
 /** The session every project in this spec is dispatched into. */
@@ -146,6 +147,30 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     // then finds the run by the id the panel put in it.
     expect(commandSchema.parse(commands[0])).toEqual(commands[0])
     expect(project.experiments.findIndex(item => item.id === run.id)).toBe(0)
+  })
+
+  it('follows a run by its own progress line, shows its latest numbers, and opens the board', async () => {
+    const project = await submittedProject()
+    addRun(project, 'block-sparse-8k', {
+      status: 'running', startedAt: new Date(Date.now() - 65_000).toISOString(),
+      progress: { values: { epoch: 3, val_acc: 0.81 }, fraction: 0.25, note: 'fold 1/4', at: new Date().toISOString() },
+    })
+    addRun(project, 'block-sparse-16k', {
+      status: 'running', startedAt: new Date().toISOString(), progress: { values: {}, fraction: 0.5, at: new Date().toISOString() },
+    })
+    // A run that reports a fraction before its supervisor stamped a start has no time yet.
+    addRun(project, 'block-sparse-32k', { progress: { values: {}, fraction: 0.75, at: new Date().toISOString() } })
+    const { panel, expanded } = mount(project)
+    expect(panel.getByText('25% · fold 1/4')).toBeTruthy()
+    expect(panel.getByText('50%')).toBeTruthy()
+    expect(panel.getAllByText(new RegExp(`^${zh.runElapsed} `))).toHaveLength(3)
+    expect(panel.getByText('75%')).toBeTruthy()
+    expect(panel.getByText('val_acc')).toBeTruthy()
+    expect(panel.getByText('0.81')).toBeTruthy()
+    const widths = [...panel.container.querySelectorAll<HTMLElement>('[style]')].map(bar => bar.style.width)
+    expect(widths).toEqual(expect.arrayContaining(['25%', '50%']))
+    fireEvent.click(panel.getAllByRole('button', { name: zh.boardOpen })[0]!)
+    expect(expanded).toEqual([`${project.id}:experiments`])
   })
 
   it('shows a queued run as open with nothing elapsed yet', async () => {

@@ -192,7 +192,7 @@ describe('the research service records; it never drives the agent', () => {
     root = await mkdtemp(join(tmpdir(), 'research-loader-'))
     const pool = new MemoryMediaPool(), first = await boot(pool)
     expect([...first.registry.keys()].sort()).toEqual([
-      'research_artifact', 'research_check', 'research_environment', 'research_evidence', 'research_experiment', 'research_knowledge', 'research_media',
+      'research_artifact', 'research_board', 'research_check', 'research_environment', 'research_evidence', 'research_experiment', 'research_knowledge', 'research_media',
       'research_project', 'research_task',
     ])
     const announced: unknown[] = []
@@ -993,5 +993,49 @@ describe('the research service records; it never drives the agent', () => {
     expect((await run({ action: 'experiment-cancel', runId: '55555555-5555-4555-8555-555555555555' })).message).toBe('cancelled')
     await run({ action: 'environment', environment: { name: 'spare', kind: 'existing', target: 'local', python: 'C:/py/python.exe', requirements: [], isDefault: false } })
     expect(service.getProject(p.id).environments.map(e => e.isDefault)).toEqual([true, false])
+  })
+})
+
+describe('the experiment board is laid out by the agent and read by scripts', () => {
+  it('stores the layout, reports what waits for runs, and reads machines in the background', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-board-'))
+    const { service } = await boot(new MemoryMediaPool())
+    const p = await service.create({ title: 'Board', root: join(root, 'p'), brief: '' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    expect(await run({ action: 'board-get' })).toEqual({ message: 'Board: 0 section(s), 0 collector(s)', content: '{"sections":[],"collectors":[]}' })
+    // Nothing to probe and nothing to collect reads cleanly.
+    expect((await run({ action: 'board-refresh' })).message).toBe('Board read')
+    const plain = await run({ action: 'board-update', board: { title: 'Plain', sections: [{ id: 'note', title: 'Note', blocks: [{ type: 'text', text: 'Why' }] }] } })
+    expect(plain.message).toBe('Board saved: 1 section(s), 0 collector(s). Its numbers refresh by themselves; board-refresh runs the collectors now.')
+    const saved = await run({
+      action: 'board-update',
+      board: {
+        sections: [{ id: 'main', title: 'Main', blocks: [{ type: 'table', columns: [{ key: 'a', label: 'A' }], rows: [{ cells: { a: { run: 'main/cifar', metric: 'acc' } } }] }] }],
+        collectors: [{ id: 'queue', script: 'board/queue.py' }],
+      },
+    })
+    expect(saved.message).toMatch(/^Board saved: 2 section\(s\), 1 collector\(s\); /)
+    expect(saved.message).toMatch(/; collector script\(s\) not written yet: board\/queue\.py; /)
+    expect(saved.message).toMatch(/; waiting for runs not submitted yet: main\/cifar\. /)
+    await expect(run({ action: 'board-update', board: { sections: [{ id: 'x', title: 'X', blocks: [{ type: 'pie' }] }] } })).rejects.toThrow()
+    await run({ action: 'environment', environment: { name: 'here', kind: 'existing', target: 'local', python: 'C:/py/python.exe', requirements: [], isDefault: true } })
+    // The probe answers nothing a probe would; the machine reports that, and so does the missing collector script.
+    const refreshed = await run({ action: 'board-refresh' })
+    expect(refreshed.message).toBe('Board read with 2 problem(s); see each collector\'s and machine\'s error')
+    expect(JSON.parse(refreshed.content ?? '{}')).toMatchObject({ machines: [{ key: 'local', gpus: 0 }], collectors: [{ id: 'queue', ok: false }] })
+    const view = await run({ action: 'board-view', refresh: true, runs: ['none'] })
+    expect(view.board).toMatchObject({ spec: { title: 'Plain' }, refreshing: false, machines: [{ key: 'local' }] })
+    expect(view.project).toBeUndefined()
+    // A read the board starts itself runs in the background; one that cannot save its result is logged, not thrown.
+    const q = await service.create({ title: 'Background', root: join(root, 'q'), brief: '' })
+    await write(join(q.root, 'board/q.py'), 'print(1)')
+    await write(join(q.root, '.research/board/snapshot.json/blocked'), 'x')
+    await service.execute({ projectId: q.id, action: 'board-update', board: { collectors: [{ id: 'q', script: 'board/q.py' }] } }, signal, 'agent')
+    expect((await service.execute({ projectId: q.id, action: 'board-view', refresh: true }, signal, 'user')).board?.refreshing).toBe(true)
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (!(await service.execute({ projectId: q.id, action: 'board-view' }, signal, 'user')).board?.refreshing) break
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    expect((await service.execute({ projectId: q.id, action: 'board-view' }, signal, 'user')).board?.collected.q).toBeDefined()
   })
 })

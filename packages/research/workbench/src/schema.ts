@@ -101,6 +101,9 @@ const experimentSchema = z.object({
   exitCode: z.number().int().optional(), message: z.string(), snapshotPath: z.string(), collected: z.boolean(),
   startedAt: id.optional(), finishedAt: id.optional(),
   observeFailures: integer.optional(), nextObserveAt: z.number().optional(),
+  progress: z.object({
+    values: z.record(z.string(), z.number()), fraction: z.number().min(0).max(1).optional(), note: z.string().optional(), at: id,
+  }).optional(),
 })
 const compilationSchema = z.object({
   artifactId: id, artifactRevision: integer, inputDigest: id,
@@ -232,6 +235,99 @@ export const researchDomain = defineDomain({
   },
 })
 
+// The experiment board. Layout limits keep one board small enough to send on
+// every refresh; everything else about what a section shows is the agent's call.
+const label = z.string().max(200)
+const note = z.string().max(4000)
+/** A section, collector or column id: letters, digits, `_` and `-`. */
+export const BOARD_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+const boardId = z.string().regex(BOARD_ID, 'letters, digits, _ and -, at most 64')
+const tone = z.enum(['good', 'warning', 'bad', 'muted'])
+const fraction = z.number().min(0).max(1)
+const follows = { run: z.string().min(1).max(200).optional(), seed: integer.optional() }
+const boardValue = z.object({
+  value: z.union([z.string().max(400), z.number()]).optional(),
+  ...follows,
+  metric: z.string().min(1).max(120).optional(),
+  scale: z.number().optional(), digits: z.number().int().min(0).max(8).optional(), unit: z.string().max(20).optional(),
+  target: z.number().optional(), better: z.enum(['higher', 'lower']).optional(),
+  sub: z.string().max(200).optional(), tone: tone.optional(),
+})
+/** One board number with its label and an optional bar. */
+export const boardStatSchema = boardValue.extend({ label, progress: fraction.optional() })
+const blockBase = { title: label.optional(), note: note.optional() }
+/** The eight kinds of block a board section is built from. */
+export const boardBlockSchema = z.discriminatedUnion('type', [
+  z.object({ ...blockBase, type: z.literal('stats'), items: z.array(boardStatSchema).min(1).max(12) }),
+  z.object({
+    ...blockBase, type: z.literal('table'),
+    columns: z.array(z.object({ key: boardId, label, align: z.enum(['left', 'center', 'right']).optional() })).min(1).max(16),
+    rows: z.array(z.object({
+      cells: z.record(z.string(), z.union([z.string().max(400), z.number(), z.null(), boardValue])),
+      tone: tone.optional(),
+    })).max(300),
+  }),
+  z.object({
+    ...blockBase, type: z.literal('chart'),
+    x: z.string().max(120).optional(), xLabel: label.optional(), yLabel: label.optional(),
+    min: z.number().optional(), max: z.number().optional(),
+    series: z.array(z.object({
+      label: label.optional(), ...follows, key: z.string().min(1).max(120).optional(),
+      points: z.array(z.tuple([z.number(), z.number()])).max(2000).optional(),
+    }).refine(series => series.points !== undefined || (series.run !== undefined && series.key !== undefined), 'a series needs points, or a run and a key')).min(1).max(6),
+  }),
+  z.object({
+    ...blockBase, type: z.literal('list'),
+    items: z.array(z.object({
+      title: label, status: z.string().max(40).optional(), progress: fraction.optional(), detail: note.optional(),
+      ...follows, tone: tone.optional(),
+    })).min(1).max(200),
+  }),
+  z.object({
+    ...blockBase, type: z.literal('runs'), match: z.string().min(1).max(200),
+    metrics: z.array(z.string().min(1).max(120)).max(8).optional(),
+    scale: z.number().optional(), digits: z.number().int().min(0).max(8).optional(),
+  }),
+  z.object({ ...blockBase, type: z.literal('text'), text: z.string().min(1).max(8000), tone: tone.optional() }),
+  z.object({ ...blockBase, type: z.literal('kv'), items: z.array(z.object({ label, value: z.union([z.string().max(400), z.number()]), tone: tone.optional() })).min(1).max(40) }),
+  z.object({ ...blockBase, type: z.literal('log'), text: z.string().min(1).max(20000) }),
+])
+/** A board section: its id, title, note and blocks. */
+export const boardSectionSchema = z.object({
+  id: boardId, title: label.min(1), note: note.optional(), collapsed: z.boolean().optional(), blocks: z.array(boardBlockSchema).max(20),
+})
+/** A collector script the board runs, and how often. */
+export const boardCollectorSchema = z.object({
+  id: boardId, script: z.string().min(1).max(400), environmentId: id.optional(),
+  every: z.number().int().min(10).max(3600).optional(), args: z.array(z.string().max(400)).max(20).optional(),
+})
+/** An alert a collector raises; a warning unless it says otherwise. */
+export const boardAlertSchema = z.object({ level: z.enum(['info', 'warning', 'error']).default('warning'), text: z.string().min(1).max(1000) })
+/** The whole stored layout, with its limits. */
+export const boardSpecSchema = z.object({
+  title: label.optional(), summary: note.optional(), tags: z.array(z.string().max(80)).max(12).optional(),
+  sections: z.array(boardSectionSchema).max(40), collectors: z.array(boardCollectorSchema).max(8), updatedAt: z.string().optional(),
+})
+/**
+ * A value with every null-valued object field removed: a script's `None`, or
+ * a model's `null`, means the field is absent. An empty table cell reads the
+ * same either way.
+ * @param value - any JSON value.
+ * @returns the value without null fields, arrays and objects copied.
+ */
+export function withoutNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutNulls)
+  if (value === null || typeof value !== 'object') return value
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null).map(([key, item]) => [key, withoutNulls(item)]))
+}
+const removal = z.object({ id: boardId, remove: z.literal(true) })
+/** A change to the layout, as board-update takes it; a null field reads as absent. */
+export const boardPatchSchema = z.preprocess(withoutNulls, z.object({
+  title: label.optional(), summary: note.optional(), tags: z.array(z.string().max(80)).max(12).optional(),
+  sections: z.array(z.union([removal, boardSectionSchema])).max(40).optional(),
+  collectors: z.array(z.union([removal, boardCollectorSchema])).max(8).optional(),
+}))
+
 const base = { projectId: id }
 const artifact = {
   path: id, kind: z.enum(artifactKinds),
@@ -266,6 +362,10 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ ...runRef, action: z.literal('experiment-dismiss') }),
   z.object({ ...runRef, action: z.literal('experiment-logs') }),
   z.object({ ...base, action: z.literal('experiment-wait'), runIds: z.array(id).min(1).max(20), timeoutSeconds: z.number().int().min(1).max(1800) }),
+  z.object({ ...base, action: z.literal('board-get') }),
+  z.object({ ...base, action: z.literal('board-update'), board: boardPatchSchema, replace: z.boolean().optional() }),
+  z.object({ ...base, action: z.literal('board-refresh') }),
+  z.object({ ...base, action: z.literal('board-view'), refresh: z.boolean().optional(), runs: z.array(id).max(20).optional() }),
   z.object({ ...base, action: z.literal('compile'), artifactId: id.optional(), path: id.optional(), engine: z.enum(['pdflatex', 'xelatex', 'lualatex']) }),
   z.object({ ...base, action: z.literal('render-pages'), artifactId: id.optional(), maxPages: z.number().int().min(1).max(60).optional() }),  z.object({ ...base, action: z.literal('visual-review'), artifactId: id }),
   z.object({ ...base, action: z.literal('complete-visual-review'), artifactId: id, artifactRevision: integer, sessionId: id, findings: id }),

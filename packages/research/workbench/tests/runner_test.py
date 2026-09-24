@@ -78,6 +78,22 @@ class RunnerTests(unittest.TestCase):
         (self.root / 'state.json').write_text(json.dumps(dict(status='queued', updatedAt=time.time()-60)))
         self.assertEqual(self.call('status')['status'], 'interrupted')
 
+    def test_status_reports_the_last_complete_progress_line(self):
+        self.setup_script("import json,os,pathlib\n"
+                          "p=pathlib.Path(os.environ['RESEARCH_PROGRESS_PATH'])\n"
+                          "p.write_text(json.dumps({'epoch':1,'acc':.5,'progress':.5})+'\\n'+json.dumps({'epoch':2,'acc':.7,'ok':True,'progress':1,'note':'fold 2/2'})+'\\n{\"epoch\": 3')\n")
+        self.call('launch')
+        state = self.wait()
+        self.assertEqual(state['status'], 'completed')
+        self.assertEqual(state['progress']['values'], {'epoch': 2, 'acc': .7})
+        self.assertEqual((state['progress']['fraction'], state['progress']['note']), (1, 'fold 2/2'))
+        self.assertIsInstance(state['progress']['at'], float)
+        # A fraction outside 0..1 is not a fraction, a numeric note is just a number, and lines that are not objects are passed over.
+        (self.root / 'progress.jsonl').write_text('{"epoch": 4, "progress": 7, "note": 3}\n[1, 2]\n')
+        self.assertEqual(self.call('status')['progress'], {'values': {'epoch': 4, 'note': 3}, 'at': (self.root / 'progress.jsonl').stat().st_mtime})
+        (self.root / 'progress.jsonl').write_text('not json\n')
+        self.assertNotIn('progress', self.call('status'))
+
     def test_non_finite_metrics_cannot_become_successful_evidence(self):
         self.setup_script("import pathlib,os\npathlib.Path(os.environ['RESEARCH_METRICS_PATH']).write_text('{\"loss\": NaN}')")
         self.call('launch')

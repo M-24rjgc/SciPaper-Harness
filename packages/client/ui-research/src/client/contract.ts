@@ -2,12 +2,14 @@
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {
-  CreateProjectRequest, GalleryPage, ModeSummary, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
-  ResearchTask,
+  BoardSnapshot, CreateProjectRequest, GalleryPage, ModeSummary, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse,
+  ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 
 /** A figure gallery search, as the panel sends it. */
 export type GallerySearchRequest = Extract<ResearchCommand, { action: 'find-reference-figures' }>
+/** A read of the experiment board, as the board page sends it. */
+export type BoardViewRequest = Extract<ResearchCommand, { action: 'board-view' }>
 
 /** Everything the research surfaces read: the record, in-flight work, and the last outcome. */
 export interface ResearchView {
@@ -46,6 +48,8 @@ export interface ResearchInjected {
   run(request: ResearchCommand): Promise<ResearchResponse>
   /** One page of the figure gallery; unlike `run`, it neither marks the workbench busy nor refreshes the record. */
   searchFigures(request: GallerySearchRequest): Promise<GalleryPage>
+  /** The experiment board as last read, starting a new read when it asks; like searchFigures, it leaves the workbench alone. */
+  board(request: BoardViewRequest): Promise<BoardSnapshot>
   refresh(): Promise<void>
   /** Save the preferences, then store each provider key that was typed; an empty key leaves the stored one alone. */
   configure(preferences: ResearchPreferences, keys: { image: string; embedding: string }): Promise<void>

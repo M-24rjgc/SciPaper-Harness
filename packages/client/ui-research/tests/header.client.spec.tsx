@@ -104,5 +104,8 @@ describe('the header names where this session\'s project stands', () => {
     // The figure gallery opens from the same place.
     fireEvent.click(actions.getByRole('button', { name: zh.gallery }))
     expect(records.expanded).toEqual([mine.id, `${mine.id}:gallery`])
+    // So does the experiment board.
+    fireEvent.click(actions.getByRole('button', { name: zh.boardTitle }))
+    expect(records.expanded.at(-1)).toBe(`${mine.id}:experiments`)
   })
 })

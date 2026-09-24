@@ -19,6 +19,12 @@ const stateSchema = z.object({
   exitCode: z.number().int().optional(),
   startedAt: z.number().optional(),
   finishedAt: z.number().optional(),
+  progress: z.object({
+    values: z.record(z.string(), z.number()),
+    fraction: z.number().min(0).max(1).optional(),
+    note: z.string().optional(),
+    at: z.number(),
+  }).optional(),
 })
 const MS_PER_SECOND = 1000
 const MINUTES_PER_HOUR = 60
@@ -30,8 +36,10 @@ const MAX_OBSERVE_BACKOFF_MINUTES = 30
  * converted here rather than spread across the caller.
  */
 function applyState(run: ExperimentRecord, state: z.infer<typeof stateSchema>, metrics: Record<string, number>): ExperimentRecord {
+  const { progress } = state
   return {
     ...run,
+    ...(progress === undefined ? {} : { progress: { ...progress, at: new Date(progress.at * MS_PER_SECOND).toISOString() } }),
     status: state.status,
     ...(state.exitCode === undefined ? {} : { exitCode: state.exitCode }),
     ...(state.startedAt === undefined ? {} : { startedAt: new Date(state.startedAt * MS_PER_SECOND).toISOString() }),
@@ -257,8 +265,10 @@ export async function observeExperiment(
     const updated = applyState(run, state, state.metrics ?? run.metrics)
     if (environment.target === 'ssh' && ['completed', 'failed', 'cancelled', 'interrupted'].includes(updated.status)) {
       const local = await projectPath(project.root, `.research/runs/${run.id}`)
-      for (const name of ['metrics.json', 'stdout.log', 'stderr.log', 'state.json']) {
-        const code = 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); sys.stdout.buffer.write(p.read_bytes()[-8388608:] if p.exists() else b"{}")'
+      // The progress lines come along too, so the board draws a finished remote run's curves without the host.
+      for (const name of ['metrics.json', 'stdout.log', 'stderr.log', 'state.json', 'progress.jsonl']) {
+        const empty = name.endsWith('.jsonl') ? 'b""' : 'b"{}"'
+        const code = `import pathlib,sys; p=pathlib.Path(sys.argv[1]); sys.stdout.buffer.write(p.read_bytes()[-8388608:] if p.exists() else ${empty})`
         const content = checked(
           await ssh(sshHostOf(environment), [environment.python, '-c', code, `${run.directory}/${name}`], { signal, maxBytes: 9 * 1024 * 1024 }),
           'Remote result collection',

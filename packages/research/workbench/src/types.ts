@@ -153,6 +153,19 @@ export interface ExperimentRecord {
   observeFailures?: number | undefined
   /** Epoch milliseconds before which an 'unknown' run is not re-observed; absent without a pending backoff. */
   nextObserveAt?: number | undefined
+  /** The last line the run appended to its progress file, as the supervisor last read it; absent until it writes one. */
+  progress?: RunProgress | undefined
+}
+/** One progress line of a run: `$RESEARCH_PROGRESS_PATH` takes one JSON object per line. */
+export interface RunProgress {
+  /** The line's numeric fields, except `progress`. */
+  values: Record<string, number>
+  /** The line's `progress` field: the fraction of the run done, from 0 to 1. */
+  fraction?: number | undefined
+  /** The line's `note` field: what the run is doing, in its own words. */
+  note?: string | undefined
+  /** When the progress file last changed. */
+  at: string
 }
 export interface CompileRecord {
   artifactId: ArtifactId
@@ -332,6 +345,185 @@ export interface GalleryPage {
   facets: { venue: Record<string, number>; year: Record<string, number>; pattern: Record<string, number>; tier: Record<string, number> }
   source: GallerySource
 }
+/** How a board value is drawn: good news, something to watch, a failure, or recessive. */
+export type BoardTone = 'good' | 'warning' | 'bad' | 'muted'
+/**
+ * A board value: fixed, or following the final metric of a run. `run` names a
+ * run id, or a run name that covers every seed of that name unless `seed` picks one.
+ */
+export interface BoardValue {
+  value?: string | number | undefined
+  run?: string | undefined
+  seed?: number | undefined
+  /** The metric of the followed runs; their mean, with the spread over seeds, once more than one finished. */
+  metric?: string | undefined
+  /** Multiplies a number before it is shown, e.g. 100 for a percentage. */
+  scale?: number | undefined
+  digits?: number | undefined
+  unit?: string | undefined
+  /** A shown value at or past it is good, one short of it a warning. */
+  target?: number | undefined
+  better?: 'higher' | 'lower' | undefined
+  sub?: string | undefined
+  tone?: BoardTone | undefined
+}
+/** A table cell: text, a number, empty, or a value that may follow runs. */
+export type BoardCell = string | number | null | BoardValue
+/** One number in a stats block or the overview row. */
+export interface BoardStat extends BoardValue {
+  label: string
+  /** Draws a bar under the value: the fraction done, from 0 to 1. */
+  progress?: number | undefined
+}
+/** One line of a chart: a run's progress field over its progress lines, or points a collector computed. */
+export interface BoardSeries {
+  label?: string | undefined
+  /** A run id, or the latest run of that name (and seed). */
+  run?: string | undefined
+  seed?: number | undefined
+  /** The progress field plotted. */
+  key?: string | undefined
+  points?: [number, number][] | undefined
+}
+/** One line of a list block: a step, a job or a run. */
+export interface BoardListItem {
+  title: string
+  /** Free text; `pending`, `running`, `done`, `failed` and `blocked` get their own mark. A followed run supplies its own. */
+  status?: string | undefined
+  progress?: number | undefined
+  detail?: string | undefined
+  run?: string | undefined
+  seed?: number | undefined
+  tone?: BoardTone | undefined
+}
+interface BoardBlockBase { title?: string | undefined; note?: string | undefined }
+/** The building blocks a board section is made of. */
+export type BoardBlock =
+  | BoardBlockBase & { type: 'stats'; items: BoardStat[] }
+  | BoardBlockBase & {
+    type: 'table'
+    columns: { key: string; label: string; align?: 'left' | 'center' | 'right' | undefined }[]
+    rows: { cells: Record<string, BoardCell>; tone?: BoardTone | undefined }[]
+  }
+  | BoardBlockBase & {
+    type: 'chart'
+    /** The progress field on the horizontal axis; the first of epoch, step and iteration a line has, else the line number. */
+    x?: string | undefined
+    xLabel?: string | undefined
+    yLabel?: string | undefined
+    min?: number | undefined
+    max?: number | undefined
+    series: BoardSeries[]
+  }
+  | BoardBlockBase & { type: 'list'; items: BoardListItem[] }
+  /** The runs whose names match `match` (`*` matches anything), with the named metrics. */
+  | BoardBlockBase & { type: 'runs'; match: string; metrics?: string[] | undefined; scale?: number | undefined; digits?: number | undefined }
+  | BoardBlockBase & { type: 'text'; text: string; tone?: BoardTone | undefined }
+  | BoardBlockBase & { type: 'kv'; items: { label: string; value: string | number; tone?: BoardTone | undefined }[] }
+  | BoardBlockBase & { type: 'log'; text: string }
+/** One section of the board, built from blocks. */
+export interface BoardSection {
+  id: string
+  title: string
+  note?: string | undefined
+  /** Shown folded, as for a superseded batch. */
+  collapsed?: boolean | undefined
+  blocks: BoardBlock[]
+}
+/**
+ * A project script the board runs, read-only, to report what the platform
+ * cannot see itself (a queue the user runs, a results folder on a server).
+ * It prints one JSON object: `{stats?, sections?, alerts?}`.
+ */
+export interface BoardCollector {
+  id: string
+  /** Project-relative path of the Python script. */
+  script: string
+  /** The environment whose interpreter runs it, locally or over SSH; the project's default environment when absent. */
+  environmentId?: string | undefined
+  /** Seconds between runs while the board is open. */
+  every?: number | undefined
+  args?: string[] | undefined
+}
+/** The board layout the agent keeps: what to show and where each number comes from, never the numbers themselves. */
+export interface BoardSpec {
+  title?: string | undefined
+  summary?: string | undefined
+  tags?: string[] | undefined
+  sections: BoardSection[]
+  collectors: BoardCollector[]
+  updatedAt?: string | undefined
+}
+/** Something on the board a person should see. */
+export interface BoardAlert {
+  level: 'info' | 'warning' | 'error'
+  text: string
+}
+/** What one collector printed last, and when. */
+export interface BoardCollected {
+  at: string
+  ms: number
+  stats: BoardStat[]
+  sections: BoardSection[]
+  alerts: BoardAlert[]
+  /** Why the last run produced nothing; the previous output is kept. */
+  error?: string | undefined
+}
+/** One resource sample of a machine: utilisations and memory shares from 0 to 1. */
+export interface BoardSample {
+  t: number
+  gpu?: number | undefined
+  gpuMemory?: number | undefined
+  cpu?: number | undefined
+  memory?: number | undefined
+}
+/** A machine that runs the project's experiments, as its probe last saw it. */
+export interface BoardMachine {
+  /** `local`, or the SSH host alias. */
+  key: string
+  /** The environments that run on it. */
+  environments: string[]
+  at: string
+  error?: string | undefined
+  host?: string | undefined
+  os?: string | undefined
+  gpus: {
+    name: string
+    util?: number | undefined
+    memoryUsed?: number | undefined
+    memoryTotal?: number | undefined
+    temperature?: number | undefined
+    power?: number | undefined
+    powerLimit?: number | undefined
+  }[]
+  /** Busy share of the processors from 0 to 1, and the processors visible. */
+  cpu?: { util?: number | undefined; cores?: number | undefined } | undefined
+  /** Bytes. */
+  memory?: { used: number; total: number } | undefined
+  /** The experiment directory's file system, in bytes. */
+  disk?: { path: string; used: number; total: number; free: number } | undefined
+  history: BoardSample[]
+}
+/** The experiment board as the desktop draws it: the agent's layout and what the scripts last read. */
+export interface BoardSnapshot {
+  spec: BoardSpec
+  capturedAt?: string | undefined
+  /** A read is under way; ask again shortly for its result. */
+  refreshing: boolean
+  machines: BoardMachine[]
+  /** Progress lines (numeric fields) of running runs and of runs a chart follows, thinned to a few hundred. */
+  series: Record<string, Record<string, number>[]>
+  collected: Record<string, BoardCollected>
+  alerts: BoardAlert[]
+}
+/** A change to the board layout. */
+export interface BoardPatch {
+  title?: string | undefined
+  summary?: string | undefined
+  tags?: string[] | undefined
+  sections?: (BoardSection | { id: string; remove: true })[] | undefined
+  collectors?: (BoardCollector | { id: string; remove: true })[] | undefined
+}
 export interface ResearchResponse {
   project?: ResearchProject | undefined
   jobId?: string | undefined
@@ -341,6 +533,7 @@ export interface ResearchResponse {
   paths?: string[] | undefined
   literature?: LiteratureItem[] | undefined
   gallery?: GalleryPage | undefined
+  board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
 }
@@ -390,6 +583,20 @@ export type ResearchCommand =
   | { action: 'experiment-dismiss'; projectId: ProjectId; runId: ExperimentId }
   | { action: 'experiment-logs'; projectId: ProjectId; runId: ExperimentId }
   | { action: 'experiment-wait'; projectId: ProjectId; runIds: ExperimentId[]; timeoutSeconds: number }
+  /** The board layout as stored. */
+  | { action: 'board-get'; projectId: ProjectId }
+  /**
+   * Change the board layout: sections and collectors are replaced by id,
+   * `{id, remove: true}` drops one; `replace` starts from an empty board.
+   */
+  | { action: 'board-update'; projectId: ProjectId; board: BoardPatch; replace?: boolean | undefined }
+  /** Read machines, progress and collectors now, and report what each produced. */
+  | { action: 'board-refresh'; projectId: ProjectId }
+  /**
+   * The board as last read, starting a new read in the background when
+   * `refresh` asks and the last one is old; `runs` adds those runs' progress lines.
+   */
+  | { action: 'board-view'; projectId: ProjectId; refresh?: boolean | undefined; runs?: ExperimentId[] | undefined }
   | { action: 'compile'; projectId: ProjectId; artifactId?: ArtifactId | undefined; path?: string | undefined; engine: CompileRecord['engine'] }
   | { action: 'render-pages'; projectId: ProjectId; artifactId?: ArtifactId | undefined; maxPages?: number | undefined }  | { action: 'visual-review'; projectId: ProjectId; artifactId: ArtifactId }
   | { action: 'complete-visual-review'; projectId: ProjectId; artifactId: ArtifactId; artifactRevision: number; sessionId: string; findings: string }

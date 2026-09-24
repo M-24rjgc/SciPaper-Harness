@@ -23,6 +23,7 @@ import { createGateRunner, runPackScript } from './gates.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
 import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
+import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
 import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
 import { FigureGallery } from './gallery.ts'
@@ -64,6 +65,7 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
 ])
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
+  | 'board-get' | 'board-update' | 'board-refresh' | 'board-view'
 /** Commands that record something in the project. */
 type RecordingCommand = Exclude<ResearchCommand, { action: ReadOnlyAction }>
 /** Commands whose whole effect is a record change. */
@@ -138,6 +140,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset('kg/ai-kg.json.gz'))
   /** Published papers' Figure 1s to study before drawing, fetched on demand into the product home's cache. */
   readonly gallery: FigureGallery
+  /** Each project's experiment board: the agent's layout, filled by scripts on a timer. */
+  readonly boards: ExperimentBoards
   /** The installed mode packs, loaded once at start. */
   modes!: ModeRegistry
   private venueLibrary: Promise<VenueLibrary> | undefined
@@ -149,6 +153,12 @@ export class ResearchWorkbench extends TypertRemoteService {
     const root = config.componentRoot ?? join(resolveDshHome(), 'research', 'components')
     this.components = new ComponentManager(root, () => this.domain.global.get())
     this.gallery = new FigureGallery(runtimeAsset('figure-gallery/index.json.gz'), join(dirname(root), 'cache', 'figure-gallery'))
+    this.boards = new ExperimentBoards({
+      localPython: () => this.components.installedPython(),
+      signal: this.lifetime.signal,
+      track: (operation) => { this.track(operation) },
+      warn: (message) => { this.ctx.logger.warn(message) },
+    })
   }
 
   /**
@@ -495,6 +505,30 @@ export class ResearchWorkbench extends TypertRemoteService {
           gallery: page,
         }
       }
+      // The board lives in its own files, never in the project record, so none of these changes the record.
+      case 'board-get': {
+        const { spec, problem } = await this.boards.layout(project.root)
+        return { message: problem ?? `Board: ${spec.sections.length} section(s), ${spec.collectors.length} collector(s)`, content: JSON.stringify(spec) }
+      }
+      case 'board-update': {
+        const spec = await this.boards.update(project.root, request.board, request.replace ?? false)
+        const missing = await missingScripts(project.root, spec)
+        const waiting = unmatched(project, spec)
+        const notes = [
+          ...missing.length ? [`collector script(s) not written yet: ${missing.join(', ')}`] : [],
+          ...waiting.length ? [`waiting for runs not submitted yet: ${waiting.slice(0, 10).join(', ')}`] : [],
+        ]
+        return {
+          message: `Board saved: ${spec.sections.length} section(s), ${spec.collectors.length} collector(s)${notes.map(note => `; ${note}`).join('')}. `
+            + 'Its numbers refresh by themselves; board-refresh runs the collectors now.',
+        }
+      }
+      case 'board-refresh': {
+        const report = await this.boards.refresh(project, signal)
+        const failed = report.collectors.filter(collector => !collector.ok).length + report.machines.filter(machine => machine.error).length
+        return { message: failed ? `Board read with ${failed} problem(s); see each collector's and machine's error` : 'Board read', content: JSON.stringify(report) }
+      }
+      case 'board-view': return { message: 'Experiment board', board: await this.boards.view(project, request.refresh ?? false, request.runs ?? []) }
       default: {
         const work = async (workSignal: AbortSignal): Promise<ResearchResponse> => {
           const prepared = await this.prepare(project.id, request, workSignal, actor)

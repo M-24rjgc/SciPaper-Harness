@@ -237,11 +237,15 @@ describe('experiment runs are described precisely and never guessed', () => {
     const done = await observeExperiment(p, run, 'status', signal)
     expect(done).toMatchObject({ status: 'completed', metrics: { acc: 0.9 }, finishedAt: new Date(1700000100 * 1000).toISOString() })
     expect(await readFile(join(p.root, '.research/runs/observe-1/metrics.json'), 'utf8')).toBe('{"acc":0.9}')
+    // The progress lines come home too; a run that wrote none leaves an empty file, not an empty object.
+    expect(scripted.remote.find(call => call.args.at(-1)?.endsWith('progress.jsonl'))?.args.join(' ')).toMatch(/else b""\)/)
     scripted.answer = runner({ cancel: '{"status":"cancelled"}' })
     expect((await observeExperiment(p, run, 'cancel', signal)).status).toBe('cancelled')
     const local = newExperiment(p, spec('env-local' as EnvironmentId), 'observe-local')
     scripted.answer = runner({ status: '{"status":"running"}' })
     expect((await observeExperiment(p, local, 'status', signal)).metrics).toEqual({})
+    scripted.answer = runner({ status: '{"status":"running","progress":{"values":{"epoch":3},"fraction":0.5,"note":"fold 1","at":1700000000}}' })
+    expect((await observeExperiment(p, local, 'status', signal)).progress).toEqual({ values: { epoch: 3 }, fraction: 0.5, note: 'fold 1', at: new Date(1700000000 * 1000).toISOString() })
 
     scripted.answer = () => ({ code: 255, stdout: '', stderr: 'Connection refused' })
     const lost = await observeExperiment(p, run, 'status', signal)

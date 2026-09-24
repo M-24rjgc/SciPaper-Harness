@@ -40,6 +40,7 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
   const open = OPEN_RUN_STATUS.includes(record.status)
   const unknown = record.status === 'unknown'
   const environment = project.environments.find(item => item.id === record.spec.environmentId)
+  const fraction = record.progress?.fraction
   const runId = record.id
   const showLogs = (): void => {
     void props.run({ action: 'experiment-logs', projectId: project.id, runId })
@@ -61,19 +62,23 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
 
     {open && !unknown && <>
       <div className={styles.bar}>
-        <span className={styles.barFill} style={{ width: `${Math.min(PERCENT, (elapsed ?? 0) / limit * PERCENT)}%` }}></span>
+        <span className={styles.barFill} style={{ width: `${Math.min(PERCENT, (fraction ?? (elapsed ?? 0) / limit) * PERCENT)}%` }}></span>
       </div>
       <div className={styles.runRow}>
-        <span className={styles.runMeta}>{t('runElapsed')} {durationText(elapsed ?? 0, t)}</span>
-        <span className={styles.runMeta}>{t('runLimit')} {durationText(limit, t)}</span>
+        <span className={styles.runMeta}>
+          {fraction === undefined ? `${t('runElapsed')} ${durationText(elapsed ?? 0, t)}` : t('boardPercent', { n: Math.round(fraction * PERCENT) })}
+          {record.progress?.note !== undefined && ` · ${record.progress.note}`}
+        </span>
+        <span className={styles.runMeta}>{fraction === undefined ? `${t('runLimit')} ${durationText(limit, t)}` : `${t('runElapsed')} ${durationText(elapsed ?? 0, t)}`}</span>
       </div>
     </>}
 
     {unknown && <p className={styles.runNote}>{t('runUnknownNote')}</p>}
-    <MetricsGrid metrics={record.metrics} />
+    <MetricsGrid metrics={Object.keys(record.metrics).length === 0 && open ? record.progress?.values ?? {} : record.metrics} />
 
     <div className={styles.actions}>
       <button type="button" className={styles.action} onClick={showLogs}>{t('logs')}</button>
+      <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'experiments') }}>{t('boardOpen')}</button>
       {unknown && <button
         type="button"
         className={styles.action}
