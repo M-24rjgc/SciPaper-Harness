@@ -1,50 +1,68 @@
+<div align="center">
+
+<img src="apps/desktop/icons/icon.png" width="88" alt="SciPaper Harness">
+
 # SciPaper Harness
 
 English | [中文](README.zh.md)
 
-SciPaper Harness (SPH; its Chinese interface calls it 科研工作台) is a desktop research agent that carries a paper from an idea, or from results you already have, to a submission you can defend. Every quote points back to the page it came from, every number traces to the data or run that produced it, and experiments run on their own, outliving the window.
+**From a spark to a paper that survives review.**
 
-## Preview
+A desktop research agent that reads the literature, runs your experiments and writes the paper, and shows you the evidence behind every claim it makes.
 
-SciPaper Harness is an internal-test preview (the `alpha` channel). **Releases may break compatibility**, and the Windows installer is not code-signed yet. Review the [safety notice](SAFETY.md) before running it.
+<p align="center">
+  <a href="https://github.com/M-24rjgc/SciPaper-Harness/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/M-24rjgc/SciPaper-Harness?include_prereleases&label=release&color=1f6f5c"></a>
+  <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-2f6fb3">
+  <img alt="MIT licence" src="https://img.shields.io/badge/license-MIT-6b7280">
+  <img alt="Alpha preview" src="https://img.shields.io/badge/status-alpha%20preview-e0913b">
+</p>
+
+<p align="center"><a href="https://github.com/M-24rjgc/SciPaper-Harness/releases"><strong>Download for Windows</strong></a></p>
+
+</div>
+
+![SciPaper Harness at work: the agent reports an experiment's results beside the paper's progress](docs/assets/readme/workspace.en.png)
+
+## Why researchers use it
+
+- **Every claim shows its evidence.** Open any conclusion and see the page, the quote or the experiment run behind it. When a source changes, everything built on it is flagged until it is brought up to date.
+- **Numbers come from real runs.** Experiments run in your own Python environments, on this machine or over SSH, keep going after you close the window, and every table cell traces back to the run that produced it.
+- **Start from wherever you are.** A one-line idea, a proposal, or a folder of PDFs, data and logs.
+- **You decide how often it asks.** Stop at the key decisions, or let it carry the paper through on its own.
+
+![A conclusion opened to the two experiment runs that support it](docs/assets/readme/claim.en.png)
+
+## Everything a paper needs, in one place
+
+- **Literature you can cite.** References are verified through Crossref, OpenAlex and arXiv, with the open-access full text beside them.
+- **Your venue's template.** 139 CCF venues with their official style files, compiled and checked page by page.
+- **Figures reviewers remember.** About 3,500 hand-picked Figure 1s from top venues to learn from, image drafts from gpt-image-2, and editable SVG or draw.io figures exported to vector PDF.
+- **Proven methods, built in.** spark-to-paper and CCFA guide a whole paper phase by phase; the general mode gives you every tool with no fixed pipeline.
+- **A map of research ideas.** A knowledge graph of problem-to-solution patterns finds the closest work and tells you how new your idea is.
+
+![The figure gallery: top-venue Figure 1s by type, venue, year and recognition](docs/assets/readme/gallery.en.png)
+
+![Three pages of an example paper, with result figures drawn from its experiment data](docs/assets/readme/paper.png)
 
 <a id="run"></a>
 
-## Install and update
+## Get started
 
-1. Download `scipaper-harness-<version>-win-x64.exe` from the latest release on the [Releases page](https://github.com/M-24rjgc/SciPaper-Harness/releases).
-2. Windows warns about an unknown publisher: choose **More info**, then **Run anyway**.
-3. Add your model provider's key in **Settings → Models**; image generation (gpt-image-2) and embeddings are optional keys under **Settings → Research**.
+1. Download the installer from the [Releases page](https://github.com/M-24rjgc/SciPaper-Harness/releases).
+2. Add your model provider's key in Settings.
+3. Tell it what you are working on.
 
-The application checks for a newer release ten seconds after it opens and on **Check for Updates…** in its menu, then downloads, verifies and installs it on restart. Only the changed blocks of the installer are downloaded. Projects and settings live in `~/.research-workbench` and survive updates.
+It keeps itself up to date. The [install and update guide](docs/user/guide/install-and-update.md) covers the details.
 
-## What it does
+## Preview
 
-- **General mode**: the research agent with every tool and no pipeline.
-- **Mode packs** that add a method's own skills, phases and checks: spark-to-paper (from an idea, a proposal or measured results) and CCFA (a full CCF paper, manuscript improvement, a response to reviews). A pack is a directory; new ones need no code.
-- **Shared capabilities in every mode**: sources with page-level quotes; literature verified through Crossref, OpenAlex and arXiv with open-access full text; LaTeX with 139 CCF venue templates, compile and page renders; draw.io and audited SVG figures exported to vector PDF; image generation with gpt-image-2; a research-pattern knowledge graph; a gallery of about 3,500 top-venue Figure 1s to study before drawing; Python environments and detached experiments, local or over SSH; report-only checks that define when a paper is done.
-
-The [research subsystem reference](docs/subsystems/research.md) describes the project record, modes, checks and tools.
+SciPaper Harness is an internal-test preview: releases may break compatibility, and the installer is not code-signed yet. Read the [safety notice](SAFETY.md) before running it, and tell us what works and what does not in [Issues](https://github.com/M-24rjgc/SciPaper-Harness/issues).
 
 <a id="run-from-source"></a>
 
-## Build from source
+## For developers
 
-Install Node.js 24 and pnpm, then run from a checkout:
-
-```sh
-pnpm install
-pnpm run build:research
-```
-
-Package the Windows installer, and publish it as a release of this repository through the logged-in GitHub CLI:
-
-```sh
-pnpm --dir apps/desktop run package:win:x64:unsigned
-pnpm --dir apps/desktop run release:github
-```
-
-Start with the [development guide](docs/development.md) and the [architecture documentation](docs/architecture.md); agents follow [AGENTS.md](AGENTS.md).
+[Build from source](docs/user/guide/install-and-update.md#build-from-source) shows how to build the installer and publish a release; the [development guide](docs/development.md) and the [architecture documentation](docs/architecture.md) explain the code.
 
 ## Credits
 
