@@ -46,6 +46,12 @@ describe('the GitHub release of a Windows build', () => {
     expect(readFileSync(join(artifacts, 'alpha.yml'), 'utf8')).toBe(readFileSync(join(artifacts, 'latest.yml'), 'utf8'))
   })
 
+  it('rewrites a channel file an earlier release left behind', () => {
+    const artifacts = build('0.2.0-alpha.2', { alpha: metadata('0.2.0-alpha.1'), latest: metadata('0.2.0-alpha.2') })
+    expect(planGitHubRelease(artifacts, '0.2.0-alpha.2').files).toHaveLength(4)
+    expect(readFileSync(join(artifacts, 'alpha.yml'), 'utf8')).toMatch(/^version: 0\.2\.0-alpha\.2\n/)
+  })
+
   it('publishes a stable version as a full release with generated notes', () => {
     const plan = planGitHubRelease(build('1.0.0', { latest: metadata('1.0.0') }), '1.0.0')
     expect(plan.prerelease).toBe(false)

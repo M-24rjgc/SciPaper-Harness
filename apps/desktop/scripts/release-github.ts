@@ -49,7 +49,8 @@ export function planGitHubRelease(artifactsDir: string, version: string): GitHub
   const latest = join(artifactsDir, 'latest.yml')
   // electron-builder writes latest.yml for the GitHub provider; the updater of a prerelease
   // reads `<channel>.yml` first, so the channel file is written beside it with the same content.
-  if (!existsSync(channelFile) && existsSync(latest)) copyFileSync(latest, channelFile)
+  // Any channel file already there was written by an earlier release from an earlier build.
+  if (channelFile !== latest && existsSync(latest)) copyFileSync(latest, channelFile)
   for (const file of [installer, blockmap, channelFile]) {
     if (!existsSync(file)) throw new Error(`release: ${file} is missing; package the Windows installer for ${version} first`)
   }
