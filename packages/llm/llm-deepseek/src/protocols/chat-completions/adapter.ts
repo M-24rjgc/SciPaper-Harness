@@ -26,7 +26,6 @@ import type {
   ImageAttachmentRef,
   RequestImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type {
   DeepSeekLlmApiJson,
@@ -195,7 +194,6 @@ export class ChatCompletionsAdapter extends LlmAdapter {
       }
     }
     const apiKey = await this.config.resolveApiKey(connection)
-    const userId = this.config.resolveUserId()
     const consumer = new AbortController()
     const upstream = options.signal === undefined
       ? consumer.signal
@@ -206,7 +204,6 @@ export class ChatCompletionsAdapter extends LlmAdapter {
       watchdog.signal,
       connection,
       apiKey,
-      userId,
       attachments,
       () => { watchdog.pulse() },
     )[Symbol.asyncIterator]()
@@ -250,16 +247,15 @@ export class ChatCompletionsAdapter extends LlmAdapter {
     signal: AbortSignal,
     connection: DeepSeekConnectionOptions,
     apiKey: string,
-    userId: AnonymousUserId,
     attachments: AttachmentStore | undefined,
     onActivity: () => void,
   ): AsyncIterable<StreamChunk> {
+    // No persistent user identifier travels with a request; the session and compaction hints describe the request only.
     const headers = {
       'authorization': `Bearer ${apiKey}`,
       'content-type': 'application/json',
       'accept': 'text/event-stream',
       ...attributionHeaders(),
-      'x-deepseek-harness-user-id': String(userId),
       ...options.sessionId !== undefined
         ? { 'x-deepseek-harness-session-id': String(options.sessionId) }
         : {},

@@ -38,7 +38,7 @@ function harness(config: Config = {}) {
   const prepare = vi.fn(prepareExtensions)
   const adapter = new DeepSeekMessagesAdapter({
     connection: () => resolveAdapterOptions(Object.assign({ baseURL: 'https://gateway.example/custom' }, config)),
-    apiKey: async () => 'test-key', userId: () => 'test-user', attachments: () => attachments,
+    apiKey: async () => 'test-key', attachments: () => attachments,
     imageAccess: () => ({ readonlyPath: '/workspace/image.png' }), files: () => files, prepareExtensions: prepare,
   })
   return { adapter, ensureUploaded, invalidate, readImageRequest, prepare }

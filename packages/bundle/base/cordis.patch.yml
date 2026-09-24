@@ -67,8 +67,10 @@
     - id: agent
       name: '@deepseek-ai/dsh-agent'
 
+    # SciPaper Harness sends no plugin inventory with DeepSeek model requests.
     - id: plugin-package-inventory-deepseek
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
+      disabled: true
 
     # The transport-independent default for Agents created by entry points.
     # Settings may supply a saved selection; consumers read it at creation time.

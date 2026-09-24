@@ -23,8 +23,6 @@ export interface AdapterDependencies {
   connection(): Connection
   /** Resolve the key named by that same generation. */
   apiKey(connection: Connection): Promise<string>
-  /** Stable anonymous Harness identity. */
-  userId(): string
   /** Current attachment service; absence is valid for text requests. */
   attachments(): AttachmentStore | undefined
   /** Current execution-world attachment path. */
@@ -126,7 +124,6 @@ export class DeepSeekMessagesAdapter extends LlmAdapter {
           'content-type': 'application/json', 'accept': 'text/event-stream',
           'x-api-key': key, 'anthropic-version': '2023-06-01',
           ...fileIds === undefined || fileIds.size === 0 ? {} : { 'anthropic-beta': MESSAGES_FILES_BETA },
-          'x-deepseek-harness-user-id': this.dependencies.userId(),
           ...options.sessionId === undefined ? {} : { 'x-deepseek-harness-session-id': String(options.sessionId) },
           ...options.purpose === 'compaction' ? { 'x-deepseek-harness-compact': '1' } : {},
         },

@@ -30,9 +30,9 @@ OpenRouter 应用归属刻意未实现。`HTTP-Referer`、`X-OpenRouter-Title`�
 
 提供方无关的身份由 `dsh-llm`（`packages/llm/llm/src/attribution.ts`）拥有，而非各适配器。`AppIdentity` 仅包含构建 `User-Agent` 所需的公开产品事实，默认的 `APP_IDENTITY` 取值如下：
 
-- `User-Agent` 的产品 token：`deepseek-harness`（与 Agent Note 之前的线路值及仓库/组织身份保持连续性）
+- `User-Agent` 的产品 token：`scipaper-harness`，即本应用自己的名称（[身份决策](../architecture/2026-09-24-scipaper-independent-identity.zh.md)）
 - 版本：通过 `createRequire` 从所属包的 manifest（元数据清单）读取，绝不手动复制常量
-- 应用 URL：`https://github.com/deepseek-ai/deepseek-harness`——仓库主页
+- 应用 URL：`https://github.com/M-24rjgc/SciPaper-Harness`——仓库主页
 
 默认值是强制的且非空。白标部署通过向 `attributionHeaders(identity)` 传入自己的 `AppIdentity` 来覆盖——覆盖钩子就是函数参数，在有消费方需要之前不做部署配置管道——省略时回退到 harness 默认值而非抑制归属。没有逐请求 API 允许模型、用户提示词、会话 id、cwd、用户邮箱、API key 所有者或本地机器身份影响这些字段。
 
@@ -41,7 +41,7 @@ OpenRouter 应用归属刻意未实现。`HTTP-Referer`、`X-OpenRouter-Title`�
 | 目标 | 映射 |
 |---|---|
 | 所有基于 HTTP 的适配器 | `User-Agent: {product}/{version} (+{url})`——括号中的 `+url` 注释符合 RFC 9110 保守的 product/comment 语法。 |
-| 直连 DeepSeek 端点 | `User-Agent` 用于应用归属；`x-deepseek-harness-user-id` 与条件性的 `x-deepseek-harness-session-id` 由 DeepSeek 特有决策作为独立请求身份管理。除非 DeepSeek 文档化了等效约定，否则不发送 OpenRouter 特有头部。 |
+| 直连 DeepSeek 端点 | `User-Agent` 用于应用归属；条件性的 `x-deepseek-harness-session-id` 描述请求本身，不发送任何用户标识。除非 DeepSeek 文档化了等效约定，否则不发送 OpenRouter 特有头部。 |
 | OpenRouter 端点 | 仅发送 `User-Agent`。本决策排除 `HTTP-Referer`、`X-OpenRouter-Title`、`X-Title` 与 `X-OpenRouter-Categories`。 |
 | 未来提供方 | 仅 `User-Agent`，除非后续提供方特有的 Agent Note 接受额外头部。不要类比复用 `HTTP-Referer`。 |
 

@@ -4,8 +4,6 @@
 
 SciPaper Harness（简称 SPH，中文界面叫「科研工作台」）是一个桌面科研 agent：从一个想法，或者手头已有的结果出发，把论文一路推进到经得起推敲的投稿。每条引文都能点回它出自的那一页，每个数字都能追溯到产生它的数据或实验运行；实验独立运行，关掉窗口也不会断。
 
-它基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 0.1.6-alpha.1 构建，是一个独立项目，与 DeepSeek 没有关联，也未获其认可。
-
 ## 预览版
 
 SciPaper Harness 目前是内测预览版（`alpha` 通道）。**新版本可能不兼容旧版本**，Windows 安装包也还没有代码签名。运行前请先阅读[安全须知](SAFETY.zh.md)。
@@ -50,7 +48,7 @@ pnpm --dir apps/desktop run release:github
 
 ## 致谢
 
-- DeepSeek 开发的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，本软件构建所基于的 agent 框架，采用 MIT 许可。
+- DeepSeek 开发的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)，本软件起步于它的 0.1.6-alpha.1 版本，采用 MIT 许可。SciPaper Harness 是独立项目，与 DeepSeek 没有关联，也未获其认可。
 - [spark-to-paper-skills](https://github.com/Spark-To-Paper-Skills/spark-to-paper-skills) 与 [CCFA-Skills](https://github.com/mikubaka88/CCFA-Skills)，两个模式包所依据的方法，采用 MIT 许可；详见各模式包的 `NOTICE.md`。
 - [Top-Conf Figure Gallery](https://github.com/qwdwqfwq/topconf-paper-figure-gallery)，配图库随包附带的是它的索引；每张图的版权归其论文所有。
 

@@ -12,6 +12,8 @@ The user id is transport metadata, not model input. It must not enter the reques
 
 ## Decision
 
+The user-id half of this decision is superseded: SciPaper Harness sends no persistent user identifier with any request ([independent identity](../architecture/2026-09-24-scipaper-independent-identity.md)). The session-id and compaction headers described below remain current.
+
 `dsh-llm-deepseek` sends `x-deepseek-harness-user-id` on every provider request sent after successful credential resolution. The value comes from `@deepseek-ai/dsh-anonymous-user-id` and therefore matches the OpenTelemetry Resource `user.id` and `/feedback` acknowledgement for the same `$DSH_HOME`. The adapter continues to send `x-deepseek-harness-session-id` only when `GenerateOptions.sessionId` is present; the agent loop supplies the current durable `Session.id` for ordinary agent, title-generation, and compaction requests.
 
 The plugin resolves the user id lazily after credentials succeed and memoizes it for that plugin instance. A missing credential therefore does not create `.anonymous-user-id`, while the first authorized provider request can create it even when `DSH_TELEMETRY_DISABLED` is set. The direct adapter constructor accepts a `resolveUserId` dependency so wire behavior remains deterministic in unit tests.

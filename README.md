@@ -4,8 +4,6 @@ English | [中文](README.zh.md)
 
 SciPaper Harness (SPH; its Chinese interface calls it 科研工作台) is a desktop research agent that carries a paper from an idea, or from results you already have, to a submission you can defend. Every quote points back to the page it came from, every number traces to the data or run that produced it, and experiments run on their own, outliving the window.
 
-It is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 0.1.6-alpha.1 and is an independent project, not affiliated with or endorsed by DeepSeek.
-
 ## Preview
 
 SciPaper Harness is an internal-test preview (the `alpha` channel). **Releases may break compatibility**, and the Windows installer is not code-signed yet. Review the [safety notice](SAFETY.md) before running it.
@@ -50,7 +48,7 @@ Start with the [development guide](docs/development.md) and the [architecture do
 
 ## Credits
 
-- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) by DeepSeek, the agent harness this application is built on, under the MIT licence.
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) by DeepSeek, whose 0.1.6-alpha.1 release this application began from, under the MIT licence. SciPaper Harness is an independent project, not affiliated with or endorsed by DeepSeek.
 - [spark-to-paper-skills](https://github.com/Spark-To-Paper-Skills/spark-to-paper-skills) and [CCFA-Skills](https://github.com/mikubaka88/CCFA-Skills), the methods behind the two mode packs, under the MIT licence; see each pack's `NOTICE.md`.
 - [Top-Conf Figure Gallery](https://github.com/qwdwqfwq/topconf-paper-figure-gallery), whose index the figure gallery ships; every figure keeps its paper's copyright.
 

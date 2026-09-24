@@ -1,7 +1,6 @@
 /** Same-provider protocol changes retain prepared requests and durable conversation content. */
 import { afterEach, expect, it } from 'vitest'
 import type { Message } from '@deepseek-ai/dsh-llm'
-import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import { Config, DeepSeekAdapter, resolveAdapterOptions } from '../src/index.ts'
 import type { DeepSeekConnectionOptions } from '../src/index.ts'
 import { assemble, chunks, end, MODEL, options, server, sse, start, textEvents, user } from './messages/helpers.ts'
@@ -21,7 +20,6 @@ function adapter(connection: () => DeepSeekConnectionOptions) {
   return new DeepSeekAdapter({
     options: connection,
     resolveApiKey: snapshot => Promise.resolve(`key-for-${snapshot.apiKeyEnv}`),
-    resolveUserId: () => '00000000-0000-4000-8000-000000000001' as AnonymousUserId,
     prepareExtensions: () => Promise.resolve({ fields: {}, accept: () => Promise.resolve() }),
   })
 }

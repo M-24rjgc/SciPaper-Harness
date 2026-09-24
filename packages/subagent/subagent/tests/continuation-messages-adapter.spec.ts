@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { AnonymousUserId } from '@deepseek-ai/dsh-anonymous-user-id'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -38,7 +37,6 @@ it('continues the parent through default Messages after a reasoning-bearing cont
     const adapter = new DeepSeekAdapter({
       options: () => connection,
       resolveApiKey: () => Promise.resolve('test-key'),
-      resolveUserId: () => '00000000-0000-4000-8000-000000000001' as AnonymousUserId,
       prepareExtensions: () => Promise.resolve({ fields: {}, accept: () => Promise.resolve() }),
     })
     await mountAgentLoopTestDependencies(ctx)

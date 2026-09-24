@@ -186,6 +186,8 @@ pnpm run prepare:desktop
 
 ## 更新
 
+SciPaper Harness 从 `M-24rjgc/SciPaper-Harness` 的 GitHub Releases 读取更新：`electron-builder.config.mjs` 的 `publish` 项写明了这个仓库，所以无论是否签名，每个构建都带有 `app-update.yml`；`0.2.0-alpha.1` 这样的预发布版本发布在 `alpha` 通道（`alpha.yml`）。执行 `package:win:x64:unsigned` 之后，`pnpm run release:github [--notes-file <file>]` 先核对安装包、它的 blockmap 和每个通道文件的版本与安装包 SHA-512 是否一致，再通过已登录的 GitHub CLI 创建 Release。electron-updater 会用这个 SHA-512 校验每次下载；未签名的安装包不含发布者名称，因此在安装包签名之前不做签名校验。
+
 打包应用会在主窗口打开十秒后检查目标专用的发布流；本地化的 **检查更新…** 菜单项会手动触发同一检查。发现可用版本时，应用打开一个原生确认弹窗。用户确认后，应用等待正在进行的检查完成，下载并验证已签名的 Desktop 发布、停止 dsh 子进程，并把安装与重启交给 electron-updater。下次启动在显示本地加载页的同时校准版本绑定的运行时。
 
 签名打包为 `DSH_DESKTOP_AUTO_UPDATE_ENV` 选择的部署生成 generic-provider 频道元数据。NSIS 差分包与 macOS ZIP 目标让 electron-updater 可以复用未变化的数据块；供手动安装的 DMG 经过公证，但不生成 blockmap，因为它不是 macOS updater 的载荷。运行时与桌面壳仍属于同一个签名 Desktop 发布。macOS 签名与公证凭据使用 electron-builder 的标准环境变量；Windows EV 签名使用上文所述的公开证书、已验证 SignTool、SafeNet 容器和 runner PIN。必填 Desktop 发布环境选择构建所验证的应用身份与平台签名身份。

@@ -17,6 +17,13 @@ The platform ships the index of Top-Conf Figure Gallery, about 3,500 Figure 1 an
 - **Fetch on demand.** fetch-reference-figures `{galleryIds, label}` takes each chosen image from the gallery's repository, then a CDN mirror, then its site; caches it under the product home; and saves it into `figures/refs/` with a `.source.json` naming the paper and its copyright. Images are fetched from the live gallery, so one it takes down stops being available. The ar5iv path stays for papers outside those venues.
 - **Both people and the agent use it.** The workbench's figure gallery tab, opened from the conversation header, browses the same index through the host route `/api/research/gallery/image` and saves a figure with the same action. The three drawing skills search the gallery first and fall back to arXiv papers.
 
+## Consequences
+
+- The installer grows by about 440 KB of index; each figure costs one download of about 100 KB the first time anyone views or saves it.
+- Browsing and saving need the network until a figure is cached; the index and search work offline.
+- Coverage is machine learning and AI venues from 2023 to 2026; other fields fall back to arXiv papers the agent finds.
+- Refreshing the gallery means rebuilding the index at a newer commit with `scripts/build_figure_gallery.py`.
+
 ## Alternatives considered
 
 **Bundle the images.** It would add about 400 MB to the installer and redistribute figures the gallery itself only indexes for educational reference, including AAAI figures whose authors and publisher keep the copyright.
