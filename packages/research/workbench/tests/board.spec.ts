@@ -338,7 +338,7 @@ describe('reading the board: machines, progress and collectors, by script', () =
       ],
     }))
     let queue = JSON.stringify({ stats: [{ label: 'Queue', value: '1 / 2' }], sections: [{ id: 'q', title: 'Q', blocks: [] }], alerts: [{ level: 'info', text: 'hi' }] })
-    scripted.answer = (where, args, options) => {
+    scripted.answer = (_where, args, options) => {
       if (isProbe(args)) return ok(probe())
       const script = String(options.input)
       if (script.includes('queue')) return ok(queue)
