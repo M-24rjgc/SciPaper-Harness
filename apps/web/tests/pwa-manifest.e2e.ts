@@ -12,8 +12,8 @@ it('ships install metadata with the built web application', async () => {
   const manifest: unknown = JSON.parse(await readFile(join(DIST_ROOT, 'manifest.webmanifest'), 'utf8'))
   expect(manifest).toEqual({
     id: '/',
-    name: 'Research Workbench',
-    short_name: 'Research',
+    name: 'SciPaper Harness',
+    short_name: 'SPH',
     start_url: '/',
     scope: '/',
     display: 'fullscreen',

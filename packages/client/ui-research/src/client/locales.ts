@@ -7,7 +7,7 @@ export const en = {
   advancedSettings: 'Image service and tool paths',
   heroNoHistory: 'Your research projects will appear here.',
   pickDirectory: 'Choose folder',
-  name: 'Research Workbench',
+  name: 'SciPaper Harness',
   subtitle: 'Evidence you can trace, runs you can repeat, claims you can defend',
   openResearch: 'Open the research workbench',
   closePanel: 'Close the research panel',

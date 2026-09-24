@@ -11,7 +11,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 /**
  * Directory name for this product's home under the OS home.
  *
- * Research Workbench installs beside an official DeepSeek Harness rather than
+ * SciPaper Harness installs beside an official DeepSeek Harness rather than
  * on top of it, so the default must not be `.dsh`: a shared root would put this
  * product's sessions, storages, settings and profiles into the other
  * installation's data, where each would read and rewrite the other's records.

@@ -57,7 +57,7 @@ it('shows English loading and recovery actions without a Host document', async (
   const page = startup()
   await expect.poll(() => page.element('#title').textContent).not.toBe('')
   expect(page.copy()).toMatchInlineSnapshot(`
-    "Starting Research Workbench…
+    "Starting SciPaper Harness…
     Your workspace will open when it is ready."
   `)
   expect(page.element('main').getAttribute('aria-busy')).toBe('true')
@@ -67,7 +67,7 @@ it('shows English loading and recovery actions without a Host document', async (
   expect(page.button('#disable-plugins').disabled).toBe(true)
   page.publish({ phase: 'error', profileRecovery: true, message: 'Plugin failed to load' })
   expect(page.copy()).toMatchInlineSnapshot(`
-    "Research Workbench could not start
+    "SciPaper Harness could not start
     Choose a recovery action below. Disabling third-party plugins retains their files.
     Reset Desktop deletes all Desktop profile configuration and third-party plugins without a backup, then starts a fresh profile. Shared tasks and settings are retained.
     If application files are missing or damaged, close the application and reinstall it. Your tasks are stored separately.

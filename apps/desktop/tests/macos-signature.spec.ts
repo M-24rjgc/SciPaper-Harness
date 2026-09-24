@@ -56,7 +56,7 @@ describe('desktop macOS release signature', () => {
       '**/@vscode/ripgrep/bin/rg',
     ]))
     // The product's own identifier; the upstream DSH_DESKTOP_APP_ID never names this app.
-    expect(config.appId).toBe('org.researchworkbench.desktop')
+    expect(config.appId).toBe('io.github.m-24rjgc.scipaper-harness')
     expect(createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, RESEARCH_WORKBENCH_APP_ID: 'com.example.research' }, 'darwin', 'arm64').appId)
       .toBe('com.example.research')
     expect(config).toMatchObject({
@@ -70,8 +70,8 @@ describe('desktop macOS release signature', () => {
         sign: true,
         writeUpdateInfo: false,
       },
-      // Preview builds publish no update feed.
-      publish: null,
+      // Updates come from this product's own GitHub Releases, never the upstream feed.
+      publish: { provider: 'github', owner: 'M-24rjgc', repo: 'SciPaper-Harness', releaseType: 'prerelease' },
     })
     expect(typeof config.artifactBuildCompleted).toBe('function')
   })
@@ -99,7 +99,7 @@ describe('desktop macOS release signature', () => {
     }, 'win32')).toThrow(/DSH_DESKTOP_WINDOWS_CER_FILE/u)
   })
 
-  it('isolates unsigned Windows artifacts and omits updater metadata without release credentials', async () => {
+  it('isolates unsigned Windows artifacts, and keeps the product\'s own update feed without release credentials', async () => {
     const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
     const config = createElectronBuilderConfig({
       DSH_DESKTOP_APP_ID: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
@@ -110,7 +110,7 @@ describe('desktop macOS release signature', () => {
     expect(portablePath(config.nsis.include)).toMatch(/\/scripts\/installer\.nsh$/u)
     expect(config).toMatchObject({
       win: { forceCodeSigning: false, signtoolOptions: { sign: undefined } },
-      publish: null,
+      publish: { provider: 'github', owner: 'M-24rjgc', repo: 'SciPaper-Harness' },
     })
   })
 

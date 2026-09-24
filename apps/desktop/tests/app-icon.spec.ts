@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const RELEASE_ENVIRONMENT = { DSH_DESKTOP_APP_ID: 'org.researchworkbench.desktop', DSH_DESKTOP_TARGET_PLATFORM: 'win32', DSH_DESKTOP_UNSIGNED: '1' }
+const RELEASE_ENVIRONMENT = { DSH_DESKTOP_APP_ID: 'io.github.m-24rjgc.scipaper-harness', DSH_DESKTOP_TARGET_PLATFORM: 'win32', DSH_DESKTOP_UNSIGNED: '1' }
 
 /** Edge lengths stored in an .ico file, in directory order (0 in the directory means 256). */
 function icoSizes(file: Buffer): number[] {

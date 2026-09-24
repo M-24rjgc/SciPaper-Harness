@@ -25,7 +25,7 @@ import { desktopErrorState } from './startup-error.ts'
 import { startupFailureDocument } from './startup-document.ts'
 
 // Separate product identity before any profile or single-instance resolution.
-app.setName('Research Workbench')
+app.setName('SciPaper Harness')
 // Chinese is this product's default interface language; both shipped locales stay switchable in settings.
 app.commandLine.appendSwitch('lang', process.env.RESEARCH_WORKBENCH_LANG || 'zh-CN')
 process.env.DSH_HOME = process.env.RESEARCH_WORKBENCH_HOME || (!app.isPackaged ? process.env.DSH_HOME : undefined) || join(homedir(), '.research-workbench')

@@ -12,6 +12,7 @@ import {
   installWindowsNsisBootstrapSigner,
 } from './scripts/windows-sign.mjs'
 import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from './scripts/desktop-build-paths.mjs'
+import { SCIPAPER_APP_ID, SCIPAPER_RELEASES } from './scripts/scipaper-identity.mjs'
 
 /**
  * Create electron-builder configuration from one release environment.
@@ -25,7 +26,7 @@ export function createElectronBuilderConfig(
   hostPlatform = process.platform,
   hostArch = process.arch,
 ) {
-  const appId = resolveDesktopAppId({ ...env, DSH_DESKTOP_APP_ID: env.RESEARCH_WORKBENCH_APP_ID || 'org.researchworkbench.desktop' })
+  const appId = resolveDesktopAppId({ ...env, DSH_DESKTOP_APP_ID: env.RESEARCH_WORKBENCH_APP_ID || SCIPAPER_APP_ID })
   const targetPlatform = env.DSH_DESKTOP_TARGET_PLATFORM
   const resolvedPlatform = targetPlatform ?? hostPlatform
   if (env.DSH_DESKTOP_UNSIGNED !== undefined && !['0', '1'].includes(env.DSH_DESKTOP_UNSIGNED)) {
@@ -48,15 +49,14 @@ export function createElectronBuilderConfig(
   if (windowsSigner !== undefined) {
     installWindowsNsisBootstrapSigner({ sign: windowsSigner })
   }
-  // Preview builds never use the upstream update feed.
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
   // The flask icon, rendered from icons/icon.svg by scripts/generate-icons.mjs.
   const windowsIcon = fileURLToPath(new URL('./icons/icon.ico', import.meta.url))
   const appIcon = fileURLToPath(new URL('./icons/icon.png', import.meta.url))
   return {
     appId,
-    productName: 'Research Workbench Preview',
-    artifactName: 'research-workbench-preview-${version}-${os}-${arch}.${ext}',
+    productName: 'SciPaper Harness',
+    artifactName: 'scipaper-harness-${version}-${os}-${arch}.${ext}',
     directories: { output: unsigned ? join(buildPaths.root, 'unsigned-artifacts') : buildPaths.artifacts },
     asar: true,
     files: [
@@ -128,7 +128,10 @@ export function createElectronBuilderConfig(
       allowToChangeInstallationDirectory: true,
       differentialPackage: true,
     },
-    publish: null,
+    // Updates come from this product's own GitHub Releases, never the upstream DSH feed.
+    // electron-builder writes app-update.yml from this even with `--publish never`;
+    // scripts/release-github.ts uploads the installer, its blockmap and the channel file.
+    publish: { ...SCIPAPER_RELEASES, provider: 'github', releaseType: 'prerelease' },
   }
 }
 

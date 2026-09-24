@@ -8,7 +8,7 @@
  */
 
 /** Product name as the shell's own surfaces say it. */
-const PRODUCT = 'Research Workbench'
+const PRODUCT = 'SciPaper Harness'
 /** The same name in Chinese, matching the workbench's own dictionary. */
 const PRODUCT_ZH = '科研工作台'
 

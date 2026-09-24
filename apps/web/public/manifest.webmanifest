@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Research Workbench",
-  "short_name": "Research",
+  "name": "SciPaper Harness",
+  "short_name": "SPH",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",

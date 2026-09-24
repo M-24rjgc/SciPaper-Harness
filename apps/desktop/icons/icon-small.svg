@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-  <title>Research Workbench</title>
+  <title>SciPaper Harness</title>
   <rect width="96" height="96" rx="20" fill="#15635f"/>
   <g transform="translate(7.2 5) scale(3.4)" stroke-linecap="round" stroke-linejoin="round">
     <path d="M7 15H17L19.4 19.2Q20 21 18.3 21H5.7Q4 21 4.6 19.2Z" fill="#7bc4bb"/>
