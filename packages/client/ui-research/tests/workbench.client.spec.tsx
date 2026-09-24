@@ -360,6 +360,18 @@ describe('the workbench panel', () => {
     expect(ui.getByRole('option', { name: /fresh\.csv/ })).toBeTruthy()
   })
 
+  it('opens the figure gallery as one of the project\'s tabs', () => {
+    const project = fixture()
+    const h = harness([project])
+    const searches: unknown[] = []
+    const searchFigures = (request: unknown): Promise<never> => { searches.push(request); return new Promise(() => {}) }
+    const props = { ...h.props, searchFigures } as unknown as WorkbenchProps
+    const ui = render(<Workbench {...props} />)
+    fireEvent.click(ui.getByRole('button', { name: zh.gallery }))
+    expect(ui.getByText(zh.galleryIntro)).toBeTruthy()
+    expect(searches).toEqual([{ action: 'find-reference-figures', projectId: project.id, limit: 24, offset: 0 }])
+  })
+
   it('lists claims to open, and shows settings and tasks', () => {
     const project = fixture()
     const h = harness([project], { claimId: null, projectId: project.id, panel: 'claims' })

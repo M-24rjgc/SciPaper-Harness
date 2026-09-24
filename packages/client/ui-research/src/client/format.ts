@@ -237,6 +237,15 @@ export function standingText(project: ResearchProject, modes: readonly ModeSumma
 }
 
 /**
+ * The address of a figure gallery image; the host fetches it into its cache on first view.
+ * @param id - a gallery figure id.
+ * @returns the host route that serves it.
+ */
+export function galleryImageUrl(id: string): string {
+  return `/api/research/gallery/image?id=${encodeURIComponent(id)}`
+}
+
+/**
  * Address of one file inside a project, as the research file route serves it.
  * Pass the immutable snapshot under `.research/`, never a user-absolute path:
  * the route refuses anything outside the project root.

@@ -85,6 +85,8 @@ One service owns every project record in the `research_workbench` storage domain
 | [`src/experiments.ts`](src/experiments.ts) | Run admission, input snapshots, launch, observation, output collection |
 | [`src/literature.ts`](src/literature.ts) | Crossref, OpenAlex and arXiv metadata; open-access PDF lookup |
 | [`src/images.ts`](src/images.ts) | Image generation (OpenAI Images API, gpt-image-2 by default, reference images through edits; chat-style providers) and reference figures from ar5iv |
+| [`src/gallery.ts`](src/gallery.ts) | The figure gallery: search with filters, keywords and optional title embeddings; figures fetched on demand into a cache |
+| [`runtime/figure-gallery/`](runtime/figure-gallery) | The index of about 3,500 top-venue Figure 1s from Top-Conf Figure Gallery, built by [`scripts/build_figure_gallery.py`](scripts/build_figure_gallery.py); no images |
 | [`src/tools.ts`](src/tools.ts) | The model tools and the approval hook |
 | [`runtime/experiment_runner.py`](runtime/experiment_runner.py) | The standard-library supervisor every run executes under |
 

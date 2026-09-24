@@ -1,4 +1,4 @@
-/** Read-only project previews and offline editor assets on the shared desktop/Web carrier. */
+/** Read-only project previews, gallery figures and offline editor assets on the shared desktop/Web carrier. */
 import { dirname, extname } from 'node:path'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
@@ -61,6 +61,11 @@ export function registerResearchRoutes(ctx: Context, service: ResearchWorkbench)
       const project = service.getProject((url.searchParams.get('projectId') ?? '') as ProjectId)
       return projectPath(project.root, url.searchParams.get('path') ?? '')
     }, true)
+    // A gallery figure for the browsing panel, fetched into the cache on first view.
+    register('/api/research/gallery/image', async (request) => {
+      const id = new URL(request.url).searchParams.get('id') ?? ''
+      return (await service.gallery.image(id, request.signal, service.config.maxSourceBytes)).file
+    }, false)
     refresh = async () => {
       const status = (await service.components.status()).find(item => item.id === 'drawio')
       if (!status?.installed || disposed) return

@@ -2980,7 +2980,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_media`
 
-visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path, size?, quality?, background?, references?}：用配置的生图 API（默认 gpt-image-2）生成一张位图；references 是作为风格或版式参考发送的项目内图片；提示词保存在图片旁边。用于插画以及方法图的视觉草稿，之后再把方法图重画成可编辑的 draw.io 或 SVG 图；结果图来自脚本与真实数据。fetch-reference-figures {arxivIds, label}：已发表论文的总览图（来自 ar5iv），保存在 figures/refs/ 下供研究参考，绝不直接放进论文。audit-svg {path, save?, minFontPx?}：检查手绘的 SVG 图是否越界、文字重叠、图形压住标签、箭头过大或被裁掉、连线悬空、字号过小、使用 Times 之外的字符，以及描摹出来的大量路径；save 把报告写到 figures/audit_logs/<name>.audit.json。export-figure {path, output?}：把 SVG 导出为保留可编辑文字的矢量 PDF（默认放在 SVG 旁边，output 可指定 PDF 路径），并在 figures/previews 下生成 1440 与 480 像素宽的 PNG 预览，供 read_image 查看。
+visual-review {artifactId}：把渲染好的页面发给单独的视觉模型——只有当你自己的模型无法读图时才需要。complete-visual-review {artifactId, artifactRevision, sessionId, findings}：只有指派的复核会话能记录发现。generate-image {prompt, path, size?, quality?, background?, references?}：用配置的生图 API（默认 gpt-image-2）生成一张位图；references 是作为风格或版式参考发送的项目内图片；提示词保存在图片旁边。用于插画以及方法图的视觉草稿，之后再把方法图重画成可编辑的 draw.io 或 SVG 图；结果图来自脚本与真实数据。find-reference-figures {query?, pattern?, venue?, year?, tier?, limit?, offset?}：内置的配图库，约 3,500 张经人工复核的 ICLR、ICML、NeurIPS、CVPR、ACL 与 AAAI 论文（2023-2026）的 Figure 1 与概览图；英文 query 按标题与作者排序（配置了嵌入接口时也按嵌入排序），没有 query 时最受认可的排在前面。为方法图或概览图找参考时先查这里。fetch-reference-figures {galleryIds 或 arxivIds, label}：把配图库中的图（每张附一份写明其论文的 .source.json）或 arXiv 论文的总览图（来自 ar5iv）保存到 figures/refs/ 下，用 read_image 研究，绝不直接放进论文。audit-svg {path, save?, minFontPx?}：检查手绘的 SVG 图是否越界、文字重叠、图形压住标签、箭头过大或被裁掉、连线悬空、字号过小、使用 Times 之外的字符，以及描摹出来的大量路径；save 把报告写到 figures/audit_logs/<name>.audit.json。export-figure {path, output?}：把 SVG 导出为保留可编辑文字的矢量 PDF（默认放在 SVG 旁边，output 可指定 PDF 路径），并在 figures/previews 下生成 1440 与 480 像素宽的 PNG 预览，供 read_image 查看。
 
 ```json
 {
@@ -2992,6 +2992,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
         "visual-review",
         "complete-visual-review",
         "generate-image",
+        "find-reference-figures",
         "fetch-reference-figures",
         "audit-svg",
         "export-figure"
@@ -3047,6 +3048,64 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     "references": {
       "type": "array",
       "description": "generate-image: up to 4 project image paths used as style or layout references",
+      "items": {
+        "type": "string"
+      }
+    },
+    "query": {
+      "type": "string",
+      "description": "find-reference-figures: what the figure shows or the paper is about, in English (e.g. \"retrieval augmented agent memory\")"
+    },
+    "pattern": {
+      "type": "string",
+      "description": "find-reference-figures: the kind of figure",
+      "enum": [
+        "architecture",
+        "pipeline",
+        "framework",
+        "conceptual",
+        "taxonomy",
+        "teaser",
+        "comparison",
+        "results"
+      ]
+    },
+    "venue": {
+      "type": "string",
+      "description": "find-reference-figures",
+      "enum": [
+        "iclr",
+        "icml",
+        "neurips",
+        "cvpr",
+        "acl",
+        "aaai"
+      ]
+    },
+    "year": {
+      "type": "integer",
+      "description": "find-reference-figures: 2023 to 2026"
+    },
+    "tier": {
+      "type": "string",
+      "description": "find-reference-figures: award is best papers and honorable mentions",
+      "enum": [
+        "award",
+        "oral",
+        "spotlight"
+      ]
+    },
+    "limit": {
+      "type": "integer",
+      "description": "find-reference-figures: figures per page (default 12, at most 60)"
+    },
+    "offset": {
+      "type": "integer",
+      "description": "find-reference-figures: skip this many for the next page"
+    },
+    "galleryIds": {
+      "type": "array",
+      "description": "fetch-reference-figures: gallery figure ids from find-reference-figures, at most 6",
       "items": {
         "type": "string"
       }

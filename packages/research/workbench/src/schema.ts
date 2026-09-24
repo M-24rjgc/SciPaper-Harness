@@ -17,6 +17,10 @@ export const artifactKinds = ['manuscript', 'diagram', 'figure', 'code', 'biblio
 export const autonomies = ['checkpoints', 'automatic'] as const
 /** The base checks; mode packs add gates under their own ids. */
 export const checkIds = ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'review', 'stale', 'claims', 'structure', 'prose'] as const satisfies readonly CheckId[]
+/** The figure gallery's prominence filters: best papers and honorable mentions, then Oral and Spotlight papers. */
+export const galleryTiers = ['award', 'oral', 'spotlight'] as const
+/** A figure gallery id: venue, year, then the venue's own paper number or key. */
+export const GALLERY_ID = /^[a-z]+\d{4}-[A-Za-z0-9_.-]+$/
 const dependency = z.object({ id, revision: integer })
 
 export const experimentSpecSchema = z.object({
@@ -273,8 +277,15 @@ export const commandSchema = z.discriminatedUnion('action', [
     references: z.array(id).max(4).optional(),
   }),
   z.object({
+    ...base, action: z.literal('find-reference-figures'),
+    query: z.string().max(300).optional(), pattern: z.string().max(40).optional(), venue: z.string().max(40).optional(),
+    year: z.number().int().min(2000).max(2100).optional(), tier: z.enum(galleryTiers).optional(),
+    limit: z.number().int().min(1).max(60).optional(), offset: z.number().int().min(0).optional(),
+  }),
+  z.object({
     ...base, action: z.literal('fetch-reference-figures'),
-    arxivIds: z.array(z.string().regex(/^\d{4}\.\d{4,5}(v\d+)?$/, 'a new-style arXiv identifier such as 1706.03762')).min(1).max(6),
+    arxivIds: z.array(z.string().regex(/^\d{4}\.\d{4,5}(v\d+)?$/, 'a new-style arXiv identifier such as 1706.03762')).min(1).max(6).optional(),
+    galleryIds: z.array(z.string().regex(GALLERY_ID, 'a gallery figure id such as neurips2024-19')).min(1).max(6).optional(),
     label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase words joined by hyphens'),
   }),
   z.object({ ...base, action: z.literal('audit-svg'), path: id, save: z.boolean().optional(), minFontPx: z.number().min(4).max(64).optional() }),

@@ -26,7 +26,7 @@ One word is replaced throughout the copies: the repository does not allow an amb
 | Upstream | Replaced by |
 |---|---|
 | `gen_image.py`, `TS_FIG_*` keys | `research_media` generate-image with the image endpoint from the research settings (gpt-image-2 by default) |
-| `fetch_reference_figures.py` | `research_media` fetch-reference-figures |
+| `fetch_reference_figures.py`, the web search for a grounding figure | `research_media` find-reference-figures (the platform's figure gallery) and fetch-reference-figures |
 | `audit_svg.py`, `render_svg.py`, `svg_to_pdf.py` | `research_media` audit-svg, which runs the upstream `audit_svg.py` unchanged from the platform's `runtime/figures/`, and export-figure |
 | `kg_recall.py`, `novelty_check.py`, `embed.py`, `cluster.py`, `kg_build.py`, `kg_lint.py`, `TS_EMBED_*` keys, the `kg_ai` archive | `research_knowledge` and the built-in graph distilled from `kg_ai` without its vectors |
 | `doi2bib.py` as a step | `research_evidence` literature-import (the script stays for `citations_lint.py --resolve`) |

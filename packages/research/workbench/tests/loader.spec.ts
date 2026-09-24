@@ -762,7 +762,28 @@ describe('the research service records; it never drives the agent', () => {
     expect(JSON.parse(references.content ?? '{}')).toMatchObject({ skipped: ['2102.00002: ar5iv returned HTTP 404'] })
     expect(await readFile(join(p.root, 'figures/refs/method-overview.ref_2101.00001_1.png'), 'utf8')).toBe('figure')
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<p>nothing</p>')))
-    expect((await run({ action: 'fetch-reference-figures', arxivIds: ['2103.00003'], label: 'method-overview' })).message).toMatch(/No reference figure found/)
+    expect((await run({ action: 'fetch-reference-figures', arxivIds: ['2103.00003'], label: 'method-overview' })).message).toMatch(/No reference figure saved/)
+    // The figure gallery: search the shipped index, then save figures with a record of their papers.
+    const found = await run({ action: 'find-reference-figures', query: 'diffusion', pattern: 'architecture', tier: 'oral', limit: 2 })
+    expect(found.message).toMatch(/gallery figure\(s\) \(keyword\)/)
+    expect(found.gallery?.figures).toHaveLength(2)
+    const [chosen] = found.gallery!.figures
+    const gallerySource = found.gallery!.source
+    const figureUrl = `https://raw.githubusercontent.com/qwdwqfwq/topconf-paper-figure-gallery/main/images/${chosen!.venue}/`
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.startsWith(figureUrl)
+      ? new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]))
+      : new Response('none', { status: 404 })))
+    const saved = await run({ action: 'fetch-reference-figures', galleryIds: [chosen!.id, 'neurips2099-0'], label: 'method-overview' })
+    expect(saved.paths).toEqual([`figures/refs/method-overview.gallery_${chosen!.id}.jpg`])
+    expect(JSON.parse(saved.content ?? '{}')).toMatchObject({ skipped: ['neurips2099-0: The figure gallery has no figure neurips2099-0'] })
+    const record = JSON.parse(await readFile(join(p.root, `figures/refs/method-overview.gallery_${chosen!.id}.source.json`), 'utf8')) as Record<string, unknown>
+    expect(record).toMatchObject({ id: chosen!.id, paper: chosen!.paper, gallery: `${gallerySource.repository}@${gallerySource.commit}` })
+    expect(record.copyright).toMatch(/authors and publisher/)
+    await expect(run({ action: 'fetch-reference-figures', label: 'method-overview' })).rejects.toThrow(/Name galleryIds/)
+    const aborting = new AbortController()
+    vi.stubGlobal('fetch', vi.fn(async () => { aborting.abort(); throw new Error('cancelled') }))
+    const other = found.gallery!.figures[1]!.id
+    await expect(service.execute({ projectId: p.id, action: 'fetch-reference-figures', galleryIds: [other], label: 'x' }, aborting.signal, 'agent')).rejects.toThrow()
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'POST'
       ? new Response(JSON.stringify({ data: [{ url: 'https://img.example/file.png' }] }))
       : new Response('downloaded')))

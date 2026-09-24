@@ -85,6 +85,8 @@ kind: "package-reference"
 | [`src/experiments.ts`](src/experiments.ts) | 运行登记、输入快照、提交、观测、输出收集 |
 | [`src/literature.ts`](src/literature.ts) | Crossref、OpenAlex 与 arXiv 元数据；开放获取 PDF 查找 |
 | [`src/images.ts`](src/images.ts) | 生图（OpenAI 图像接口，默认 gpt-image-2，带参考图时走 edits；也支持返回图片的对话接口）与来自 ar5iv 的参考图 |
+| [`src/gallery.ts`](src/gallery.ts) | 配图库：按筛选条件、关键词和可选的标题嵌入检索；图片按需取回并缓存 |
+| [`runtime/figure-gallery/`](runtime/figure-gallery) | 来自 Top-Conf Figure Gallery 的约 3,500 张顶会 Figure 1 的索引，由 [`scripts/build_figure_gallery.py`](scripts/build_figure_gallery.py) 构建；不含图片 |
 | [`src/tools.ts`](src/tools.ts) | 模型工具与审批钩子 |
 | [`runtime/experiment_runner.py`](runtime/experiment_runner.py) | 每个运行都在其下执行的标准库监督进程 |
 

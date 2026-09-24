@@ -1438,6 +1438,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly gallery: FigureGallery',
+        description: 'Published papers\' Figure 1s to study before drawing, fetched on demand into the product home\'s cache.',
+        parameters: [],
+      },
+      {
         signature: 'modes!: ModeRegistry',
         description: 'The installed mode packs, loaded once at start.',
         parameters: [],
@@ -4531,6 +4536,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type FiberState = FiberStateEnum;',
   },
   {
+    name: 'FigureGallery',
+    declaration: 'export class FigureGallery {\n    constructor(private readonly indexPath: string, private readonly cacheRoot: string);\n    async search(search: GallerySearch, embedder: Embedder | undefined, signal: AbortSignal): Promise<GalleryPage>;\n    async image(id: string, signal: AbortSignal, limit: number): Promise<GalleryImage>;\n    dispose(): void;\n}',
+  },
+  {
     name: 'FileAttachmentRef',
     declaration: 'export interface FileAttachmentRef {\n    attachmentId: AttachmentId;\n    name: string;\n    bytes: number;\n}',
   },
@@ -4609,6 +4618,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsWriteOutcome',
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
+  },
+  {
+    name: 'GalleryFigure',
+    declaration: 'export interface GalleryFigure {\n    id: string;\n    venue: string;\n    year: number;\n    title: string;\n    authors: string[];\n    pattern: string;\n    tier?: \'oral\' | \'spotlight\' | undefined;\n    award?: \'best\' | \'honorable\' | undefined;\n    paper: string;\n    pdf?: string | undefined;\n    width: number;\n    height: number;\n    score?: number | undefined;\n}',
+  },
+  {
+    name: 'GalleryImage',
+    declaration: 'export interface GalleryImage {\n    figure: GalleryFigure;\n    file: string;\n    extension: string;\n    source: GallerySource;\n}',
+  },
+  {
+    name: 'GalleryPage',
+    declaration: 'export interface GalleryPage {\n    total: number;\n    offset: number;\n    figures: GalleryFigure[];\n    basis: \'browse\' | \'keyword\' | \'semantic\';\n    facets: {\n        venue: Record<string, number>;\n        year: Record<string, number>;\n        pattern: Record<string, number>;\n        tier: Record<string, number>;\n    };\n    source: GallerySource;\n}',
+  },
+  {
+    name: 'GallerySearch',
+    declaration: 'export interface GallerySearch {\n    query?: string | undefined;\n    pattern?: string | undefined;\n    venue?: string | undefined;\n    year?: number | undefined;\n    tier?: typeof galleryTiers[number] | undefined;\n    limit?: number | undefined;\n    offset?: number | undefined;\n}',
+  },
+  {
+    name: 'GallerySource',
+    declaration: 'export interface GallerySource {\n    name: string;\n    repository: string;\n    commit: string;\n    license: string;\n}',
   },
   {
     name: 'GenerateOptions',
@@ -5368,7 +5397,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
   },
   {
     name: 'ResearchSnapshot',

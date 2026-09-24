@@ -118,6 +118,11 @@ export function apply(ctx: Context): void {
       state.update((s) => { s.response = response })
       return response
     }),
+    searchFigures: async (request) => {
+      const { gallery } = unwrap(await ctx.remote.research.command(request, controller.signal))
+      if (!gallery) throw new Error('The figure gallery returned no page')
+      return gallery
+    },
     configure: (preferences, keys) => perform(async () => {
       unwrap(await ctx.remote.research.configure(preferences))
       if (keys.image) unwrap(await ctx.remote.research.setCredential('image', keys.image))

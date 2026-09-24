@@ -24,7 +24,16 @@ it('serves previews without a Web server, registers newly installed editor files
   } } } as Context['connection'])
   let installed = false
   let refresh!: () => Promise<void>
-  const service = { config: { maxSourceBytes: 1024 }, getProject: () => ({ root: projectRoot }), components: { status: async () => [{ id: 'drawio', installed, path: join(editorRoot, 'index.html') }] } } as unknown as ResearchWorkbench
+  await writeFile(join(root, 'figure.jpg'), 'jpeg')
+  const asked: string[] = []
+  const gallery = {
+    image: async (id: string) => {
+      asked.push(id)
+      if (id !== 'neurips2024-1') throw new Error(`The figure gallery has no figure ${id}`)
+      return { file: join(root!, 'figure.jpg') }
+    },
+  }
+  const service = { config: { maxSourceBytes: 1024 }, gallery, getProject: () => ({ root: projectRoot }), components: { status: async () => [{ id: 'drawio', installed, path: join(editorRoot, 'index.html') }] } } as unknown as ResearchWorkbench
   const fiber = await ctx.plugin({ apply(c: Context) { refresh = registerResearchRoutes(c, service) } })
   await ctx.fiber.await()
   const preview = routes.get('/api/research/file')!
@@ -32,6 +41,12 @@ it('serves previews without a Web server, registers newly installed editor files
   expect(response.headers.get('content-type')).toBe('application/pdf')
   expect(await response.text()).toBe('%PDF-test')
   expect((await preview.fetch(new Request('https://app/api/research/file?projectId=test&path=../secret'))).status).toBe(400)
+  // Gallery figures come from the gallery's cache, by id.
+  const figures = routes.get('/api/research/gallery/image')!
+  const figure = await figures.fetch(new Request('https://app/api/research/gallery/image?id=neurips2024-1'))
+  expect([figure.headers.get('content-type'), await figure.text()]).toEqual(['image/jpeg', 'jpeg'])
+  expect((await figures.fetch(new Request('https://app/api/research/gallery/image'))).status).toBe(400)
+  expect(asked).toEqual(['neurips2024-1', ''])
   await mkdir(join(editorRoot, 'js'), { recursive: true })
   await writeFile(join(editorRoot, 'index.html'), '<script src="js/app.js"></script>')
   await writeFile(join(editorRoot, 'js/app.js'), 'editor()')
@@ -40,7 +55,7 @@ it('serves previews without a Web server, registers newly installed editor files
   const editor = routes.get('/api/research/drawio/js/app.js')!
   expect(await (await editor.fetch(new Request('https://app/api/research/drawio/js/app.js'))).text()).toBe('editor()')
   await refresh()
-  expect(routes.size).toBe(3)
+  expect(routes.size).toBe(4)
   await fiber.dispose()
   expect(routes.size).toBe(0)
   // After disposal a refresh (a component installed later) registers nothing.
@@ -87,10 +102,10 @@ it('previews sources as inert text, answers HEAD without a body, and refuses dir
   await refresh()
   components = [{ id: 'drawio', installed: false, path: join(editorRoot, 'index.html') }]
   await refresh()
-  expect(routes.size).toBe(1)
+  expect(routes.size).toBe(2)
   components = [{ id: 'drawio', installed: true, path: join(editorRoot, 'index.html') }]
   await refresh()
-  expect([...routes.keys()].sort()).toEqual(['/api/research/drawio/index.html', '/api/research/file'])
+  expect([...routes.keys()].sort()).toEqual(['/api/research/drawio/index.html', '/api/research/file', '/api/research/gallery/image'])
   // A refresh still reading component status when the carrier goes away registers nothing afterwards.
   const late = refresh()
   await fiber.dispose()

@@ -47,6 +47,12 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 `research_media` 的 audit-svg 用平台 Python 原样运行 spark-to-paper 自带的 SVG 审计（`runtime/figures/audit_svg.py`）：越界、文字重叠、图形压住标签、随线宽缩放或被裁掉的箭头、悬空的连线、低于像素下限的字号、Times 覆盖不到的字符，以及描摹出来的大量路径。带 `save` 时，报告保存在 spark-to-paper 的图门禁读取的位置。export-figure 通过 svglib 和 reportlab 导出保留可编辑文字的矢量 PDF：svglib 不画 `<marker>`，所以先把箭头等标记展开成普通图形；系统有 Times New Roman 时嵌入该字体；并渲染 1440 与 480 像素宽的预览图。
 
+## 配图库
+
+`research_media` 的 find-reference-figures 检索一个配图库：约 3,500 张经人工复核的 ICLR、ICML、NeurIPS、CVPR、ACL 与 AAAI 论文（2023 至 2026 年）的 Figure 1 与概览图，来自 Top-Conf Figure Gallery。随包发布的只有它的索引（`runtime/figure-gallery/index.json.gz`，由 `scripts/build_figure_gallery.py` 构建）：每张图的论文、作者、会议、年份、视觉类型、Oral、Spotlight 与获奖标记、尺寸和设计分。筛选条件按会议、年份、类型和等级（`award` 包括最佳论文与荣誉提名）缩小范围；查询词用 BM25 在标题、作者、会议和类型上为剩下的图排序；没有查询词时，最受认可的图排在前面。配置了嵌入接口后，第一次查询会在后台把所有标题的嵌入写进产品主目录的缓存，之后的查询把标题嵌入与关键词排序融合。每页都会注明排序依据：`browse`、`keyword` 或 `semantic`。
+
+图片留在配图库那边。fetch-reference-figures `{galleryIds, label}` 从配图库的仓库、CDN 镜像或它的网站取回选中的图，缓存在产品主目录（`research/cache/figure-gallery`），并保存为 `figures/refs/<label>.gallery_<id>.<ext>`，旁边附一份写明论文及其版权的 `.source.json`；配图库已下架的图会报告它已不存在。同一个动作带 `arxivIds` 时，从 ar5iv 取其他论文的总览图。工作台的「配图灵感」标签页浏览同一份索引，图片通过宿主路由 `/api/research/gallery/image?id=` 加载。这些图是各模式画图技能的排版参考，绝不作为论文素材。
+
 ## 知识图谱
 
 `research_knowledge` 读取科研模式图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式，做法沿用 spark-to-paper 的图谱构建。内置图谱从上游的 AI 语料精简而来，以 `runtime/kg/ai-kg.json.gz` 随包发布：包含模式、带故事字段与五个最近邻的论文，不含向量。`scripts/build_kg.py` 离线转换上游压缩包，读取其中的 networkx pickle 时使用不执行文件中任何代码的反序列化器。项目也可以用 agent 抽取好的语料自建图谱（先 `build-graph`，再 `name-patterns`），存放在 `.research/kg/`。

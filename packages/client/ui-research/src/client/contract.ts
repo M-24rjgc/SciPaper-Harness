@@ -2,9 +2,12 @@
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {
-  CreateProjectRequest, ModeSummary, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
+  CreateProjectRequest, GalleryPage, ModeSummary, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
   ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
+
+/** A figure gallery search, as the panel sends it. */
+export type GallerySearchRequest = Extract<ResearchCommand, { action: 'find-reference-figures' }>
 
 /** Everything the research surfaces read: the record, in-flight work, and the last outcome. */
 export interface ResearchView {
@@ -25,7 +28,7 @@ export interface ResearchFocus {
   claimId: string | null
   projectId?: string | undefined
   artifactId?: string | undefined
-  panel?: 'workflow' | 'sources' | 'claims' | 'artifacts' | 'experiments' | 'settings' | undefined
+  panel?: 'workflow' | 'sources' | 'claims' | 'artifacts' | 'gallery' | 'experiments' | 'settings' | undefined
 }
 
 /** Working directory of every listed session, as the sessions service reports it. */
@@ -41,6 +44,8 @@ export interface ResearchInjected {
   /** Create or adopt the project rooted at `request.root`; the record comes back so a caller can act on it. */
   create(request: CreateProjectRequest): Promise<ResearchProject>
   run(request: ResearchCommand): Promise<ResearchResponse>
+  /** One page of the figure gallery; unlike `run`, it neither marks the workbench busy nor refreshes the record. */
+  searchFigures(request: GallerySearchRequest): Promise<GalleryPage>
   refresh(): Promise<void>
   /** Save the preferences, then store each provider key that was typed; an empty key leaves the stored one alone. */
   configure(preferences: ResearchPreferences, keys: { image: string; embedding: string }): Promise<void>

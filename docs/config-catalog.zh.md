@@ -1938,7 +1938,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/research/workbench/src/index.ts:40`](../packages/research/workbench/src/index.ts)
+来源：[`packages/research/workbench/src/index.ts:41`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

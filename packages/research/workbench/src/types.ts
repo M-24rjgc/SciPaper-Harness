@@ -290,6 +290,48 @@ export interface LiteratureItem {
   abstract: string
   bibtex: string
 }
+/** A figure of the built-in figure gallery: a published paper's Figure 1 or teaser. */
+export interface GalleryFigure {
+  /** The gallery's id, such as `neurips2024-19`. */
+  id: string
+  venue: string
+  year: number
+  title: string
+  authors: string[]
+  /** The gallery's visual pattern: architecture, pipeline, framework, conceptual, taxonomy, teaser … */
+  pattern: string
+  /** Oral or Spotlight, where the venue marked the paper. */
+  tier?: 'oral' | 'spotlight' | undefined
+  /** A best-paper award or honorable mention. */
+  award?: 'best' | 'honorable' | undefined
+  /** The paper's page. */
+  paper: string
+  /** The PDF the figure was cropped from, when it is not the paper's page. */
+  pdf?: string | undefined
+  width: number
+  height: number
+  /** The gallery's design-quality score. */
+  score?: number | undefined
+}
+/** Where the figure gallery comes from; each figure keeps its paper's copyright. */
+export interface GallerySource {
+  name: string
+  repository: string
+  commit: string
+  license: string
+}
+/** One page of a figure gallery search. */
+export interface GalleryPage {
+  /** Figures matching the search, across all pages. */
+  total: number
+  offset: number
+  figures: GalleryFigure[]
+  /** How the page was ranked: `browse` without a query, `keyword`, or `semantic` (keywords fused with embeddings). */
+  basis: 'browse' | 'keyword' | 'semantic'
+  /** Figures per venue, year, pattern and tier across the whole gallery. */
+  facets: { venue: Record<string, number>; year: Record<string, number>; pattern: Record<string, number>; tier: Record<string, number> }
+  source: GallerySource
+}
 export interface ResearchResponse {
   project?: ResearchProject | undefined
   jobId?: string | undefined
@@ -298,6 +340,7 @@ export interface ResearchResponse {
   path?: string | undefined
   paths?: string[] | undefined
   literature?: LiteratureItem[] | undefined
+  gallery?: GalleryPage | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
 }
@@ -361,7 +404,21 @@ export type ResearchCommand =
     /** Project images sent as style or layout references. */
     references?: string[] | undefined
   }
-  | { action: 'fetch-reference-figures'; projectId: ProjectId; arxivIds: string[]; label: string }
+  /** Search the figure gallery; filters narrow it, a query ranks it. */
+  | {
+    action: 'find-reference-figures'
+    projectId: ProjectId
+    query?: string | undefined
+    pattern?: string | undefined
+    venue?: string | undefined
+    year?: number | undefined
+    /** `award` for best papers and honorable mentions. */
+    tier?: 'award' | 'oral' | 'spotlight' | undefined
+    limit?: number | undefined
+    offset?: number | undefined
+  }
+  /** Save reference figures under figures/refs/: gallery figures by id, or overview figures of arXiv papers. */
+  | { action: 'fetch-reference-figures'; projectId: ProjectId; arxivIds?: string[] | undefined; galleryIds?: string[] | undefined; label: string }
   /** Audit an SVG figure; `save` writes the report to figures/audit_logs/<name>.audit.json. */
   | { action: 'audit-svg'; projectId: ProjectId; path: string; save?: boolean | undefined; minFontPx?: number | undefined }
   /** Export an SVG figure to a vector PDF (beside it, or `output`) with PNG previews under figures/previews. */

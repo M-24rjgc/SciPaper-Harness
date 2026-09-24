@@ -25,6 +25,7 @@ import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
 import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
+import { FigureGallery } from './gallery.ts'
 import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
@@ -62,7 +63,7 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
   'recall', 'novelty', 'build-graph', 'audit-svg', 'export-figure',
 ])
 
-type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait'
+type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
 /** Commands that record something in the project. */
 type RecordingCommand = Exclude<ResearchCommand, { action: ReadOnlyAction }>
 /** Commands whose whole effect is a record change. */
@@ -135,6 +136,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   readonly components: ComponentManager
   /** The research-pattern graphs: the built-in one and each project's own. */
   readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset('kg/ai-kg.json.gz'))
+  /** Published papers' Figure 1s to study before drawing, fetched on demand into the product home's cache. */
+  readonly gallery: FigureGallery
   /** The installed mode packs, loaded once at start. */
   modes!: ModeRegistry
   private venueLibrary: Promise<VenueLibrary> | undefined
@@ -145,6 +148,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     super(ctx, 'research')
     const root = config.componentRoot ?? join(resolveDshHome(), 'research', 'components')
     this.components = new ComponentManager(root, () => this.domain.global.get())
+    this.gallery = new FigureGallery(runtimeAsset('figure-gallery/index.json.gz'), join(dirname(root), 'cache', 'figure-gallery'))
   }
 
   /**
@@ -208,6 +212,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     this.ctx.effect(() => async () => {
       clearInterval(timer)
       this.knowledge.dispose()
+      this.gallery.dispose()
       this.lifetime.abort()
       await Promise.allSettled([...this.operations, ...this.tails.values()])
       await this.domain.close()
@@ -482,6 +487,14 @@ export class ResearchWorkbench extends TypertRemoteService {
         return { message: check.clean ? 'Clean' : 'Not done yet: fix the errors and check again', check }
       }
       case 'experiment-wait': return this.waitForRuns(project.id, request.runIds, request.timeoutSeconds, signal)
+      case 'find-reference-figures': {
+        const { query, pattern, venue, year, tier, limit, offset } = request
+        const page = await this.gallery.search({ query, pattern, venue, year, tier, limit, offset }, await this.embedder(), signal)
+        return {
+          message: `${page.total} gallery figure(s) (${page.basis}); fetch-reference-figures {galleryIds, label} saves the ones to study`,
+          gallery: page,
+        }
+      }
       default: {
         const work = async (workSignal: AbortSignal): Promise<ResearchResponse> => {
           const prepared = await this.prepare(project.id, request, workSignal, actor)
@@ -1006,12 +1019,36 @@ export class ResearchWorkbench extends TypertRemoteService {
     }
   }
 
+  /**
+   * Save reference figures into the project: gallery figures, each with a
+   * record of its paper beside it, and the overview figures of arXiv papers.
+   */
   private async referenceFigures(id: ProjectId, request: Extract<ResearchCommand, { action: 'fetch-reference-figures' }>, signal: AbortSignal): Promise<ResearchResponse> {
+    if (!request.arxivIds && !request.galleryIds) throw new Error('Name galleryIds (from find-reference-figures) or arxivIds')
     const root = this.record(id).root
-    const { figures, skipped } = await fetchReferenceFigures(request.arxivIds, signal, this.config.maxSourceBytes)
-    const saved: { path: string; arxivId: string; caption: string }[] = []
+    const limit = this.config.maxSourceBytes
+    const saved: { path: string; source?: string; galleryId?: string; arxivId?: string; title?: string; caption?: string }[] = []
+    const skipped: string[] = []
+    for (const galleryId of request.galleryIds ?? []) {
+      try {
+        const { figure, file, extension, source } = await this.gallery.image(galleryId, signal, limit)
+        const path = `figures/refs/${request.label}.gallery_${figure.id}.${extension}`
+        await atomicWrite(await projectPath(root, path), await readFile(file))
+        const record = `figures/refs/${request.label}.gallery_${figure.id}.source.json`
+        await atomicWrite(await projectPath(root, record), `${JSON.stringify({
+          ...figure, gallery: `${source.repository}@${source.commit}`,
+          copyright: 'The figure belongs to its paper\'s authors and publisher: a layout reference to study, never material for the paper',
+        }, null, 1)}\n`)
+        saved.push({ path, source: record, galleryId: figure.id, title: figure.title })
+      } catch (error) {
+        signal.throwIfAborted()
+        skipped.push(`${galleryId}: ${errorText(error)}`)
+      }
+    }
+    const fetched = request.arxivIds ? await fetchReferenceFigures(request.arxivIds, signal, limit) : { figures: [], skipped: [] }
+    skipped.push(...fetched.skipped)
     const counts = new Map<string, number>()
-    for (const figure of figures) {
+    for (const figure of fetched.figures) {
       const index = (counts.get(figure.arxivId) ?? 0) + 1
       counts.set(figure.arxivId, index)
       const path = `figures/refs/${request.label}.ref_${figure.arxivId.replace(/v\d+$/, '')}_${index}.${figure.extension}`
@@ -1021,7 +1058,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     return {
       message: saved.length
         ? `${saved.length} reference figure(s) saved under figures/refs; study their layout with read_image, never copy them into the paper`
-        : 'No reference figure found; search for other papers with an overview figure',
+        : 'No reference figure saved; search the gallery or other papers for an overview figure',
       paths: saved.map(item => item.path),
       content: JSON.stringify({ figures: saved, skipped }),
     }

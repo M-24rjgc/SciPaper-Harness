@@ -108,13 +108,17 @@ const FAMILIES: Family[] = [
   {
     name: 'research_media',
     title: 'Research media',
-    actions: ['visual-review', 'complete-visual-review', 'generate-image', 'fetch-reference-figures', 'audit-svg', 'export-figure'],
+    actions: ['visual-review', 'complete-visual-review', 'generate-image', 'find-reference-figures', 'fetch-reference-figures', 'audit-svg', 'export-figure'],
     description: 'visual-review {artifactId}: send rendered pages to a separate vision model — only needed when your own model cannot read images. '
       + 'complete-visual-review {artifactId, artifactRevision, sessionId, findings}: only the assigned review session records findings. '
       + 'generate-image {prompt, path, size?, quality?, background?, references?}: a raster image from the configured image API (gpt-image-2 by default); '
       + 'references are project images sent as style or layout references; the prompt is saved beside the image. Use it for artwork and for the visual draft '
       + 'of a method diagram, then redraw the diagram as an editable draw.io or SVG figure; result plots come from scripts and real data. '
-      + 'fetch-reference-figures {arxivIds, label}: overview figures of published papers (ar5iv) saved under figures/refs/ to study, never to copy into the paper. '
+      + 'find-reference-figures {query?, pattern?, venue?, year?, tier?, limit?, offset?}: the built-in figure gallery, about 3,500 hand-reviewed Figure 1 '
+      + 'and teaser figures of ICLR, ICML, NeurIPS, CVPR, ACL and AAAI papers (2023-2026); an English query ranks titles and authors (and embeddings, '
+      + 'when an embedding endpoint is configured), without one the most prominent come first. Look here first for the reference of a method or '
+      + 'overview figure. fetch-reference-figures {galleryIds or arxivIds, label}: saves gallery figures (each with a .source.json naming its paper) '
+      + 'or the overview figures of arXiv papers (ar5iv) under figures/refs/ to study with read_image, never to copy into the paper. '
       + 'audit-svg {path, save?, minFontPx?}: checks a hand-drawn SVG figure for overflow, overlapping text, shapes over labels, oversized or clipped '
       + 'arrowheads, dangling connectors, small type, glyphs outside Times, and traced path soup; save writes figures/audit_logs/<name>.audit.json. '
       + 'export-figure {path, output?}: the SVG as a vector PDF with live text (beside it unless output names the PDF) and PNG previews at 1440 and '
@@ -129,6 +133,17 @@ const FAMILIES: Family[] = [
       quality: { type: 'string', enum: ['low', 'medium', 'high', 'auto'], description: 'generate-image: low for a rough composition check, high for a final draft' },
       background: { type: 'string', enum: ['transparent', 'opaque', 'auto'], description: 'generate-image' },
       references: list('generate-image: up to 4 project image paths used as style or layout references'),
+      query: text('find-reference-figures: what the figure shows or the paper is about, in English (e.g. "retrieval augmented agent memory")'),
+      pattern: {
+        type: 'string', enum: ['architecture', 'pipeline', 'framework', 'conceptual', 'taxonomy', 'teaser', 'comparison', 'results'],
+        description: 'find-reference-figures: the kind of figure',
+      },
+      venue: { type: 'string', enum: ['iclr', 'icml', 'neurips', 'cvpr', 'acl', 'aaai'], description: 'find-reference-figures' },
+      year: { type: 'integer', description: 'find-reference-figures: 2023 to 2026' },
+      tier: { type: 'string', enum: ['award', 'oral', 'spotlight'], description: 'find-reference-figures: award is best papers and honorable mentions' },
+      limit: { type: 'integer', description: 'find-reference-figures: figures per page (default 12, at most 60)' },
+      offset: { type: 'integer', description: 'find-reference-figures: skip this many for the next page' },
+      galleryIds: list('fetch-reference-figures: gallery figure ids from find-reference-figures, at most 6'),
       arxivIds: list('fetch-reference-figures: new-style arXiv ids, at most 6'),
       label: text('fetch-reference-figures: the figure these references are for, e.g. method-overview'),
       path: text('generate-image: new .png/.jpg/.webp path; audit-svg / export-figure: the .svg figure'),

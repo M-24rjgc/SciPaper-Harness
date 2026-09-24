@@ -58,6 +58,7 @@ kind: "package-plugin"
 | `ClaimSheet.tsx` | 一条论点，以及它脚下的每一份原文，覆盖整个界面 |
 | `RunPanel.tsx`、`MetricsGrid.tsx` | 输入框上方已提交的实验及其指标 |
 | `Workbench.tsx`、`ContextCards.tsx` | 项目自身的文件：资料、稿件与示意图编辑器、运行、导出 |
+| `Gallery.tsx` | 「配图灵感」标签页：筛选条件、顶会 Figure 1 网格，以及把一张图存为 `figures/refs/` 下的参考图 |
 | `ResearchSettings.tsx`、`EnvironmentForm.tsx` | 模型分工、托管组件、已绑定的环境 |
 | `Onboarding.tsx` | 跳过 harness 首次运行时的内测声明 |
 | `contract.ts`、`format.ts`、`locales.ts` | 注入面、会话到项目的解析、格式化，以及 `en` 与 `zh` 两份全部文案 |

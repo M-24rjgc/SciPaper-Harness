@@ -37,7 +37,7 @@ function propsFor(
     },
     useResearch: (select: (value: typeof view) => unknown) => select(view),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select(directories),
-    expand: (projectId: string) => { log.expanded.push(projectId) },
+    expand: (projectId: string, panel?: string) => { log.expanded.push(panel === 'artifacts' ? projectId : `${projectId}:${panel}`) },
     showProgress: () => { log.progress += 1 },
   } as unknown as WorkbenchProps & SessionSeatProps
 }
@@ -101,5 +101,8 @@ describe('the header names where this session\'s project stands', () => {
     const actions = render(<ResearchProjectActions {...propsFor([stranger, mine], records)} />)
     fireEvent.click(actions.getByRole('button', { name: zh.projectFolder }))
     expect(records.expanded).toEqual([mine.id])
+    // The figure gallery opens from the same place.
+    fireEvent.click(actions.getByRole('button', { name: zh.gallery }))
+    expect(records.expanded).toEqual([mine.id, `${mine.id}:gallery`])
   })
 })

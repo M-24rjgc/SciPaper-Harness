@@ -58,6 +58,7 @@ Every surface reads one polled snapshot of projects, preferences and components,
 | `ClaimSheet.tsx` | One claim and every source under it, over the whole frame |
 | `RunPanel.tsx`, `MetricsGrid.tsx` | Submitted experiments above the composer, with their metrics |
 | `Workbench.tsx`, `ContextCards.tsx` | The project's files: sources, manuscript and diagram editors, runs, export |
+| `Gallery.tsx` | The figure gallery tab: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/` |
 | `ResearchSettings.tsx`, `EnvironmentForm.tsx` | Model roles, managed components, bound environments |
 | `Onboarding.tsx` | Skips the harness's first-run internal-testing notice |
 | `contract.ts`, `format.ts`, `locales.ts` | The injected face, session-to-project resolution, formatting, and every string in `en` and `zh` |

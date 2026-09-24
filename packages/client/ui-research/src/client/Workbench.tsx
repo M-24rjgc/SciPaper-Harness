@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'rea
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { ArtifactRecord, EnvironmentId, EvidenceId, ArtifactId, ResearchProject, ResearchCommand, CheckReport } from '@deepseek-ai/dsh-research-workbench/types'
-import { useModes, type WorkbenchProps } from './contract.ts'
+import { useModes, type ResearchFocus, type WorkbenchProps } from './contract.ts'
+import { Gallery } from './Gallery.tsx'
 import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { ProjectStatus } from './Rail.tsx'
 import { ModeSelect } from './ModeSelect.tsx'
@@ -56,7 +57,7 @@ export function Workbench(props: WorkbenchProps): ReactNode {
   const { t } = props
   const focus = props.useFocus(s => s)
   const [selected, setSelected] = useState(focus.projectId ?? '')
-  const [tab, setTab] = useState<'workflow' | 'sources' | 'claims' | 'artifacts' | 'experiments' | 'settings'>(focus.panel ?? 'workflow')
+  const [tab, setTab] = useState<NonNullable<ResearchFocus['panel']>>(focus.panel ?? 'workflow')
   useEffect(() => { setSelected(focus.projectId ?? ''); setTab(focus.panel ?? 'workflow') }, [focus.projectId, focus.panel])
   const [creating, setCreating] = useState(false)
   const project = view.snapshot?.projects.find(p => p.id === selected) ?? view.snapshot?.projects[0]
@@ -87,7 +88,7 @@ export function Workbench(props: WorkbenchProps): ReactNode {
       <label>{t('brief')}<textarea name="brief" rows={3} /></label>
       <div className={styles.toolbar}><button type="submit" disabled={view.busy}>{t('create')}</button><button type="button" onClick={() => { setCreating(false) }}>{t('cancel')}</button></div>
     </form>}
-    <nav className={styles.tabs}>{(['workflow', 'sources', 'claims', 'artifacts', 'experiments'] as const).map(item => <button key={item} aria-current={tab === item ? 'page' : undefined} onClick={() => { setTab(item) }}>{t(item)}</button>)}</nav>
+    <nav className={styles.tabs}>{(['workflow', 'sources', 'claims', 'artifacts', 'gallery', 'experiments'] as const).map(item => <button key={item} aria-current={tab === item ? 'page' : undefined} onClick={() => { setTab(item) }}>{t(item)}</button>)}</nav>
     {view.error && <div className={styles.error} role="alert">{view.error}</div>}
     <div className={styles.body}>{project
       ? <div key={project.id}>
@@ -96,6 +97,7 @@ export function Workbench(props: WorkbenchProps): ReactNode {
         {tab === 'claims' && <div>{project.claims.map(claim => <button className={styles.claimRow} key={claim.id} onClick={() => { props.focusClaim(claim.id) }}><span>{claim.text}</span><span className={styles.badge}>{t(claim.state)}</span></button>)}</div>}
         {tab === 'sources' && <Sources {...props} project={project} />}
         {tab === 'artifacts' && <Artifacts {...props} project={project} />}
+        {tab === 'gallery' && <Gallery {...props} project={project} />}
         {tab === 'experiments' && <Experiments {...props} project={project} />}
       </div>
       : <div className={styles.empty}><ResearchMark /><h2>{t('noProjects')}</h2><button onClick={() => { setCreating(true) }}>{t('newProject')}</button></div>}</div>

@@ -424,6 +424,21 @@ describe('the research plugin', () => {
     await b.face.install('python')
     expect(b.remote.installComponent).toHaveBeenCalledWith('python')
     expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
+
+    // A gallery search answers with its page, and leaves the workbench's busy state and last response alone.
+    const search = { action: 'find-reference-figures' as const, projectId: PROJECT.id, query: 'agent memory' }
+    const gallery = {
+      total: 0, offset: 0, figures: [], basis: 'keyword' as const,
+      facets: { venue: {}, year: {}, pattern: {}, tier: {} }, source: { name: 'g', repository: 'r', commit: 'c', license: 'l' },
+    }
+    b.remote.command.mockResolvedValueOnce(ok({ message: '0 figures', gallery }))
+    expect(await b.face.searchFigures(search)).toBe(gallery)
+    expect(b.remote.command).toHaveBeenLastCalledWith(search, expect.any(AbortSignal))
+    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ busy: false, response: { message: 'python ready' } })
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'no page' }))
+    await expect(b.face.searchFigures(search)).rejects.toThrow(/returned no page/)
+    b.remote.command.mockResolvedValueOnce(bad('gallery offline'))
+    await expect(b.face.searchFigures(search)).rejects.toThrow('gallery offline')
   })
 
   it('moves the frame: back to a conversation, onto the panel, and onto one claim', async () => {

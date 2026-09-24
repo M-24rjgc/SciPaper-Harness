@@ -23,12 +23,13 @@ export function ResearchStatusChip(props: WorkbenchProps & SessionSeatProps): Re
   </button>
 }
 
-/** The project's files, reachable from the conversation header. */
+/** The project's files and the figure gallery, reachable from the conversation header. */
 export function ResearchProjectActions(props: WorkbenchProps & SessionSeatProps): ReactNode {
   const { t } = props
   const project = useSessionProject(props)
   if (!project) return null
   return <span className={styles.actions}>
     <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'artifacts') }}>{t('projectFolder')}</button>
+    <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'gallery') }}>{t('gallery')}</button>
   </span>
 }

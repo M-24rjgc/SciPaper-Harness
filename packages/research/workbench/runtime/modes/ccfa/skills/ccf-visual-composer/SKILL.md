@@ -10,10 +10,11 @@ Adapted from CCFA-Skills `ccf-visual-composer` (MIT). The upstream skill — des
 ## Method and architecture figures
 
 1. Resolve the topology, labels and takeaway from the method's owner; missing topology is never invented.
-2. **First pass, gpt-image-2** (upstream's default renderer): `research_media` generate-image with the full prompt — layout geometry, text inventory, typography (Times New Roman), palette — and up to four reference images. For published-paper style references, `research_media` fetch-reference-figures saves overview figures under `figures/refs/` to study, never to copy. The key is in the research settings; if it is missing, ask the user to add it there, and say so rather than substitute another backend.
-3. **Editable figure.** Reconstruct the accepted draft as live text, shapes and typed connectors: an SVG (the method-diagram skill) or a draw.io file. Never embed the raster and call it editable.
-4. **QA.** `research_media` audit-svg on the SVG (overflow, overlapping text, clipped arrowheads, dangling connectors, small type, glyphs outside Times, path soup); fix and re-audit until clean. Then export-figure writes the vector PDF with live text and 1440/480 px previews for read_image.
-5. Register the figure (`research_artifact` register-artifact kind diagram) and include the PDF in the paper.
+2. **References from published papers.** `research_media` find-reference-figures searches the built-in gallery of hand-reviewed Figure 1s from ICLR, ICML, NeurIPS, CVPR, ACL and AAAI: an English query for the method's topic, `pattern` for the figure type (architecture, pipeline, framework, conceptual, taxonomy), `tier` award or oral for the most recognised papers. Look at the candidates' titles, then fetch-reference-figures `{galleryIds, label}` saves two to four under `figures/refs/`, each with a `.source.json` naming its paper; study them with read_image for the reference-layout mode, never copy them. Outside those venues, fetch-reference-figures `{arxivIds, label}` takes the overview figures of papers you found.
+3. **First pass, gpt-image-2** (upstream's default renderer): `research_media` generate-image with the full prompt — layout geometry, text inventory, typography (Times New Roman), palette — and up to four reference images from `figures/refs/`. The key is in the research settings; if it is missing, ask the user to add it there, and say so rather than substitute another backend.
+4. **Editable figure.** Reconstruct the accepted draft as live text, shapes and typed connectors: an SVG (the method-diagram skill) or a draw.io file. Never embed the raster and call it editable.
+5. **QA.** `research_media` audit-svg on the SVG (overflow, overlapping text, clipped arrowheads, dangling connectors, small type, glyphs outside Times, path soup); fix and re-audit until clean. Then export-figure writes the vector PDF with live text and 1440/480 px previews for read_image.
+6. Register the figure (`research_artifact` register-artifact kind diagram) and include the PDF in the paper.
 
 ## Result plots
 
