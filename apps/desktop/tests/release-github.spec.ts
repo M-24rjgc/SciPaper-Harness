@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,6 +37,13 @@ describe('the GitHub release of a Windows build', () => {
       'release', 'create', 'v0.2.0-alpha.1', ...plan.files, '--repo', 'M-24rjgc/SciPaper-Harness',
       '--title', 'SciPaper Harness 0.2.0-alpha.1', '--notes-file', 'notes.md', '--prerelease',
     ])
+  })
+
+  it('writes the prerelease channel file from latest.yml, as electron-builder leaves only that one', () => {
+    const artifacts = build('0.2.0-alpha.1', { latest: metadata('0.2.0-alpha.1') })
+    const plan = planGitHubRelease(artifacts, '0.2.0-alpha.1')
+    expect(plan.files.slice(2).map(file => file.slice(artifacts.length + 1))).toEqual(['alpha.yml', 'latest.yml'])
+    expect(readFileSync(join(artifacts, 'alpha.yml'), 'utf8')).toBe(readFileSync(join(artifacts, 'latest.yml'), 'utf8'))
   })
 
   it('publishes a stable version as a full release with generated notes', () => {

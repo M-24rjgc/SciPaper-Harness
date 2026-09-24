@@ -11,7 +11,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
@@ -45,7 +45,12 @@ export function planGitHubRelease(artifactsDir: string, version: string): GitHub
   const installer = join(artifactsDir, scipaperInstallerName(version))
   const blockmap = `${installer}.blockmap`
   const channel = updateChannel(version)
-  for (const file of [installer, blockmap, join(artifactsDir, `${channel}.yml`)]) {
+  const channelFile = join(artifactsDir, `${channel}.yml`)
+  const latest = join(artifactsDir, 'latest.yml')
+  // electron-builder writes latest.yml for the GitHub provider; the updater of a prerelease
+  // reads `<channel>.yml` first, so the channel file is written beside it with the same content.
+  if (!existsSync(channelFile) && existsSync(latest)) copyFileSync(latest, channelFile)
+  for (const file of [installer, blockmap, channelFile]) {
     if (!existsSync(file)) throw new Error(`release: ${file} is missing; package the Windows installer for ${version} first`)
   }
   // The updater reads the prerelease channel and falls back to `latest`; both describe this installer.
