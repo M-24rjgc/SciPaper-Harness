@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-research-workbench",
   "description": "Evidence-driven research projects, manuscript tools and independent experiment jobs",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "publishConfig": {
     "access": "public"
   },
