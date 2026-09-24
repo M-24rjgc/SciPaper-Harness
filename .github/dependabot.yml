@@ -1,5 +1,7 @@
 version: 2
 
+# SciPaper Harness takes no scheduled dependency pull requests: a limit of 0 turns version
+# updates off while keeping the upstream configuration it inherits from DeepSeek Harness.
 updates:
   - package-ecosystem: "npm"
     directory: "/"
@@ -10,6 +12,7 @@ updates:
       interval: "cron"
       cronjob: "0 4 * * *"
       timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 30
     labels:
@@ -22,6 +25,7 @@ updates:
       interval: "cron"
       cronjob: "0 4 * * *"
       timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 30
     labels:
@@ -34,6 +38,7 @@ updates:
       interval: "cron"
       cronjob: "0 4 * * *"
       timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 0
     cooldown:
       default-days: 30
     labels:
