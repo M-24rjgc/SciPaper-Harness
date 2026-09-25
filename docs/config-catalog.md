@@ -1939,7 +1939,7 @@ Source: [`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guar
 
 ## `@deepseek-ai/dsh-research-workbench`
 
-Requires: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm`
+Requires: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals`
 
 ```ts config-catalog
 /** Research workbench configuration. */
@@ -1955,7 +1955,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/research/workbench/src/index.ts:47`](../packages/research/workbench/src/index.ts)
+Source: [`packages/research/workbench/src/index.ts:48`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

@@ -114,10 +114,8 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     const system = systemPromptText(agent.session)
     if (system === undefined) throw new Error('the settled Web request has no system prompt')
     const paragraphs = system.split('\n\n')
-    expect(paragraphs.slice(0, 2)).toEqual([
-      'You are an AI agent powered by DeepSeek Harness.',
-      'You are a coding agent powered by the deepseek-v4-flash model.',
-    ])
+    // The research edition's Web bundle drops the harness identity opener; the persona comes first.
+    expect(paragraphs[0]).toBe('You are a coding agent powered by the deepseek-v4-flash model.')
     const suffix = paragraphs.slice(-3).join('\n\n')
       .split(REPO_ROOT).join('{{sourceRoot}}')
       .split(join(scaffold.workspaceCwd, 'workspace')).join('{{cwd}}')
@@ -203,7 +201,7 @@ describe('web e2e: fresh round trip through the real assembly', () => {
     await expect.poll(() => disclosure.getAttribute('aria-expanded')).toBe('true')
     const opaque = body.locator('[data-context-text]')
     await expect.poll(() => opaque.count(), { timeout: 5_000 }).toBe(1)
-    expect(await opaque.textContent()).toContain('You are an AI agent powered by DeepSeek Harness.')
+    expect(await opaque.textContent()).toContain('You are a coding agent powered by the deepseek-v4-flash model.')
 
     await disclosure.click()
     await expect.poll(() => disclosure.getAttribute('aria-expanded')).toBe('false')

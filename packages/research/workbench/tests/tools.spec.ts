@@ -7,7 +7,7 @@ import { newProject } from '../src/project.ts'
 import { ModeRegistry, type ModePack, type ResolvedMode } from '../src/modes.ts'
 import { projectStanding } from '../src/progress.ts'
 import type { ResearchWorkbench } from '../src/index.ts'
-import type { ProjectId, ResearchCommand, ResearchProject, ResearchStanding, ResearchTask } from '../src/types.ts'
+import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchStanding, ResearchTask } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 let modes: ModeRegistry
@@ -31,8 +31,9 @@ const other = process.platform === 'win32' ? 'C:\\research\\other' : '/research/
 function harness() {
   const project = newProject({ root, title: 'Study', brief: 'b', mode: 'spark-to-paper', route: 'proposal' }, 'w' as WorkspaceId)
   const foreign = newProject({ root: other, title: 'Other', brief: '' }, 'w' as WorkspaceId)
-  const executed: { request: ResearchCommand; actor: string }[] = []
+  const executed: { request: ResearchCommand; actor: string; sessionId?: string | undefined }[] = []
   const created: unknown[] = []
+  const goals: ResearchGoal[] = []
   const tasks: ResearchTask[] = [
     { id: 'job', kind: 'compile', projectId: project.id, status: 'completed', message: 'ok', createdAt: '', result: { message: 'done', project } },
     { id: 'bare', kind: 'compile', projectId: project.id, status: 'running', message: 'r', createdAt: '' },
@@ -42,10 +43,14 @@ function harness() {
     projects: () => [project, foreign],
     getProject: (id: ProjectId) => { const found = [project, foreign].find(item => item.id === id); if (!found) throw new Error('Research project not found'); return found },
     projectAt: async (cwd: string) => cwd.startsWith(root) ? project : cwd.startsWith(other) ? foreign : undefined,
-    execute: async (request: ResearchCommand, _signal: AbortSignal, actor: string) => { executed.push({ request, actor }); return { message: `did ${request.action}`, project } },
+    execute: async (request: ResearchCommand, _signal: AbortSignal, actor: string, sessionId?: string) => {
+      executed.push({ request, actor, ...(sessionId === undefined ? {} : { sessionId }) })
+      return { message: `did ${request.action}`, project }
+    },
     createProject: async (request: { root: string }, sessionId?: string) => { created.push({ request, sessionId }); return newProject({ ...request, title: 't', brief: '' }, 'w' as WorkspaceId) },
     tasks: () => tasks,
     standing: (item: ResearchProject) => standingOf(item),
+    activeGoals: () => goals,
     modes,
   } as unknown as ResearchWorkbench
   const tools = new Map<string, RegisteredTool>()
@@ -62,7 +67,7 @@ function harness() {
   /** `null` runs the call without an agent session, as a non-agent caller would. */
   const call = (name: string, args: Record<string, unknown>, cwd: string | null = root) =>
     tools.get(name)!.execute(args, exec(cwd ?? undefined, name))
-  return { project, foreign, executed, created, tools, call, exec, hook: () => hook! }
+  return { project, foreign, executed, created, goals, tools, call, exec, hook: () => hook! }
 }
 
 describe('research tools find the project from the working directory', () => {
@@ -74,13 +79,23 @@ describe('research tools find the project from the working directory', () => {
     expect(brief).toMatchObject({ mode: 'spark-to-paper', route: 'proposal', paperRoot: '.', checkedAt: null, changedSinceCheck: false, finished: false })
     expect(brief.guide[0]).toMatch(/^Mode spark-to-paper \(route proposal\): plan → cite → .* → submission\. Next phase: plan\./)
     expect(brief.guide[0]).toMatch(/ Checkpoint before: experiments\.$/)
-    expect(brief.guide[2]).toBe('Load the ts-paper skill before working in this mode.')
+    // The user named the mode at creation, so the route is settled and the entry skill does not route again.
+    expect(brief).toMatchObject({ modeChosen: true, modeSetBy: 'user', routingSettled: true, activeGoal: null })
+    expect(brief).not.toHaveProperty('untitled')
+    expect(brief.guide[2]).toBe('Load the ts-paper skill when you start work in this mode, not for a question or a status report. '
+      + 'Routing is settled (routingSettled): skip the routing step of the entry skill.')
     expect(brief.guide[3]).toMatch(/ask_user_question/)
     expect(brief.phases[0]).toEqual({ id: 'plan', state: 'current', done: false, checkpoint: false, missing: ['Not checked yet'] })
     expect(brief.phases[1]).toMatchObject({ id: 'cite', state: 'pending' })
-    await expect(h.call('research_project', { action: 'current' }, process.platform === 'win32' ? 'C:\\elsewhere' : '/elsewhere')).rejects.toThrow(/No research project contains/)
-    await expect(h.call('research_project', { action: 'current' }, null)).rejects.toThrow(/working directory/)
-    await expect(h.call('research_project', { action: 'current', projectId: h.foreign.id })).rejects.toThrow(/does not belong/)
+    // current never fails: outside a research, and in a conversation with no folder, it says what to do instead.
+    const elsewhere = process.platform === 'win32' ? 'C:\\elsewhere' : '/elsewhere'
+    const outside = /^No research contains this conversation's folder\. .*action create; to work in another folder, ask the user .*新研究/
+    expect(await h.call('research_project', { action: 'current' }, elsewhere)).toEqual({ project: null, hint: expect.stringMatching(outside) as unknown })
+    expect(await h.call('research_project', { action: 'current' }, null))
+      .toEqual({ project: null, hint: expect.stringMatching(/^This conversation has no working folder/) as unknown })
+    expect(await h.call('research_project', { action: 'current', projectId: h.foreign.id }))
+      .toEqual({ project: null, hint: 'The tool session does not belong to this research project' })
+    await expect(h.call('research_check', {}, null)).rejects.toThrow(/no working folder/)
     expect(await h.call('research_project', { action: 'current', projectId: h.project.id })).toMatchObject({ id: h.project.id })
     expect(await h.call('research_project', { action: 'list' })).toEqual([
       { id: h.project.id, title: 'Study', root, mode: 'spark-to-paper', route: 'proposal' },
@@ -97,34 +112,65 @@ describe('research tools find the project from the working directory', () => {
     expect(catalog[1]?.phases.map(item => [item.route, item.phases[0]])).toEqual([['idea', 'story'], ['proposal', 'plan'], ['data', 'data']])
   })
 
-  it('creates a project in the working directory, binding the calling session', async () => {
+  it('creates a research only in the conversation\'s own folder, binding the calling session', async () => {
     const h = harness()
-    const created = await h.call('research_project', { action: 'create', title: 'New', mode: 'spark-to-paper', route: 'idea', autonomy: 'automatic' }, `${root}/new`)
+    const fresh = process.platform === 'win32' ? 'C:\\research\\fresh' : '/research/fresh'
+    const created = await h.call('research_project', { action: 'create', title: 'New', mode: 'spark-to-paper', route: 'idea', autonomy: 'automatic' }, fresh)
     expect(created).toMatchObject({ mode: 'spark-to-paper', route: 'idea' })
-    await h.call('research_project', { action: 'create', title: 'Elsewhere', root: other, brief: 'x' }, `${root}/new`)
+    // Naming the folder the conversation is in is the same as omitting it.
+    await h.call('research_project', { action: 'create', title: 'Same', root: fresh, brief: 'x' }, fresh)
     expect(h.created).toEqual([
-      { request: { title: 'New', root: `${root}/new`, brief: '', mode: 'spark-to-paper', route: 'idea', autonomy: 'automatic' }, sessionId: 'agent-session' },
-      { request: { title: 'Elsewhere', root: other, brief: 'x' }, sessionId: undefined },
+      { request: { title: 'New', root: fresh, brief: '', mode: 'spark-to-paper', route: 'idea', autonomy: 'automatic' }, sessionId: 'agent-session' },
+      { request: { title: 'Same', root: fresh, brief: 'x' }, sessionId: 'agent-session' },
     ])
-    await expect(h.call('research_project', { action: 'create' }, null)).rejects.toThrow(/needs a title/)
+    // Any other folder is the user's to choose.
+    await expect(h.call('research_project', { action: 'create', title: 'Elsewhere', root: other }, fresh)).rejects.toThrow(new RegExp(
+      '^create makes only this conversation\'s folder .* a research, never .*; to work in another folder, '
+      + 'ask the user to start a research with 新研究 \\(New research\\) and choose its folder with 更改位置 \\(Change location\\)$',
+    ))
+    // A folder inside a research belongs to it: nothing new is made there.
+    expect(await h.call('research_project', { action: 'create', title: 'Nested' }, `${root}/paper`)).toMatchObject({ id: h.project.id })
+    expect(h.created).toHaveLength(2)
+    await expect(h.call('research_project', { action: 'create', title: 'Nowhere' }, null)).rejects.toThrow(/no working folder/)
+    await expect(h.call('research_project', { action: 'create' }, fresh)).rejects.toThrow(/needs a title/)
   })
 
   it('turns routing, autonomy and decisions into ledger commands', async () => {
     const h = harness()
-    await h.call('research_project', { action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: 'data exists' })
+    await h.call('research_project', { action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: 'data exists', decidedBy: 'user' })
     await h.call('research_project', { action: 'set-autonomy', autonomy: 'automatic' })
+    await h.call('research_project', { action: 'rename', title: ' Sparse attention study ' })
+    await expect(h.call('research_project', { action: 'rename', title: '  ' })).rejects.toThrow()
     const result = await h.call('research_project', { action: 'record-decision', question: 'Q?', answer: 'A' })
     expect(result).toEqual({ message: 'did record-decision' })
     await h.call('research_project', { action: 'record-decision', question: 'Go?', answer: 'Yes', decidedBy: 'user' })
     await h.call('research_project', { action: 'record-decision', question: 'Run experiments?', answer: 'Not here', key: 'experiments-deferred' })
     await expect(h.call('research_project', { action: 'record-decision', question: 'Q?', answer: 'A', key: 'Not A Slug' })).rejects.toThrow(/lowercase words/)
-    expect(h.executed.map(item => [item.request, item.actor])).toEqual([
-      [{ action: 'set-mode', projectId: h.project.id, mode: 'spark-to-paper', route: 'data', reason: 'data exists' }, 'agent'],
-      [{ action: 'set-autonomy', projectId: h.project.id, autonomy: 'automatic' }, 'agent'],
-      [{ action: 'record-decision', projectId: h.project.id, question: 'Q?', answer: 'A' }, 'agent'],
-      [{ action: 'record-decision', projectId: h.project.id, question: 'Go?', answer: 'Yes', decidedBy: 'user' }, 'agent'],
-      [{ action: 'record-decision', projectId: h.project.id, question: 'Run experiments?', answer: 'Not here', key: 'experiments-deferred' }, 'agent'],
+    expect(h.executed.map(item => [item.request, item.actor, item.sessionId])).toEqual([
+      [{ action: 'set-mode', projectId: h.project.id, mode: 'spark-to-paper', route: 'data', reason: 'data exists', decidedBy: 'user' }, 'agent', 'agent-session'],
+      [{ action: 'set-autonomy', projectId: h.project.id, autonomy: 'automatic' }, 'agent', 'agent-session'],
+      [{ action: 'rename', projectId: h.project.id, title: 'Sparse attention study' }, 'agent', 'agent-session'],
+      [{ action: 'record-decision', projectId: h.project.id, question: 'Q?', answer: 'A' }, 'agent', 'agent-session'],
+      [{ action: 'record-decision', projectId: h.project.id, question: 'Go?', answer: 'Yes', decidedBy: 'user' }, 'agent', 'agent-session'],
+      [{ action: 'record-decision', projectId: h.project.id, question: 'Run experiments?', answer: 'Not here', key: 'experiments-deferred' }, 'agent', 'agent-session'],
     ])
+  })
+
+  it('reports the goal a conversation of the research already holds, and says whose it is', async () => {
+    const h = harness()
+    type Brief = { activeGoal: Record<string, unknown> | null; guide: string[] }
+    const current = async (): Promise<Brief> => await h.call('research_project', { action: 'current' }) as Brief
+    h.goals.push({ sessionId: 'other-session', objective: 'Finish the paper', phase: 'active', roundsStarted: 3, updatedAt: 2 })
+    const elsewhere = await current()
+    expect(elsewhere.activeGoal).toEqual({ conversation: 'other-session', thisConversation: false, objective: 'Finish the paper', phase: 'active', roundsStarted: 3 })
+    expect(elsewhere.guide).toContain('A goal is already running in another conversation of this research (activeGoal): continue the work there or tell the user where it runs; never create a second goal.')
+    // The reader's own goal comes first, and the others are counted.
+    h.goals.push({ sessionId: 'agent-session', objective: 'Mine', phase: 'paused', roundsStarted: 1, updatedAt: 1 })
+    const own = await current()
+    expect(own.activeGoal).toEqual({ conversation: 'agent-session', thisConversation: true, objective: 'Mine', phase: 'paused', roundsStarted: 1, otherConversationsWithGoals: 1 })
+    expect(own.guide).toContain('This conversation holds the research\'s goal (activeGoal): keep working toward it; never create a second.')
+    h.goals.splice(0, 2, { sessionId: 'other-session', objective: 'Stuck', phase: 'blocked', roundsStarted: 9, updatedAt: 3 })
+    expect((await current()).guide).toContain('A goal is already blocked in another conversation of this research (activeGoal): continue the work there or tell the user where it runs; never create a second goal.')
   })
 
   it('runs checks and family actions with typed fields and compact results', async () => {
@@ -190,9 +236,22 @@ describe('the project brief the model reads', () => {
     const brief = async (): Promise<ReturnType<typeof projectBrief>> =>
       projectBrief(project, modes.resolve(project), await standingOf(project))
     const general = await brief() as { guide: string[]; mode: string; route: null; phases: unknown[]; lastCompile: null }
-    expect(general).toMatchObject({ mode: 'general', route: null, paperRoot: 'paper', phases: [], lastCompile: null })
-    expect(general.guide[0]).toMatch(/^Mode general: no pipeline\. .*suggest a mode \(research_project modes\)/)
-    expect(general.guide[1]).toMatch(/Autonomy automatic/)
+    // Created without naming a mode: general, with the mode not chosen yet.
+    expect(general).toMatchObject({
+      mode: 'general', route: null, paperRoot: 'paper', phases: [], lastCompile: null,
+      modeChosen: false, modeSetBy: null, routingSettled: false, activeGoal: null,
+    })
+    const unchosen = /^The mode is not chosen yet \(modeChosen false\)\. After the user's first message, choose it with the research-modes /
+    expect(general.guide[0]).toMatch(unchosen)
+    expect(general.guide[1]).toMatch(/^Mode general: no pipeline\. .*suggest a mode \(research_project modes\)/)
+    expect(general.guide[2]).toMatch(/Autonomy automatic/)
+    // A placeholder title asks for a real one.
+    project.untitled = true
+    const untitled = await brief() as { untitled?: boolean; guide: string[] }
+    expect(untitled.untitled).toBe(true)
+    expect(untitled.guide.at(-1)).toBe('The research has no title of its own yet: once the topic is clear, give it a short one with rename.')
+    delete project.untitled
+    project.modeSetBy = 'agent'
     project.mode = 'gone'
     expect((await brief() as { guide: string[] }).guide[0]).toMatch(/"gone" is not installed/)
     project.mode = 'spark-to-paper'
@@ -232,6 +291,12 @@ describe('the project brief the model reads', () => {
     expect(routed.phaseSkills.data).toEqual(['ts-paper-data', 'results-ingest'])
     expect(routed.lastCompile).toEqual({ status: 'completed', pdfPath: 'x.pdf' })
     expect(routed.decisions).toEqual([{ question: 'Q', answer: 'A', by: 'user', rationale: '' }])
+    // The agent chose this mode and no decision settled the route, so the entry skill may still route.
+    expect(routed).toMatchObject({ modeChosen: true, modeSetBy: 'agent', routingSettled: false })
+    expect(routed.guide[2]).toBe('Load the ts-paper skill when you start work in this mode, not for a question or a status report.')
+    project.decisions.push({ id: 'm', question: '模式与路线', answer: 'spark-to-paper · data', by: 'agent', rationale: '', at: '', key: 'mode' })
+    expect(await brief()).toMatchObject({ routingSettled: true })
+    project.decisions.pop()
     expect(routed.artifacts).toEqual([{ id: 'a', path: 'paper/main.tex', kind: 'manuscript', revision: 2, stale: false }])
     expect(JSON.stringify(routed.evidence)).not.toContain('secret body')
     expect(JSON.stringify(routed.environments)).not.toContain('long details')
@@ -261,15 +326,18 @@ describe('the project brief the model reads', () => {
     })
     const general = pack('general', {})
     const registry = new ModeRegistry([general, pack('family', { preload: ['first', 'second'], entry: 'lead' }), pack('solo', { entry: 'lead' })])
-    const project: ResearchProject = newProject({ root, title: 'T', brief: '' }, 'w' as WorkspaceId)
+    const project: ResearchProject = { ...newProject({ root, title: 'T', brief: '' }, 'w' as WorkspaceId), modeSetBy: 'agent' }
     const briefIn = async (modes: ModeRegistry): Promise<{ guide: string[] }> => {
       const mode = modes.resolve(project)
       return projectBrief(project, mode, await standingOf(project, mode)) as { guide: string[] }
     }
     project.mode = 'family'
-    expect((await briefIn(registry)).guide.slice(0, 2)).toEqual(['Mode family: no pipeline on this route; work as the mode\'s skills direct and run the relevant checks.', 'Load the first, then second, then lead skills before working in this mode.'])
+    expect((await briefIn(registry)).guide.slice(0, 2)).toEqual([
+      'Mode family: no pipeline on this route; work as the mode\'s skills direct and run the relevant checks.',
+      'Load the first, then second, then lead skills when you start work in this mode, not for a question or a status report.',
+    ])
     project.mode = 'solo'
-    expect((await briefIn(registry)).guide[1]).toBe('Load the lead skill before working in this mode.')
+    expect((await briefIn(registry)).guide[1]).toBe('Load the lead skill when you start work in this mode, not for a question or a status report.')
     expect(() => new ModeRegistry([pack('solo', {})])).toThrow(/general mode pack is missing/)
     const flat = new ModeRegistry([general, pack('flat', { phases: [{ id: 'p', label: { en: 'P', zh: 'P' }, skills: [], checkpoint: false, checks: [], requires: [] }] })])
     project.mode = 'flat'

@@ -37,7 +37,7 @@ It runs in this project, not in a separate workspace: the manuscript is `section
 ## Done when
 
 - The experiments phase of `research_check` is clean: runs collected or the author's results imported, no active run, `results.facts.json` present, no `--` left in a result table that was run, every number traced (`placeholders`, `numbers`, `draft-lint`, `compile`).
-- The upstream output checklist is complete — or, when nothing could run, `workspace/experiments/EXPERIMENT_REQUIREMENTS.md` explains why and the tables stay in proposal form. Never an invented number.
+- The upstream output checklist is complete — or, when nothing could run, record-decision with key `experiments-deferred`, `workspace/experiments/EXPERIMENT_REQUIREMENTS.md` explains why, and you report that the paper stays in proposal form. Never an invented number.
 - `outputs/reports/FINAL_NARRATIVE_INTEGRITY_REVIEW.md` carries one verdict label, and `workspace/lessons/SUGGESTIONS_FOR_USER.md` is written, with the closing message to the user.
 
 Afterwards the refine, review and latex phases are re-checked on the repaired manuscript (GR-027), then submission.

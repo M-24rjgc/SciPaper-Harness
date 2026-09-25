@@ -1524,9 +1524,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'that project, or undefined outside every project.',
       },
       {
-        signature: 'async execute(raw: ResearchCommand, signal: AbortSignal, actor: \'user\' | \'agent\'): Promise<ResearchResponse>',
+        signature: 'activeGoals(project: ResearchProject): ResearchGoal[]',
+        description: 'The unfinished goals of a project\'s live conversations, read through the goal service: every live top-level session whose working directory lies in the project (and in no project nested inside it) and whose goal is not complete. A conversation that is not loaded is not seen.',
+        parameters: [{ name: 'project', description: 'the project record.' }],
+        returns: 'the goals, those that drive rounds first, then the most recently changed.',
+      },
+      {
+        signature: 'async execute(raw: ResearchCommand, signal: AbortSignal, actor: \'user\' | \'agent\', sessionId?: string): Promise<ResearchResponse>',
         description: 'Dispatch a validated tool or desktop command. The desktop receives a job for long operations; the agent waits for the result inside its tool call.',
-        parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }],
+        parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }, { name: 'sessionId', description: 'the agent\'s conversation, recorded on the runs it submits; absent for the desktop.' }],
         returns: 'the outcome.',
       },
     ],
@@ -4612,7 +4618,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ExperimentRecord',
-    declaration: 'export interface ExperimentRecord {\n    id: ExperimentId;\n    spec: ExperimentSpec;\n    status: RunStatus;\n    createdAt: string;\n    updatedAt: string;\n    directory: string;\n    inputRevision: number;\n    environmentFingerprint: string;\n    metrics: Record<string, number>;\n    exitCode?: number | undefined;\n    message: string;\n    snapshotPath: string;\n    collected: boolean;\n    startedAt?: string | undefined;\n    finishedAt?: string | undefined;\n    observeFailures?: number | undefined;\n    nextObserveAt?: number | undefined;\n    progress?: RunProgress | undefined;\n}',
+    declaration: 'export interface ExperimentRecord {\n    id: ExperimentId;\n    spec: ExperimentSpec;\n    status: RunStatus;\n    createdAt: string;\n    updatedAt: string;\n    directory: string;\n    inputRevision: number;\n    environmentFingerprint: string;\n    metrics: Record<string, number>;\n    exitCode?: number | undefined;\n    message: string;\n    snapshotPath: string;\n    collected: boolean;\n    startedAt?: string | undefined;\n    finishedAt?: string | undefined;\n    observeFailures?: number | undefined;\n    nextObserveAt?: number | undefined;\n    progress?: RunProgress | undefined;\n    sessionId?: string | undefined;\n}',
   },
   {
     name: 'ExperimentSpec',
@@ -5484,7 +5490,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchCommand',
-    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: string;\n    route?: string | undefined;\n    reason?: string | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n    decidedBy?: \'user\' | \'agent\' | undefined;\n    key?: string | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: ProjectId;\n} & ArtifactFields) | {\n    action: \'read-artifact\';\n    projectId: ProjectId;\n    artifactId: ArtifactId;\n} | { /* …truncated — full shape in source */',
+    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: string;\n    route?: string | undefined;\n    reason?: string | undefined;\n    decidedBy?: \'user\' | \'agent\' | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'rename\';\n    projectId: ProjectId;\n    title: string;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n    decidedBy?: \'user\' | \'agent\' | undefined;\n    key?: string | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: Proj /* …truncated — full shape in source */',
+  },
+  {
+    name: 'ResearchGoal',
+    declaration: 'export interface ResearchGoal {\n    sessionId: string;\n    objective: string;\n    phase: \'active\' | \'paused\' | \'blocked\';\n    roundsStarted: number;\n    updatedAt: number;\n}',
   },
   {
     name: 'ResearchModeEvent',
@@ -5500,7 +5510,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchProject',
-    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    root: string;\n    example?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    sessionId?: string | undefined;\n}',
+    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    untitled?: boolean | undefined;\n    root: string;\n    example?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    sessionId?: string | undefined;\n}',
   },
   {
     name: 'ResearchResponse',

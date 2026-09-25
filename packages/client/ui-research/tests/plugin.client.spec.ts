@@ -33,7 +33,9 @@ import { ResearchNewProject } from '../src/client/NewProject.tsx'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
 import { SkipHarnessNotice } from '../src/client/Onboarding.tsx'
 import { EmptyCell } from '../src/client/EmptyCell.tsx'
-import type { ResearchFocus, ResearchInjected, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
+import { ResearchCheckCard, ResearchToolCard } from '../src/client/ResearchToolView.tsx'
+import { RESEARCH_TOOLS } from '../src/client/toolCallValues.ts'
+import type { ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 
 /** This implementation's identity in the right-sidebar tab system (private to the plugin). */
@@ -152,6 +154,7 @@ async function bench(services: { conversation?: unknown } = {}) {
       'settings.action': { kind: 'list', scope: 'root' },
       'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
       'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
+      'tool.call.toolview': { kind: 'keyed', scope: 'session' },
     },
   } as never, () => null)
 
@@ -304,6 +307,13 @@ describe('the research plugin', () => {
     expect(b.seat('sidebar.right.pane.tab', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRail })
     expect(b.seat('sidebar.right.pane.tab.title', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRailTitle })
 
+    // Every research tool's calls get a research card; a research check gets its own.
+    const cards = b.ctx.slots.entries('tool.call.toolview')
+    expect(cards.map(entry => entry.options.key).sort()).toEqual([...RESEARCH_TOOLS].sort())
+    for (const entry of cards) {
+      expect(entry).toMatchObject({ locale: 'research', component: entry.options.key === 'research_check' ? ResearchCheckCard : ResearchToolCard })
+    }
+
     // The entry screen carries no cards, intro or promises, the input dock no second research entry,
     // and the header no file, board or gallery buttons.
     expect(b.ctx.slots.entries('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-create'])
@@ -336,6 +346,7 @@ describe('the research plugin', () => {
       'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions', 'sidebar.projects',
       'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock', 'conversation.input.left',
       'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
+      'tool.call.toolview',
     ]) {
       expect(b.ctx.slots.entries(name as never)).toHaveLength(0)
     }
@@ -711,6 +722,14 @@ describe('the face a research seat acts through', () => {
     expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/absolute/C:/research/sparse/paper/main.pdf')
     b.sidebarRight.openResource.mockImplementationOnce(() => { throw new Error('no session is bound') })
     expect(() => { b.face.openFile('/r', 'x.pdf') }).toThrow('no session is bound')
+  })
+
+  it('hands a research tool card the record and the same way into a project file', async () => {
+    const b = await bench()
+    const card = (b.seat('tool.call.toolview', 'research_check').inject as unknown as () => ResearchToolInjected)()
+    expect(card.hooks.research).toBe(b.face.hooks.research)
+    card.openProjectFile('C:\\research\\sparse', 'refs.bib')
+    expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/absolute/C:/research/sparse/refs.bib')
   })
 
   it('tracks every listed session\'s working directory as the list changes', async () => {

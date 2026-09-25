@@ -13,8 +13,11 @@
 
 # ── surface-specific values the base deliberately omits ─────────────────────
 
+# The research edition introduces its agent through the preset persona only:
+# no fixed "powered by DeepSeek Harness" opener before it.
 - id: system-prompt
   config:
+    includeHarnessIdentity: false
     personaSuffix: Your working directory is {{cwd}}.
     personaPrefix: >-
       You are a coding agent powered by the {{model}} model.

@@ -12,7 +12,7 @@ import type { Autonomy, PhaseState, ResearchProject, ResearchStanding, StandingI
 import { useModes, useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { ResearchHeroMark } from './Hero.tsx'
-import { checkedText, modePhases, packText } from './format.ts'
+import { checkedText, findingCounts, modePhases, packText } from './format.ts'
 import type { ResearchKey } from './locales.ts'
 import styles from './Rail.module.css'
 
@@ -119,9 +119,7 @@ function Phases(props: RailProps): ReactNode {
 
 /** One check's issues, named in the reader's language: `引用 · 2 个错误`. */
 function issueName(group: StandingIssues, t: WorkbenchProps['t']): string {
-  const count = (n: number, one: ResearchKey, many: ResearchKey): string[] => n === 0 ? [] : [n === 1 ? t(one) : t(many, { n })]
-  const counts = [...count(group.errors, 'issueOneError', 'checkErrors'), ...count(group.warnings, 'issueOneWarning', 'checkWarnings')]
-  return [packText(group.label, t), ...counts].join(' · ')
+  return [packText(group.label, t), ...findingCounts(group.errors, group.warnings, t)].join(' · ')
 }
 
 /**

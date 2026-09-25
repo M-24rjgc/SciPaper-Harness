@@ -15,8 +15,9 @@ import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
+import type { GoalView } from '@deepseek-ai/dsh-goal'
 import { ComponentManager, runtimeAsset } from './components.ts'
-import { autonomies, commandSchema, locatorSchema, preferencesSchema, researchDomain } from './schema.ts'
+import { autonomies, commandSchema, locatorSchema, MODE_DECISION_KEY, preferencesSchema, researchDomain } from './schema.ts'
 import { invalidate, newProject, putClaim, runView, searchEvidence } from './project.ts'
 import { compilePaper, compileTarget, exportPaper, extractText, importEvidence, importTemplate, renderPages, writeArtifact } from './artifacts.ts'
 import { runChecks, type GateRunner } from './checks.ts'
@@ -38,7 +39,7 @@ import {
 } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
 import type {
-  ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand,
+  ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand, ResearchGoal,
   ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchStanding, ResearchTask, VisualReview,
 } from './types.ts'
 export type * from './types.ts'
@@ -75,8 +76,12 @@ type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 
 type RecordingCommand = Exclude<ResearchCommand, { action: ReadOnlyAction }>
 /** Commands whose whole effect is a record change. */
 type ShortCommand = Extract<ResearchCommand, {
-  action: 'set-mode' | 'set-autonomy' | 'record-decision' | 'claim' | 'save-artifact' | 'register-artifact' | 'experiment-dismiss' | 'complete-visual-review'
+  action: 'set-mode' | 'set-autonomy' | 'rename' | 'record-decision' | 'claim' | 'save-artifact' | 'register-artifact' | 'experiment-dismiss' | 'complete-visual-review'
 }>
+/** The question of the decision `set-mode` records. */
+const MODE_QUESTION = '模式与路线'
+/** The order goals are reported in: one that drives rounds before one that waits. */
+const GOAL_PHASE_ORDER: Record<ResearchGoal['phase'], number> = { active: 0, blocked: 1, paused: 2 }
 /** A record change prepared outside the project's lock and applied inside it. */
 type Commit = (project: ResearchProject) => ResearchResponse | Promise<ResearchResponse>
 
@@ -119,7 +124,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** One durable owner for each project's evidence, files, decisions and execution records. */
 export class ResearchWorkbench extends TypertRemoteService {
-  static inject = ['storageDomain', 'workspaceRegistry', 'sessionController', 'credentials', 'tools', 'llm']
+  static inject = ['storageDomain', 'workspaceRegistry', 'sessionController', 'credentials', 'tools', 'llm', 'agents', 'goals']
   static Config: s<Config> = s.object({
     componentRoot: s.string(),
     maxSourceBytes: s.number().min(1024).required(),
@@ -299,8 +304,10 @@ export class ResearchWorkbench extends TypertRemoteService {
     }).parse(request)
     if (!isAbsolute(request.root)) throw new Error('Choose an absolute project directory')
     const chosen = this.modes.choose(request.mode ?? GENERAL_MODE, request.route)
+    // Only a named mode is a choice: without one the project opens in general with the mode not chosen yet.
+    const named = request.mode === undefined ? request : { ...request, ...chosen }
     // One creation at a time: two requests for the same folder would otherwise both find no project and record two.
-    const creation = this.creations.catch(() => {}).then(() => this.createAt({ ...request, ...chosen }, sessionId))
+    const creation = this.creations.catch(() => {}).then(() => this.createAt(named, sessionId))
     this.creations = creation
     return creation
   }
@@ -449,6 +456,33 @@ export class ResearchWorkbench extends TypertRemoteService {
       .sort((a, b) => b.root.length - a.root.length)[0]
   }
 
+  /**
+   * The unfinished goals of a project's live conversations, read through the
+   * goal service: every live top-level session whose working directory lies in
+   * the project (and in no project nested inside it) and whose goal is not
+   * complete. A conversation that is not loaded is not seen.
+   * @param project - the project record.
+   * @returns the goals, those that drive rounds first, then the most recently changed.
+   */
+  activeGoals(project: ResearchProject): ResearchGoal[] {
+    const projects = this.projects()
+    const innermost = (cwd: string): ProjectId | undefined => projects
+      .filter(candidate => isInside(candidate.root, cwd))
+      .sort((a, b) => b.root.length - a.root.length)[0]?.id
+    const goals: ResearchGoal[] = []
+    for (const agent of this.ctx.agents.list()) {
+      const { cwd, origin } = agent.session.header
+      if (cwd === undefined || origin === 'subagent' || innermost(cwd) !== project.id) continue
+      let goal: GoalView | undefined
+      // A goal log that no longer replays, or an agent unloaded since the listing, holds no goal to continue.
+      try { goal = this.ctx.goals.get(agent) } catch { continue }
+      if (goal === undefined || goal.phase === 'complete') continue
+      const { objective, phase, roundsStarted, updatedAt } = goal
+      goals.push({ sessionId: agent.session.id, objective, phase, roundsStarted, updatedAt })
+    }
+    return goals.sort((a, b) => GOAL_PHASE_ORDER[a.phase] - GOAL_PHASE_ORDER[b.phase] || b.updatedAt - a.updatedAt)
+  }
+
   /** Serialize one complete graph transition and publish it only after durable storage. */
   private mutate<T>(id: ProjectId, work: (project: ResearchProject) => T | Promise<T>): Promise<T> {
     const previous = this.tails.get(id) ?? Promise.resolve()
@@ -501,9 +535,10 @@ export class ResearchWorkbench extends TypertRemoteService {
    * @param raw - the command as received.
    * @param signal - cancellation of the call.
    * @param actor - who acts: the desktop user or the agent.
+   * @param sessionId - the agent's conversation, recorded on the runs it submits; absent for the desktop.
    * @returns the outcome.
    */
-  async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse> {
+  async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse> {
     const request = commandSchema.parse(raw) as ResearchCommand
     const project = this.record(request.projectId)
     // An example can be read and checked; nothing is recorded into it, whoever asks.
@@ -575,7 +610,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       default: {
         if (example) throw new Error(EXAMPLE_READ_ONLY)
         const work = async (workSignal: AbortSignal): Promise<ResearchResponse> => {
-          const prepared = await this.prepare(project.id, request, workSignal, actor)
+          const prepared = await this.prepare(project.id, request, workSignal, actor, sessionId)
           const value = typeof prepared === 'function' ? await this.mutate(project.id, prepared) : prepared
           if (request.action === 'set-mode') this.announceMode(project.id)
           return this.clipped({ ...value, project: publicProject(this.record(project.id)) })
@@ -592,7 +627,13 @@ export class ResearchWorkbench extends TypertRemoteService {
    * the project. Short actions run entirely inside the lock.
    * @returns the response itself when nothing is left to record, or the change to apply.
    */
-  private async prepare(id: ProjectId, request: RecordingCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse | Commit> {
+  private async prepare(
+    id: ProjectId,
+    request: RecordingCommand,
+    signal: AbortSignal,
+    actor: 'user' | 'agent',
+    sessionId: string | undefined,
+  ): Promise<ResearchResponse | Commit> {
     const limit = this.config.maxSourceBytes
     switch (request.action) {
       case 'import': {
@@ -658,7 +699,7 @@ export class ResearchWorkbench extends TypertRemoteService {
           return { message: `Experiment environment ready: ${environment.id}`, path: environment.python }
         }
       }
-      case 'experiment': return this.submitExperiment(id, request, signal)
+      case 'experiment': return this.submitExperiment(id, request, signal, sessionId)
       case 'experiment-refresh':
       case 'experiment-cancel': {
         const snapshot = this.record(id)
@@ -817,18 +858,40 @@ export class ResearchWorkbench extends TypertRemoteService {
     switch (request.action) {
       case 'set-mode': {
         const { mode, route } = this.modes.choose(request.mode, request.route)
+        const changed = mode !== project.mode || route !== project.route
         project.mode = mode
         if (route === undefined) delete project.route
         else project.route = route
-        project.modeSetBy = actor
-        if (request.reason?.trim()) project.modeReason = request.reason.trim()
-        else delete project.modeReason
+        const by = request.decidedBy ?? actor
+        project.modeSetBy = by
+        const reason = request.reason?.trim() ?? ''
+        if (reason) project.modeReason = reason
+        // Phases belong to a mode and route: another one starts with nothing checked.
+        if (changed) project.progress = { mode, ...(route === undefined ? {} : { route }), phases: {}, findings: {} }
+        project.decisions.push({
+          id: randomUUID(), question: MODE_QUESTION, answer: route === undefined ? mode : `${mode} · ${route}`, by, rationale: reason,
+          at: new Date().toISOString(), key: MODE_DECISION_KEY,
+        })
         const resolved = this.modes.resolve(project)
         const phases = resolved.phases.map(phase => phase.id)
         const name = `${resolved.pack.name.en}${route === undefined ? '' : ` (${route})`}`
         return { message: phases.length ? `Mode ${name}: ${phases.join(' → ')}` : `Mode ${name}: no pipeline; run checks when useful` }
       }
       case 'set-autonomy': project.autonomy = request.autonomy; return { message: `Autonomy: ${request.autonomy}` }
+      case 'rename': {
+        const title = request.title.trim()
+        project.title = title
+        delete project.untitled
+        const workspace = this.ctx.workspaceRegistry.get(project.workspaceId)
+        // Workspace titles are unique; a taken one leaves the folder's Workspace under its earlier name.
+        const taken = this.ctx.workspaceRegistry.list().some(candidate => candidate.id !== project.workspaceId && candidate.title === title)
+        if (workspace !== undefined && !taken && workspace.title !== title) await workspace.setTitle(title)
+        return {
+          message: taken
+            ? `Research renamed to "${title}"; its folder keeps its earlier name in the conversation list, because another folder there is already called "${title}"`
+            : `Research renamed to "${title}"`,
+        }
+      }
       case 'record-decision': {
         project.decisions.push({
           id: randomUUID(), question: request.question, answer: request.answer, by: request.decidedBy ?? actor,
@@ -866,16 +929,25 @@ export class ResearchWorkbench extends TypertRemoteService {
    * Admit a run durably, launch it outside the project's lock, then record
    * what the launch reported. The run's identity is stored before anything
    * crosses a transport boundary, so a lost response never starts a second
-   * experiment; a launch without a clear answer leaves the run unknown.
+   * experiment; a launch without a clear answer leaves the run unknown. The
+   * submitting conversation is recorded on the run, so its cards show there.
    */
-  private async submitExperiment(id: ProjectId, request: Extract<ResearchCommand, { action: 'experiment' }>, signal: AbortSignal): Promise<ResearchResponse | Commit> {
+  private async submitExperiment(
+    id: ProjectId,
+    request: Extract<ResearchCommand, { action: 'experiment' }>,
+    signal: AbortSignal,
+    sessionId: string | undefined,
+  ): Promise<ResearchResponse | Commit> {
     const admitted = await this.mutate(id, async (project): Promise<{ run: ExperimentRecord; fresh: boolean }> => {
       const existing = project.experiments.find(r => r.id === request.requestId)
       if (existing) {
         if (JSON.stringify(existing.spec) !== JSON.stringify(request.spec)) throw new Error('The submission ID belongs to a different experiment')
         return { run: structuredClone(existing), fresh: false }
       }
-      const run = newExperiment(project, request.spec, request.requestId)
+      const run: ExperimentRecord = {
+        ...newExperiment(project, request.spec, request.requestId),
+        ...(sessionId === undefined ? {} : { sessionId }),
+      }
       await adoptRunCode(project, run)
       project.experiments.push(run)
       // Observers leave the run alone until its launch is recorded.

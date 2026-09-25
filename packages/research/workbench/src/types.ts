@@ -161,6 +161,11 @@ export interface ExperimentRecord {
   nextObserveAt?: number | undefined
   /** The last line the run appended to its progress file, as the supervisor last read it; absent until it writes one. */
   progress?: RunProgress | undefined
+  /**
+   * The conversation (agent session) that submitted the run; absent for runs
+   * the desktop submitted and for runs recorded before runs kept it.
+   */
+  sessionId?: string | undefined
 }
 /** One progress line of a run: `$RESEARCH_PROGRESS_PATH` takes one JSON object per line. */
 export interface RunProgress {
@@ -325,10 +330,26 @@ export interface ResearchStanding {
   /** What the last checks found, one group per check that has findings: groups with errors first. */
   issues: StandingIssues[]
 }
+/** An unfinished goal of a live conversation in a research, as the goal service reports it. */
+export interface ResearchGoal {
+  /** The conversation (agent session) that holds the goal. */
+  sessionId: string
+  objective: string
+  /** `active` while it drives rounds; `paused` or `blocked` while it waits for the person. */
+  phase: 'active' | 'paused' | 'blocked'
+  roundsStarted: number
+  /** Epoch milliseconds of the goal's last change. */
+  updatedAt: number
+}
 export interface ResearchProject {
   id: ProjectId
   workspaceId: WorkspaceId
   title: string
+  /**
+   * True while the title is a placeholder the product chose rather than a
+   * name for the research; `rename` clears it. Absent once the research is named.
+   */
+  untitled?: boolean | undefined
   root: string
   /**
    * True for an example research shipped for the tutorial (its root lies in
@@ -342,7 +363,13 @@ export interface ResearchProject {
   route?: string | undefined
   /** The venue whose template the project uses, once one is applied. */
   venue?: string | undefined
+  /** Why the mode and route were chosen; kept until a later `set-mode` gives a new reason. */
   modeReason?: string | undefined
+  /**
+   * Who chose the mode: the caller that named one at creation (`user`), or
+   * the `decidedBy` of the last `set-mode`. Absent while the mode is not
+   * chosen yet, as for a research created without naming one.
+   */
   modeSetBy?: 'user' | 'agent' | undefined
   autonomy: Autonomy
   brief: string
@@ -677,8 +704,23 @@ type ArtifactFields = {
   inputArtifacts: ArtifactRecord['inputArtifacts']
 }
 export type ResearchCommand =
-  | { action: 'set-mode'; projectId: ProjectId; mode: string; route?: string | undefined; reason?: string | undefined }
+  /**
+   * Switch the mode and route, and record the choice as a decision (key
+   * `mode`). `reason` replaces the stored one only when given; progress
+   * starts afresh when the mode or route changes.
+   */
+  | {
+    action: 'set-mode'
+    projectId: ProjectId
+    mode: string
+    route?: string | undefined
+    reason?: string | undefined
+    /** Who chose the mode; the caller when absent. The agent names the user when it records the user's answer. */
+    decidedBy?: 'user' | 'agent' | undefined
+  }
   | { action: 'set-autonomy'; projectId: ProjectId; autonomy: Autonomy }
+  /** Give the research a title; the folder's Workspace takes it too unless another Workspace already has it. */
+  | { action: 'rename'; projectId: ProjectId; title: string }
   | {
     action: 'record-decision'
     projectId: ProjectId

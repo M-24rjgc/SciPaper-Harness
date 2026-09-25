@@ -8,11 +8,11 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { isAbsolute, resolve } from 'node:path'
 import type { ResearchWorkbench } from './index.ts'
-import { isExampleRoot, isInside } from './files.ts'
+import { errorText, isExampleRoot, isInside, sameDirectory } from './files.ts'
 import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
-import { autonomies, checkIds, commandSchema } from './schema.ts'
-import type { ProjectId, ResearchCommand, ResearchProject, ResearchResponse, ResearchStanding } from './types.ts'
+import { autonomies, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
+import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchResponse, ResearchStanding } from './types.ts'
 
 const text = (description: string) => ({ type: 'string' as const, description })
 const list = (description: string) => ({ type: 'array' as const, items: { type: 'string' as const }, description })
@@ -201,11 +201,20 @@ const FAMILIES: Family[] = [
   },
 ]
 
+/** Whether the route was settled: the user chose the mode, or a recorded decision settled it. */
+function routingSettled(project: ResearchProject): boolean {
+  return project.modeSetBy === 'user' || project.decisions.some(decision => decision.key === MODE_DECISION_KEY)
+}
+
 /** What the mode asks of the agent, in a sentence or two. */
-function modeGuide(mode: ResolvedMode, standing: ResearchStanding): string[] {
+function modeGuide(project: ResearchProject, mode: ResolvedMode, standing: ResearchStanding): string[] {
   const { pack, route, phases } = mode
   const lines: string[] = []
   if (mode.missing !== undefined) lines.push(`The mode pack "${mode.missing}" is not installed; the project runs in general mode until you set another mode.`)
+  if (project.modeSetBy === undefined) {
+    lines.push('The mode is not chosen yet (modeChosen false). After the user\'s first message, choose it with the research-modes skill: '
+      + 'with checkpoints ask once with ask_user_question, your recommendation first; with automatic, decide. Then call set-mode with a one-line reason.')
+  }
   if (phases.length === 0) {
     lines.push(pack.id === 'general'
       ? 'Mode general: no pipeline. Every research tool is available; run the relevant check (research_check with scope cite, compile, figures …) before you say a task is done. '
@@ -222,8 +231,28 @@ function modeGuide(mode: ResolvedMode, standing: ResearchStanding): string[] {
     lines.push('A phase is done when research_check for it is clean; the paper is done when research_check (scope all) is clean.')
   }
   const skills = [...pack.preload, ...pack.entry === undefined ? [] : [pack.entry]]
-  if (skills.length) lines.push(`Load the ${skills.join(', then ')} skill${skills.length > 1 ? 's' : ''} before working in this mode.`)
+  if (skills.length) {
+    lines.push(`Load the ${skills.join(', then ')} skill${skills.length > 1 ? 's' : ''} when you start work in this mode, not for a question or a status report.`
+      + (pack.routes.length && routingSettled(project) ? ' Routing is settled (routingSettled): skip the routing step of the entry skill.' : ''))
+  }
   return lines
+}
+
+/** What the brief says about a goal already running in this research. */
+function goalGuide(goal: ResearchGoal | undefined, sessionId: string | undefined): string[] {
+  if (goal === undefined) return []
+  return [goal.sessionId === sessionId
+    ? 'This conversation holds the research\'s goal (activeGoal): keep working toward it; never create a second.'
+    : `A goal is already ${goal.phase === 'active' ? 'running' : goal.phase} in another conversation of this research (activeGoal): `
+      + 'continue the work there or tell the user where it runs; never create a second goal.']
+}
+
+/** What the live conversations of a project add to its brief. */
+export interface BriefContext {
+  /** The unfinished goals of the project's live conversations, as the service orders them. */
+  goals?: ResearchGoal[] | undefined
+  /** The conversation reading the brief. */
+  sessionId?: string | undefined
 }
 
 /**
@@ -231,27 +260,40 @@ function modeGuide(mode: ResolvedMode, standing: ResearchStanding): string[] {
  * @param project - the record.
  * @param mode - the mode the project resolves to.
  * @param standing - where it stands, as the service derives it for the person too.
+ * @param live - the goals of the project's live conversations and the conversation reading the brief.
  * @returns the brief.
  */
-export function projectBrief(project: ResearchProject, mode: ResolvedMode, standing: ResearchStanding): JsonValue {
+export function projectBrief(project: ResearchProject, mode: ResolvedMode, standing: ResearchStanding, live: BriefContext = {}): JsonValue {
   const lastCompile = project.compilations.at(-1)
   const example = isExampleRoot(project.root)
+  const goals = live.goals ?? []
+  // The reader's own goal first; otherwise the one the service ranks first.
+  const goal = goals.find(item => item.sessionId === live.sessionId) ?? goals[0]
   const guide = [
     ...example
       ? ['This is an example research shipped with the app, and it is read-only: explain how it was made and change nothing. '
         + 'For the person\'s own work, suggest 新研究 (New research).']
       : [],
-    ...modeGuide(mode, standing),
+    ...modeGuide(project, mode, standing),
+    ...goalGuide(goal, live.sessionId),
     project.autonomy === 'checkpoints'
       ? 'Autonomy checkpoints: at key decisions (the mode or route when you chose it, the research question, before running experiments, before the final export, a material method change, results that contradict the hypothesis) ask with ask_user_question, then record-decision with the answer and decidedBy user.'
       : 'Autonomy automatic: make those decisions yourself, record-decision with your rationale, and keep going; ask only when genuinely blocked.',
+    ...project.untitled === true ? ['The research has no title of its own yet: once the topic is clear, give it a short one with rename.'] : [],
   ]
   return JSON.parse(JSON.stringify({
-    id: project.id, title: project.title, root: project.root, brief: project.brief,
+    id: project.id, title: project.title, ...project.untitled === true ? { untitled: true } : {}, root: project.root, brief: project.brief,
     ...example ? { example: true } : {},
     mode: mode.pack.id, route: mode.route ?? null, modeReason: project.modeReason ?? null, venue: project.venue ?? null,
+    modeChosen: project.modeSetBy !== undefined, modeSetBy: project.modeSetBy ?? null, routingSettled: routingSettled(project),
     paperRoot: mode.pack.paperRoot,
-    autonomy: project.autonomy, guide,
+    autonomy: project.autonomy,
+    activeGoal: goal === undefined ? null : {
+      conversation: goal.sessionId, thisConversation: goal.sessionId === live.sessionId,
+      objective: goal.objective, phase: goal.phase, roundsStarted: goal.roundsStarted,
+      ...goals.length > 1 ? { otherConversationsWithGoals: goals.length - 1 } : {},
+    },
+    guide,
     // What the person's record shows: each phase's state, and why an unfinished one that was checked is not done.
     phases: standing.phases.map(phase => ({
       id: phase.id, state: phase.state, done: phase.state === 'done', checkpoint: phase.checkpoint,
@@ -289,17 +331,24 @@ function compact(response: ResearchResponse): JsonValue {
   return JSON.parse(JSON.stringify(rest)) as JsonValue
 }
 
+/** Where a research in another folder comes from: the person, never the agent. */
+const START_ELSEWHERE = 'to work in another folder, ask the user to start a research with 新研究 (New research) and choose its folder with 更改位置 (Change location)'
+const NO_FOLDER = `This conversation has no working folder, so it belongs to no research; ${START_ELSEWHERE}`
+
 /** The project a call acts on: its explicit id (which must contain the session's directory) or the directory's own project. */
 async function projectFor(service: ResearchWorkbench, id: unknown, exec: ToolExecution): Promise<ResearchProject> {
   const cwd = exec.agent?.session.header.cwd
-  if (cwd === undefined) throw new Error('This tool needs a session working directory inside a research project')
+  if (cwd === undefined) throw new Error(NO_FOLDER)
   const here = await service.projectAt(cwd)
   if (typeof id === 'string' && id) {
     const project = service.getProject(id as ProjectId)
     if (here?.id !== project.id) throw new Error('The tool session does not belong to this research project')
     return project
   }
-  if (!here) throw new Error('No research project contains this working directory; create one with research_project action create')
+  if (!here) {
+    throw new Error('No research contains this conversation\'s folder. If the user wants research work in this folder, make it a research with '
+      + `research_project action create; ${START_ELSEWHERE}`)
+  }
   return here
 }
 
@@ -330,27 +379,32 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
 
   ctx.tools.register(defineTool({
     name: 'research_project',
-    description: 'The research project around your working directory. current: mode, route, autonomy, where each phase stands, decisions, files, runs — call it when you start work. '
-      + 'create {title, brief?, root?, mode?, route?, autonomy?}: make the working directory (or root) a research project. list: all projects. '
+    description: 'The research around your working directory. current: the brief — the mode and whether it was chosen (modeChosen, modeSetBy, routingSettled), '
+      + 'autonomy, where each phase stands, any goal already running in a conversation of this research (activeGoal), decisions, files, sources and runs; '
+      + 'outside a research it returns project null with a hint. Call it when a conversation starts and after the mode changes. '
+      + 'create {title, brief?, mode?, route?, autonomy?}: make this conversation\'s folder a research; it never makes one elsewhere. rename {title}: '
+      + 'give the research a short title once the topic is clear. list: all researches. '
       + 'modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. '
-      + 'set-mode {mode, route?, reason}: switch the project\'s mode; its skills follow. set-autonomy {autonomy: checkpoints|automatic}. '
+      + 'set-mode {mode, route?, reason, decidedBy?}: switch the mode and record the choice as a decision — decidedBy user when the user chose it, '
+      + 'agent (the default) when you did; its skills follow, and the phases start unchecked when the mode or route changes. '
+      + 'set-autonomy {autonomy: checkpoints|automatic}: only when the user asks you to in words; autonomy is the user\'s. '
       + 'record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user\'s answer at a checkpoint, '
       + 'agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred '
       + 'defers a phase that allows it (spark-to-paper\'s experiments), which then shows as deferred and never as done.',
     parameters: {
-      action: { type: 'string', enum: ['current', 'create', 'list', 'modes', 'set-mode', 'set-autonomy', 'record-decision'], required: true },
+      action: { type: 'string', enum: ['current', 'create', 'rename', 'list', 'modes', 'set-mode', 'set-autonomy', 'record-decision'], required: true },
       projectId,
-      title: text('create'),
+      title: text('create / rename: a short title for the research'),
       brief: text('create: the idea or the material in a few sentences'),
-      root: text('create: absolute directory; defaults to the working directory'),
-      mode: text('create / set-mode: a mode id from action modes (general when omitted on create)'),
+      root: text('create: omit it; only this conversation\'s folder can become a research, and any other folder is refused'),
+      mode: text('create / set-mode: a mode id from action modes (general, with the mode not chosen yet, when omitted on create)'),
       route: text('create / set-mode: one of the mode\'s routes; its default route when omitted'),
       autonomy: { type: 'string', enum: [...autonomies], description: 'create / set-autonomy' },
-      reason: text('set-mode: why this mode and route'),
+      reason: text('set-mode: why this mode and route, in one line'),
       question: text('record-decision'),
       answer: text('record-decision'),
       rationale: text('record-decision'),
-      decidedBy: { type: 'string', enum: ['user', 'agent'], description: 'record-decision: who made the decision' },
+      decidedBy: { type: 'string', enum: ['user', 'agent'], description: 'set-mode / record-decision: who made the decision' },
       key: text('record-decision: optional slug naming what the decision settles, such as experiments-deferred'),
     },
     output,
@@ -359,30 +413,49 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
         return service.projects().map(({ id, title, root, mode, route }) => ({ id, title, root, mode, route: route ?? null }))
       }
       if (args.action === 'modes') return modeCatalog(service.modes)
-      const brief = async (project: ResearchProject): Promise<JsonValue> =>
-        projectBrief(project, service.modes.resolve(project), await service.standing(project))
+      const sessionId = exec.agent?.session.id
+      const brief = async (project: ResearchProject): Promise<JsonValue> => projectBrief(
+        project, service.modes.resolve(project), await service.standing(project), { goals: service.activeGoals(project), sessionId },
+      )
       if (args.action === 'create') {
         const cwd = exec.agent?.session.header.cwd
-        const root = args.root ?? cwd
-        if (!root || !args.title) throw new Error('create needs a title, and a root when the session has no working directory')
+        if (cwd === undefined) throw new Error(NO_FOLDER)
+        if (args.root !== undefined && !sameDirectory(args.root, cwd)) {
+          throw new Error(`create makes only this conversation's folder (${cwd}) a research, never ${args.root}; ${START_ELSEWHERE}`)
+        }
+        // A folder inside a research already belongs to it; a research is never made inside another one.
+        const here = await service.projectAt(cwd)
+        if (here) return brief(here)
+        if (!args.title) throw new Error('create needs a title')
         const created = await service.createProject({
-          title: args.title, root, brief: args.brief ?? '',
+          title: args.title, root: cwd, brief: args.brief ?? '',
           ...(args.mode ? { mode: args.mode } : {}), ...(args.route ? { route: args.route } : {}),
           ...(args.autonomy ? { autonomy: args.autonomy } : {}),
-        }, root === cwd ? exec.agent?.session.id : undefined)
+        }, sessionId)
         return brief(created)
       }
+      if (args.action === 'current') {
+        let project: ResearchProject
+        try {
+          project = await projectFor(service, args.projectId, exec)
+        } catch (error) {
+          // current never fails: outside a research the brief is empty and says what to do.
+          return { project: null, hint: errorText(error) }
+        }
+        return brief(project)
+      }
       const project = await projectFor(service, args.projectId, exec)
-      if (args.action === 'current') return brief(project)
       const request = args.action === 'set-mode'
-        ? { action: 'set-mode', projectId: project.id, mode: args.mode, route: args.route, reason: args.reason }
+        ? { action: 'set-mode', projectId: project.id, mode: args.mode, route: args.route, reason: args.reason, decidedBy: args.decidedBy }
         : args.action === 'set-autonomy'
           ? { action: 'set-autonomy', projectId: project.id, autonomy: args.autonomy }
-          : {
-            action: 'record-decision', projectId: project.id, question: args.question, answer: args.answer,
-            rationale: args.rationale, decidedBy: args.decidedBy, key: args.key,
-          }
-      return compact(await service.execute(commandSchema.parse(request) as ResearchCommand, exec.signal, 'agent'))
+          : args.action === 'rename'
+            ? { action: 'rename', projectId: project.id, title: args.title }
+            : {
+              action: 'record-decision', projectId: project.id, question: args.question, answer: args.answer,
+              rationale: args.rationale, decidedBy: args.decidedBy, key: args.key,
+            }
+      return compact(await service.execute(commandSchema.parse(request) as ResearchCommand, exec.signal, 'agent', sessionId))
     },
     presentCall: () => ({ card: 'generic', title: 'Research project', kind: 'read' }),
   }))
@@ -419,7 +492,7 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
       if (request.action === 'complete-visual-review' && exec.agent?.session.id !== request.sessionId) {
         throw new Error('Only the assigned visual-review session can record these findings')
       }
-      return compact(await service.execute(request, exec.signal, 'agent'))
+      return compact(await service.execute(request, exec.signal, 'agent', exec.agent?.session.id))
     },
     presentCall: () => ({ card: 'generic', title: family.title, kind: 'other' }),
   }))

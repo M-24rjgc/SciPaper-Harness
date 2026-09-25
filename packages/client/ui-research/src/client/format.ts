@@ -230,6 +230,33 @@ export function standingText(project: ResearchProject, modes: readonly ModeSumma
   return `${mode} · ${packText(current.label, t)} ${done}/${phases.length}`
 }
 
+/**
+ * A count in words, from the dictionary's own sentence for one and for many.
+ * @param n - the count.
+ * @param one - the key that says it for exactly one.
+ * @param many - the key that says it for any other count, with `{n}`.
+ * @param t - bound dictionary lookup.
+ * @returns the localized phrase.
+ */
+export function counted(n: number, one: ResearchKey, many: ResearchKey, t: Translate): string {
+  return n === 1 ? t(one) : t(many, { n })
+}
+
+/**
+ * What a check found, one phrase per kind that it found any of: `2 个错误`,
+ * `1 个提醒`, errors first.
+ * @param errors - errors found.
+ * @param warnings - warnings found.
+ * @param t - bound dictionary lookup.
+ * @returns the phrases; none when it found nothing.
+ */
+export function findingCounts(errors: number, warnings: number, t: Translate): string[] {
+  return [
+    ...errors === 0 ? [] : [counted(errors, 'issueOneError', 'checkErrors', t)],
+    ...warnings === 0 ? [] : [counted(warnings, 'issueOneWarning', 'checkWarnings', t)],
+  ]
+}
+
 const MS_PER_MINUTE = 60_000
 const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
 

@@ -16,6 +16,10 @@ A `ResearchProject` binds one canonical Workspace directory. It carries the evid
 | `route` | one of the pack's routes | The path through the pack, such as starting from an idea, a proposal or measured results. |
 | `autonomy` | `checkpoints`, `automatic` | Whether the agent asks at key decisions (`ask_user_question`, which pauses a running goal) or decides and records its rationale. `automatic` pairs with the `research-auto` permission preset, which rejects sandbox escalations instead of waiting for approval. |
 
+Who chose the mode is `modeSetBy`. A project created with a named mode records `user`; one created without a mode is in `general` with `modeSetBy` unset, which means the mode is not chosen yet. `set-mode` sets `modeSetBy` from its `decidedBy` (the caller when absent) and appends a decision with key `mode`: the question 模式与路线, the answer `<mode>` or `<mode> · <route>` in ids, and the reason as its rationale. It replaces `modeReason` only when it is given a reason, and a changed mode or route starts `progress` afresh. `rename` sets the title, clears `untitled` (a placeholder title the product chose), and gives the folder's Workspace the same title unless another Workspace already has it. Each experiment run records the conversation that submitted it as `sessionId`; runs from the desktop, and runs recorded before this field existed, have none.
+
+`activeGoals(project)` reads the unfinished goals (`ResearchGoal`: the session, objective, phase, rounds and last change) of the project's live top-level conversations through the goal service, those that drive rounds first. A conversation that is not loaded is not seen. The agent's brief reports the reader's own goal, or else the first one, as `activeGoal`.
+
 A project whose root lies in `<data home>/demo` is an example research, shipped for the tutorial (`isExampleRoot`, `src/files.ts`). Snapshots and the agent's brief mark it `example: true`; the flag is derived, never stored. An example is read-only for the person and the agent alike. Reads and checks work, but a check's report is not stored, and every command that would record something is refused with `这是示例研究，只能查看 / This is an example research and is read-only`. The board shows its last read, its runs are not observed, and no research or folder is made among the examples.
 
 Records live in the `research_workbench` storage domain (single-document layout, version 1). Records of earlier shapes are migrated when read: stage-machine fields are dropped and confirmed stages become user decisions; the built-in `paper-first` and `from-results` modes become the spark-to-paper pack's `proposal` and `data` routes, and `free` or an unset mode becomes `general`. Mode, route, phase and check ids are stored as strings, so a record still opens when the pack it names is gone; the project then runs as `general`. Extracted evidence text is kept beside the snapshots in `.research/chunks/<evidence>/<revision>.json` rather than in the record, so a mutation rewrites the ledger and not the text of every source.
@@ -227,14 +231,25 @@ getProject(id: ProjectId): ResearchProject
 async projectAt(directory: string): Promise<ResearchProject | undefined>
 
 /**
+ * The unfinished goals of a project's live conversations, read through the
+ * goal service: every live top-level session whose working directory lies in
+ * the project (and in no project nested inside it) and whose goal is not
+ * complete. A conversation that is not loaded is not seen.
+ * @param project - the project record.
+ * @returns the goals, those that drive rounds first, then the most recently changed.
+ */
+activeGoals(project: ResearchProject): ResearchGoal[]
+
+/**
  * Dispatch a validated tool or desktop command. The desktop receives a job
  * for long operations; the agent waits for the result inside its tool call.
  * @param raw - the command as received.
  * @param signal - cancellation of the call.
  * @param actor - who acts: the desktop user or the agent.
+ * @param sessionId - the agent's conversation, recorded on the runs it submits; absent for the desktop.
  * @returns the outcome.
  */
-async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse>
+async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse>
 ```
 
 Source: [`packages/research/workbench/src/index.ts`](../../packages/research/workbench/src/index.ts)

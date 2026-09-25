@@ -39,6 +39,10 @@ describe('the Web composition of the research edition', () => {
     expect(JSON.stringify(enabled)).not.toContain('deepseeksvc')
   })
 
+  it('introduces the agent by its persona alone, with no harness identity opener', () => {
+    expect(row('system-prompt')).toMatchObject({ config: { includeHarnessIdentity: false } })
+  })
+
   it('has the research client shadow the shell\'s developer cells', () => {
     expect(row('ui-research')).toMatchObject({ config: { hideDeveloperCells: true } })
   })

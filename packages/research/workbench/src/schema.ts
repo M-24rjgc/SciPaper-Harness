@@ -104,6 +104,7 @@ const experimentSchema = z.object({
   progress: z.object({
     values: z.record(z.string(), z.number()), fraction: z.number().min(0).max(1).optional(), note: z.string().optional(), at: id,
   }).optional(),
+  sessionId: id.optional(),
 })
 const compilationSchema = z.object({
   artifactId: id, artifactRevision: integer, inputDigest: id,
@@ -117,6 +118,8 @@ const visualReviewSchema = z.object({
   inputDigest: z.string().optional(),
   sessionId: z.string().optional(), findings: z.string(), createdAt: id,
 })
+/** The key of the decision `set-mode` records; a decision with it means the route is settled. */
+export const MODE_DECISION_KEY = 'mode'
 /** A decision key: lowercase words joined by hyphens, such as `experiments-deferred`. */
 const decisionKey = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase words joined by hyphens, such as experiments-deferred')
 const decisionSchema = z.object({
@@ -145,7 +148,7 @@ const progressSchema = z.object({
 })
 
 const projectSchema = z.object({
-  id, workspaceId: id, title: id, root: id,
+  id, workspaceId: id, title: id, untitled: z.boolean().optional(), root: id,
   mode: id, route: z.string().optional(), venue: z.string().optional(),
   modeReason: z.string().optional(), modeSetBy: z.enum(['user', 'agent']).optional(),
   autonomy: z.enum(autonomies), brief: z.string(),
@@ -350,8 +353,11 @@ const artifact = {
 const runRef = { ...base, runId: id }
 
 export const commandSchema = z.discriminatedUnion('action', [
-  z.object({ ...base, action: z.literal('set-mode'), mode: id, route: id.optional(), reason: z.string().optional() }),
+  z.object({
+    ...base, action: z.literal('set-mode'), mode: id, route: id.optional(), reason: z.string().optional(), decidedBy: z.enum(['user', 'agent']).optional(),
+  }),
   z.object({ ...base, action: z.literal('set-autonomy'), autonomy: z.enum(autonomies) }),
+  z.object({ ...base, action: z.literal('rename'), title: z.string().trim().min(1).max(200) }),
   z.object({
     ...base, action: z.literal('record-decision'), question: z.string().trim().min(1), answer: z.string().trim().min(1),
     rationale: z.string().optional(), decidedBy: z.enum(['user', 'agent']).optional(), key: decisionKey.optional(),

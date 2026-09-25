@@ -102,6 +102,20 @@ export interface ResearchInjected {
   expand(projectId?: string, panel?: ResearchFocus['panel'], artifactId?: string): void
 }
 
+/**
+ * What a research tool card reads besides its own call: the record, for the
+ * mode's names and the project's folder, and a way to open a file the call
+ * names. The owner's own `openFile` opens a path the call's arguments name;
+ * this one opens a path relative to the project root.
+ */
+export interface ResearchToolInjected {
+  hooks: {
+    research: ObservableSnapshot<ResearchView>
+  }
+  /** Open a project file in the conversation's right sidebar; throws when no sidebar is mounted to show it. */
+  openProjectFile(root: string, path: string): void
+}
+
 /** Composed props of every research slot entry: the dictionary plus the injected face. */
 export type WorkbenchProps = PropsLocale<'research'> & InjectFace<ResearchInjected>
 

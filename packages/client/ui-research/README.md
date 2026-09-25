@@ -1,5 +1,5 @@
 ---
-description: "Research edition browser surfaces: blank-session project entry, header status, the read-only right-sidebar research tab with autonomy, phases, check findings, decisions and tools, the claim evidence sheet, experiment runs and the experiment board, the project file panel and research settings."
+description: "Research edition browser surfaces: blank-session project entry, header status, the read-only right-sidebar research tab with autonomy, phases, check findings, decisions and tools, the research tool cards in the conversation, the claim evidence sheet, experiment runs and the experiment board, the project file panel and research settings."
 kind: "package-plugin"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Shows a research project beside the conversation, and reports rather than steers. The person reads the phases, findings and decisions, opens a claim's sources, follows experiment runs on the experiment board, and stops a run after confirming. The one setting changed here is autonomy, which also selects the `research-auto` permission preset. The assistant sets the mode and runs checks; nothing here starts work or opens a panel by itself. Every control shows its own progress and failure. Mount it with `@deepseek-ai/dsh-research-workbench`.
+Shows a research project beside the conversation, and reports rather than steers. The person reads the phases, findings and decisions, opens a claim's sources, follows experiment runs on the experiment board, and stops a run after confirming. The one setting changed here is autonomy, which also selects the `research-auto` permission preset. The assistant sets the mode and runs checks; nothing here starts work or opens a panel by itself. Its research tool calls read in the reader's language. Every control shows its own progress and failure. Mount it with `@deepseek-ai/dsh-research-workbench`.
 
 ## Table of Contents
 
@@ -63,6 +63,7 @@ Every surface reads one polled snapshot of projects, preferences and components,
 | `RunPanel.tsx`, `MetricsGrid.tsx`, `StopRun.tsx` | Submitted experiments above the composer, with their metrics, and stopping one after a confirmation |
 | `Workbench.tsx` | The project's files: sources, manuscript and diagram editors, runs, export; saving never writes over a binary file |
 | `examples.ts` | Keeps the composer of every conversation in an example research inert; the header chip, the research tab and the project list mark examples |
+| `ResearchToolView.tsx`, `toolCallValues.ts` | The keyed `tool.call.toolview` cards of the `research_*` tools, derived from each logged call and result: a row naming the tool and what the call did (`研究资料 · 导入 3 个文件`), with the raw call behind it and a failure in place; for `research_check`, a card with the scope, 通过 or 未通过 with counts, the first three groups of findings, each file a link when the report shows it on disk, and the check's words behind 详细信息. The record only names things (phases, check labels, routes) and gives the folder |
 | `Action.tsx`, `EmptyCell.tsx` | One control's own progress and failure line; the empty cell that shadows the composer statistics, the default-permission setting and the open-config-file action |
 | `Board.tsx`, `BoardBlocks.tsx`, `LineChart.tsx`, `boardValues.ts` | The experiment board tab: runs in flight, machines, the agent's sections resolved against the live record, every run, and the line charts |
 | `Gallery.tsx` | The figure gallery tab: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/` |

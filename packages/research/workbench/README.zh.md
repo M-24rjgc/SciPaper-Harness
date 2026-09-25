@@ -121,7 +121,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
+生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、rename、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
 
 #### Token effect
 
@@ -135,7 +135,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、该模式的 `paperRoot`、自主度、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、该模式要先加载的技能，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。
+结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、模式是否已选定以及由谁选定（`modeChosen`、`modeSetBy`）、路线是否已定（`routingSettled`）、该模式的 `paperRoot`、自主度、这项研究某段已加载对话所持有的目标（`activeGoal`，读者自己的优先）、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、开始某阶段工作时要加载的该模式技能、不应重复创建的在运行目标，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。不在任何研究中时，current 返回 `{project: null, hint}` 而不报错；`create` 只把本对话自己的文件夹设为研究，拒绝其他任何 root，并在消息中请 agent 让用户使用「新研究」和「更改位置」。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。
 
 #### Token effect
 

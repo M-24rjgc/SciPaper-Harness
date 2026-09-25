@@ -16,6 +16,10 @@
 | `route` | 该模式包的某条路线 | 在模式包内走的路径，例如从想法、提案或实测结果开始。 |
 | `autonomy` | `checkpoints`、`automatic` | agent 在关键决策处提问（`ask_user_question`，会暂停正在运行的目标），还是自行决定并记录理由。`automatic` 搭配 `research-auto` 权限预设：沙箱越权请求直接拒绝，而不是等待审批。 |
 
+模式由谁选定记在 `modeSetBy` 中。创建时指定了模式的项目记为 `user`；创建时没有指定模式的项目处于 `general`，`modeSetBy` 不设置，表示模式尚未选定。`set-mode` 按它的 `decidedBy`（缺省时为调用方）设置 `modeSetBy`，并追加一条 key 为 `mode` 的决策：问题是「模式与路线」，回答是以 id 写成的 `<mode>` 或 `<mode> · <route>`，理由即其 rationale。只有给出了理由，它才替换 `modeReason`；模式或路线改变时，`progress` 从头开始。`rename` 设置标题，清除 `untitled`（产品起的占位标题），并把同一标题给文件夹对应的 Workspace，除非已有别的 Workspace 用了这个标题。每次实验运行都把提交它的对话记为 `sessionId`；从桌面端提交的运行，以及在这个字段出现之前记录的运行，都没有它。
+
+`activeGoals(project)` 通过目标服务读取项目中已加载的顶层对话里尚未完成的目标（`ResearchGoal`：会话、目标描述、阶段、轮次与最近一次改动），正在推进轮次的排在前面。未加载的对话看不到。agent 的项目简报把读者自己的目标（没有时取第一个）报告为 `activeGoal`。
+
 根目录位于 `<数据目录>/demo` 中的项目是示例研究，随应用提供，用于新手教学（`src/files.ts` 中的 `isExampleRoot`）。快照和 agent 的项目简报会把它标为 `example: true`；这个标记是推导出来的，从不存储。示例对用户和 agent 都是只读的：可以读取和检查，但检查报告不会保存，任何会记录内容的命令都会被拒绝，并提示 `这是示例研究，只能查看 / This is an example research and is read-only`。看板显示最近一次读取的结果，其中的运行不再被观测，示例目录中也不会新建任何研究或文件夹。
 
 记录存放在 `research_workbench` 存储域中（单文档布局，版本 1）。旧形态的记录会在读取时迁移：阶段机字段被移除，已确认的阶段转为用户决策；原先内置的 `paper-first` 与 `from-results` 模式转为 spark-to-paper 模式包的 `proposal` 与 `data` 路线，`free` 或未设置的模式转为 `general`。模式、路线、阶段与检查的 id 都以字符串存储，因此即使记录所指的模式包已被移除，记录照样能打开，项目按 `general` 运行。抽取出的证据文本存放在快照旁的 `.research/chunks/<evidence>/<revision>.json`，而不在记录里，因此一次变更只重写台账，不会重写每份资料的全文。
@@ -227,14 +231,25 @@ getProject(id: ProjectId): ResearchProject
 async projectAt(directory: string): Promise<ResearchProject | undefined>
 
 /**
+ * The unfinished goals of a project's live conversations, read through the
+ * goal service: every live top-level session whose working directory lies in
+ * the project (and in no project nested inside it) and whose goal is not
+ * complete. A conversation that is not loaded is not seen.
+ * @param project - the project record.
+ * @returns the goals, those that drive rounds first, then the most recently changed.
+ */
+activeGoals(project: ResearchProject): ResearchGoal[]
+
+/**
  * Dispatch a validated tool or desktop command. The desktop receives a job
  * for long operations; the agent waits for the result inside its tool call.
  * @param raw - the command as received.
  * @param signal - cancellation of the call.
  * @param actor - who acts: the desktop user or the agent.
+ * @param sessionId - the agent's conversation, recorded on the runs it submits; absent for the desktop.
  * @returns the outcome.
  */
-async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse>
+async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse>
 ```
 
 Source: [`packages/research/workbench/src/index.ts`](../../packages/research/workbench/src/index.ts)

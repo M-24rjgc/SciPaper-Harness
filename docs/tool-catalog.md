@@ -3176,7 +3176,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_project`
 
-The research project around your working directory. current: mode, route, autonomy, where each phase stands, decisions, files, runs — call it when you start work. create {title, brief?, root?, mode?, route?, autonomy?}: make the working directory (or root) a research project. list: all projects. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason}: switch the project's mode; its skills follow. set-autonomy {autonomy: checkpoints|automatic}. record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred defers a phase that allows it (spark-to-paper's experiments), which then shows as deferred and never as done.
+The research around your working directory. current: the brief — the mode and whether it was chosen (modeChosen, modeSetBy, routingSettled), autonomy, where each phase stands, any goal already running in a conversation of this research (activeGoal), decisions, files, sources and runs; outside a research it returns project null with a hint. Call it when a conversation starts and after the mode changes. create {title, brief?, mode?, route?, autonomy?}: make this conversation's folder a research; it never makes one elsewhere. rename {title}: give the research a short title once the topic is clear. list: all researches. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason, decidedBy?}: switch the mode and record the choice as a decision — decidedBy user when the user chose it, agent (the default) when you did; its skills follow, and the phases start unchecked when the mode or route changes. set-autonomy {autonomy: checkpoints|automatic}: only when the user asks you to in words; autonomy is the user's. record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred defers a phase that allows it (spark-to-paper's experiments), which then shows as deferred and never as done.
 
 ```json
 {
@@ -3187,6 +3187,7 @@ The research project around your working directory. current: mode, route, autono
       "enum": [
         "current",
         "create",
+        "rename",
         "list",
         "modes",
         "set-mode",
@@ -3200,7 +3201,7 @@ The research project around your working directory. current: mode, route, autono
     },
     "title": {
       "type": "string",
-      "description": "create"
+      "description": "create / rename: a short title for the research"
     },
     "brief": {
       "type": "string",
@@ -3208,11 +3209,11 @@ The research project around your working directory. current: mode, route, autono
     },
     "root": {
       "type": "string",
-      "description": "create: absolute directory; defaults to the working directory"
+      "description": "create: omit it; only this conversation's folder can become a research, and any other folder is refused"
     },
     "mode": {
       "type": "string",
-      "description": "create / set-mode: a mode id from action modes (general when omitted on create)"
+      "description": "create / set-mode: a mode id from action modes (general, with the mode not chosen yet, when omitted on create)"
     },
     "route": {
       "type": "string",
@@ -3228,7 +3229,7 @@ The research project around your working directory. current: mode, route, autono
     },
     "reason": {
       "type": "string",
-      "description": "set-mode: why this mode and route"
+      "description": "set-mode: why this mode and route, in one line"
     },
     "question": {
       "type": "string",
@@ -3244,7 +3245,7 @@ The research project around your working directory. current: mode, route, autono
     },
     "decidedBy": {
       "type": "string",
-      "description": "record-decision: who made the decision",
+      "description": "set-mode / record-decision: who made the decision",
       "enum": [
         "user",
         "agent"

@@ -22,7 +22,7 @@ You drive the work; the specialists own their outputs. The research service keep
 | reviews of a submitted paper (rebuttal, revision, resubmission) | `post-review-response` |
 | one bounded task — an idea review, a search, a figure, a paper review, a compression | `open` |
 
-Pick from what exists, not from what the user calls it. If the recorded route is wrong, `research_project` set-mode with mode `ccfa`, the route and a one-line reason; under `checkpoints` confirm with `ask_user_question` first and record-decision the answer. On `open`, route each request to its owner with `../ccf-common/references/routing.md` and run the checks that fit (`research_check` with scope cite, numbers, compile, figures, prose, review-report …).
+Pick from what exists, not from what the user calls it. Unless the brief says `routingSettled`, when the recorded route is wrong, call `research_project` set-mode with mode `ccfa`, the route and a one-line reason; under `checkpoints` confirm with `ask_user_question` first and pass the answer as decidedBy user (set-mode records the decision). On `open`, route each request to its owner with `../ccf-common/references/routing.md` and run the checks that fit (`research_check` with scope cite, numbers, compile, figures, prose, review-report …).
 
 ## 3. The stages
 
@@ -57,7 +57,7 @@ Under `checkpoints`, ask with `ask_user_question` (your recommendation first) an
 
 ## 6. Done
 
-When the user asks for the whole route, create a goal: "Complete the CCFA <route> for <title>; done when research_check is clean." Each round: re-read current, take the first unfinished phase, do it through its owner, check it.
+When the user asks for the whole route, work toward it as one goal per research: if the brief's `activeGoal` shows one, continue it or say which conversation runs it, and never create a second; otherwise create one: "Complete the CCFA <route> for <title>; done when research_check is clean." Each round: re-read current, take the first unfinished phase, do it through its owner, check it.
 
 Report in the upstream shape (project goal, current stage, known and missing artifacts, gate decision, next owner, ccfa.yaml update, risks) only for a status or planning request; at the end of a route report the PDF, the review outcome, the submission checklist and anything the author must still supply.
 

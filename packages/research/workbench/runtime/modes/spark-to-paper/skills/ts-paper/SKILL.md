@@ -32,7 +32,7 @@ Record the outcome in `logs/0_route.io.md`.
 | c | a proposal or report with real results: measured numbers in the text, or any attached data file | `data` | `data_aware` |
 | d | an existing `story.json` | `proposal` (or `data` with real results beside it) | as its route |
 
-Any real measured data wins (hyperparameters, dataset sizes and years are not results); then a complete proposal; otherwise an idea. Reference lists and `retrieved_papers.json` are citation seeds, never route signals. If the recorded route is wrong, `research_project` set-mode with mode `spark-to-paper`, the route and a one-line reason naming the signal; with checkpoints, confirm with `ask_user_question` first and record-decision the answer. Re-assert `results_mode` in `template.json` after the plan stage applies the template.
+Any real measured data wins (hyperparameters, dataset sizes and years are not results); then a complete proposal; otherwise an idea. Reference lists and `retrieved_papers.json` are citation seeds, never route signals. Unless the brief says `routingSettled`, when the recorded route is wrong, call `research_project` set-mode with mode `spark-to-paper`, the route and a one-line reason naming the signal; with checkpoints, confirm with `ask_user_question` first and pass the answer as decidedBy user (set-mode records the decision). Re-assert `results_mode` in `template.json` after the plan stage applies the template.
 
 ## 4. The stages
 
@@ -65,7 +65,7 @@ The route when you chose it, the story, before running experiments, a material c
 
 ## 7. Done
 
-When the user asks for the paper, create a goal: "Complete the spark-to-paper paper for <title>; done when research_check is clean." Each round: re-read current, take the first unfinished phase, do it, check it.
+When the user asks for the paper, work toward it as one goal per research: if the brief's `activeGoal` shows one, continue it or say which conversation runs it, and never create a second; otherwise create one: "Complete the spark-to-paper paper for <title>; done when research_check is clean." Each round: re-read current, take the first unfinished phase, do it, check it.
 
 Done means `research_check` scope all is clean, the review is current, every page was looked at and an export was made. Report the PDF path, page count, sections, reference count, the review outcome (found, closed, left for the author and the tier that ran), the figures (all editable vector PDFs), and anything the author must still supply.
 

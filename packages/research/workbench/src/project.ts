@@ -6,7 +6,14 @@ import type {
   ResearchProject, ResearchResponse, SourceLocator,
 } from './types.ts'
 
-/** Create the initial project record for a registered workspace. */
+/**
+ * Create the initial project record for a registered workspace. A request
+ * that names a mode records it as the user's choice (`modeSetBy: user`);
+ * without one the project is in the general mode with the mode not chosen yet.
+ * @param request - title, root, brief, and the mode, route and autonomy the caller named.
+ * @param workspaceId - the Workspace registered for the root.
+ * @returns the new record.
+ */
 export function newProject(request: CreateProjectRequest, workspaceId: WorkspaceId): ResearchProject {
   const now = new Date().toISOString()
   return {

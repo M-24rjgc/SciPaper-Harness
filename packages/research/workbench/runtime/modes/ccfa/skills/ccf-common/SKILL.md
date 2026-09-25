@@ -38,7 +38,7 @@ FULL (ask before every optional sibling task) applies only when the user asks fo
 
 ## Project state and files
 
-- `ccfa.yaml` at the project root is the CCFA state (`ccfa-yaml-contract.md`). ccf-project-scaffolder creates it and ccf-pipeline-orchestrator updates `stage`; other skills read it and propose changes. The research record (`research_project` current) is the platform's own ledger beside it — both stay true.
+- `ccfa.yaml` at the project root is the CCFA skills' working notes (`ccfa-yaml-contract.md`), not where the research stands: that is what `research_check` records, and the brief (`research_project` current) reports it. ccf-project-scaffolder creates ccfa.yaml and ccf-pipeline-orchestrator updates `stage`; other skills read it and propose changes. Keep it true, since the `ccfa-yaml` gate checks it.
 - Working files go under `ccfa-workfiles/<purpose>/<artifact>/` as `artifact-contracts.md` says; canonical outputs keep their contract paths (`ccfa-review-reports/`, `reviews/revision-ledger.md`, `submission/checks.md`, `experiments/results.*`).
 - The manuscript lives in the project's `paper/` folder (`paper/main.tex`, started from the venue's `main.tex.tmpl`) unless one already exists elsewhere, and `ccfa.yaml` records its path; the compiler finds the venue's class files wherever it sits.
 - Record where each result came from in the research ledger too: `research_artifact` register-artifact for plots (data and script as inputs), `research_evidence` claim for claims tied to quotes.

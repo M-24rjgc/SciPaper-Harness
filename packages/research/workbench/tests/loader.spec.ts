@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, parse } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
 import type { ResearchProject } from '../src/types.ts'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
@@ -131,12 +132,22 @@ afterEach(async () => {
   if (root) await rm(root, { recursive: true, force: true }); root = undefined
 })
 
+/** A registered folder as the research service sees it. */
+interface FakeWorkspace { id: WorkspaceId; title: string; setTitle(title: string): Promise<void> }
+/** A live agent as the research service reads it: its session's id and header. */
+interface FakeAgent { session: { id: string; header: { cwd?: string; origin?: 'subagent' } } }
+
 interface Harness {
   service: InstanceType<typeof ResearchWorkbench>
   registry: Map<string, unknown>
   prompts: unknown[]
   sessions: string[]
   credentials: Map<string, string>
+  /** Registered folders by id, one per project root. */
+  workspaces: Map<WorkspaceId, FakeWorkspace>
+  /** The live agents, and the goal (or the error) the goal service answers for each session. */
+  agents: FakeAgent[]
+  goals: Map<string, GoalView | Error>
 }
 
 async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } = {}): Promise<Harness> {
@@ -146,6 +157,9 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
   const prompts: unknown[] = []
   const sessions: string[] = []
   const credentials = new Map<string, string>()
+  const workspaces = new Map<WorkspaceId, FakeWorkspace>()
+  const agents: FakeAgent[] = []
+  const goals = new Map<string, GoalView | Error>()
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
@@ -154,7 +168,23 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
       const backend = new MemoryStorageBackend(pool)
       c.storage.backend.register('memory', backend)
       c.provide(storageBackendServiceKey('memory'), backend)
-      c.provide('workspaceRegistry', { create: async () => ({ id: 'workspace' as WorkspaceId }) } as unknown as Context['workspaceRegistry'])
+      c.provide('workspaceRegistry', {
+        create: async (path: string, title: string) => {
+          const workspace: FakeWorkspace = { id: `workspace:${path}` as WorkspaceId, title, setTitle: async (next) => { workspace.title = next } }
+          workspaces.set(workspace.id, workspace)
+          return workspace
+        },
+        get: (id: WorkspaceId) => workspaces.get(id),
+        list: () => [...workspaces.values()],
+      } as unknown as Context['workspaceRegistry'])
+      c.provide('agents', { list: () => agents } as unknown as Context['agents'])
+      c.provide('goals', {
+        get: (agent: FakeAgent) => {
+          const goal = goals.get(agent.session.id)
+          if (goal instanceof Error) throw goal
+          return goal
+        },
+      } as unknown as Context['goals'])
       c.provide('sessionController', {
         create: async () => { const id = `session-${sessions.length + 1}`; sessions.push(id); return { sessionId: id as SessionId } },
         selectModel: async () => {},
@@ -179,7 +209,7 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
   ].join('\n'))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configuration).href } })
   await ctx.loader.await()
-  return { service: ctx.research, registry, prompts, sessions, credentials }
+  return { service: ctx.research, registry, prompts, sessions, credentials, workspaces, agents, goals }
 }
 
 async function write(path: string, content: string): Promise<void> {
@@ -451,16 +481,19 @@ describe('the research service records; it never drives the agent', () => {
     expect(service.getProject(p.id)).toMatchObject({ mode: 'spark-to-paper', route: 'data', modeReason: 'CSV results exist', modeSetBy: 'agent' })
     await expect(run({ action: 'set-mode', mode: 'spark-to-paper', route: 'sideways' })).rejects.toThrow(/has no route sideways/)
     expect((await run({ action: 'set-mode', mode: 'general' }, 'user')).message).toBe('Mode General: no pipeline; run checks when useful')
-    expect('modeReason' in service.getProject(p.id) || 'route' in service.getProject(p.id)).toBe(false)
+    // A switch without a new reason keeps the one on record.
+    expect(service.getProject(p.id)).toMatchObject({ mode: 'general', modeReason: 'CSV results exist', modeSetBy: 'user' })
+    expect('route' in service.getProject(p.id)).toBe(false)
     expect(announced.map(event => [event.mode, event.route])).toEqual([['spark-to-paper', 'data'], ['general', undefined]])
     await run({ action: 'set-autonomy', autonomy: 'automatic' }, 'user')
     await run({ action: 'record-decision', question: 'Which dataset?', answer: 'CIFAR-10', rationale: '  small and standard ' })
-    expect(service.getProject(p.id)).toMatchObject({ autonomy: 'automatic', decisions: [{ question: 'Which dataset?', answer: 'CIFAR-10', by: 'agent', rationale: 'small and standard' }] })
+    expect(service.getProject(p.id)).toMatchObject({ autonomy: 'automatic' })
+    expect(service.getProject(p.id).decisions.at(-1)).toMatchObject({ question: 'Which dataset?', answer: 'CIFAR-10', by: 'agent', rationale: 'small and standard' })
     await run({ action: 'record-decision', question: 'Go?', answer: 'Yes' }, 'user')
-    expect(service.getProject(p.id).decisions[1]).toMatchObject({ by: 'user', rationale: '' })
+    expect(service.getProject(p.id).decisions.at(-1)).toMatchObject({ by: 'user', rationale: '' })
     // The agent records the user's checkpoint answer in the user's name.
     await run({ action: 'record-decision', question: 'Run it?', answer: 'Yes', decidedBy: 'user' })
-    expect(service.getProject(p.id).decisions[2]).toMatchObject({ question: 'Run it?', by: 'user' })
+    expect(service.getProject(p.id).decisions.at(-1)).toMatchObject({ question: 'Run it?', by: 'user' })
     const check = await run({ action: 'check' })
     expect(check.message).toMatch(/Not done yet/)
     expect(check.check?.clean).toBe(false)
@@ -498,6 +531,97 @@ describe('the research service records; it never drives the agent', () => {
     expect(service.getProject(p.id).claims).toHaveLength(1)
     const clean = await run({ action: 'check', scope: 'figures' })
     expect(clean.message).toBe('Clean')
+  })
+
+  it('leaves the mode unchosen until someone chooses it, records each choice, and restarts progress for a new mode', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-mode-'))
+    const { service } = await boot(new MemoryMediaPool())
+    // Created without naming a mode: general, and not chosen yet. Naming one, even general, is a choice.
+    const p = await service.create({ title: 'Unchosen', root: join(root, 'p'), brief: '' })
+    expect(p).toMatchObject({ mode: 'general' })
+    expect(p).not.toHaveProperty('modeSetBy')
+    expect(await service.create({ title: 'Named', root: join(root, 'named'), brief: '', mode: 'general' })).toMatchObject({ modeSetBy: 'user' })
+    const run = (request: Record<string, unknown>, actor: 'user' | 'agent' = 'agent') => service.execute({ projectId: p.id, ...request } as never, signal, actor)
+    await run({ action: 'check' })
+    expect(service.getProject(p.id).progress?.full).toBeDefined()
+    // The agent records the user's answer at a checkpoint in the user's name, with the reason.
+    await run({ action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: ' Results exist ', decidedBy: 'user' })
+    const chosen = service.getProject(p.id)
+    expect(chosen).toMatchObject({ modeSetBy: 'user', modeReason: 'Results exist', progress: { mode: 'spark-to-paper', route: 'data', phases: {}, findings: {} } })
+    expect(chosen.progress).not.toHaveProperty('full')
+    expect(chosen.decisions).toEqual([{
+      id: expect.any(String) as unknown, question: '模式与路线', answer: 'spark-to-paper · data', by: 'user', rationale: 'Results exist',
+      at: expect.any(String) as unknown, key: 'mode',
+    }])
+    // Choosing the same mode and route again keeps what was checked; its decision still records who chose it.
+    await run({ action: 'check', scope: 'data' })
+    const checked = service.getProject(p.id).progress
+    await run({ action: 'set-mode', mode: 'spark-to-paper', route: 'data' })
+    expect(service.getProject(p.id)).toMatchObject({ progress: checked, modeReason: 'Results exist', modeSetBy: 'agent' })
+    expect(service.getProject(p.id).decisions.at(-1)).toMatchObject({ answer: 'spark-to-paper · data', by: 'agent', rationale: '', key: 'mode' })
+    // A mode without routes is recorded by its id alone.
+    await run({ action: 'set-mode', mode: 'general' }, 'user')
+    expect(service.getProject(p.id)).toMatchObject({ progress: { mode: 'general', phases: {}, findings: {} } })
+    expect(service.getProject(p.id).progress).not.toHaveProperty('route')
+    expect(service.getProject(p.id).decisions.at(-1)).toMatchObject({ answer: 'general', by: 'user' })
+  })
+
+  it('renames a research and its folder\'s Workspace, unless another Workspace already has the title', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-rename-'))
+    const { service, workspaces } = await boot(new MemoryMediaPool())
+    const p = await service.create({ title: 'Draft', root: join(root, 'p'), brief: '' })
+    const other = await service.create({ title: 'Taken title', root: join(root, 'other'), brief: '' })
+    const rename = (title: string) => service.execute({ projectId: p.id, action: 'rename', title } as never, signal, 'agent')
+    // A placeholder title, as a draft research carries one.
+    await (service as unknown as { mutate(id: string, work: (project: ResearchProject) => void): Promise<void> })
+      .mutate(p.id, (project) => { project.untitled = true })
+    expect(service.getProject(p.id).untitled).toBe(true)
+    expect(await rename('  Sparse attention  ')).toMatchObject({ message: 'Research renamed to "Sparse attention"' })
+    expect(service.getProject(p.id)).toMatchObject({ title: 'Sparse attention' })
+    expect(service.getProject(p.id)).not.toHaveProperty('untitled')
+    expect(workspaces.get(p.workspaceId)?.title).toBe('Sparse attention')
+    // The same title again changes nothing on the Workspace.
+    expect((await rename('Sparse attention')).message).toBe('Research renamed to "Sparse attention"')
+    // Workspace titles are unique: the research takes the title, its Workspace keeps its own.
+    expect((await rename('Taken title')).message).toMatch(/^Research renamed to "Taken title"; its folder keeps its earlier name .* already called "Taken title"$/)
+    expect(service.getProject(p.id).title).toBe('Taken title')
+    expect(workspaces.get(p.workspaceId)?.title).toBe('Sparse attention')
+    expect(workspaces.get(other.workspaceId)?.title).toBe('Taken title')
+    await expect(rename(' ')).rejects.toThrow()
+    // A folder whose registration is gone still gets its title.
+    workspaces.delete(p.workspaceId)
+    expect((await rename('Unregistered')).message).toBe('Research renamed to "Unregistered"')
+  })
+
+  it('reads the unfinished goals of a research\'s live conversations through the goal service', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-goals-'))
+    const { service, agents, goals } = await boot(new MemoryMediaPool())
+    const p = await service.create({ title: 'Goals', root: join(root, 'p'), brief: '' })
+    const nested = await service.create({ title: 'Nested', root: join(root, 'p', 'nested'), brief: '' })
+    const goal = (objective: string, phase: GoalView['phase'], updatedAt: number): GoalView => ({
+      id: `goal-${objective}` as GoalView['id'], revision: 1, objective, phase, maxGoalRounds: 10, roundsStarted: 2, createdAt: 0, updatedAt, activation: 'armed',
+    })
+    const live = (id: string, cwd: string | undefined, origin?: 'subagent'): void => {
+      agents.push({ session: { id, header: { ...(cwd === undefined ? {} : { cwd }), ...(origin === undefined ? {} : { origin }) } } })
+    }
+    live('paused', join(p.root, 'paper')); goals.set('paused', goal('paused', 'paused', 5))
+    live('older', p.root); goals.set('older', goal('older', 'active', 1))
+    live('newer', p.root); goals.set('newer', goal('newer', 'active', 9))
+    live('blocked', p.root); goals.set('blocked', goal('blocked', 'blocked', 3))
+    // None of these counts: a finished goal, no goal, a replay failure, a subagent, no folder, and a nested research.
+    live('done', p.root); goals.set('done', goal('done', 'complete', 20))
+    live('none', p.root)
+    live('broken', p.root); goals.set('broken', new Error('goal replay failed'))
+    live('child', p.root, 'subagent'); goals.set('child', goal('child', 'active', 30))
+    live('nowhere', undefined); goals.set('nowhere', goal('nowhere', 'active', 30))
+    live('inner', nested.root); goals.set('inner', goal('inner', 'active', 30))
+    expect(service.activeGoals(service.getProject(p.id))).toEqual([
+      { sessionId: 'newer', objective: 'newer', phase: 'active', roundsStarted: 2, updatedAt: 9 },
+      { sessionId: 'older', objective: 'older', phase: 'active', roundsStarted: 2, updatedAt: 1 },
+      { sessionId: 'blocked', objective: 'blocked', phase: 'blocked', roundsStarted: 2, updatedAt: 3 },
+      { sessionId: 'paused', objective: 'paused', phase: 'paused', roundsStarted: 2, updatedAt: 5 },
+    ])
+    expect(service.activeGoals(service.getProject(nested.id)).map(item => item.sessionId)).toEqual(['inner'])
   })
 
   it('keeps one record of progress that only research_check writes, and derives where each project stands', async () => {
@@ -677,7 +801,7 @@ describe('the research service records; it never drives the agent', () => {
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python', uv: 'uv' })
     const p = await service.create({ title: 'Runs', root: join(root, 'p'), brief: '' })
-    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    const run = (request: Record<string, unknown>, sessionId?: string) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent', sessionId)
     await run({ action: 'environment', environment: { name: 'env', kind: 'uv', target: 'local', python: '', requirements: ['numpy'], isDefault: true } })
     await run({ action: 'environment', environment: { name: 'second', kind: 'existing', target: 'local', python: 'C:/py/python.exe', requirements: [], isDefault: true } })
     const environments = service.getProject(p.id).environments
@@ -686,8 +810,10 @@ describe('the research service records; it never drives the agent', () => {
     await write(join(p.root, 'code/__pycache__/x.pyc'), 'cache')
     const spec = { environmentId: environments[1]!.id, name: 'train', argv: ['{python}', 'code/train.py'], cwd: '.', seed: 1, maxSeconds: 60, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], metricsPath: 'metrics.json' }
     const requestId = '11111111-1111-4111-8111-111111111111'
-    const submitted = await run({ action: 'experiment', requestId, spec })
+    const submitted = await run({ action: 'experiment', requestId, spec }, 'agent-session')
     expect(submitted.runs?.[0]).toMatchObject({ status: 'running' })
+    // The run remembers the conversation that submitted it, through launch and observation alike.
+    expect(service.getProject(p.id).experiments[0]?.sessionId).toBe('agent-session')
     const inputs = JSON.parse(await readFile(join(p.root, '.research/runs', requestId, 'inputs.json'), 'utf8')) as { inputs: { path: string }[] }
     expect(inputs.inputs.map(input => input.path)).toEqual(['code/train.py'])
     expect((await run({ action: 'experiment', requestId, spec })).message).toMatch(/Existing experiment/)
@@ -696,7 +822,7 @@ describe('the research service records; it never drives the agent', () => {
     const waited = await run({ action: 'experiment-wait', runIds: [requestId], timeoutSeconds: 5 })
     expect(waited.runs?.[0]).toMatchObject({ status: 'completed', metrics: { accuracy: 0.8123 } })
     const project = service.getProject(p.id)
-    expect(project.experiments[0]?.collected).toBe(true)
+    expect(project.experiments[0]).toMatchObject({ collected: true, sessionId: 'agent-session' })
     expect(project.evidence.some(e => e.kind === 'experiment' && e.coverage === 'data')).toBe(true)
     // Seeds of one configuration share a name, so the metrics evidence carries the seed.
     expect(project.evidence.find(e => e.path.endsWith(`${requestId}/metrics.json`))?.title).toBe(`${spec.name} · seed ${spec.seed}`)
@@ -708,6 +834,8 @@ describe('the research service records; it never drives the agent', () => {
     processes.runner = { status: 'running' }
     const second = '22222222-2222-4222-8222-222222222222'
     await run({ action: 'experiment', requestId: second, spec: { ...spec, codePaths: ['code/train.py'] } })
+    // A run the desktop or another caller submitted names no conversation.
+    expect(service.getProject(p.id).experiments.find(r => r.id === second)).not.toHaveProperty('sessionId')
     const still = await run({ action: 'experiment-wait', runIds: [second], timeoutSeconds: 1 })
     expect(still.message).toMatch(/Still running/)
     processes.runner = { status: 'unknown', message: 'lost' }

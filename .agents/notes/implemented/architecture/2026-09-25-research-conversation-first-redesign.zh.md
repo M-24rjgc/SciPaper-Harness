@@ -112,6 +112,32 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - **决策键。** `record-decision` 接受可选的 `key` 短标识，并存进这条决策。可推迟的阶段在未完成、且有决策带上它的键时处于推迟状态。推迟的阶段永远不算完成；阶段自己的检查通过时它就是已完成，不论是否推迟过。
 - **在浏览器里。** `Rail.tsx` 按现状绘制：已完成是中性色的 ✓，当前阶段是 `brand-primary` 色的圆环，未开始是空心标记，「已推迟」用警示色，检查点阶段注明「开始前会先问你」，当前阶段下方是模式包自己的提示，下面是「检查于 {相对时间}」以及「检查后有改动」。「待处理」最多列出三组，用读者的语言命名（引用 · 2 个错误）；只有宿主在磁盘上找到了文件，这一组才能打开它，检查自己的原话收在「详细信息」里。`standingText` 显示为 `{mode} · {phase} {done}/{total}`，完成时为 `{mode} · 已完成 ✓`，推迟阶段之前已无待做阶段时为 `{mode} · 实验已推迟`，每个阶段都已完成但论文还没完成时为 `{mode} · 待复查`。
 
+### 第 7 步：由助手选定模式、给研究命名，并且只保留一个目标（宿主、人设与技能部分）
+
+记录里原先写着每项研究的模式都是用户选的；`set-mode` 会删掉理由，也不记录决策；`current` 在研究之外会报错；`create` 能在任意文件夹里建研究；也没有任何东西告诉第二段对话已经有目标在运行。现在，宿主、人设与技能按已批准方案第 4 节的流程工作。
+
+- **模式要选定，而不是默认认定。** `createProject` 只在调用方指定了模式时才把模式交给记录，因此只有这时 `newProject` 才写入 `modeSetBy: user`。创建时没有指定模式的研究处于 `general`，`modeSetBy` 不设置：模式尚未选定。
+- **`set-mode` 自己记录决策。** 它接受 `decidedBy`（`user` 或 `agent`，缺省时为调用方），据此设置 `modeSetBy`，并追加一条 key 为 `mode` 的决策：问题是「模式与路线」，回答是以 id 写成的 `<mode>` 或 `<mode> · <route>`，理由即其 rationale。只有给出了理由，它才替换 `modeReason`。模式或路线改变时，`progress` 换成新组合的一份空记录，因此在别的模式下检查过的阶段不会借存储的 `lastCheck` 再回来。
+- **`rename {title}`** 设置标题，清除 `untitled`，并把同一标题给文件夹对应的 Workspace，除非已有别的 Workspace 用了这个标题（Workspace 标题唯一，见 `workspace-controller/commands.ts`）；这时结果会说明文件夹保留原来的名字。`untitled` 是新增的可选记录字段，表示产品起的占位标题；第 9 步的草稿研究会设置它。
+- **运行记下提交它的对话。** `execute` 接收调用方的会话，`submitExperiment` 把它记在运行上，即 `sessionId`。从桌面端提交的运行和更早记录的运行都没有它。
+- **`activeGoals(project)`** 通过目标服务读取目标：它遍历 `ctx.agents.list()`，保留工作目录所在的最内层研究正是这一项的顶层会话，并逐个调用 `ctx.goals.get(agent)`。已完成的目标、没有目标的会话、目标日志无法重放的会话都会跳过，其余按「推进中、受阻、已暂停」排序，同类中最新的在前。服务现在注入 `agents` 与 `goals`，两者都是基础 bundle 中的宿主平面服务。未加载的对话看不到，因为目标服务读取的是已加载会话的投影。
+- **工具。** `current` 从不报错：在研究之外，或对话没有文件夹时，它返回 `{project: null, hint}`。`create` 只把本对话自己的文件夹设为研究；其他 `root` 一律拒绝，并在消息中请 agent 让用户使用「新研究」和「更改位置」；位于某项研究之内的文件夹返回那项研究的简报，而不是新建一项嵌套的研究。`set-autonomy` 的说明写明只在用户用话语要求时使用。
+- **项目简报**新增 `modeChosen`、`modeSetBy`、`routingSettled`（用户选定了模式，或已有 key 为 `mode` 的决策）、`activeGoal`（读者自己的目标优先，否则取服务报告的第一个，附带 `thisConversation` 与持有目标的其他对话数）以及 `untitled`；它的指引会说明模式何时尚未选定、路线何时已定、目标已在哪里运行，以及研究何时还需要一个标题。模式包的技能改为在开始某阶段的工作时加载，而不是为一个问题加载。检查点阶段本来就在简报里（`phases[].checkpoint`，以及「Checkpoint before: …」）。
+- **人设**（`presets/research/agent.cordis.yml`）以方案 4.8 节的文字开头，保留诚信与「hands」两段。最后一条关于直接导入附件的要点留到第 8 步，那一步才允许导入附件存储里的文件。
+- **技能。** `research-modes` 承载唯一一张模式与路线表、模式尚未选定时的规则，并说明 `set-mode` 会记录决策、定下路线。`ts-paper` 与 `ccf-pipeline-orchestrator` 只在 `routingSettled` 为 false 时重新选路线，只在 `activeGoal` 显示没有目标时才创建目标。`ts-paper-experiment` 与 `running-experiments` 在什么都跑不了时记录 `experiments-deferred`，并说明论文保持提案形态。`results-ingest` 只提 `results.facts.json`，`paper-writing` 按简报的 `paperRoot` 放稿件，`ccf-common` 把 `ccfa.yaml` 称为技能的工作笔记，把 `research_check` 称为研究进展的记录。`references/upstream.md` 与 NOTICE 文件都没有改动。
+- **示例生成器与 e2e。** 示例生成器脚本里的 `set-mode` 调用带上理由（用户在检查点选定的那处还带 `decidedBy: user`），之后不再另记一条模式决策。科研 Web e2e 断言：新建对话框会带上它的选择框里的模式，因此记录把这个模式记为用户的选择；并断言 `set-mode` 记下了用户的决策。在第 9 步去掉这个对话框之前，只有 agent 或示例生成器不指定模式而创建的研究，才会以「模式尚未选定」开始。
+
+第 1 步遗留的模型可见文字也一并修改。Web bundle 的 `system-prompt` 行设置 `includeHarnessIdentity: false`，agent 只由人设来介绍自己。`harness:source`（`app-boot`）、`app:web-surface` 与 `DSH_WEB_URL` 的说明（`web-app`）没有可以配置文字的字段，所以直接改了措辞：「the implementation checkout of this application」「this application's Web GUI」「the Web GUI serving this session」。四份 Web 系统提示词金标准文件、`fresh-round-trip` 的 Web 上下文金标准和 Web surface 金标准只在这些行上改动，`replay-round-trip.e2e.ts` 期望人设是第一段。`independence.spec.ts` 固定了这一行。
+
+### 第 7 步：研究工具的调用以读者的语言呈现（ui-research）
+
+研究工具的调用原先落到通用工具行，只显示工具的线上名称和第一个字符串参数，于是一次检查显示为 `research_check · cite`，报告是原始 JSON。现在 `ui-research` 为每个研究工具在 `tool.call.toolview` 按键注册一张卡片；外壳代码不变。
+
+- **卡片内容从哪里来。** `toolCallValues.ts` 只从记录下的调用与结果推导：调用的状态（进行中、已返回、失败、已中止）、参数，以及工具返回的 JSON 值（每个研究工具都以一个文本块返回）。研究记录只负责命名：阶段用报告所在模式的模式包标签，检查用项目 `standing` 给出的名称，模式与路线用模式包里的名字；其余一律用 id。Host 的 `presentCall` 标题仍留在 `tools.ts`，Web 客户端从未读取它们。
+- **每次调用一行。** `ResearchToolCard` 写明工具名称和这次调用做了什么（`研究资料 · 导入 3 个文件`、`研究记录 · 设定模式：spark-to-paper · 从实测结果开始`），沿用工具行的 24px 行高和烧瓶标志。十个工具的每个 action 都有自己的说法；本版本不认识的 action 显示为 `执行 <action>`，参数尚未写完的调用只显示工具名。原始参数与结果收在行的展开内容里；失败时在行下就地显示宿主给出的原因（`没能完成：…`），中止的调用写明已中止。
+- **每次检查一张卡片。** `ResearchCheckCard` 写作 `研究检查 · {范围} · 通过 | 未通过 · n 个错误 · n 个提醒`。没有发现错误却仍未通过的检查会说明原因：阶段范围为 `n 项要求未满足`，全部范围为 `n 个阶段未完成`。卡片按检查列出前三组发现（有错误的在前），每组附上它提到的第一个文件；全部发现与未完成阶段的原话收在「详细信息」后。只有报告带有 `gatesRun`（表明宿主会丢弃不存在的文件）时，文件才能在右侧栏打开；示例里的报告早于这一变化，文件显示为文本。只有干净的报告才有绿色 ✓（`state-success`）；未通过的报告用提醒色圆点，「未通过」用 `state-warn`。不是报告的结果回退为普通行。
+- **测试。** `tool-call-values.client.spec.ts` 用示例生成器的脚本调用和宿主新旧两种格式的报告作输入，并对照 Host 自己的工具定义（`registerResearchTools`）检查：宿主注册的每个研究工具都有卡片，声明的每个 action 都有说法。`research-tool-view.client.spec.tsx` 渲染卡片，`plugin.client.spec.ts` 检查十项注册。
+
 ## 考虑过的其他方案
 
 **直接移除这些行，而不是禁用。** 遥测和 `/feedback` 行属于 base 组合包，headless、ACP 和 SDK profile 都共用它，在那里移除会一并改变这些 profile。Web 的行本可以从 insert 列表中删掉，但禁用的行把这个选择原地写明，部署方也只需一行就能重新打开；这与 Web patch 禁用而不是删掉 agent 层各行的理由相同。
@@ -150,6 +176,20 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 
 **把评审移到 latex 阶段之后（第 6 步）。** 这会打乱 ts-paper 的阶段顺序。拿评审与它读过的章节比较，不论重新编译多少次都成立。
 
+**直接从会话投影读目标，或把目标存进记录（第 7 步）。** 目标投影归目标服务所有，服务还会拒绝无法重放的日志；绕过服务去读，就得把这条规则再抄一遍。把目标抄进台账，会让会话日志拥有的事实多出第二份记录，目标一变它就过期。
+
+**去掉 `create` 的 `root` 参数（第 7 步）。** 那样仍传文件夹的模型会在不知情的情况下把研究建在工作目录里。保留参数并拒绝其他文件夹，就能告诉它另一个文件夹里的研究从哪里来。
+
+**用读者的语言写模式决策的回答（第 7 步）。** 这份记录由两种界面语言和 agent 共用。模式与路线的 id 对三方都准确，而 key `mode` 让研究记录能用读者的语言称呼这项决策。
+
+**模式改变时删除 `progress`（第 7 步）。** 删掉之后会重新读存储的 `lastCheck`，回到先前的模式时旧阶段就会回来。给新模式与路线一份空记录，则什么都从未检查开始。
+
+**改写网页搜索的端点说明（第 7 步）。** 它的失败文字仍先让用户去 Settings > Plugins > Plugin configuration > Web search，而这个版本不带这个页面，之后才给出 `DEEPSEEK_SEARCH_BASE_URL` 与 `web-search-deepseek` 配置的兜底办法。无需密钥的会话快照 `web-search-endpoint-guidance` 录下了一段引用这段文字的模型回复，改它需要用密钥重新实录；在那之前保持不变。
+
+**把中文标题写进 Host 的 `presentCall`（第 7 步）。** Web 客户端不使用 Host 的呈现器（[客户端推导呈现](2026-08-23-client-derived-tool-presentation.zh.md)），而且 Host 标题只有一种语言。
+
+**把 Host 的 `CHECK_LABELS` 复制到客户端（第 7 步）。** 第二份副本会走样；有发现的检查，standing 里已经带着它的名称。
+
 ## 影响
 
 - 只有当用户配置了 DeepSeek 模型，或存入 DeepSeek 密钥时，Web 与 Desktop 组合才会连接 DeepSeek 服务；存入密钥也会启用 `web_search` 背后的 DeepSeek 网页搜索服务。它们运行的任何部分都不会创建 `.anonymous-user-id`。插件设置页已禁用，GUI 中没有网页搜索的开关。
@@ -158,7 +198,7 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - 只为已移除的浏览器半边服务的 Host 行 `plugin-inventory` 与 `terminal-controller` 仍然挂载，但不再有使用者。
 - 入口页、输入框、文件入口和首次启动对话框不再出现「工作区」，也不再把 DeepSeek 说成产品本身。其他外壳文案仍写着「工作区」，例如工作区列表、目录选择器的标题「选择工作区目录」和权限预设「工作区内修改」，直到替换这些控件的步骤为止。
 - 在第 9 步的入口策略落地之前，尚未选定文件夹时「新研究」不会创建研究，而兜底提示正是在这时显示，所以提示里的「新建」指向一个暂时还做不到这件事的按钮；打开列表中已有的研究，或用文件夹标签选择文件夹，都可以用。
-- 在交付的组合中仍会显示、并且提到 DeepSeek、Harness 或 DSH 的外壳 locale 字符串，指的都是用户自己选择的模型（模型选择器里 DeepSeek 模型的说明、「模型」设置中 DeepSeek 端点的占位地址）。关于 DeepSeek Harness 0.1 的继承欢迎声明位于 `ui-settings-models`，但 `ui-research` 用一个什么也不渲染的组件占据了这一引导步骤；网页搜索的说明则在已禁用的插件设置页上。模型可见的系统提示词仍把 agent 介绍为由 DeepSeek Harness 驱动（`includeHarnessIdentity`），网页搜索服务缺少密钥时的错误仍指向 Settings > Plugins；两者都不是界面文案。
+- 在交付的组合中仍会显示、并且提到 DeepSeek、Harness 或 DSH 的外壳 locale 字符串，指的都是用户自己选择的模型（模型选择器里 DeepSeek 模型的说明、「模型」设置中 DeepSeek 端点的占位地址）。关于 DeepSeek Harness 0.1 的继承欢迎声明位于 `ui-settings-models`，但 `ui-research` 用一个什么也不渲染的组件占据了这一引导步骤；网页搜索的说明则在已禁用的插件设置页上。模型可见的系统提示词不再把 DeepSeek Harness 或 DSH 说成产品；网页搜索服务端点失败时的说明仍指向 Settings > Plugins（见「考虑过的其他方案」），缺少密钥时的错误则指向产品确实有的「模型」页。
 - 继承来的用户指南（`docs/user/guide`）和上游 Agent Note 仍引用外壳的旧标签，例如 **Choose workspace** 和 `Deep diving...`。
 - 想做检查、推进流程或换模式时，用户现在在对话里向助手提出。
 - 在第 9 步之前，「新建项目目录…」胶囊按钮和输入框里的文件夹按钮仍是把研究放进指定文件夹的仅有的直接途径。
@@ -169,4 +209,9 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - 在 spark-to-paper 中，`research_check scope: cite` 和 `figures` 现在也会运行该阶段的门禁。
 - 缺少提示、门禁名称或 `paperRoot` 的模式包不再加载。
 - `lastCheck` 仍会写入，但不再有读取方；早期版本存下的任务结果保留它们原有的报告字段。
-- 在第 7 步之前，人设和技能都不提决策键；agent 只能从工具说明里知道它。在第 8 步之前，侧栏仍保留自主度选择；在第 11 步之前，侧栏还没有「现在」一行。
+- 在第 8 步之前，侧栏仍保留自主度选择；在第 11 步之前，侧栏还没有「现在」一行。
+- 第 7 步之前创建的记录带着旧创建路径写下的 `modeSetBy: user`，读作已选定。在 `set-mode` 开始记录决策之前由 agent 设置过模式的记录读作 `routingSettled: false`，所以其模式包的入口技能可能再选一次路线。
+- 随应用提供的示例保留当时生成器记下的单独模式决策；重新生成的示例每次 `set-mode` 只会有一条决策。
+- 未加载的对话里的目标不会出现在 `activeGoal` 中，因此 agent 可能在它旁边再建一个。
+- 继承来的 Web 场景组合的是同一个 `system-prompt` 行，所以它们的提示词金标准也和科研版一起去掉了开场的身份句。
+- 范围为某个基础检查的干净检查（例如通用模式下的 `figures`）显示检查 id，因为快照只在某项检查有发现时才带它的名称。

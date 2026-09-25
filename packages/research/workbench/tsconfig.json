@@ -9,6 +9,7 @@
   ],
   "references": [
     { "path": "../../core/agent" },
+    { "path": "../../goal/goal" },
     { "path": "../../core/system-prompt" },
     { "path": "../../client/connection/tsconfig.host.json" },
     {

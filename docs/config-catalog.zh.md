@@ -1941,7 +1941,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-research-workbench`
 
-需要：`storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm`
+需要：`storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals`
 
 ```ts config-catalog
 /** Research workbench configuration. */
@@ -1957,7 +1957,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/research/workbench/src/index.ts:47`](../packages/research/workbench/src/index.ts)
+来源：[`packages/research/workbench/src/index.ts:48`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

@@ -59,6 +59,9 @@
     },
     {
       "path": "../ui-workspace"
+    },
+    {
+      "path": "../ui-tool"
     }
   ]
 }

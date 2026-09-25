@@ -5,7 +5,7 @@ description: Use to write or revise the LaTeX paper — section by section from 
 
 # Writing the paper
 
-The manuscript lives in `paper/main.tex` (sections may be `\input` from `paper/sections/`), the bibliography in `paper/refs.bib`. Write with the ordinary file tools; the research check reads the files as they are.
+The manuscript lives in the brief's `paperRoot` (`paper` unless the mode says otherwise; `.` means the project root): `<paperRoot>/main.tex`, with sections `\input` from `<paperRoot>/sections/`, and the bibliography in `<paperRoot>/refs.bib`. A pack's own skills name its layout. Write with the ordinary file tools; the research check reads the files as they are.
 
 ## Before writing
 

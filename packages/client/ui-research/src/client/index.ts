@@ -15,7 +15,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { ResearchFocus, ResearchInjected, ResearchView, SessionDirectories } from './contract.ts'
+import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
+import type { ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, SessionDirectories } from './contract.ts'
 import { projectFileAddress } from './format.ts'
 import { Workbench, ResearchMark, ResearchBrand } from './Workbench.tsx'
 import { ResearchHeroMark } from './Hero.tsx'
@@ -29,6 +30,7 @@ import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { SkipHarnessNotice } from './Onboarding.tsx'
 import { EmptyCell } from './EmptyCell.tsx'
 import { guardExampleComposers } from './examples.ts'
+import { ResearchCheckCard, ResearchToolCard } from './ResearchToolView.tsx'
 import { en, zh, type ResearchKey } from './locales.ts'
 
 /** This implementation's identity in the right-sidebar tab system. */
@@ -146,6 +148,7 @@ export function apply(ctx: Context): void {
       controller.signal.addEventListener('abort', abandon)
     })
   }
+  const openProjectFile = (root: string, path: string): void => { ctx.sidebarRight.openResource(projectFileAddress(root, path)) }
   const injected = (): ResearchInjected => ({
     hooks: { research: state, focus, directories }, refresh,
     command: async (sessionId, line) => {
@@ -154,7 +157,7 @@ export function apply(ctx: Context): void {
       const result = await live.command(line)
       if (!result.ok) throw new Error(result.error.message)
     },
-    openFile: (root, path) => { ctx.sidebarRight.openResource(projectFileAddress(root, path)) },
+    openFile: openProjectFile,
     openFiles: () => { ctx.sidebarRight.openTab(FILES_TAB_KIND) },
     showProgress: () => {
       ctx.layout.setInitialRightbarWidth(320)
@@ -213,6 +216,20 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-runs', order: 6, locale: 'research', inject: injected }, ResearchRuns))
   // A claim's sources open over the whole frame; the rail puts one in focus.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-claim', order: 20, locale: 'research', inject: injected }, ResearchClaimSheet))
+  // The research tools' calls read in the reader's language inside the conversation, a research check as its own card.
+  const toolInjected = (): ResearchToolInjected => ({ hooks: { research: state }, openProjectFile })
+  ctx.slots.inject('tool.call.toolview', function* () {
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_check', locale: 'research', inject: toolInjected }, ResearchCheckCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_project', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_evidence', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_artifact', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_environment', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_experiment', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_board', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_media', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_knowledge', locale: 'research', inject: toolInjected }, ResearchToolCard)
+    yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_task', locale: 'research', inject: toolInjected }, ResearchToolCard)
+  })
   // Configuration lives in settings; the main surface stays free of it.
   ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'research', order: 25, label: () => ctx.locale.bind('research')('settingsSection'), locale: 'research', inject: injected }, ResearchSettingsSection))
   // The harness's internal-testing notice is not this product's; shadowing it (lower priority renders) skips it. The API-key step stays.

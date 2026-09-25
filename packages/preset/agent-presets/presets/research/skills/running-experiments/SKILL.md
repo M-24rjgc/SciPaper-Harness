@@ -38,7 +38,7 @@ Completed runs are collected automatically: metrics and `outputs/` files become 
 
 ## 5. The experiment board
 
-The user follows the experiments on the board (Experiment board, in the conversation header). It already lists every run and each experiment machine; your part is the layout that says what the runs mean for this project, with `research_board` board-update. Lay it out once, when you plan the runs, and change it when the plan changes or a conclusion comes in — never after every run, and never with numbers typed in: scripts keep every number current, so no model call is spent watching.
+The user follows the experiments on the experiment board, opened from the research record beside the conversation. It already lists every run and each experiment machine; your part is the layout that says what the runs mean for this project, with `research_board` board-update. Lay it out once, when you plan the runs, and change it when the plan changes or a conclusion comes in — never after every run, and never with numbers typed in: scripts keep every number current, so no model call is spent watching.
 
 - The paper's result tables become `table` blocks whose cells follow runs by name (`{run: "main/cifar", metric: "acc", scale: 100, digits: 1}`); a name with several seeds shows the mean ± sd. Mark a target the method has to reach with `target`.
 - Group a batch of runs in a section with a `runs` block (`match: "ablation/*"`) and a `text` block with the batch's purpose; when it finishes, write its conclusion into that `text` block and fold superseded batches with `collapsed`.
@@ -50,7 +50,8 @@ The user follows the experiments on the board (Experiment board, in the conversa
 - Fill result tables and prose from the collected metrics (and a derive script for means/deltas — see `results-ingest`). Replace every `--` and `\tbd{}` the results answer.
 - Plot from the collected outputs (`figures-from-data`).
 - Report negative and inconclusive results honestly; if the hypothesis fails, say so and adjust the claims (a key decision under checkpoints).
+- When nothing can run here (no GPU, no data access, the author runs them elsewhere), record-decision with key `experiments-deferred` and tell the user the paper stays in proposal form: result cells keep `--` until the results come in. A deferred phase is never done.
 
 ## Done when
 
-Done when the runs are completed and collected, none is in progress, and `research_check` shows no placeholders or untraced numbers.
+Done when the runs are completed and collected, none is in progress, and `research_check` shows no placeholders or untraced numbers — or the experiments are deferred by a recorded decision.

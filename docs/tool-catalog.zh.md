@@ -3184,7 +3184,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
 
 ### `research_project`
 
-你工作目录所在的科研项目。current：模式、路线、自主度、每个阶段的进展、决策、文件、运行——开始工作时调用。create {title, brief?, root?, mode?, route?, autonomy?}：把工作目录（或 root）设为科研项目。list：全部项目。modes：已安装的模式及其路线与阶段——general 带齐全部工具、不走流水线；其他模式再加上自己的技能、阶段与检查。set-mode {mode, route?, reason}：切换项目的模式，技能随之切换。set-autonomy {autonomy: checkpoints|automatic}。record-decision {question, answer, rationale?, decidedBy?, key?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。key 是一个短标识，说明这项决策定下了什么：experiments-deferred 会推迟允许推迟的阶段（spark-to-paper 的实验阶段），该阶段随后显示为已推迟，永远不算已完成。
+你工作目录所在的研究。current：研究简报——模式以及它是否已选定（modeChosen、modeSetBy、routingSettled）、自主度、每个阶段的进展、这项研究的某段对话中已在运行的目标（activeGoal）、决策、文件、资料和运行；不在任何研究中时返回 project 为 null 并附一条提示。在对话开始时和模式改变后调用。create {title, brief?, mode?, route?, autonomy?}：把本对话的文件夹设为研究；它从不在别处创建研究。rename {title}：话题明确后，给研究起一个简短的标题。list：全部研究。modes：已安装的模式及其路线与阶段——general 带齐全部工具、不走流水线；其他模式再加上自己的技能、阶段与检查。set-mode {mode, route?, reason, decidedBy?}：切换模式，并把这次选择记为一项决策——用户选定时用 decidedBy user，你自己选定时用 agent（默认）；技能随之切换，模式或路线改变时各阶段从未检查开始。set-autonomy {autonomy: checkpoints|automatic}：仅在用户用话语要求时调用；自主度由用户决定。record-decision {question, answer, rationale?, decidedBy?, key?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。key 是一个短标识，说明这项决策定下了什么：experiments-deferred 会推迟允许推迟的阶段（spark-to-paper 的实验阶段），该阶段随后显示为已推迟，永远不算已完成。
 
 ```json
 {
@@ -3195,6 +3195,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
       "enum": [
         "current",
         "create",
+        "rename",
         "list",
         "modes",
         "set-mode",
@@ -3208,7 +3209,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "title": {
       "type": "string",
-      "description": "create"
+      "description": "create / rename: a short title for the research"
     },
     "brief": {
       "type": "string",
@@ -3216,11 +3217,11 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "root": {
       "type": "string",
-      "description": "create: absolute directory; defaults to the working directory"
+      "description": "create: omit it; only this conversation's folder can become a research, and any other folder is refused"
     },
     "mode": {
       "type": "string",
-      "description": "create / set-mode: a mode id from action modes (general when omitted on create)"
+      "description": "create / set-mode: a mode id from action modes (general, with the mode not chosen yet, when omitted on create)"
     },
     "route": {
       "type": "string",
@@ -3236,7 +3237,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "reason": {
       "type": "string",
-      "description": "set-mode: why this mode and route"
+      "description": "set-mode: why this mode and route, in one line"
     },
     "question": {
       "type": "string",
@@ -3252,7 +3253,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "decidedBy": {
       "type": "string",
-      "description": "record-decision: who made the decision",
+      "description": "set-mode / record-decision: who made the decision",
       "enum": [
         "user",
         "agent"

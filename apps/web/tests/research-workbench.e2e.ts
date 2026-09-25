@@ -96,7 +96,9 @@ it('creates a project from the welcome screen, records evidence and opens a clai
   const project = (await scaffold.ctx.research.snapshot()).projects[0]!
   projectId = project.id
   // Nothing starts on its own: creating a project asks the model nothing, and it opens in the general mode.
+  // The dialog names the mode its select holds, so the record keeps it as the person's choice.
   expect(project.mode).toBe('general')
+  expect(project.modeSetBy).toBe('user')
   expect(project.autonomy).toBe('checkpoints')
   const sourcePath = join(scaffold.workspaceCwd, 'source.csv')
   await writeFile(sourcePath, 'measurement,value\nsample,42\n')
@@ -145,6 +147,9 @@ it('reports the mode and checks the assistant records, and changes only the auto
   await expect.poll(() => scaffold.ctx.research.getProject(projectId).autonomy).toBe('automatic')
   // The assistant sets the mode and checks; the tab reports both, from the progress research_check records.
   await command({ action: 'set-mode', projectId, mode: 'spark-to-paper', route: 'proposal' })
+  // Choosing the mode records the decision, in the name of whoever chose it.
+  expect(scaffold.ctx.research.getProject(projectId).decisions.at(-1))
+    .toMatchObject({ question: '模式与路线', answer: 'spark-to-paper · proposal', by: 'user', key: 'mode' })
   await command({ action: 'check', projectId })
   expect(scaffold.ctx.research.getProject(projectId).progress).toMatchObject({ mode: 'spark-to-paper', route: 'proposal' })
   // The project's file panel draws the same status while hidden; only the tab beside the conversation counts.

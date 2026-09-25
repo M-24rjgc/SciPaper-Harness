@@ -445,9 +445,9 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
       () => ({ text: '先看项目。', calls: [{ name: 'research_project', args: { action: 'current' } }] }),
       () => ({
         text: '结果已经齐了，论文里的每个数都要从这几张表取——这正是 spark-to-paper 的 data 路线：数据、规划、引用、写作、润色、评审、图表、编译，最后投稿检查。全自动模式，我直接切过去，理由记下来。',
+        // set-mode records the choice as a decision itself, with the reason as its rationale.
         calls: [
           { name: 'research_project', args: { action: 'set-mode', mode: 'spark-to-paper', route: 'data', reason: '评测已经做完：三张结果表和评测笔记都在，论文里的数字全部来自这些结果' } },
-          { name: 'research_project', args: { action: 'record-decision', question: '模式与路线', answer: 'spark-to-paper · data（从实测结果写成论文）', rationale: '结果齐全，每个数都要能追溯到结果表' } },
         ],
       }),
       () => ({ calls: [skill('ts-paper')] }),
@@ -613,9 +613,12 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
       }),
       () => ({
         text: '好，用 CCFA 的完整论文路线：项目搭建 → 想法 → 文献 → 实验设计 → 实验 → 写作 → 图表 → 诚信审计 → 评审 → 投稿。',
+        // The user picked the mode at the checkpoint: set-mode records it as the user's decision.
         calls: [
-          { name: 'research_project', args: { action: 'set-mode', mode: 'ccfa', route: 'full-paper', reason: '一个想法加阅读笔记和预实验，目标 NeurIPS；想法要先经过评审和文献核实' } },
-          { name: 'research_project', args: { action: 'record-decision', question: '模式', answer: 'CCFA · full-paper', decidedBy: 'user' } },
+          {
+            name: 'research_project',
+            args: { action: 'set-mode', mode: 'ccfa', route: 'full-paper', reason: '一个想法加阅读笔记和预实验，目标 NeurIPS；想法要先经过评审和文献核实', decidedBy: 'user' },
+          },
         ],
       }),
       () => ({ calls: [skill('ccf-humanization'), skill('ccf-common'), skill('ccf-pipeline-orchestrator')] }),
