@@ -217,11 +217,31 @@ export function chosenMode(form: FormData): Pick<CreateProjectRequest, 'mode' | 
 }
 
 /**
- * Where a project stands, from the standing the host derives: finished; a
- * deferred phase that nothing before it still waits on; the current phase and
- * how many are done; or, once every phase is done but the paper is not
- * finished, that it needs another check. A mode without phases, or a snapshot
- * without a standing, names the mode alone.
+ * Where a project stands among its phases, from the standing the host
+ * derives: finished; a deferred phase that nothing before it still waits on;
+ * the current phase and how many are done (`引用 3/9`); or, once every phase
+ * is done but the paper is not finished, that it needs another check.
+ * @param project - the project as the snapshot carries it.
+ * @param t - bound dictionary lookup.
+ * @returns the phrase, or undefined for a mode without phases or a snapshot without a standing.
+ */
+export function standingPhrase(project: ResearchProject, t: Translate): string | undefined {
+  const phases = project.standing?.phases ?? []
+  if (phases.length === 0) return undefined
+  if (project.standing?.finished === true) return t('standingFinished')
+  const current = phases.find(phase => phase.state === 'current')
+  const deferred = phases.find(phase => phase.state === 'deferred')
+  if (deferred && (!current || phases.indexOf(deferred) < phases.indexOf(current))) {
+    return t('standingDeferred', { phase: packText(deferred.label, t) })
+  }
+  if (!current) return t('standingRecheck')
+  const done = phases.filter(phase => phase.state === 'done').length
+  return `${packText(current.label, t)} ${done}/${phases.length}`
+}
+
+/**
+ * Where a project stands, named with its mode: `{mode} · {phrase}` from
+ * {@link standingPhrase}, or the mode alone when it has no phases.
  * @param project - the project as the snapshot carries it.
  * @param modes - the installed modes.
  * @param t - bound dictionary lookup.
@@ -229,17 +249,8 @@ export function chosenMode(form: FormData): Pick<CreateProjectRequest, 'mode' | 
  */
 export function standingText(project: ResearchProject, modes: readonly ModeSummary[], t: Translate): string {
   const mode = modeName(modes, project.mode, t)
-  const phases = project.standing?.phases ?? []
-  if (phases.length === 0) return mode
-  if (project.standing?.finished === true) return `${mode} · ${t('standingFinished')}`
-  const current = phases.find(phase => phase.state === 'current')
-  const deferred = phases.find(phase => phase.state === 'deferred')
-  if (deferred && (!current || phases.indexOf(deferred) < phases.indexOf(current))) {
-    return `${mode} · ${t('standingDeferred', { phase: packText(deferred.label, t) })}`
-  }
-  if (!current) return `${mode} · ${t('standingRecheck')}`
-  const done = phases.filter(phase => phase.state === 'done').length
-  return `${mode} · ${packText(current.label, t)} ${done}/${phases.length}`
+  const phrase = standingPhrase(project, t)
+  return phrase === undefined ? mode : `${mode} · ${phrase}`
 }
 
 /**

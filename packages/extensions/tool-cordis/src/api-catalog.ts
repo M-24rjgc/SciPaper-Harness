@@ -1456,7 +1456,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async snapshot(): Promise<ResearchSnapshot>',
         description: 'Read detached project snapshots and non-secret component settings.',
         parameters: [],
-        returns: 'every project without source bodies, with where it stands and whether it is the untouched draft, the preferences, the research home in effect and the component status.',
+        returns: 'every project without source bodies, with where it stands and whether it is the untouched draft or removed from the list, the preferences, the research home in effect and the component status.',
       },
       {
         signature: 'researchHome(): string',
@@ -1490,7 +1490,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote async configure(preferences: ResearchPreferences): Promise<ResearchPreferences>',
-        description: 'Save model roles, explicitly bound tool locations and the research home, never model secrets. A research home among the examples is refused.',
+        description: 'Save model roles, explicitly bound tool locations, the research home and whether examples are listed, never model secrets. A research home among the examples is refused.',
         parameters: [{ name: 'preferences', description: 'the complete preference record.' }],
         returns: 'the preferences as stored.',
       },
@@ -1537,7 +1537,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async execute(raw: ResearchCommand, signal: AbortSignal, actor: \'user\' | \'agent\', sessionId?: string): Promise<ResearchResponse>',
-        description: 'Dispatch a validated tool or desktop command. The desktop receives a job for long operations; the agent waits for the result inside its tool call. `start-new`, `relocate` and `discard-draft` are the desktop\'s alone.',
+        description: 'Dispatch a validated tool or desktop command. The desktop receives a job for long operations; the agent waits for the result inside its tool call. `start-new`, `relocate`, `discard-draft`, `archive-project` and `unarchive-project` are the desktop\'s alone.',
         parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }, { name: 'sessionId', description: 'the agent\'s conversation, recorded on the runs it submits; absent for the desktop.' }],
         returns: 'the outcome.',
       },
@@ -5508,7 +5508,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchPreferences',
-    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    embedding?: EmbeddingBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n    researchHome?: string | undefined;\n}',
+    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    embedding?: EmbeddingBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n    researchHome?: string | undefined;\n    showExamples?: boolean | undefined;\n}',
   },
   {
     name: 'ResearchProgress',
@@ -5516,7 +5516,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchProject',
-    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    untitled?: boolean | undefined;\n    root: string;\n    createdRoot?: boolean | undefined;\n    example?: boolean | undefined;\n    draft?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    sessionId?: string | undefined;\n}',
+    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    untitled?: boolean | undefined;\n    root: string;\n    createdRoot?: boolean | undefined;\n    example?: boolean | undefined;\n    draft?: boolean | undefined;\n    archivedAt?: string | undefined;\n    archivedConversations?: string[] | undefined;\n    archived?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    sessionId?: string | undefined;\n}',
   },
   {
     name: 'ResearchResponse',

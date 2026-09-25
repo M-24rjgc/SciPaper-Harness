@@ -70,6 +70,7 @@ describe('what an untouched draft holds', () => {
       { modeReason: 'why' }, { brief: 'an idea' },
       { lastCheck: { clean: true, scope: 'all', gatesRun: [], phases: [], findings: [], checkedAt: 'now' } },
       { progress: { mode: 'general', phases: {}, findings: {} } },
+      { archivedAt: 'now' },
       { evidence: [{ id: 'e' as EvidenceId, title: 't', kind: 'file', path: 'p', sha256: 's', revision: 1, importedAt: 'now', chunks: [], coverage: 'data', verified: true, stale: false }] },
       { claims: [{ id: 'c', text: 't', kind: 'hypothesis', state: 'proposed', evidence: [], artifactIds: [] }] },
       { artifacts: [{ id: 'a' as ArtifactId, path: 'p', kind: 'code', revision: 1, sha256: 's', evidence: [], claimIds: [], inputArtifacts: [], stale: false, updatedAt: 'now', author: 'user' }] },

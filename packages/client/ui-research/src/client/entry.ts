@@ -59,7 +59,11 @@ export interface ResearchEntry {
    * @returns the host's answer, or undefined when the move failed (the notice says why).
    */
   move(request: MoveRequest, carry: CarryDraft): Promise<ResearchResponse | undefined>
-  /** 打开它 (Open it): carry the composer's draft into another research's blank conversation, then discard the untouched draft. */
+  /**
+   * 打开它 (Open it): carry the composer's draft into another research's blank
+   * conversation, then discard the untouched draft. A research removed from
+   * the list is restored first.
+   */
   adopt(draftId: ProjectId, workspaceId: WorkspaceId, carry: CarryDraft): Promise<void>
   /** Show a failure on the screen that is on it now. */
   fail(action: Extract<EntryNotice, { kind: 'failed' }>['action'], error: unknown): void
@@ -114,10 +118,11 @@ export interface LandingTarget {
 /**
  * Where the person lands: the own research used most recently, on its newest
  * conversation that has started. Own means not an example, not the untouched
- * draft (新研究 reopens that one), and with its folder still in the Workspace
- * list. A conversation counts when it is listed, top-level, not archived,
- * not blank and not a visual-review reviewer; a research is used when one of
- * its conversations or its record last changed.
+ * draft (新研究 reopens that one), not removed from the list, and with its
+ * folder still in the Workspace list. A conversation counts when it is
+ * listed, top-level, not archived, not blank and not a visual-review
+ * reviewer; a research is used when one of its conversations or its record
+ * last changed.
  * @param projects - every project the record carries.
  * @param list - the session list.
  * @param workspaces - the Workspace list.
@@ -128,7 +133,8 @@ export function landingTarget(
 ): LandingTarget | undefined {
   const registered = new Set<string>(workspaces.items.map(item => item.workspaceId))
   const archived = new Set<string>(workspaces.archivedSessionIds)
-  const own = projects.filter(project => project.example !== true && project.draft !== true && registered.has(project.workspaceId))
+  const own = projects.filter(project =>
+    project.example !== true && project.draft !== true && project.archived !== true && registered.has(project.workspaceId))
   const reviewers = new Set(projects.flatMap(project => project.visualReviews.flatMap(review => review.sessionId ?? [])))
   const directories = directoriesOf(list)
   const newest = new Map<string, { sessionId: SessionId; at: number }>()
@@ -298,6 +304,9 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
     adopt: async (draftId, workspaceId, carry) => {
       moving += 1
       try {
+        // A research the person removed from the list comes back when they open it with their draft.
+        const target = research.getSnapshot().snapshot?.projects.find(project => project.workspaceId === workspaceId)
+        if (target?.archived === true) await sources.command({ action: 'unarchive-project', projectId: target.id })
         carry(workspaceId)
         if (!(await until(() => workspaceOf(current()) === workspaceId, lists, timing.listingMs, lifetime))) throw new Error(t('entryNotListed'))
         await sources.command({ action: 'discard-draft', projectId: draftId })

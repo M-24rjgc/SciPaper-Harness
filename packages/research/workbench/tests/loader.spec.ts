@@ -225,7 +225,9 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         get: (id: WorkspaceId) => workspaces.get(id),
         list: () => [...workspaces.values()],
         delete: async (id: WorkspaceId) => workspaces.delete(id),
-        archiveSession: async (id: string) => { archived.push(id) },
+        // As the registry does: archiving an archived session, or unarchiving one that is not, writes nothing.
+        archiveSession: async (id: string) => { if (!archived.includes(id)) archived.push(id) },
+        unarchiveSession: async (id: string) => { if (archived.includes(id)) archived.splice(archived.indexOf(id), 1) },
         get archivedSessionIds() { return [...archived] },
       } as unknown as Context['workspaceRegistry'])
       c.provide('agents', { list: () => agents } as unknown as Context['agents'])
@@ -263,6 +265,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
             items: live.map(session => ({
               sessionId: session.id, updatedAt: 0, running: false, blank: !turns.has(session.id),
               ...(session.header.cwd === undefined ? {} : { cwd: session.header.cwd }),
+              ...(session.header.origin === undefined ? {} : { origin: session.header.origin }),
             })),
           }
         },
@@ -1668,6 +1671,133 @@ describe('新研究 opens one untouched draft research, which can move and be di
     await expect(startNew(service)).rejects.toThrow('persistence unavailable')
     listing.failure = undefined
     expect((await startNew(service)).project?.id).toBe(draft.id)
+  })
+})
+
+describe('移出列表 removes a research from the list, and 恢复 brings it back', () => {
+  const PERSON_ONLY = /the person's commands/
+  const command = (service: Harness['service'], request: Record<string, unknown>, actor: 'user' | 'agent' = 'user') =>
+    service.execute(request as never, signal, actor)
+
+  it('archives the research\'s own conversations, keeps the removal across a restart, and restores exactly what it archived', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-archive-')))
+    const pool = new MemoryMediaPool()
+    const { service, archived, open } = await boot(pool)
+    const paper = await service.create({ title: 'Paper', root: join(root, 'paper'), brief: '' })
+    const inner = await service.create({ title: 'Inner', root: join(paper.root, 'inner'), brief: '' })
+    const other = await service.create({ title: 'Other', root: join(root, 'other'), brief: '' })
+    // A second conversation in a subfolder, a delegated child, and a conversation the person archived already.
+    open({ id: 'second', header: { cwd: join(paper.root, 'code') } })
+    open({ id: 'child', header: { cwd: paper.root, origin: 'subagent' } })
+    open({ id: 'earlier', header: { cwd: paper.root } })
+    archived.push('earlier')
+    await write(join(paper.root, 'paper', 'main.tex'), '\\documentclass{article}')
+    for (const action of ['archive-project', 'unarchive-project']) {
+      await expect(command(service, { action, projectId: paper.id }, 'agent')).rejects.toThrow(PERSON_ONLY)
+    }
+    await expect(command(service, { action: 'archive-project', projectId: 'missing' })).rejects.toThrow(/not found/)
+    expect(archived).toEqual(['earlier'])
+
+    const removed = await command(service, { action: 'archive-project', projectId: paper.id })
+    expect(removed.message).toBe('Removed from the list: 2 conversation(s) archived; its folder and runs are untouched')
+    expect(removed.project).toMatchObject({ id: paper.id, archived: true, archivedConversations: [paper.sessionId, 'second'] })
+    const at = removed.project!.archivedAt!
+    expect(Number.isNaN(Date.parse(at))).toBe(false)
+    expect(archived).toEqual(['earlier', paper.sessionId, 'second'])
+    // Nothing on disk changed; the research nested inside it and the one beside it stay listed.
+    expect(await readFile(join(paper.root, 'paper', 'main.tex'), 'utf8')).toBe('\\documentclass{article}')
+    const listed = (await service.snapshot()).projects
+    expect(listed.find(project => project.id === paper.id)).toMatchObject({ archived: true, archivedAt: at })
+    for (const id of [inner.id, other.id]) expect(listed.find(project => project.id === id)).not.toHaveProperty('archived')
+
+    // Removing it again archives only a conversation that began since, and keeps when it was removed.
+    await new Promise(resolve => setTimeout(resolve, 5))
+    open({ id: 'late', header: { cwd: paper.root } })
+    const again = await command(service, { action: 'archive-project', projectId: paper.id })
+    expect(again.message).toBe('Removed from the list: 1 conversation(s) archived; its folder and runs are untouched')
+    expect(again.project).toMatchObject({ archivedAt: at, archivedConversations: [paper.sessionId, 'second', 'late'] })
+    const archivedBefore = [...archived]
+
+    // The record keeps the removal across a restart, as the registry keeps its archive.
+    await ctx!.fiber.dispose(); ctx = undefined
+    const restarted = await boot(pool)
+    restarted.archived.push(...archivedBefore)
+    const kept = (await restarted.service.snapshot()).projects.find(project => project.id === paper.id)
+    expect(kept).toMatchObject({ archived: true, archivedAt: at })
+    const restored = await command(restarted.service, { action: 'unarchive-project', projectId: paper.id })
+    expect(restored.message).toBe('Restored to the list: 3 conversation(s) unarchived')
+    for (const field of ['archived', 'archivedAt', 'archivedConversations']) expect(restored.project).not.toHaveProperty(field)
+    expect(restarted.archived).toEqual(['earlier'])
+    // Restoring a research in the list changes nothing.
+    const revision = restarted.service.getProject(paper.id).revision
+    expect(await command(restarted.service, { action: 'unarchive-project', projectId: paper.id }))
+      .toMatchObject({ message: 'The research is in the list', project: { id: paper.id } })
+    expect(restarted.service.getProject(paper.id).revision).toBe(revision)
+  })
+
+  it('refuses examples and the untouched draft, and never takes a removed research for the draft', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-archive-refused-')))
+    const { service, archived } = await boot(new MemoryMediaPool())
+    await service.configure({ researchHome: join(root, 'SciPaper') })
+    const draft = (await command(service, { action: 'start-new' })).project!
+    await expect(command(service, { action: 'archive-project', projectId: draft.id }))
+      .rejects.toThrow('还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list')
+    expect(archived).toEqual([])
+    // A file in its folder makes it a research of its own, which can be removed; removed, it is not the draft
+    // 新研究 reopens, even once the file is gone.
+    await writeFile(join(draft.root, 'notes.md'), 'an idea')
+    await command(service, { action: 'archive-project', projectId: draft.id })
+    await rm(join(draft.root, 'notes.md'))
+    expect((await command(service, { action: 'start-new' })).project?.id).not.toBe(draft.id)
+    expect((await service.snapshot()).projects.find(project => project.id === draft.id)).not.toHaveProperty('draft')
+
+    // A research whose conversations the person had all archived records none, and restoring it leaves them archived.
+    const quiet = await service.create({ title: 'Quiet', root: join(root, 'quiet'), brief: '' })
+    archived.push(quiet.sessionId!)
+    const removed = await command(service, { action: 'archive-project', projectId: quiet.id })
+    expect(removed.message).toBe('Removed from the list: 0 conversation(s) archived; its folder and runs are untouched')
+    expect(removed.project).toMatchObject({ archived: true })
+    expect(removed.project).not.toHaveProperty('archivedConversations')
+    expect((await command(service, { action: 'unarchive-project', projectId: quiet.id })).message).toBe('Restored to the list: 0 conversation(s) unarchived')
+    expect(archived).toContain(quiet.sessionId)
+
+    // Examples are neither removed nor restored: 显示示例研究 hides them.
+    const example = await service.create({ title: 'Example', root: join(root, 'demo', 'shipped'), brief: '' })
+    vi.stubEnv('DSH_HOME', root)
+    try {
+      for (const action of ['archive-project', 'unarchive-project']) {
+        await expect(command(service, { action, projectId: example.id })).rejects.toThrow(/read-only/)
+      }
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(service.getProject(example.id)).not.toHaveProperty('archivedAt')
+    expect((await service.snapshot()).preferences).not.toHaveProperty('showExamples')
+    await service.configure({ researchHome: join(root, 'SciPaper'), showExamples: false })
+    expect((await service.snapshot()).preferences).toEqual({ researchHome: join(root, 'SciPaper'), showExamples: false })
+    await expect(service.configure({ showExamples: 'no' } as never)).rejects.toThrow()
+  })
+
+  it('keeps a removed research\'s runs going unobserved, and observes them again once it is restored', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-archive-runs-'))
+    const { service } = await boot(new MemoryMediaPool())
+    await service.configure({ python: 'python', uv: 'uv' })
+    const p = await service.create({ title: 'Runs', root: join(root, 'p'), brief: '' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    await run({ action: 'environment', environment: { name: 'env', kind: 'uv', target: 'local', python: '', requirements: [], isDefault: true } })
+    await write(join(p.root, 'code/train.py'), 'print(1)')
+    const environmentId = service.getProject(p.id).environments[0]!.id
+    await command(service, { action: 'archive-project', projectId: p.id })
+    await run({
+      action: 'experiment', requestId: '44444444-4444-4444-8444-444444444444',
+      spec: { environmentId, name: 't', argv: ['{python}', 'code/train.py'], cwd: '.', seed: 0, maxSeconds: 5, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], metricsPath: 'metrics.json' },
+    })
+    // Two poll intervals pass without a look at the run.
+    await new Promise(resolve => setTimeout(resolve, 1200))
+    expect(processes.calls.filter(call => call.args[1] === 'status')).toHaveLength(0)
+    expect(service.getProject(p.id).experiments[0]?.status).toBe('running')
+    await command(service, { action: 'unarchive-project', projectId: p.id })
+    await vi.waitFor(() => { expect(service.getProject(p.id).experiments[0]?.status).toBe('completed') }, { timeout: 5000 })
   })
 })
 

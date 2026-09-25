@@ -13,9 +13,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
-import { preferencesSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
+import { commandSchema, preferencesSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
 import type {
-  ComponentStatus, EnvironmentId, EnvironmentRecord, ResearchPreferences, ResearchProject, ResearchSnapshot,
+  ComponentStatus, EnvironmentId, EnvironmentRecord, ResearchCommand, ResearchPreferences, ResearchProject, ResearchSnapshot,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
@@ -26,6 +26,7 @@ import { zh } from '../src/client/locales.ts'
 interface Recorded {
   installs: ComponentStatus['id'][]
   saves: { preferences: ResearchPreferences; keys: { image: string; embedding: string } }[]
+  commands: ResearchCommand[]
   held: (() => void)[]
 }
 
@@ -107,7 +108,7 @@ function viewOf(snapshot: ResearchSnapshot | null): ResearchView {
 }
 
 function blank(): Recorded {
-  return { installs: [], saves: [], held: [] }
+  return { installs: [], saves: [], commands: [], held: [] }
 }
 
 /** Let the page's own work reach the plugin, and its answer reach the page, inside React's act. */
@@ -148,6 +149,11 @@ function propsFor(view: ResearchView, recorded: Recorded, answer: Answer = 'acce
       return reply('the credential store is unreachable')
     },
     pickDirectory: () => Promise.resolve(picks.shift() ?? { kind: 'cancelled' }),
+    run: (command: ResearchCommand) => {
+      recorded.commands.push(command)
+      expect(commandSchema.parse(command)).toBeTruthy()
+      return reply('the ledger is locked').then(() => ({ message: '' }))
+    },
   } as unknown as WorkbenchProps
 }
 
@@ -493,5 +499,77 @@ describe('experiment environments', () => {
     expect(page.getByText(`${project.title} · ${zh.ssh} · ${failedEnvironment.python}`)).toBeTruthy()
     expect(page.getByText('baseline')).toBeTruthy()
     expect(page.getByText('sweep')).toBeTruthy()
+  })
+})
+
+describe('which researches the sidebar lists', () => {
+  it('shows the examples until the person turns them off, saving the switch with every other preference kept', async () => {
+    const recorded = blank()
+    const preferences: ResearchPreferences = { python: 'C:/Python312/python.exe', researchHome: 'D:\\Research' }
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences })), recorded)} />)
+    const toggle = page.getByRole('switch', { name: zh.showExamplesTitle })
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(page.getByText(zh.showExamplesHint)).toBeTruthy()
+    fireEvent.click(toggle)
+    await settle()
+    expect(recorded.saves).toEqual([{ preferences: { ...preferences, showExamples: false }, keys: { image: '', embedding: '' } }])
+    expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual(recorded.saves[0]!.preferences)
+  })
+
+  it('holds the switch while it saves, says why a save failed, and keeps the choice when the model roles are saved', async () => {
+    const held = blank()
+    const hidden: ResearchPreferences = { showExamples: false }
+    const holding = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences: hidden })), held, 'hold')} />)
+    const toggle = holding.getByRole('switch', { name: zh.showExamplesTitle }) as HTMLButtonElement
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(toggle)
+    await settle()
+    expect(toggle.disabled).toBe(true)
+    await release(held)
+    expect(toggle.disabled).toBe(false)
+    expect(held.saves.map(save => save.preferences)).toEqual([{ showExamples: true }])
+    cleanup()
+    const refused = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences: hidden })), refused, 'refuse')} />)
+    fireEvent.click(page.getByRole('switch', { name: zh.showExamplesTitle }))
+    await settle()
+    expect(page.getByRole('alert').textContent).toBe(failure('the credential store is unreachable'))
+    cleanup()
+    const kept = blank()
+    const form = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences: hidden })), kept)} />)
+    fireEvent.click(form.getByRole('button', { name: zh.save }))
+    await settle()
+    expect(kept.saves.map(save => save.preferences)).toEqual([{ showExamples: false }])
+  })
+
+  it('lists each research removed from the list with its folder, and restores it through the host', async () => {
+    const removed = { ...await projectWithEnvironments([]), title: '桌面验收 · 证据模式', archived: true }
+    const listed = await projectWithEnvironments([])
+    // A research the product named still reads by its placeholder, in the reader's language.
+    const unnamed = { ...await projectWithEnvironments([]), title: '新研究', untitled: true, archived: true }
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ projects: [removed, listed, unnamed] })), recorded, 'hold')} />)
+    expect(page.getByText(zh.treeUntitled)).toBeTruthy()
+    expect(page.getByText(zh.removedTitle)).toBeTruthy()
+    expect(page.getByText(zh.removedHint)).toBeTruthy()
+    expect(page.getByText('桌面验收 · 证据模式')).toBeTruthy()
+    expect(page.getByText(removed.root)).toBeTruthy()
+    expect(page.getAllByRole('button', { name: zh.removedRestore })).toHaveLength(2)
+    fireEvent.click(page.getAllByRole('button', { name: zh.removedRestore })[0]!)
+    await settle()
+    expect(recorded.commands).toEqual([{ action: 'unarchive-project', projectId: removed.id }])
+    expect((page.getByRole('button', { name: zh.removedRestoring }) as HTMLButtonElement).disabled).toBe(true)
+    await release(recorded)
+    expect(page.getAllByRole('button', { name: zh.removedRestore })).toHaveLength(2)
+    cleanup()
+    const refused = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ projects: [removed] })), blank(), 'refuse')} />)
+    fireEvent.click(refused.getByRole('button', { name: zh.removedRestore }))
+    await settle()
+    expect(refused.getByRole('alert').textContent).toBe(failure('the ledger is locked'))
+  })
+
+  it('says nothing was removed when nothing was, and lists nothing before a snapshot arrives', () => {
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), blank())} />)
+    expect(page.getByText(zh.removedNone)).toBeTruthy()
   })
 })

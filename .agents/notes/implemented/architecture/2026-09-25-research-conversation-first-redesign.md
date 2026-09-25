@@ -198,6 +198,31 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 - **Faces.** `pickDirectory` answers a `FolderPick` (`picked`, `cancelled`, `unavailable`), and the entry seats share a `ResearchEntryInjected` face. The plugin also injects `remote.session` and `workspaces`.
 - **Tests and goldens.** `entry.client.spec.ts`, `entry-screen.client.spec.tsx` and `folder-menu.client.spec.tsx` cover the flows and seats; `plugin.client.spec.ts` the registration, the startup example rule, the move guard and the late-open guards. The research Web e2e lands on a draft under the scaffold's pinned research home, moves it with its composer text to a typed folder, renames it, reuses the draft for 新研究 and shows its notice, asks about a folder that holds files, and carries a typed question into an existing research, discarding the draft. The composer's folder button is gone from 76 inherited ARIA goldens, and the entry pill from the two `lifecycle-chrome` entry-screen goldens, on those lines only.
 
+### Step 10: 移出列表 archives a research's conversations, and content search opens at the first search (host and bundle)
+
+- **`archive-project {projectId}`**, the desktop's 移出列表 (Remove from list). It archives each top-level conversation of the research that is not archived yet: the one bound to it, and each working in its folder and in no research nested there. It uses `ctx.workspaceRegistry.archiveSession`, the same archive the shell's archive action and the 已归档会话 settings page reach through the `workspaces` Remote; the session controller has no archive of its own. Before the first conversation is archived, the record stores `archivedAt` and the ids it archives (`archivedConversations`, absent when none). Delegated children (`origin: subagent`) are left alone, and nothing on disk changes. Repeating it keeps `archivedAt` and archives any conversation added since. It is refused for an example (`EXAMPLE_READ_ONLY`) and for the untouched draft (`还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list`).
+- **`unarchive-project {projectId}`**, 恢复 (Restore), unarchives `archivedConversations` and then clears both fields, so a restore cut short can be repeated. A conversation the person had archived before the removal stays archived, and a research in the list is answered unchanged.
+- **The person's commands.** Both commands run on the creation chain with the draft commands, so a research is never archived while it is the draft. `execute` refuses them to the agent; `PERSON_ONLY` names all five commands (`isPersonCommand`).
+- **Derived flag.** `publicProject` adds `archived: true` while `archivedAt` is set; it is never stored.
+- **What skips a removed research.** Background observation (`refreshRunning`) skips its runs until it is restored; `experiment-wait` and `experiment-refresh` still observe a run when asked. `blankRecord` requires no `archivedAt`, so a removed research is never the draft that snapshots mark and `start-new` reopens.
+- **`showExamples`.** An optional boolean preference, saved through `configure` like `researchHome`; absent reads as true.
+- **Content search (D17).** The Web bundle's `session-query-sqlite` row sets `openAt: first-search` and restates `path: ':memory:'`, the base row's other key. `independence.spec.ts` pins the whole config. `lazy-search-startup.compat.spec.ts` expects `first-search` on the web row and `never` on the base row.
+- **Tests.** `loader.spec.ts` covers removal and restore across a restart, the person's own earlier archives, a nested research, a delegated child, the draft, examples, `showExamples`, and runs left unobserved until the restore. `drafts.spec.ts` covers `archivedAt` in `blankRecord`.
+
+### Step 10: the sidebar lists researches and their conversations (ui-research)
+
+- **The tree.** `ResearchTree.tsx` takes the sidebar's browsing seat (`sidebar.workspaces`, priority −1) under `hideDeveloperCells`, as the other developer-cell shadows do; the inherited Web scenarios keep the shell's workspace browser. The browser stays registered underneath, so its `sidebar.workspaces.directoryFlow` child stays declared for the folder pickers (`plugin.client.spec.ts` checks it). The 研究项目 cards (`ProjectEntry.tsx`, `sidebar.projects`) are gone from every composition.
+- **Where a conversation belongs** (`treeValues.ts`): the research it is bound to or whose folder holds its working directory; else the research of the Workspace that lists it; else that Workspace, shown as a folder without a research; else no folder. Archived conversations, child sessions and visual-review reviewers are never rows, but a running child still lights its research's dot. A research removed from the list (`archived`) is hidden with its conversations, and its folder is not a folder without a research. A conversation restored alone from the archived-conversation list while its research is removed stays hidden until the research is restored.
+- **Rows.** Own researches are ordered by recent use (the newest started conversation or the record, whichever changed last). A row shows its title (the placeholder 新研究 in italics while `untitled`), `standingPhrase` on the right (nothing in the general mode), and a dot: warn while a conversation of the research waits on an approval, a plan review or a question (the session's pending interaction), ongoing blue while a conversation of it or one of its runs is running. The untouched draft is a leaf row. An expanded research lists its top-level conversations newest first; the blank one shows only while it is on screen (新对话, italic). The last line is ＋ 新对话 (`startSession(workspaceId)`), hidden on that blank conversation and in examples.
+- **Clicks.** A research opens on its newest started conversation, else its folder's blank conversation, never in an example; the research on screen folds and unfolds instead. The draft opens its blank conversation.
+- **Groups.** 示例 at the bottom: open while the person has no research of their own or is in an example, hidden when `showExamples` is false. 其他文件夹 appears only when a registered folder holds no research or conversations belong to no folder. A row the person opened or closed keeps that choice in the tree's own store for the page's life.
+- **Menus.** A research: 重命名 (`rename`), 在资源管理器中打开 (`session.openWorkspacePath` reveal, only while `canOpenWorkspacePath`), 移出列表 (`archive-project`); the draft gets no 移出列表 and an example only the file manager. A conversation: 重命名 (the session's own `rename`) and 移出列表 (`uiWorkspace.archiveSession`); an example's conversations get none. A folder: 设为研究…, which asks for a name and sends `create` with the folder as root, and 移出列表, which archives every conversation the folder lists and then deletes its Workspace registration. A failure shows under its row.
+- **Search and the rail.** The header's search matches research names and conversation titles at once, and conversation text through `sessions.search` 250 ms after the last keystroke, as a flat list of results naming each conversation's place and the matched passage. The collapsed rail keeps the search as its one control: it widens the sidebar and focuses the box after the slide.
+- **Keyboard and ARIA.** A flat `role="tree"` whose rows carry `aria-level`, `aria-posinset`, `aria-setsize`, `aria-expanded` and `aria-selected`; one row in the tab order; Up and Down move, Right opens or enters, Left closes or goes to the parent, Home and End go to the ends, Enter and Space activate, and the context-menu key or Shift+F10 opens the row menu; focus returns to the row after the menu closes.
+- **Settings › 科研.** 显示示例研究 is a switch saved at once through `configure`; 已移出的研究 lists each removed research with its folder and 恢复 (`unarchive-project`). The model-roles form keeps `showExamples`.
+- **Elsewhere in ui-research.** `land()` and 换到另一项研究 skip removed researches, and 打开它 on a removed research restores it before carrying the draft. `standingText` is built on the new `standingPhrase`.
+- **Tests and goldens.** `tree-values.client.spec.ts` and `research-tree.client.spec.tsx` cover the derivation, clicks, keyboard, menus, dialogs, search and rail; `plugin.client.spec.ts` the registration, the shadowed browser's declared child and the tree face; the settings, entry and folder-menu specs removed researches. The research Web e2e reads the tree, opens a conversation and ＋ 新对话, finds a conversation by its text, renames, removes and restores a research, and toggles 显示示例研究; its settled-reply scenario opens its conversation through 其他文件夹. The `lifecycle-chrome` `hero` and `plan-active` goldens lose the 研究项目 navigation, on those lines only.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -300,6 +325,32 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 
 **Let `land()` create a draft when the record cannot be read (step 9).** A draft beside researches the snapshot missed would duplicate one; saying why leaves the choice to the person.
 
+**Archive conversation by conversation from the browser (step 10).** The browser does not own the innermost-research rule, would keep no record of what it archived, and a closed tab would leave a research half archived with nothing to restore from.
+
+**Delete the record or the Workspace registration, as `discard-draft` does (step 10).** A removal must be reversible; deleting the Workspace would also drop the folder's session accounting.
+
+**Derive "removed" from "every conversation archived" (step 10).** A research without conversations, or one whose conversations the person archived one by one, would read the same, and a restore would unarchive conversations the person archived themselves.
+
+**Archive first, then store the record (step 10).** A failure between the two would leave archived conversations with no record of which. Storing first leaves at worst an id that was never archived, which the registry's unarchive ignores.
+
+**Archive delegated children too (step 10).** The shell never lists them on their own; archived, they would appear as separate rows on the 已归档会话 page.
+
+**Refuse commands on a removed research (step 10).** Its runs are meant to keep going, and the person can reopen an archived conversation from 已归档会话; only background observation stops.
+
+**Restyle the shell's workspace browser (step 10).** It lists folders, not researches, and offers 添加工作区, 视图选项, 未分组, 分叉会话 and 删除工作区; removing them would change the shell. The shadow leaves the shell as it is.
+
+**Nested `role="group"` markup (step 10).** A flat tree with `aria-level`, `aria-posinset` and `aria-setsize` is valid ARIA and lets the keyboard walk one ordered list of rows.
+
+**Persist which rows are open (step 10).** The research on screen opens by itself after a reload, and persisted keys of removed or discarded researches would pile up.
+
+**Port the browser's drag reorder (step 10).** Recent use is the order the plan accepts, and a manual order has no research meaning.
+
+**Only delete a folder's Workspace registration on 移出列表 (step 10).** Its conversations would come back under 未归入文件夹的对话; archiving them first takes them out of every list, restorable from 已归档会话.
+
+**Read the goal projection for the ongoing dot (step 10).** List rows carry no typed goal state in ui-research, and reading it would add the goal package's types; the running bit covers a goal's rounds.
+
+**List a conversation restored alone under 其他文件夹 (step 10).** It would call a conversation of a removed research folderless; restoring the research brings it back where it belongs.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -348,3 +399,14 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 - If a moved research's conversation does not appear in the lists within five seconds, the typed draft stays with the archived draft conversation, and the entry line says why.
 - After 换到另一项研究 the untouched draft stays in the list until the next 新研究 reopens it or a move discards it.
 - The chip names the folder's Workspace, so a research whose rename could not retitle its Workspace shows the folder name there.
+- A removed research stays in `projects()`: the agent's `research_project list`, `projectAt`, and `relocate`'s `existing` and `nested` answers still find it (`archived: true`), and a conversation opened in its folder belongs to it.
+- Both commands bump the record's `revision` and `updatedAt`, so a restored research counts as just used.
+- A conversation that begins in a removed research's folder is not archived until `archive-project` runs again.
+- A conversation the person unarchives alone from 已归档会话 stays in `archivedConversations`; restoring the research then changes nothing for it.
+- A run that finishes while its research is removed is collected at the first observation after the restore.
+- Content search keeps an in-memory index built at the first search after each start.
+- A composition that mounts ui-research without `hideDeveloperCells` shows the shell's workspace browser and no research list, since the cards are gone.
+- The tree has no drag reorder and no view options, and which rows are open resets on reload.
+- A goal between two rounds, a queued run and a run whose state is unconfirmed show no dot.
+- A folder taken out of the list loses its Workspace registration; its conversations, restored from 已归档会话, come back as conversations in no folder.
+- A conversation restored alone while its research is removed shows nowhere until the research is restored.

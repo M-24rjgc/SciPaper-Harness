@@ -32,6 +32,7 @@ const sparse: ResearchProject = { ...newProject({ title: '块稀疏注意力', r
 const longer: ResearchProject = { ...newProject({ title: '长上下文', root: 'C:\\Research\\long', brief: '' }, 'w-long' as WorkspaceId), updatedAt: '2026-09-25T00:00:00.000Z' }
 const removed: ResearchProject = newProject({ title: '已移除', root: 'C:\\Research\\gone', brief: '' }, 'w-gone' as WorkspaceId)
 const example: ResearchProject = { ...newProject({ title: '示例', root: 'C:\\data\\demo\\x', brief: '' }, 'w-example' as WorkspaceId), example: true }
+const taken: ResearchProject = { ...newProject({ title: '已移出列表', root: 'C:\\Research\\taken', brief: '' }, 'w-taken' as WorkspaceId), updatedAt: '2026-09-26T00:00:00.000Z', archived: true }
 
 /** A promise the spec settles by hand. */
 function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
@@ -59,11 +60,11 @@ function setup(parts: Setup = {}) {
   const current = 'current' in parts ? parts.current : 's-draft'
   const byId = current === undefined ? {} : { [current]: { cwd: parts.cwd ?? DRAFT_ROOT } }
   const list = { current, byId } as unknown as SessionListState
-  const workspaces = { items: ['w-draft', 'w-sparse', 'w-long', 'w-example'].map(workspaceId => ({ workspaceId })) } as unknown as WorkspaceSnapshot
+  const workspaces = { items: ['w-draft', 'w-sparse', 'w-long', 'w-example', 'w-taken'].map(workspaceId => ({ workspaceId })) } as unknown as WorkspaceSnapshot
   const view: ResearchView = {
     snapshot: parts.projects === null
       ? null
-      : { projects: parts.projects ?? [draft, sparse, longer, removed, example], preferences: {}, components: [], modes: [] },
+      : { projects: parts.projects ?? [draft, sparse, longer, removed, example, taken], preferences: {}, components: [], modes: [] },
     tasks: [], response: null,
   }
   const picks = [...parts.picks ?? []]
@@ -120,7 +121,7 @@ describe('what the menu offers', () => {
     expect(menu!.textContent).toContain(t('folderSavedAt', { path: `C:\\${WRAP}Users\\${WRAP}me\\${WRAP}SciPaper\\${WRAP}2026-09-26-1` }))
     expect(within(menu!).getAllByRole('menuitem').map(element => element.textContent)).toEqual([zh.folderMove, zh.folderReveal, zh.folderSwitch])
     fireEvent.click(item(zh.folderSwitch))
-    // Examples, the draft itself and researches whose folder left the list are not offered.
+    // Examples, the draft itself, researches whose folder left the list and researches removed from the list are not offered.
     expect(within(menus()[0]!).getAllByRole('menuitem').slice(3).map(element => element.textContent)).toEqual(['长上下文', '块稀疏注意力'])
   })
 

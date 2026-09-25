@@ -40,17 +40,31 @@
 - 记录里除了占位标题（`untitled`，标题为「新研究」）和自主程度之外什么都没有：处于 general 模式且模式尚未选定，简介为空，没有资料、论点、文件、决策、环境、运行、编译、复核或检查（`src/drafts.ts` 中的 `blankRecord`），因此在入口页选择自主程度不会让它失去草稿身份；
 - 它的每段对话在会话列表中都是空白的（没有开始过任何轮次）：绑定到它的那段，以及每段在它文件夹里工作的对话，通过 `ctx.sessionController.list` 查到；
 - 它的文件夹里只有研究创建时建立的空文件夹（`paper`、`figures`、`code`、`data`、`.research`、`exports`），或者什么都没有；
-- 它不是示例。
+- 它不是示例，也没有被移出列表（[见下文](#remove-from-list)）。
 
 这三个命令只属于桌面端：`execute` 拒绝 agent 调用它们，模型可见的 `research_project` 也没有这样的操作。
 
 | 命令 | 作用 |
 |---|---|
 | `start-new {}` | 答复 `{project, sessionId}`：草稿（若不止一份，取最新的一份），或者在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一项研究，`n` 取当天（本地日期）最小的空闲序号，包括记录、以文件夹名命名的 Workspace 和一段空白对话。被手动删除的草稿文件夹会重新建立；对话被归档的草稿会得到一段新的空白对话。研究存放位置位于示例之中、位于另一项研究之内或位于系统文件夹时，命令被拒绝。 |
-| `relocate {projectId, root, confirmNonEmpty?}` | 只作用于草稿；`outcome` 说明所选文件夹是什么。`example`：位于示例之中。`existing`：它已经是 `project` 中的那项研究（附带其绑定的 `sessionId`）。`nested`：它位于 `project` 中那项研究之内，这项研究也可能就是草稿本身。`needs-confirm`：它里面已有文件，且未设置 `confirmNonEmpty`。其余情况为 `moved`：在该处新建研究，沿用草稿的自主程度并带一段空白对话，然后丢弃草稿；`project` 与 `sessionId` 是新研究的。选草稿自己的文件夹时答复 `moved`，草稿保持不变。 |
+| `relocate {projectId, root, confirmNonEmpty?}` | 只作用于草稿；`outcome` 说明所选文件夹是什么。`example`：位于示例之中。`existing`：它已经是 `project` 中的那项研究（附带其绑定的 `sessionId`）。`nested`：它位于 `project` 中那项研究之内，这项研究也可能就是草稿本身。这两种答复所指的研究都可能已被移出列表，此时它带有 `archived: true`。`needs-confirm`：它里面已有文件，且未设置 `confirmNonEmpty`。其余情况为 `moved`：在该处新建研究，沿用草稿的自主程度并带一段空白对话，然后丢弃草稿；`project` 与 `sessionId` 是新研究的。选草稿自己的文件夹时答复 `moved`，草稿保持不变。 |
 | `discard-draft {projectId}` | 只作用于草稿：归档它的对话，删除它文件夹的 Workspace 注册和它的记录，然后删除仍为空的各个初始文件夹，在根目录由草稿创建（`createdRoot`）时也删除根目录。里面有任何内容的文件夹都会保留；无法删除的文件夹会记入日志。 |
 
 已经开始的研究既不能更改位置，也不能丢弃：`这项研究已经开始，不能再更改位置或丢弃 / This research has started, so it can no longer be moved or discarded`。对话一旦不再空白就不会重新变回空白，因此发现含有已开始对话的研究之后不会再为它列出会话。读不到会话列表时，快照不标记任何草稿，`start-new` 直接失败，而不会再建一份草稿。
+
+<a id="remove-from-list"></a>
+## 把研究移出列表
+
+「移出列表」与「恢复」是桌面端的 `archive-project` 与 `unarchive-project` 命令。和草稿命令一样，`execute` 拒绝 agent 调用它们。
+
+| 命令 | 作用 |
+|---|---|
+| `archive-project {projectId}` | 归档这项研究中尚未归档的每段顶层对话：绑定到它的那段，以及每段在它文件夹里工作、且不在其中嵌套的其他研究里的对话。归档通过 Workspace 注册表完成，与 shell 自己的归档操作及其「已归档会话」设置页用的是同一套归档。在归档第一段对话之前，记录先存下 `archivedAt` 和这次要归档的对话 id（`archivedConversations`）。委派出的子会话不受影响，磁盘上的任何内容都不改变。再次执行时保留 `archivedAt`，并归档此后新增的对话。对示例拒绝执行；对未动过的草稿也拒绝，并提示 `还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list`。 |
+| `unarchive-project {projectId}` | 取消归档 `archivedConversations` 中的对话，然后清除这两个字段。用户在移出之前自己归档的对话保持归档。仍在列表中的研究原样答复；对示例拒绝执行。 |
+
+快照和命令答复把已移出的研究标为 `archived: true`，它由 `archivedAt` 推导得出，从不存储。它的运行照常进行，但后台观测会跳过它们，直到研究恢复；`experiment-wait` 与 `experiment-refresh` 在被调用时仍会观测运行。已移出的研究永远不会是草稿。
+
+`showExamples` 偏好（设置 › 科研 › 显示示例研究）决定侧边栏是否列出示例。没有设置时视为 true。
 
 ## 模式包
 
@@ -157,7 +171,7 @@ scope 与某个基础检查或门禁同名时指的是阶段，阶段 scope 会�
 
 ## 并发
 
-每个项目的记录变更逐一进行。项目创建与这几个草稿命令也逐一进行，因此同一文件夹的两次创建只记录一个项目，连点两次「新研究」也只打开一份草稿。耗时工作（编译、渲染页面、导入并抽取资料、构建环境、提交与观测实验）在队列之外的记录副本上运行，只把结果放回队列内应用，因此编译不会阻塞保存，无法连通的 SSH 主机也不会阻塞整个项目。正在提交的运行在提交结果记录之前不会被观测，观测结果也不会覆盖期间已经结束的运行。
+每个项目的记录变更逐一进行。项目创建、这几个草稿命令以及 `archive-project` 与 `unarchive-project` 也逐一进行，因此同一文件夹的两次创建只记录一个项目，连点两次「新研究」也只打开一份草稿。耗时工作（编译、渲染页面、导入并抽取资料、构建环境、提交与观测实验）在队列之外的记录副本上运行，只把结果放回队列内应用，因此编译不会阻塞保存，无法连通的 SSH 主机也不会阻塞整个项目。正在提交的运行在提交结果记录之前不会被观测，观测结果也不会覆盖期间已经结束的运行。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -176,8 +190,8 @@ One durable owner for each project's evidence, files, decisions and execution re
 ```ts cordis-catalog
 /**
  * Read detached project snapshots and non-secret component settings.
- * @returns every project without source bodies, with where it stands and whether it is the untouched draft,
- * the preferences, the research home in effect and the component status.
+ * @returns every project without source bodies, with where it stands and whether it is the untouched draft
+ * or removed from the list, the preferences, the research home in effect and the component status.
  */
 @Remote async snapshot(): Promise<ResearchSnapshot>
 
@@ -219,8 +233,9 @@ standing(project: ResearchProject): Promise<ResearchStanding>
 async createProject(request: CreateProjectRequest, sessionId?: string): Promise<ResearchProject>
 
 /**
- * Save model roles, explicitly bound tool locations and the research home, never model secrets.
- * A research home among the examples is refused.
+ * Save model roles, explicitly bound tool locations, the research home and
+ * whether examples are listed, never model secrets. A research home among
+ * the examples is refused.
  * @param preferences - the complete preference record.
  * @returns the preferences as stored.
  */
@@ -281,7 +296,8 @@ activeGoals(project: ResearchProject): ResearchGoal[]
 /**
  * Dispatch a validated tool or desktop command. The desktop receives a job
  * for long operations; the agent waits for the result inside its tool call.
- * `start-new`, `relocate` and `discard-draft` are the desktop's alone.
+ * `start-new`, `relocate`, `discard-draft`, `archive-project` and
+ * `unarchive-project` are the desktop's alone.
  * @param raw - the command as received.
  * @param signal - cancellation of the call.
  * @param actor - who acts: the desktop user or the agent.

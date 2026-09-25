@@ -60,8 +60,8 @@ export function nextDraftRoot(home: string, date: Date, recorded: (path: string)
  * Whether a research's record holds nothing but what creating a draft wrote:
  * the placeholder title, the general mode with no mode chosen, and no
  * sources, claims, files, decisions, environments, runs, compiles, reviews or
- * checks. The autonomy is the person's setting for its conversations and
- * does not count.
+ * checks, and it is not removed from the list. The autonomy is the person's
+ * setting for its conversations and does not count.
  * @param project - the stored record.
  * @returns true for a record nobody has worked in.
  */
@@ -72,7 +72,8 @@ export function blankRecord(project: ResearchProject): boolean {
   ]
   return project.untitled === true && project.mode === 'general' && project.modeSetBy === undefined && project.route === undefined
     && project.venue === undefined && project.modeReason === undefined && project.brief === ''
-    && project.lastCheck === undefined && project.progress === undefined && lists.every(list => list.length === 0)
+    && project.lastCheck === undefined && project.progress === undefined && project.archivedAt === undefined
+    && lists.every(list => list.length === 0)
 }
 
 /** The file-system error code of a thrown value. */

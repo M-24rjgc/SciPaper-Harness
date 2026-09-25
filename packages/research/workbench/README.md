@@ -31,6 +31,8 @@ A project's autonomy is every one of its conversations' permission preset: the s
 
 新研究 (New research) is the desktop's `start-new` command: it opens the one untouched draft research, or creates one at `<research home>/<yyyy-mm-dd>-<n>` with its folder's Workspace and a blank conversation. `relocate` moves the draft to a folder the person chose, and `discard-draft` removes it with the empty folders it made. The research home is the person's `researchHome` preference, else the configured `researchHome`, else `<profile home>/SciPaper`. The agent cannot send these commands ([details](../../../docs/subsystems/research.md#new-research-draft)).
 
+移出列表 (Remove from list) is the desktop's `archive-project`: it archives the research's conversations and marks the record `archivedAt`, changing nothing on disk, and its runs go unobserved until `unarchive-project` restores it with exactly the conversations it archived. The agent cannot send these either ([details](../../../docs/subsystems/research.md#remove-from-list)).
+
 ### When to choose it
 
 Choose it when the agent should carry a paper from an idea or from existing results to a submission, recording where every source, file and number came from. It records and checks; the agent, its goals and the research skills drive the work, so a general coding session gains nothing from it.
@@ -79,7 +81,7 @@ One service owns every project record in the `research_workbench` storage domain
 
 | Source | What it holds |
 |---|---|
-| [`src/index.ts`](src/index.ts) | The service: project lifecycle, the new-research draft, command dispatch, the per-project queue, run observation, and each conversation's permission preset |
+| [`src/index.ts`](src/index.ts) | The service: project lifecycle, the new-research draft, removal from the list, command dispatch, the per-project queue, run observation, and each conversation's permission preset |
 | [`src/drafts.ts`](src/drafts.ts) | New researches: the research home, the draft folder's name, what an untouched draft holds, and removing its empty folders |
 | [`src/checks.ts`](src/checks.ts) | `research_check`: every base check, a mode's gates through the runner the service supplies, and phase progress from the mode's requirements |
 | [`src/progress.ts`](src/progress.ts) | The project's progress, merged report by report from `research_check`, and `standing`: where the project stands for the person, the brief and the header |

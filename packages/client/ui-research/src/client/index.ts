@@ -18,7 +18,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {
-  EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, SessionDirectories,
+  EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
+  SessionDirectories,
 } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
 import { projectFileAddress } from './format.ts'
@@ -28,7 +29,8 @@ import { ResearchRail, ResearchRailTitle } from './Rail.tsx'
 import { ResearchClaimSheet } from './ClaimSheet.tsx'
 import { ResearchRuns } from './RunPanel.tsx'
 import { ResearchStatusChip } from './Header.tsx'
-import { ResearchProjects } from './ProjectEntry.tsx'
+import { ResearchTree } from './ResearchTree.tsx'
+import { createResearchTreeStore } from './treeStore.ts'
 import { ResearchEntryLine, ResearchTryChips } from './EntryScreen.tsx'
 import { ResearchFolderMenu } from './FolderMenu.tsx'
 import { ResearchSettingsSection } from './ResearchSettings.tsx'
@@ -158,19 +160,21 @@ export function apply(ctx: Context): void {
     ctx.layout.setInitialRightbarWidth(320)
     ctx.sidebarRight.openTab(RESEARCH_TAB_KIND)
   }
+  const create: ResearchInjected['create'] = async (request) => {
+    const project = unwrap(await ctx.remote.research.create(request))
+    await reread()
+    return project
+  }
+  const run: ResearchInjected['run'] = async request => follow(unwrap(await ctx.remote.research.command(request, controller.signal)))
   const injected = (): ResearchInjected => ({
     hooks: { research: state, focus, directories }, refresh,
     openFile: openProjectFile,
     openFiles: () => { ctx.sidebarRight.openTab(FILES_TAB_KIND) },
     showProgress,
     focusClaim: (claim) => { focus.update((s) => { s.claim = claim }) },
-    create: async (request) => {
-      const project = unwrap(await ctx.remote.research.create(request))
-      await reread()
-      return project
-    },
+    create,
     pickDirectory: pickFolder,
-    run: async request => follow(unwrap(await ctx.remote.research.command(request, controller.signal))),
+    run,
     searchFigures: async (request) => {
       const { gallery } = unwrap(await ctx.remote.research.command(request, controller.signal))
       if (!gallery) throw new Error('The figure gallery returned no page')
@@ -241,6 +245,32 @@ export function apply(ctx: Context): void {
     },
     showProgress,
   })
+  const treeInjected = (): ResearchTreeInjected => ({
+    hooks: { research: state, directories, canReveal },
+    openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
+    openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
+    startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
+    run,
+    create,
+    renameConversation: async (sessionId, title) => {
+      // A conversation renames itself (the session face); the binding resolves any listed one.
+      const session = sessions.binding(sessionId)?.session
+      if (session === undefined) throw new Error(`unknown session "${sessionId}"`)
+      const result = await session.rename(title)
+      if (!result.ok) throw new Error(result.error.message)
+    },
+    archiveConversation: sessionId => ctx.uiWorkspace.archiveSession(sessionId),
+    removeFolder: async (workspaceId) => {
+      const { items, archivedSessionIds } = workspaces.list.getSnapshot()
+      const archived = new Set<string>(archivedSessionIds)
+      const folder = items.find(item => item.workspaceId === workspaceId)
+      for (const sessionId of folder?.sessionIds ?? []) if (!archived.has(sessionId)) await ctx.uiWorkspace.archiveSession(sessionId)
+      await workspaces.delete(workspaceId)
+    },
+    reveal: async (path) => { unwrap(await ctx.remote.session.openWorkspacePath({ path, action: 'reveal' }, controller.signal)) },
+    searchConversations: async (query, signal) => unwrap(await sessions.search(query, signal)),
+    searchResultLimit: sessions.searchResultLimit,
+  })
   // The project's files stay reachable, but not as a second application beside
   // the conversation: nothing lists this panel, and the research tab opens it.
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'research', locale: 'research', inject: injected }, Workbench))
@@ -252,7 +282,6 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark' }, ResearchHeroMark))
   ctx.slots.inject('conversation.hero.welcome', () => ctx.slots.register({ name: 'conversation.hero.welcome', id: 'research-entry', order: 10, locale: 'research', inject: entryInjected }, ResearchEntryLine))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-try', order: 7, locale: 'research', inject: entryInjected }, ResearchTryChips))
-  ctx.slots.inject('sidebar.projects', () => ctx.slots.register({ name: 'sidebar.projects', id: 'research-projects', locale: 'research', inject: injected }, ResearchProjects))
   // Submitted runs outlive the window, so the group reports itself above the composer.
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-runs', order: 6, locale: 'research', inject: injected }, ResearchRuns))
   // A claim's sources open over the whole frame; the rail puts one in focus.
@@ -284,6 +313,11 @@ export function apply(ctx: Context): void {
     ctx.slots.inject('settings.action', () => ctx.slots.register({ name: 'settings.action', id: 'open-document', priority: -1 }, EmptyCell))
     ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1, locale: 'research', inject: injected }, AutonomyChip))
     ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register({ name: 'conversation.hero.workspace', priority: -1, locale: 'research', inject: entryInjected }, ResearchFolderMenu))
+    // The sidebar lists researches and their conversations in place of the shell's workspace browser, which
+    // stays registered underneath and keeps declaring its directory-flow child for the folder pickers.
+    ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
+      name: 'sidebar.workspaces', priority: -1, locale: 'research', store: createResearchTreeStore(), inject: treeInjected,
+    }, ResearchTree))
   }
   // The research record reports beside the conversation, read-only.
   ctx.inject(['sidebarRightTabs'], (scope: Context) => {

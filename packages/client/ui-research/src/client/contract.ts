@@ -1,7 +1,9 @@
 /** Browser presentation inputs; the owning plugin supplies all remote callbacks. */
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   BoardSnapshot, CreateProjectRequest, GalleryPage, ModeSummary, ProjectId, ResearchCommand, ResearchPreferences, ResearchProject,
   ResearchResponse, ResearchSnapshot, ResearchTask,
@@ -105,7 +107,10 @@ export interface ResearchEntryInjected {
    * @returns the host's answer, or undefined when the move failed (the entry line says why).
    */
   move(request: MoveRequest, carry: CarryDraft): Promise<ResearchResponse | undefined>
-  /** Carry the composer's draft into another research's blank conversation, then discard the untouched draft. */
+  /**
+   * Carry the composer's draft into another research's blank conversation,
+   * restoring one removed from the list, then discard the untouched draft.
+   */
   adopt(draftId: ProjectId, workspaceId: WorkspaceId, carry: CarryDraft): Promise<void>
   /** Show a folder in the desktop's file manager; a failure shows on the entry line. */
   reveal(path: string): void
@@ -190,10 +195,62 @@ export interface SessionSeatProps {
   sessionId: string
 }
 
+/**
+ * What the sidebar's research tree acts through: the record, the host's
+ * file-manager answer, the shell's navigation and session actions, and the
+ * research commands its row menus send.
+ */
+export interface ResearchTreeInjected {
+  hooks: {
+    research: ObservableSnapshot<ResearchView>
+    directories: ObservableSnapshot<SessionDirectories>
+    /** Whether the host can show a folder in the desktop's file manager. */
+    canReveal: ObservableSnapshot<boolean>
+  }
+  /** Select a listed conversation (`uiWorkspace.openSession`). */
+  openSession(sessionId: SessionId): void
+  /** Open a research folder's blank conversation, reusing it or creating it (`uiWorkspace.openWorkspace`). */
+  openWorkspace(workspaceId: WorkspaceId): Promise<void>
+  /** ＋ 新对话 (New conversation): the folder's blank conversation, reused or created, opened (`uiWorkspace.startSession`). */
+  startSession(workspaceId: WorkspaceId): void
+  /** Send one research command, as {@link ResearchInjected.run} does. */
+  run(request: ResearchCommand): Promise<ResearchResponse>
+  /** Create or adopt the research rooted at `request.root`, as {@link ResearchInjected.create} does. */
+  create(request: CreateProjectRequest): Promise<ResearchProject>
+  /** Give a conversation a title the person chose; rejects with the host's reason. */
+  renameConversation(sessionId: SessionId, title: string): Promise<void>
+  /** Archive one conversation: it leaves every list, its log stays (`uiWorkspace.archiveSession`). */
+  archiveConversation(sessionId: SessionId): Promise<void>
+  /**
+   * Take a folder that holds no research out of the list: archive each of its
+   * conversations, then delete its Workspace registration. No file changes.
+   */
+  removeFolder(workspaceId: WorkspaceId): Promise<void>
+  /** Show a folder in the desktop's file manager; rejects with the host's reason. */
+  reveal(path: string): Promise<void>
+  /** The shell's content search over conversation text (`sessions.search`). */
+  searchConversations(query: string, signal: AbortSignal): Promise<{ items: readonly SessionSearchResultItem[]; hasMore: boolean }>
+  /** How many merged rows one search shows, as the host bounds it. */
+  searchResultLimit: number
+}
+
 /** A path in one comparable spelling: forward slashes, no trailing slash, case-folded for drive paths. */
 function comparable(path: string): string {
   const slashed = path.replaceAll('\\', '/').replace(/\/+$/, '')
   return /^[A-Za-z]:/.test(slashed) ? slashed.toLowerCase() : slashed
+}
+
+/**
+ * The innermost project whose folder is `path` or contains it.
+ * @param projects - every project the snapshot carries.
+ * @param path - an absolute folder, either separator.
+ * @returns that project, or undefined when the path lies outside every project.
+ */
+export function projectAtPath<T extends { root: string }>(projects: readonly T[] | undefined, path: string): T | undefined {
+  const here = comparable(path)
+  return projects
+    ?.filter((project) => { const root = comparable(project.root); return here === root || here.startsWith(`${root}/`) })
+    .sort((a, b) => b.root.length - a.root.length)[0]
 }
 
 /**
@@ -212,10 +269,7 @@ export function sessionProject<T extends { sessionId?: string | undefined; root:
   if (bound) return bound
   const cwd = directories[sessionId]
   if (cwd === undefined) return undefined
-  const here = comparable(cwd)
-  return projects
-    ?.filter((project) => { const root = comparable(project.root); return here === root || here.startsWith(`${root}/`) })
-    .sort((a, b) => b.root.length - a.root.length)[0]
+  return projectAtPath(projects, cwd)
 }
 
 /** This seat's project, read through the injected stores. */

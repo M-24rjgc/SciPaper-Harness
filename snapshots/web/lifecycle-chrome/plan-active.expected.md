@@ -4,9 +4,6 @@
 - button "New research":
   - img
   - text: New research
-- navigation "Research projects":
-  - text: Research projects
-  - paragraph: Your research projects will appear here.
 - text: Workspaces
 - button "Search sessions":
   - img

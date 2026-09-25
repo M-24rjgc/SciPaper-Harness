@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
 /**
- * The full workbench panel and the project list beside the conversation. Every
- * command it emits is handed to the validator the service parses commands with,
- * so a button that builds a request the service would refuse fails here. Every
- * control keeps its own progress and its own failure line, so the tests hold
- * one control's work open or refuse it and look at that control and its
- * neighbours.
+ * The full workbench panel. Every command it emits is handed to the validator
+ * the service parses commands with, so a button that builds a request the
+ * service would refuse fails here. Every control keeps its own progress and
+ * its own failure line, so the tests hold one control's work open or refuse it
+ * and look at that control and its neighbours.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
@@ -17,7 +16,6 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchBrand, Workbench } from '../src/client/Workbench.tsx'
-import { ResearchProjects } from '../src/client/ProjectEntry.tsx'
 import {
   sessionProject, useModes, type ClaimFocus, type ResearchFocus, type ResearchView, type WorkbenchProps,
 } from '../src/client/contract.ts'
@@ -583,67 +581,6 @@ describe('the workbench panel', () => {
     cleanup()
     const settings = render(<Workbench {...harness([project], { claim: null, projectId: project.id, panel: 'settings' }).props} />)
     expect(settings.getByText(zh.settingsSubtitle)).toBeTruthy()
-  })
-})
-
-describe('the project list in the sidebar', () => {
-  it('opens a bound project, binds an unbound one, and says why opening failed', async () => {
-    const bound = fixture()
-    bound.sessionId = 'session-b'
-    const unbound = newProject({ root: '/research/u', title: 'Unbound', brief: '' }, 'u' as WorkspaceId)
-    bound.updatedAt = '2026-09-20T00:00:00.000Z'
-    unbound.updatedAt = '2026-09-22T00:00:00.000Z'
-    const h = harness([bound, unbound])
-    expect(render(<ResearchProjects {...h.props} wide={false} />).container.textContent).toBe('')
-    const ui = render(<ResearchProjects {...h.props} wide />)
-    // The project worked on most recently comes first.
-    expect(ui.getAllByRole('button').map(button => button.textContent)).toEqual([expect.stringMatching(/^Unbound/) as unknown, expect.stringMatching(/^Sparse attention/) as unknown])
-    fireEvent.click(ui.getByRole('button', { name: /Sparse attention/ }))
-    fireEvent.click(ui.getByRole('button', { name: /Unbound/ }))
-    await settle()
-    expect(h.calls).toContain('open:session-b@w')
-    expect(h.created).toEqual([{ root: '/research/u', title: 'Unbound', brief: '' }])
-    cleanup()
-    const rebound = { ...unbound, sessionId: 'session-new' }
-    const binding = { ...h.props, create: () => Promise.resolve(rebound) } as unknown as WorkbenchProps
-    fireEvent.click(render(<ResearchProjects {...binding} wide />).getByRole('button', { name: /Unbound/ }))
-    await settle()
-    expect(h.calls).toContain('open:session-new@u')
-    cleanup()
-    const expanded: string[] = []
-    const sessionless = {
-      ...h.props, create: () => Promise.resolve(unbound), expand: (id: string) => { expanded.push(id) },
-    } as unknown as WorkbenchProps
-    fireEvent.click(render(<ResearchProjects {...sessionless} wide />).getByRole('button', { name: /Unbound/ }))
-    await settle()
-    expect(expanded).toEqual([unbound.id])
-    cleanup()
-    const refusing = {
-      ...h.props, create: () => Promise.reject(new Error('folder is gone')), openConversation: () => Promise.reject(new Error('session list unavailable')),
-    } as unknown as WorkbenchProps
-    const failing = render(<ResearchProjects {...refusing} wide />)
-    fireEvent.click(failing.getByRole('button', { name: /Unbound/ }))
-    await settle()
-    expect(failing.getByRole('alert').textContent).toBe(failed('folder is gone'))
-    fireEvent.click(failing.getByRole('button', { name: /Sparse attention/ }))
-    await settle()
-    expect(failing.getByRole('alert').textContent).toBe(failed('session list unavailable'))
-    cleanup()
-    // An example, however recent, lists after the person's own researches, and says it is one.
-    const example = { ...newProject({ root: '/home/demo/x', title: 'Shipped example', brief: '' }, 'x' as WorkspaceId), example: true, updatedAt: '2026-09-30T00:00:00.000Z' }
-    const listed = render(<ResearchProjects {...harness([example, bound, unbound]).props} wide />)
-    expect(listed.getAllByRole('button').map(button => button.textContent)).toEqual([
-      expect.stringMatching(/^Unbound/) as unknown,
-      expect.stringMatching(/^Sparse attention/) as unknown,
-      expect.stringMatching(/^Shipped example/) as unknown,
-    ])
-    expect(listed.getByRole('button', { name: /Shipped example/ }).textContent).toContain(zh.exampleTag)
-    cleanup()
-    expect(render(<ResearchProjects {...harness([]).props} wide />).getByText(zh.heroNoHistory)).toBeTruthy()
-    cleanup()
-    const loading = harness([])
-    loading.view.snapshot = null
-    expect(render(<ResearchProjects {...loading.props} wide />).getByText(zh.heroNoHistory)).toBeTruthy()
   })
 })
 

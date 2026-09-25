@@ -4,8 +4,8 @@
  * needed mid-research the conversation sends the person here and back.
  */
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ComponentStatus, ResearchPreferences } from '@deepseek-ai/dsh-research-workbench/types'
+import { Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ComponentStatus, ResearchPreferences, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { ResearchKey } from './locales.ts'
 import type { WorkbenchProps } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
@@ -176,6 +176,67 @@ function ResearchHome(props: WorkbenchProps & { preferences: ResearchPreferences
   </section>
 }
 
+/**
+ * 显示示例研究 (Show example researches): whether the sidebar lists the
+ * examples, saved at once with every other preference kept.
+ */
+function ShowExamples(props: WorkbenchProps & { preferences: ResearchPreferences }): ReactNode {
+  const { t, preferences } = props
+  const saving = useAction()
+  const shown = preferences.showExamples !== false
+  return <section className={styles.group}>
+    <div className={styles.switchRow}>
+      <div className={styles.switchText}>
+        <h3 className={styles.groupTitle}>{t('showExamplesTitle')}</h3>
+        <p className={styles.groupHint}>{t('showExamplesHint')}</p>
+      </div>
+      <Switch
+        checked={shown}
+        label={t('showExamplesTitle')}
+        disabled={saving.pending}
+        onChange={(next) => { saving.start(() => props.configure({ ...preferences, showExamples: next }, NO_KEYS)) }}
+      />
+    </div>
+    <ActionError t={t} error={saving.error} />
+  </section>
+}
+
+/** One research removed from the list, with the way back. */
+function RemovedResearch(props: WorkbenchProps & { project: ResearchProject }): ReactNode {
+  const { t, project } = props
+  const restoring = useAction()
+  return <div className={styles.componentCell}>
+    <div className={styles.removed}>
+      <span className={styles.removedText}>
+        <span className={styles.environmentName}>{project.untitled === true ? t('treeUntitled') : project.title}</span>
+        <span className={styles.environmentDetail}>{project.root}</span>
+      </span>
+      <button
+        type="button"
+        className={styles.install}
+        disabled={restoring.pending}
+        onClick={() => { restoring.start(() => props.run({ action: 'unarchive-project', projectId: project.id })) }}
+      >{t(restoring.pending ? 'removedRestoring' : 'removedRestore')}</button>
+    </div>
+    <ActionError t={t} error={restoring.error} />
+  </div>
+}
+
+/** 已移出的研究 (Removed researches): each one the person took out of the sidebar, to restore. */
+function RemovedResearches(props: WorkbenchProps & { projects: readonly ResearchProject[] }): ReactNode {
+  const { t } = props
+  const removed = props.projects.filter(project => project.archived === true)
+  return <section className={styles.group}>
+    <h3 className={styles.groupTitle}>{t('removedTitle')}</h3>
+    <p className={styles.groupHint}>{t('removedHint')}</p>
+    {removed.length === 0
+      ? <p className={styles.groupHint}>{t('removedNone')}</p>
+      : <div className={styles.environments}>
+        {removed.map(project => <RemovedResearch key={project.id} {...props} project={project} />)}
+      </div>}
+  </section>
+}
+
 /** The research section of the settings panel; nothing here lives on the main surface. */
 export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   const { t } = props
@@ -206,8 +267,9 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       ...(text(form, 'pythonPath') ? { python: text(form, 'pythonPath') } : {}),
       ...(text(form, 'uvPath') ? { uv: text(form, 'uvPath') } : {}),
       ...(text(form, 'texPath') ? { texBin: text(form, 'texPath') } : {}),
-      // The research home has its own group below; this form keeps it as it is.
+      // The research home and the examples switch have their own groups; this form keeps them as they are.
       ...(preferences.researchHome === undefined ? {} : { researchHome: preferences.researchHome }),
+      ...(preferences.showExamples === undefined ? {} : { showExamples: preferences.showExamples }),
     }
     const keys = { image: text(form, 'imageKey'), embedding: text(form, 'embeddingKey') }
     saving.start(() => props.configure(next, keys))
@@ -228,6 +290,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
     <p className={styles.subtitle}>{t('settingsSubtitle')}</p>
 
     <ResearchHome {...props} preferences={preferences} home={view.snapshot?.researchHome} />
+    <ShowExamples {...props} preferences={preferences} />
+    <RemovedResearches {...props} projects={view.snapshot?.projects ?? []} />
 
     <form key={JSON.stringify(preferences)} className={styles.group} onSubmit={save}>
       <h3 className={styles.groupTitle}>{t('modelRoles')}</h3>

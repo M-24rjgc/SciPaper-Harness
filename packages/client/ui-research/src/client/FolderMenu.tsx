@@ -154,10 +154,12 @@ export function ResearchFolderMenu(props: FolderMenuProps): ReactNode {
     items.push({ id: 'reveal', label: t('folderReveal'), icon: <IconFolderOpenOutline16 /> })
     runs.set('reveal', () => { props.reveal(path) })
   }
-  // The person's own researches, newest first; the untouched draft is where 新研究 goes, and examples are only read.
+  // The person's own researches, newest first; the untouched draft is where 新研究 goes,
+  // examples are only read, and removed ones are not listed.
   const workspaceIds = new Set<string>(registered.map(item => item.workspaceId))
   const others = projects
-    .filter(other => other.id !== project?.id && other.example !== true && other.draft !== true && workspaceIds.has(other.workspaceId))
+    .filter(other => other.id !== project?.id && other.example !== true && other.draft !== true && other.archived !== true
+      && workspaceIds.has(other.workspaceId))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
   if (others.length > 0) {
     const submenu = others.map((other): MenuItem => {

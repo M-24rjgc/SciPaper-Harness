@@ -52,6 +52,12 @@ describe('the Web composition of the research edition', () => {
     expect(row('ui-sidebar')).toMatchObject({ config: { brandAction: 'none' } })
   })
 
+  it('searches conversation content from an in-memory index opened at the first search', () => {
+    // The patch replaces the row's whole config, so the base row's `path` is restated with it.
+    expect(row('session-query-sqlite').config).toEqual({ path: ':memory:', openAt: 'first-search' })
+    expect(row('session-query-sqlite').disabled).toBeUndefined()
+  })
+
   it('gives the automatic autonomy preset a display name', () => {
     const presets = (row('permission').config as { presets?: Record<string, unknown> } | undefined)?.presets
     expect(presets?.['research-auto']).toMatchObject({

@@ -34,7 +34,7 @@ import { ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
 import { ResearchClaimSheet } from '../src/client/ClaimSheet.tsx'
 import { ResearchRuns } from '../src/client/RunPanel.tsx'
 import { ResearchStatusChip } from '../src/client/Header.tsx'
-import { ResearchProjects } from '../src/client/ProjectEntry.tsx'
+import { ResearchTree } from '../src/client/ResearchTree.tsx'
 import { ResearchEntryLine, ResearchTryChips } from '../src/client/EntryScreen.tsx'
 import { ResearchFolderMenu } from '../src/client/FolderMenu.tsx'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
@@ -44,7 +44,7 @@ import { AutonomyChip } from '../src/client/AutonomyChip.tsx'
 import { ResearchCheckCard, ResearchToolCard } from '../src/client/ResearchToolView.tsx'
 import { RESEARCH_TOOLS } from '../src/client/toolCallValues.ts'
 import type {
-  ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, WorkbenchProps,
+  ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView, WorkbenchProps,
 } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 
@@ -143,6 +143,8 @@ interface BenchServices {
   current?: string
   /** Workspace id, path and listed sessions. */
   workspaces?: [string, string, string[]][]
+  /** Sessions the Workspace list reports archived. */
+  archived?: string[]
   snapshot?: ResearchSnapshot
   /** The host's answer to whether it can show a folder in the file manager; yes by default. */
   canReveal?: Promise<RemoteResult<boolean>>
@@ -163,6 +165,7 @@ async function bench(services: BenchServices = {}) {
       'conversation.session.header.actions': { kind: 'list', scope: 'session' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
       'sidebar.projects': { kind: 'list', scope: 'root' },
+      'sidebar.workspaces': { kind: 'single', scope: 'root' },
       'conversation.hero.welcome': { kind: 'list', scope: 'root' },
       'conversation.hero.footer': { kind: 'list', scope: 'root' },
       'conversation.hero.brand.mark': { kind: 'single', scope: 'root' },
@@ -225,7 +228,18 @@ async function bench(services: BenchServices = {}) {
     current: services.current as SessionId | undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
   })
   const list = createSnapshotStore<SessionListState>(rows(services.sessions ?? { 'session-a': { cwd: 'C:\\research\\sparse' }, 'session-b': {} }))
-  const sessions = { list }
+  // Each listed session renames itself through its binding; an unknown one has none.
+  const renames = new Map<string, ReturnType<typeof vi.fn>>()
+  const sessions = {
+    list,
+    binding: vi.fn((id: string) => {
+      if (!(id in list.getSnapshot().byId)) return undefined
+      if (!renames.has(id)) renames.set(id, vi.fn((_title: string) => Promise.resolve(ok({ title: _title, seq: 1 }))))
+      return { session: { rename: renames.get(id) } }
+    }),
+    search: vi.fn((_query: string, _signal: AbortSignal) => Promise.resolve(ok({ items: [{ sessionId: 'session-a', snippet: 'measured 42' }], hasMore: false }))),
+    searchResultLimit: 20,
+  }
   const publishSessions = (next: Record<string, Partial<SessionSummary>>): void => {
     const { ids, byId } = rows(next)
     list.update((state) => { state.ids = ids; state.byId = byId })
@@ -235,12 +249,15 @@ async function bench(services: BenchServices = {}) {
     items: (services.workspaces ?? []).map(([workspaceId, path, ids]) => ({
       workspaceId: workspaceId as WorkspaceId, path, title: path, sessionIds: ids as SessionId[], createdAt: '', updatedAt: '',
     })),
-    archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+    archivedSessionIds: (services.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
   })
+  const workspaces = { list: workspaceList, delete: vi.fn((_workspaceId: string) => Promise.resolve()) }
   const policies: UiWorkspaceEntryPolicy[] = []
   const uiWorkspace = {
     openSession: vi.fn((id: string) => { select(id) }),
     openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()),
+    startSession: vi.fn((_workspaceId?: string) => {}),
+    archiveSession: vi.fn((_sessionId: string) => Promise.resolve()),
     setEntryPolicy: vi.fn((policy: UiWorkspaceEntryPolicy) => {
       policies.push(policy)
       return () => { policies.splice(policies.indexOf(policy), 1) }
@@ -262,7 +279,7 @@ async function bench(services: BenchServices = {}) {
   ctx.provide('locale', locale as never)
   ctx.provide('layout', layout as never)
   ctx.provide('sessions', sessions as never)
-  ctx.provide('workspaces', { list: workspaceList } as never)
+  ctx.provide('workspaces', workspaces as never)
   ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('sidebarRight', sidebarRight as never)
   ctx.provide('sidebarRightTabs', sidebarRightTabs as never)
@@ -285,7 +302,7 @@ async function bench(services: BenchServices = {}) {
   await injected.refresh()
   return {
     ctx, dictionaries, directoryPicker, entry, face: injected, fiber, layout, remote, remoteSession, seat, tabs, policies,
-    publishSessions, select, list, workspaceList, sidebarRight, uiWorkspace,
+    publishSessions, select, list, workspaceList, sidebarRight, uiWorkspace, sessions, renames, workspaces,
   }
 }
 
@@ -356,7 +373,6 @@ describe('the research plugin', () => {
       .toMatchObject({ locale: 'research', component: ResearchEntryLine, options: { order: 10 } })
     expect(b.seat('conversation.input.dock', 'research-try'))
       .toMatchObject({ locale: 'research', component: ResearchTryChips, options: { order: 7 } })
-    expect(b.seat('sidebar.projects', 'research-projects')).toMatchObject({ locale: 'research', component: ResearchProjects })
     expect(b.seat('conversation.input.dock', 'research-runs'))
       .toMatchObject({ locale: 'research', component: ResearchRuns, options: { order: 6 } })
     // The entry screen's seats share one face of their own.
@@ -380,8 +396,11 @@ describe('the research plugin', () => {
     expect(b.ctx.slots.entries('conversation.input.dock').map(entry => entry.options.id).sort()).toEqual(['research-runs', 'research-try'])
     expect(b.ctx.slots.entries('conversation.input.left')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
-    // Without the edition's setting the shell's folder picker keeps its seat.
+    // Without the edition's setting the shell's folder picker and workspace browser keep their seats,
+    // and the sidebar has no project cards: the research tree lists researches under the edition's setting.
     expect(b.ctx.slots.entries('conversation.hero.workspace')).toHaveLength(0)
+    expect(b.ctx.slots.entries('sidebar.workspaces')).toHaveLength(0)
+    expect(b.ctx.slots.entries('sidebar.projects')).toHaveLength(0)
 
     // The settings row names itself through the dictionary, at read time.
     const settings = b.seat('settings.section', 'research')
@@ -405,7 +424,7 @@ describe('the research plugin', () => {
     await stop(b)
 
     for (const name of [
-      'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions', 'sidebar.projects',
+      'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions',
       'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock',
       'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
       'tool.call.toolview',
@@ -433,10 +452,18 @@ describe('the research plugin', () => {
   /** The blank conversation's folder seat, a single cell the shell's Workspace picker takes. */
   const FOLDER_SEAT = 'conversation.hero.workspace'
   const folderWinner = (ctx: Context): StoredEntry | undefined => ctx.slots.entriesOfSlot(FOLDER_SEAT)[0]
+  /** The sidebar's browsing seat, a single cell the shell's workspace browser takes, declaring its directory-flow child. */
+  const BROWSER_SEAT = 'sidebar.workspaces'
+  const FLOW_SEAT = 'sidebar.workspaces.directoryFlow'
+  const browserWinner = (ctx: Context): StoredEntry | undefined => ctx.slots.entriesOfSlot(BROWSER_SEAT)[0]
+  const Flow = (): ReactNode => null
   const registerShipped = (ctx: Context): void => {
     for (const [name, id] of DEVELOPER_CELLS) ctx.slots.register({ name, id } as never, Shipped)
     ctx.slots.register({ name: ACCESS_SEAT } as never, Shipped)
     ctx.slots.register({ name: FOLDER_SEAT } as never, Shipped)
+    ctx.slots.register({ name: BROWSER_SEAT, children: { [FLOW_SEAT]: { kind: 'single', scope: 'root' } } } as never, Shipped)
+    // A folder picker's flow fills the child the shipped browser declares.
+    ctx.slots.register({ name: FLOW_SEAT } as never, Flow)
   }
 
   /** The global the host half puts into the served page. */
@@ -458,11 +485,23 @@ describe('the research plugin', () => {
       const folder = folderWinner(b.ctx)!
       expect(folder).toMatchObject({ locale: 'research', component: ResearchFolderMenu, options: { priority: -1 } })
       expect(Object.keys((folder.inject as unknown as () => ResearchEntryInjected)())).toEqual(Object.keys(b.entry))
+      // The research tree takes the workspace browser's seat with its own store; the shadowed browser
+      // still declares its directory-flow child, so the folder pickers' flow keeps its seat.
+      const tree = browserWinner(b.ctx)!
+      expect(tree).toMatchObject({ locale: 'research', component: ResearchTree, options: { priority: -1 } })
+      expect(tree.store).toBeDefined()
+      // The browser stays registered underneath: shadowed, not replaced.
+      const browsers = b.ctx.slots.entries(BROWSER_SEAT as never).map(entry => entry.component)
+      expect(browsers).toEqual(expect.arrayContaining([ResearchTree, Shipped]))
+      expect(b.ctx.slots.spec(FLOW_SEAT)).toMatchObject({ kind: 'single' })
+      expect(b.ctx.slots.entriesOfSlot(FLOW_SEAT)[0]?.component).toBe(Flow)
 
       await stop(b)
       expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
       expect(accessWinner(b.ctx)?.component).toBe(Shipped)
       expect(folderWinner(b.ctx)?.component).toBe(Shipped)
+      expect(browserWinner(b.ctx)?.component).toBe(Shipped)
+      expect(b.ctx.slots.entriesOfSlot(FLOW_SEAT)[0]?.component).toBe(Flow)
     } finally {
       delete page.__DSH_RESEARCH__
     }
@@ -477,6 +516,7 @@ describe('the research plugin', () => {
       expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
       expect(accessWinner(b.ctx)?.component).toBe(Shipped)
       expect(folderWinner(b.ctx)?.component).toBe(Shipped)
+      expect(browserWinner(b.ctx)?.component).toBe(Shipped)
       await stop(b)
     }
     delete page.__DSH_RESEARCH__
@@ -951,5 +991,81 @@ describe('the face the entry screen acts through', () => {
     answer.settle(ok(true))
     await idle()
     for (const b of [refused, failed, late]) expect(b.entry.hooks.canReveal.getSnapshot()).toBe(false)
+  })
+})
+
+describe('the face the research tree acts through', () => {
+  const page = globalThis as { __DSH_RESEARCH__?: unknown }
+
+  /** A bench whose page carries the edition's setting, so the tree takes the sidebar's browsing seat. */
+  async function treeBench(services: BenchServices = {}) {
+    page.__DSH_RESEARCH__ = { hideDeveloperCells: true }
+    try {
+      const b = await bench(services)
+      return { ...b, tree: (b.seat('sidebar.workspaces').inject as unknown as () => ResearchTreeInjected)() }
+    } finally {
+      delete page.__DSH_RESEARCH__
+    }
+  }
+
+  it('reads the record, the folders and the file-manager answer the other seats read, and navigates through ui-workspace', async () => {
+    const b = await treeBench()
+    expect(b.tree.hooks.research).toBe(b.face.hooks.research)
+    expect(b.tree.hooks.directories).toBe(b.face.hooks.directories)
+    expect(b.tree.hooks.canReveal).toBe(b.entry.hooks.canReveal)
+    b.tree.openSession('session-b' as SessionId)
+    expect(b.uiWorkspace.openSession).toHaveBeenCalledWith('session-b')
+    await b.tree.openWorkspace('workspace-sparse' as WorkspaceId)
+    expect(b.uiWorkspace.openWorkspace).toHaveBeenCalledWith('workspace-sparse')
+    b.tree.startSession('workspace-sparse' as WorkspaceId)
+    expect(b.uiWorkspace.startSession).toHaveBeenCalledWith('workspace-sparse')
+    // Commands and creation go the way every research seat sends them.
+    expect(await b.tree.run(CHECK)).toBe(OUTCOME)
+    expect(await b.tree.create(NEW_PROJECT)).toBe(PROJECT)
+    expect(b.remote.create).toHaveBeenCalledWith(NEW_PROJECT)
+  })
+
+  it('renames a conversation through its own session, and says why an unknown or refused one failed', async () => {
+    const b = await treeBench()
+    await b.tree.renameConversation('session-a' as SessionId, 'Measured sample')
+    expect(b.sessions.binding).toHaveBeenCalledWith('session-a')
+    expect(b.renames.get('session-a')).toHaveBeenCalledWith('Measured sample')
+    b.renames.get('session-a')!.mockResolvedValueOnce(bad('the title is too long'))
+    await expect(b.tree.renameConversation('session-a' as SessionId, 'x'.repeat(500))).rejects.toThrow('the title is too long')
+    await expect(b.tree.renameConversation('session-gone' as SessionId, 'Gone')).rejects.toThrow('unknown session "session-gone"')
+  })
+
+  it('archives one conversation, and takes a folder out of the list with every conversation it still lists', async () => {
+    const b = await treeBench({ workspaces: [['w-legacy', '/legacy', ['s-1', 's-2', 's-3']]], archived: ['s-2'] })
+    await b.tree.archiveConversation('s-9' as SessionId)
+    expect(b.uiWorkspace.archiveSession.mock.calls).toEqual([['s-9']])
+    b.uiWorkspace.archiveSession.mockClear()
+    await b.tree.removeFolder('w-legacy' as WorkspaceId)
+    // The conversation archived already stays as it is; the registration goes after the others.
+    expect(b.uiWorkspace.archiveSession.mock.calls).toEqual([['s-1'], ['s-3']])
+    expect(b.workspaces.delete).toHaveBeenCalledWith('w-legacy')
+    // A folder the list no longer carries archives nothing and is still unregistered.
+    b.uiWorkspace.archiveSession.mockClear()
+    await b.tree.removeFolder('w-gone' as WorkspaceId)
+    expect(b.uiWorkspace.archiveSession).not.toHaveBeenCalled()
+    expect(b.workspaces.delete).toHaveBeenLastCalledWith('w-gone')
+  })
+
+  it('shows a folder in the file manager, and passes the host\'s refusal on', async () => {
+    const b = await treeBench()
+    await b.tree.reveal('/research/sparse')
+    expect(b.remoteSession.openWorkspacePath).toHaveBeenCalledWith({ path: '/research/sparse', action: 'reveal' }, expect.any(AbortSignal))
+    b.remoteSession.openWorkspacePath.mockResolvedValueOnce(bad('no desktop on this host'))
+    await expect(b.tree.reveal('/research/sparse')).rejects.toThrow('no desktop on this host')
+  })
+
+  it('searches conversation text through the shell\'s session search, within its bound', async () => {
+    const b = await treeBench()
+    const signal = new AbortController().signal
+    expect(await b.tree.searchConversations('42', signal)).toEqual({ items: [{ sessionId: 'session-a', snippet: 'measured 42' }], hasMore: false })
+    expect(b.sessions.search).toHaveBeenCalledWith('42', signal)
+    b.sessions.search.mockResolvedValueOnce(bad('content search is off'))
+    await expect(b.tree.searchConversations('42', signal)).rejects.toThrow('content search is off')
+    expect(b.tree.searchResultLimit).toBe(20)
   })
 })

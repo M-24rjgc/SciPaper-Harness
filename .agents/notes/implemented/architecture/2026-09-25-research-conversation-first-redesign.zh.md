@@ -198,6 +198,31 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - **注入面。** `pickDirectory` 答复 `FolderPick`（`picked`、`cancelled`、`unavailable`）；入口页的各个位置共用 `ResearchEntryInjected`。插件另注入 `remote.session` 与 `workspaces`。
 - **测试与基准。** `entry.client.spec.ts`、`entry-screen.client.spec.tsx`、`folder-menu.client.spec.tsx` 覆盖流程和各个位置；`plugin.client.spec.ts` 覆盖注册、启动时的示例规则、移动期间的保护和迟到打开的保护。研究 Web e2e 启动即落在脚手架固定的研究存放位置里的草稿上，把它连同输入框文字移到输入的文件夹并重命名，「新研究」复用草稿并显示提示，对已有文件的文件夹先询问，再把输入的问题带进已有的研究并丢弃草稿。76 个继承的 ARIA 基准去掉了输入框的文件夹按钮，两个 `lifecycle-chrome` 入口页基准还去掉了入口按钮，只改这些行。
 
+### 第 10 步：「移出列表」归档一项研究的对话；内容搜索在第一次搜索时开启（宿主与组合包）
+
+- **`archive-project {projectId}`**，即桌面端的「移出列表」。它归档这项研究中尚未归档的每段顶层对话：绑定到它的那段，以及每段在它文件夹里工作、且不在其中嵌套的其他研究里的对话。归档用的是 `ctx.workspaceRegistry.archiveSession`，与 shell 的归档操作和「已归档会话」设置页经由 `workspaces` Remote 用到的是同一套归档；会话控制器本身没有归档接口。在归档第一段对话之前，记录先存下 `archivedAt` 和这次要归档的对话 id（`archivedConversations`，一段都没归档时不设置）。委派出的子会话（`origin: subagent`）不受影响，磁盘上的内容都不改变。再次执行时保留 `archivedAt`，并归档此后新增的对话。对示例拒绝执行（`EXAMPLE_READ_ONLY`），对未动过的草稿也拒绝（`还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list`）。
+- **`unarchive-project {projectId}`**，即「恢复」，先取消归档 `archivedConversations` 中的对话，再清除这两个字段，因此中途中断的恢复可以重做。用户在移出之前自己归档的对话保持归档；仍在列表中的研究原样答复。
+- **用户自己的命令。** 这两个命令和草稿命令一样在创建队列上逐一运行，因此研究不会在还是草稿时被归档。`execute` 拒绝 agent 调用它们；`PERSON_ONLY` 列出全部五个命令（`isPersonCommand`）。
+- **推导出的标记。** `archivedAt` 存在时，`publicProject` 加上 `archived: true`；它从不存储。
+- **哪些地方跳过已移出的研究。** 后台观测（`refreshRunning`）跳过它的运行，直到研究恢复；`experiment-wait` 与 `experiment-refresh` 在被调用时仍会观测运行。`blankRecord` 要求没有 `archivedAt`，因此已移出的研究永远不会被快照标为草稿，也不会被 `start-new` 重新打开。
+- **`showExamples`。** 可选的布尔偏好，与 `researchHome` 一样通过 `configure` 保存；没有设置时视为 true。
+- **内容搜索（D17）。** Web 组合包的 `session-query-sqlite` 行设为 `openAt: first-search`，并重述 base 行的另一个键 `path: ':memory:'`。`independence.spec.ts` 固定整份配置。`lazy-search-startup.compat.spec.ts` 要求 web 行为 `first-search`、base 行为 `never`。
+- **测试。** `loader.spec.ts` 覆盖跨重启的移出与恢复、用户此前自己的归档、嵌套研究、委派出的子会话、草稿、示例、`showExamples`，以及恢复之前不被观测的运行。`drafts.spec.ts` 覆盖 `blankRecord` 中的 `archivedAt`。
+
+### 第 10 步：侧栏列出研究及其对话（ui-research）
+
+- **研究树。** `ResearchTree.tsx` 在 `hideDeveloperCells` 下以优先级 −1 占据侧栏的浏览位置（`sidebar.workspaces`），与其他开发者单元格的遮蔽相同；继承的 Web 场景仍用外壳的 Workspace 浏览器。浏览器仍注册在下面，所以它的 `sidebar.workspaces.directoryFlow` 子插槽一直为文件夹选择器保持声明（`plugin.client.spec.ts` 检查这一点）。「研究项目」卡片（`ProjectEntry.tsx`、`sidebar.projects`）在所有组合中都已去掉。
+- **对话归属**（`treeValues.ts`）：它绑定的研究，或文件夹包含它工作目录的研究；否则列出它的 Workspace 所在的研究；否则就是那个 Workspace，显示为没有研究的文件夹；再否则不属于任何文件夹。已归档的对话、子会话和视觉检查的审阅对话从不成行，但运行中的子会话仍会点亮它所在研究的圆点。移出列表（`archived`）的研究连同对话一起隐藏，它的文件夹也不算没有研究的文件夹。研究被移出期间，从已归档对话列表里单独恢复的对话仍然隐藏，直到研究恢复。
+- **各行。** 自己的研究按最近使用排列（已开始的最新对话或研究记录，以最后变化的为准）。一行显示标题（`untitled` 时为斜体占位名「新研究」）、右侧的 `standingPhrase`（通用模式下不显示）和一个圆点：研究的某段对话在等待批准、计划审阅或问题回答（会话的待处理交互）时显示提醒色，有对话或它的实验在运行时显示进行中的蓝色。未动过的草稿是没有子行的一行。展开的研究按新到旧列出顶层对话；空白对话只在它显示在屏幕上时出现（斜体「新对话」）。最后一行是「＋ 新对话」（`startSession(workspaceId)`），在那段空白对话上和示例里不显示。
+- **点击。** 点研究会打开它已开始的最新对话，没有时打开它文件夹的空白对话，示例里从不这样做；点屏幕上正在显示的研究则折叠或展开。草稿打开它的空白对话。
+- **分组。** 「示例」在最下面：用户还没有自己的研究或正在看示例时展开，`showExamples` 为 false 时隐藏。只有在某个已登记的文件夹没有研究，或有对话不属于任何文件夹时，才出现「其他文件夹」。用户手动展开或收起的行，在页面存续期间把这个选择保存在研究树自己的 store 里。
+- **菜单。** 研究：「重命名」（`rename`）、「在资源管理器中打开」（`session.openWorkspacePath` reveal，仅在 `canOpenWorkspacePath` 时）、「移出列表」（`archive-project`）；草稿没有「移出列表」，示例只有「在资源管理器中打开」。对话：「重命名」（会话自己的 `rename`）和「移出列表」（`uiWorkspace.archiveSession`）；示例的对话没有菜单。文件夹：「设为研究…」先问名称，再以该文件夹为根发送 `create`；「移出列表」先归档这个文件夹列出的每段对话，再删除它的 Workspace 登记。失败原因显示在对应行下面。
+- **搜索与窄栏。** 标题行的搜索即时匹配研究名称和对话标题，并在最后一次按键 250 毫秒后通过 `sessions.search` 搜索对话内容；结果是一个平铺列表，写明每段对话所在的位置和匹配的段落。收起的窄栏只保留搜索按钮：点击后展开侧栏，并在滑动结束后把光标放进搜索框。
+- **键盘与 ARIA。** 平铺的 `role="tree"`，每行带 `aria-level`、`aria-posinset`、`aria-setsize`、`aria-expanded` 和 `aria-selected`；同一时间只有一行在 Tab 顺序里；上下键移动，右键展开或进入子行，左键收起或回到上一级，Home、End 到两端，Enter、空格激活，菜单键或 Shift+F10 打开行菜单；菜单关闭后焦点回到这一行。
+- **设置 › 科研。** 「显示示例研究」是一个开关，通过 `configure` 立即保存；「已移出的研究」列出每项移出列表的研究及其文件夹和「恢复」（`unarchive-project`）。保存模型分工表单时保留 `showExamples`。
+- **ui-research 的其他改动。** `land()` 和「换到另一项研究」都跳过移出列表的研究；对移出列表的研究点「打开它」时，会先恢复它，再带入草稿。`standingText` 改为基于新的 `standingPhrase`。
+- **测试与基准。** `tree-values.client.spec.ts` 和 `research-tree.client.spec.tsx` 覆盖推导、点击、键盘、菜单、对话框、搜索与窄栏；`plugin.client.spec.ts` 覆盖注册、被遮蔽浏览器声明的子插槽和研究树的注入面；设置、入口与文件夹菜单的测试覆盖移出列表的研究。研究 Web e2e 读取研究树，打开对话和「＋ 新对话」，按对话内容找到对话，重命名、移出并恢复一项研究，并切换「显示示例研究」；已完成回复的场景改为经「其他文件夹」打开它的对话。`lifecycle-chrome` 的 `hero` 和 `plan-active` 两个基准去掉了「研究项目」导航，只改这些行。
+
 ## 考虑过的其他方案
 
 **直接移除这些行，而不是禁用。** 遥测和 `/feedback` 行属于 base 组合包，headless、ACP 和 SDK profile 都共用它，在那里移除会一并改变这些 profile。Web 的行本可以从 insert 列表中删掉，但禁用的行把这个选择原地写明，部署方也只需一行就能重新打开；这与 Web patch 禁用而不是删掉 agent 层各行的理由相同。
@@ -300,6 +325,32 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 
 **读不到记录时让 `land()` 新建草稿（第 9 步）。** 在快照漏掉的研究旁边再建一份草稿会造成重复；说明原因，才能把选择留给用户。
 
+**由浏览器逐段归档对话（第 10 步）。** 浏览器不掌握「最内层研究」规则，也不会记下自己归档了哪些；标签页中途关闭会让一项研究只归档了一半，且无从恢复。
+
+**像 `discard-draft` 那样删除记录或 Workspace 注册（第 10 步）。** 移出必须可以撤销；删除 Workspace 还会丢掉这个文件夹的会话登记。
+
+**由「每段对话都已归档」推导「已移出」（第 10 步）。** 没有对话的研究，或用户逐段自己归档了对话的研究，看起来会完全一样；恢复时还会取消归档用户自己归档的对话。
+
+**先归档、后存记录（第 10 步）。** 两步之间出错会留下已归档的对话，却没有记录说明是哪些。先存记录的最坏情况只是记下了一个从未归档的 id，注册表的取消归档会忽略它。
+
+**把委派出的子会话也归档（第 10 步）。** shell 从不单独列出它们；归档后它们会作为单独的行出现在「已归档会话」页上。
+
+**拒绝对已移出研究的命令（第 10 步）。** 它的运行本应继续进行，用户也可以从「已归档会话」重新打开一段已归档的对话；只停止后台观测。
+
+**改造外壳的 Workspace 浏览器（第 10 步）。** 它列出的是文件夹而不是研究，并提供添加工作区、视图选项、未分组、分叉会话和删除工作区；去掉这些要改外壳代码。遮蔽则让外壳保持原样。
+
+**用嵌套的 `role="group"` 结构（第 10 步）。** 带 `aria-level`、`aria-posinset` 和 `aria-setsize` 的平铺树是合法的 ARIA，而且键盘只需遍历一个有序的行列表。
+
+**把展开状态保存到重新加载之后（第 10 步）。** 重新加载后，屏幕上的研究会自己展开；而已移出或已丢弃的研究的键会越积越多。
+
+**移植浏览器的拖动排序（第 10 步）。** 方案接受按最近使用排序，手动顺序对研究没有意义。
+
+**「移出列表」只删除文件夹的 Workspace 登记（第 10 步）。** 它的对话会重新出现在「未归入文件夹的对话」里；先归档这些对话，才能把它们从所有列表中移走，之后仍可从「已归档会话」恢复。
+
+**读取目标投影来决定进行中的圆点（第 10 步）。** ui-research 里的列表行没有带类型的目标状态，读取它要引入 goal 包的类型；运行中的标记已经覆盖了目标的各轮。
+
+**把单独恢复的对话列在「其他文件夹」下（第 10 步）。** 那会把一项已移出研究的对话说成不属于任何文件夹；恢复研究后，它会回到本来的位置。
+
 ## 影响
 
 - 只有当用户配置了 DeepSeek 模型，或存入 DeepSeek 密钥时，Web 与 Desktop 组合才会连接 DeepSeek 服务；存入密钥也会启用 `web_search` 背后的 DeepSeek 网页搜索服务。它们运行的任何部分都不会创建 `.anonymous-user-id`。插件设置页已禁用，GUI 中没有网页搜索的开关。
@@ -348,3 +399,14 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - 移动后的研究对话若五秒内没有出现在列表里，输入的草稿留在已归档的草稿对话里，入口行说明原因。
 - 「换到另一项研究」之后，未动过的草稿仍在列表里，直到下一次「新研究」重新打开它或一次移动丢弃它。
 - 按钮显示文件夹对应 Workspace 的名字，因此重命名未能改写 Workspace 标题的研究，按钮上显示文件夹名。
+- 已移出的研究仍在 `projects()` 中：agent 的 `research_project list`、`projectAt` 以及 `relocate` 的 `existing` 与 `nested` 答复仍能找到它（`archived: true`），在它文件夹里打开的对话仍属于它。
+- 这两个命令都会增加记录的 `revision` 并更新 `updatedAt`，因此刚恢复的研究算作刚用过。
+- 移出之后才在它文件夹里开始的对话，要等再次执行 `archive-project` 才会归档。
+- 用户从「已归档会话」单独取消归档的对话仍留在 `archivedConversations` 中；之后恢复研究对它不再有任何作用。
+- 研究移出期间结束的运行，在恢复后的第一次观测时收集结果。
+- 内容搜索使用内存索引，每次启动后在第一次搜索时建立。
+- 挂载 ui-research 但未开启 `hideDeveloperCells` 的组合，侧栏显示外壳的 Workspace 浏览器，没有研究列表，因为卡片已经去掉。
+- 研究树不能拖动排序，也没有视图选项；哪些行展开在重新加载后会重置。
+- 两轮之间的目标、排队中的实验和状态待确认的实验都不显示圆点。
+- 移出列表的文件夹会失去 Workspace 登记；它的对话从「已归档会话」恢复后，成为不属于任何文件夹的对话。
+- 研究被移出期间单独恢复的对话，在研究恢复之前哪里都不显示。

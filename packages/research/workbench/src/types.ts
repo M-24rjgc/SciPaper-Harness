@@ -373,6 +373,23 @@ export interface ResearchProject {
    * `relocate`, never stored; absent otherwise.
    */
   draft?: boolean | undefined
+  /**
+   * When the person removed the research from the list (移出列表,
+   * `archive-project`); absent while it is listed. Its folder and its runs
+   * are untouched, but its runs are not observed in the background while it is set.
+   */
+  archivedAt?: string | undefined
+  /**
+   * The conversations `archive-project` archived, which `unarchive-project`
+   * unarchives again; absent when it archived none. A conversation the
+   * person had archived before is not among them and stays archived.
+   */
+  archivedConversations?: string[] | undefined
+  /**
+   * True while the research is removed from the list (`archivedAt` is set).
+   * Derived for every snapshot and command answer, never stored; absent otherwise.
+   */
+  archived?: boolean | undefined
   /** The mode pack the project runs in; `general` adds nothing to the research tools. */
   mode: string
   /** The route through the mode, for packs that have routes. */
@@ -442,6 +459,11 @@ export interface ResearchPreferences {
    * `<profile home>/SciPaper` applies.
    */
   researchHome?: string | undefined
+  /**
+   * Whether the sidebar lists the example researches (设置 › 科研 ›
+   * 显示示例研究, Show example researches); absent reads as true.
+   */
+  showExamples?: boolean | undefined
 }
 export interface ComponentStatus {
   id: 'python' | 'uv' | 'latex' | 'drawio'
@@ -878,6 +900,18 @@ export type ResearchCommand =
    * it made. The desktop's command only.
    */
   | { action: 'discard-draft'; projectId: ProjectId }
+  /**
+   * 移出列表 (Remove from list): archive every top-level conversation of the
+   * research that is not archived yet, and mark the record `archivedAt`;
+   * nothing on disk changes. Refused for an example and for the untouched
+   * draft. The desktop's command only.
+   */
+  | { action: 'archive-project'; projectId: ProjectId }
+  /**
+   * 恢复 (Restore): unarchive the conversations `archive-project` archived and
+   * list the research again. The desktop's command only.
+   */
+  | { action: 'unarchive-project'; projectId: ProjectId }
 
 export interface ResearchTask {
   id: string

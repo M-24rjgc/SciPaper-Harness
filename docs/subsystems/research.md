@@ -40,17 +40,31 @@ A research is the untouched draft, marked `draft: true` in snapshots and in thes
 - its record holds nothing but its placeholder title (`untitled`, titled 新研究) and its autonomy: the general mode with no mode chosen, an empty brief, and no sources, claims, files, decisions, environments, runs, compiles, reviews or checks (`blankRecord`, `src/drafts.ts`), so choosing an autonomy on the entry screen keeps it the draft;
 - every conversation of it is blank in the session list (no turn started): the one bound to it and each working in its folder, found through `ctx.sessionController.list`;
 - its folder holds only the empty folders a research is created with (`paper`, `figures`, `code`, `data`, `.research`, `exports`), or nothing at all;
-- it is not an example.
+- it is not an example, and it is not removed from the list ([below](#remove-from-list)).
 
 The three commands are the desktop's alone: `execute` refuses them to the agent, and the model's `research_project` has no such action.
 
 | Command | Effect |
 |---|---|
 | `start-new {}` | Answers `{project, sessionId}`: the draft (the newest, should there be more than one), or a new research at `<research home>/<yyyy-mm-dd>-<n>` with the smallest free `n` for the local date, made of its record, its folder's Workspace (named after the folder) and one blank conversation. A draft folder removed by hand is made again; a draft whose conversation was archived gets a new blank one. It is refused when the research home lies among the examples, inside another research, or in a system folder. |
-| `relocate {projectId, root, confirmNonEmpty?}` | Only on the draft; `outcome` says what the folder is. `example`: among the examples. `existing`: it already is the research in `project` (with its bound `sessionId`). `nested`: it lies inside the research in `project`, which may be the draft itself. `needs-confirm`: it holds files and `confirmNonEmpty` is not set. Otherwise `moved`: the research is created there, with the draft's autonomy and a blank conversation, and the draft is discarded; `project` and `sessionId` are the new research's. The draft's own folder answers `moved` with the draft unchanged. |
+| `relocate {projectId, root, confirmNonEmpty?}` | Only on the draft; `outcome` says what the folder is. `example`: among the examples. `existing`: it already is the research in `project` (with its bound `sessionId`). `nested`: it lies inside the research in `project`, which may be the draft itself. Either may name a research removed from the list, which then carries `archived: true`. `needs-confirm`: it holds files and `confirmNonEmpty` is not set. Otherwise `moved`: the research is created there, with the draft's autonomy and a blank conversation, and the draft is discarded; `project` and `sessionId` are the new research's. The draft's own folder answers `moved` with the draft unchanged. |
 | `discard-draft {projectId}` | Only on the draft: archives its conversations, deletes its folder's Workspace registration and its record, then removes each scaffold folder that is still empty, and the root when the draft created it (`createdRoot`). A folder that holds anything stays; one that cannot be removed is logged. |
 
 A research that has started is neither moved nor discarded: `这项研究已经开始，不能再更改位置或丢弃 / This research has started, so it can no longer be moved or discarded`. A conversation never becomes blank again, so a research found to hold a started conversation is not listed again. When the session list cannot be read, snapshots mark no draft and `start-new` fails rather than make a second one.
+
+<a id="remove-from-list"></a>
+## Removing a research from the list
+
+移出列表 (Remove from list) and 恢复 (Restore) are the desktop's `archive-project` and `unarchive-project` commands. Like the draft commands, `execute` refuses them to the agent.
+
+| Command | Effect |
+|---|---|
+| `archive-project {projectId}` | Archives each top-level conversation of the research that is not archived yet: the one bound to it, and each working in its folder and in no research nested there. It archives them through the Workspace registry, the same archive as the shell's own archive action and its archived-conversations settings page. Before the first one is archived, the record stores `archivedAt` and the ids it archives (`archivedConversations`). Delegated children are left alone, and nothing on disk changes. Repeating it keeps `archivedAt` and archives any conversation added since. It is refused for an example, and for the untouched draft with `还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list`. |
+| `unarchive-project {projectId}` | Unarchives the conversations in `archivedConversations`, then clears both fields. A conversation the person had archived before the removal stays archived. A research in the list is answered unchanged; an example is refused. |
+
+Snapshots and command answers mark a removed research `archived: true`, derived from `archivedAt` and never stored. Its runs keep running, but background observation skips them until the research is restored; `experiment-wait` and `experiment-refresh` still observe a run when asked. A removed research is never the draft.
+
+The `showExamples` preference (设置 › 科研 › 显示示例研究, Show example researches) says whether the sidebar lists the examples. When it is absent, it reads as true.
 
 ## Mode packs
 
@@ -157,7 +171,7 @@ The service refuses only what would be unsafe or untrue, never work in progress:
 
 ## Concurrency
 
-Each project's record changes one at a time. Project creation and the draft commands also run one at a time, so two creations of one folder record one project and two 新研究 clicks open one draft. Slow work (compiling, rendering pages, importing and extracting sources, building environments, launching and observing experiments) runs on a detached copy of the record outside that queue, and only its result is applied inside it, so a compile never holds up a save and an unreachable SSH host never holds up the project. A run being launched is left alone by observers until its launch is recorded, and an observation never overrides a run that settled in the meantime.
+Each project's record changes one at a time. Project creation, the draft commands, `archive-project` and `unarchive-project` also run one at a time, so two creations of one folder record one project and two 新研究 clicks open one draft. Slow work (compiling, rendering pages, importing and extracting sources, building environments, launching and observing experiments) runs on a detached copy of the record outside that queue, and only its result is applied inside it, so a compile never holds up a save and an unreachable SSH host never holds up the project. A run being launched is left alone by observers until its launch is recorded, and an observation never overrides a run that settled in the meantime.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -176,8 +190,8 @@ One durable owner for each project's evidence, files, decisions and execution re
 ```ts cordis-catalog
 /**
  * Read detached project snapshots and non-secret component settings.
- * @returns every project without source bodies, with where it stands and whether it is the untouched draft,
- * the preferences, the research home in effect and the component status.
+ * @returns every project without source bodies, with where it stands and whether it is the untouched draft
+ * or removed from the list, the preferences, the research home in effect and the component status.
  */
 @Remote async snapshot(): Promise<ResearchSnapshot>
 
@@ -219,8 +233,9 @@ standing(project: ResearchProject): Promise<ResearchStanding>
 async createProject(request: CreateProjectRequest, sessionId?: string): Promise<ResearchProject>
 
 /**
- * Save model roles, explicitly bound tool locations and the research home, never model secrets.
- * A research home among the examples is refused.
+ * Save model roles, explicitly bound tool locations, the research home and
+ * whether examples are listed, never model secrets. A research home among
+ * the examples is refused.
  * @param preferences - the complete preference record.
  * @returns the preferences as stored.
  */
@@ -281,7 +296,8 @@ activeGoals(project: ResearchProject): ResearchGoal[]
 /**
  * Dispatch a validated tool or desktop command. The desktop receives a job
  * for long operations; the agent waits for the result inside its tool call.
- * `start-new`, `relocate` and `discard-draft` are the desktop's alone.
+ * `start-new`, `relocate`, `discard-draft`, `archive-project` and
+ * `unarchive-project` are the desktop's alone.
  * @param raw - the command as received.
  * @param signal - cancellation of the call.
  * @param actor - who acts: the desktop user or the agent.

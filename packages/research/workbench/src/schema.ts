@@ -87,6 +87,7 @@ export const preferencesSchema = z.object({
   uv: z.string().optional(),
   texBin: z.string().optional(),
   researchHome: z.string().refine(path => isAbsolute(path), 'the research location must be an absolute path').optional(),
+  showExamples: z.boolean().optional(),
 }) satisfies z.ZodType<ResearchPreferences>
 
 const evidenceSchema = z.object({
@@ -158,6 +159,7 @@ const progressSchema = z.object({
 
 const projectSchema = z.object({
   id, workspaceId: id, title: id, untitled: z.boolean().optional(), root: id, createdRoot: z.boolean().optional(),
+  archivedAt: id.optional(), archivedConversations: z.array(id).optional(),
   mode: id, route: z.string().optional(), venue: z.string().optional(),
   modeReason: z.string().optional(), modeSetBy: z.enum(['user', 'agent']).optional(),
   autonomy: z.enum(autonomies), brief: z.string(),
@@ -429,4 +431,6 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start-new') }),
   z.object({ ...base, action: z.literal('relocate'), root: id, confirmNonEmpty: z.boolean().optional() }),
   z.object({ ...base, action: z.literal('discard-draft') }),
+  z.object({ ...base, action: z.literal('archive-project') }),
+  z.object({ ...base, action: z.literal('unarchive-project') }),
 ])

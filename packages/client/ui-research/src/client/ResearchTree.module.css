@@ -1,0 +1,505 @@
+/* The research tree fills the sidebar's browsing seat: header, then the scrolling list; the rail keeps one 36px search control. */
+.root {
+  --research-tree-edge: 12px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding-right: var(--research-tree-edge);
+}
+
+.root.rail {
+  padding-right: 0;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  margin: 2px -4px 4px 0;
+  padding-left: 4px;
+  box-sizing: border-box;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.heading {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.iconButton,
+.railButton,
+.clear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  corner-shape: round;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.iconButton:hover,
+.railButton:hover,
+.clear:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.railButton {
+  width: 36px;
+  height: 36px;
+  margin-bottom: 12px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.clear {
+  width: 24px;
+  height: 24px;
+}
+
+.iconButton:focus-visible,
+.railButton:focus-visible,
+.clear:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 2px 0 9px;
+  box-sizing: border-box;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 10px;
+  color: var(--dsw-alias-label-caption);
+}
+
+.search:focus-within {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.searchInput {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.searchInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The list seat is always mounted so the sidebar foot never moves. */
+.area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-left: -4px;
+  margin-right: calc(-1 * var(--research-tree-edge));
+  padding-left: 4px;
+}
+
+.rail .area {
+  margin: 0;
+  padding: 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-left: -4px;
+  padding: 0 2px 16px 4px;
+  scrollbar-gutter: stable;
+}
+
+/* Bottom fade over the last rows, in the sidebar's own fill. */
+.fade {
+  position: absolute;
+  left: 0;
+  right: var(--research-tree-edge);
+  bottom: 0;
+  height: 24px;
+  background: linear-gradient(to bottom, transparent, var(--dsw-specific-sidebar-fill));
+  pointer-events: none;
+}
+
+.item {
+  display: block;
+  border-radius: 8px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+}
+
+.item + .item {
+  margin-top: 2px;
+}
+
+.item:hover,
+.item.menuOpen {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--dsw-alias-brand-primary);
+}
+
+/* The conversation on screen, and the untouched draft while it is: the brand's tint and text. */
+.item.selected {
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-brand-primary);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.lead {
+  flex: none;
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-caption);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.italic {
+  font-style: italic;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.selected .italic {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.conversation .line {
+  height: 30px;
+  padding-left: 28px;
+}
+
+.conversation .lead {
+  display: none;
+}
+
+.conversation .label {
+  font-size: 13px;
+}
+
+.add {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.add .line {
+  height: 30px;
+  padding-left: 26px;
+}
+
+.add .label {
+  font-size: 13px;
+}
+
+.add:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.group {
+  margin-top: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.group .line {
+  height: 28px;
+}
+
+.group .label {
+  font-size: 12px;
+}
+
+.arrow {
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.arrowOpen {
+  transform: rotate(90deg);
+}
+
+.arrowCurrent {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.trail {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.exampleTag {
+  flex: none;
+  padding: 0 5px;
+  border: 0.5px dashed var(--dsw-alias-border-l4);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  font-style: normal;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The row's dot: ongoing blue while something runs, warn while something waits for the person. */
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  corner-shape: round;
+}
+
+.dot[data-signal='ongoing'] {
+  background: var(--dsw-alias-state-ongoing-primary);
+  box-shadow: 0 0 0 2px var(--dsw-alias-state-ongoing-tertiary);
+  animation: research-tree-pulse 1.6s var(--ds-ease-in-out) infinite;
+}
+
+.dot[data-signal='waiting'] {
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+@keyframes research-tree-pulse {
+  50% { opacity: 0.45; }
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Row actions surface on hover, on keyboard focus and while their menu is open, in the standing's place. */
+.actions {
+  flex: none;
+  display: none;
+  align-items: center;
+}
+
+.item:hover .actions,
+.item:focus-visible .actions,
+.item.menuOpen .actions {
+  display: inline-flex;
+}
+
+.item:hover .trail,
+.item:focus-visible .trail,
+.item.menuOpen .trail {
+  display: none;
+}
+
+.more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.more:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.error {
+  margin: 0;
+  padding: 0 8px 6px 28px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+  white-space: normal;
+}
+
+.empty,
+.status {
+  margin: 0;
+  padding: 12px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* A search result: its name, then where it lives and the passage that matched. */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 0 0 4px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--dsw-alias-label-primary);
+}
+
+.result.research {
+  padding-bottom: 0;
+}
+
+.result:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.result.selected {
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-brand-primary);
+}
+
+.result:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
+}
+
+.meta {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.place {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.snippet {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The dialogs' one field. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: min(400px, calc(100vw - 80px));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.input {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-1);
+  font: inherit;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrow {
+    transition: none;
+  }
+
+  .dot[data-signal='ongoing'] {
+    animation: none;
+  }
+}

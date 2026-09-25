@@ -144,10 +144,14 @@ describe('where the person lands', () => {
     workspace('w-example', '/demo/example', []), workspace('w-draft', '/home/SciPaper/2026-09-26-1', []),
   ], ['s-archived'])
 
-  it('is nowhere of the person\'s own without a research of theirs: examples, the draft and removed folders do not count', () => {
+  it('is nowhere of the person\'s own without a research of theirs: examples, the draft, removed folders and removed researches do not count', () => {
     const removed = research('Removed', '/research/removed', 'w-removed')
-    const list = listOf([session('s-example', '/demo/example', { updatedAt: 9000 }), session('s-draft', '/home/SciPaper/2026-09-26-1', { blank: true })])
-    expect(landingTarget([example, draft, removed], list, registered)).toBeUndefined()
+    const archived = research('Taken out of the list', '/research/sparse', 'w-sparse', { archived: true })
+    const list = listOf([
+      session('s-example', '/demo/example', { updatedAt: 9000 }), session('s-draft', '/home/SciPaper/2026-09-26-1', { blank: true }),
+      session('s-restored', '/research/sparse', { updatedAt: 9000 }),
+    ])
+    expect(landingTarget([example, draft, removed, archived], list, registered)).toBeUndefined()
   })
 
   it('is the research used last, on its newest conversation that has started', () => {
@@ -447,6 +451,28 @@ describe('moving the untouched draft', () => {
     expect(carry).toHaveBeenCalledWith('w-other')
     expect(w.command).toHaveBeenCalledOnce()
     expect(w.reread).toHaveBeenCalledOnce()
+  })
+
+  it('restores a research the person removed from the list before it carries the draft there', async () => {
+    const w = start()
+    const removed = research('Evidence study', '/research/other', 'w-other', { archived: true })
+    w.setProjects([draft, removed])
+    w.listWorkspaces([workspace('w-draft', draftRoot, ['s-draft']), workspace('w-other', '/research/other', ['s-other-blank'])])
+    const carry = vi.fn(() => { w.select('s-other-blank') })
+    w.answers.push((request) => {
+      expect(request).toEqual({ action: 'unarchive-project', projectId: removed.id })
+      // The draft is carried only once the research is back.
+      expect(carry).not.toHaveBeenCalled()
+      return { message: 'Restored' }
+    }, () => ({ message: 'The untouched new research was removed' }))
+    await w.flows.adopt(draft.id, 'w-other' as WorkspaceId, carry)
+    expect(carry).toHaveBeenCalledWith('w-other')
+    expect(w.command).toHaveBeenLastCalledWith({ action: 'discard-draft', projectId: draft.id })
+    // Before the record arrives there is nothing to restore.
+    const early = world({ projects: null })
+    early.answers.push(() => ({ message: 'removed' }))
+    await early.flows.adopt(draft.id, 'w-other' as WorkspaceId, () => { early.select('s-other-blank') })
+    expect(early.command).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'unarchive-project' }))
   })
 
   it('discards nothing when the other research never opens, and says why a discard failed', async () => {

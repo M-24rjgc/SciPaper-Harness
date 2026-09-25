@@ -31,6 +31,8 @@ kind: "package-reference"
 
 「新研究」是桌面端的 `start-new` 命令：它打开唯一一份未动过的草稿研究，没有时在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一份，连同文件夹的 Workspace 和一段空白对话。`relocate` 把草稿移到用户选择的文件夹，`discard-draft` 删除草稿以及它建立的空文件夹。研究存放位置取用户的 `researchHome` 偏好，没有时取配置的 `researchHome`，再没有时取 `<用户目录>/SciPaper`。agent 不能发送这几个命令（[详情](../../../docs/subsystems/research.zh.md#new-research-draft)）。
 
+「移出列表」是桌面端的 `archive-project`：它归档这项研究的对话，并在记录上标记 `archivedAt`，磁盘上的内容都不改变；它的运行不再被观测，直到 `unarchive-project` 恢复它，并恰好取消归档它当初归档的那些对话。agent 同样不能发送这两个命令（[详情](../../../docs/subsystems/research.zh.md#remove-from-list)）。
+
 ### 何时选用
 
 当 agent 需要把一篇论文从想法或已有结果一路推进到投稿，并为每份资料、每个文件、每个数字保留来源时，选用它。它负责记录与检查；工作由 agent、目标（goal）与科研技能推进，因此普通的编码会话用不上它。
@@ -79,7 +81,7 @@ kind: "package-reference"
 
 | 源码 | 内容 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 服务本体：项目生命周期、新研究草稿、命令分派、项目队列、运行观测，以及每段对话的权限预设 |
+| [`src/index.ts`](src/index.ts) | 服务本体：项目生命周期、新研究草稿、移出列表、命令分派、项目队列、运行观测，以及每段对话的权限预设 |
 | [`src/drafts.ts`](src/drafts.ts) | 新研究：研究存放位置、草稿文件夹的命名、未动过的草稿包含什么，以及删除它的空文件夹 |
 | [`src/checks.ts`](src/checks.ts) | `research_check`：每一项基础检查、通过服务提供的执行器运行的模式门禁，以及按模式要求得出的阶段进度 |
 | [`src/progress.ts`](src/progress.ts) | 项目的进展（由 `research_check` 的报告逐份并入），以及 `standing`：给人、项目简报和对话标题栏看的项目现状 |

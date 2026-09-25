@@ -82,10 +82,16 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
   | 'board-get' | 'board-update' | 'board-refresh' | 'board-view'
-/** The person's commands that open, move or remove the untouched draft research; the agent never sends them. */
-type DraftCommand = Extract<ResearchCommand, { action: 'start-new' | 'relocate' | 'discard-draft' }>
+/**
+ * The person's commands: open, move or remove the untouched draft research,
+ * and remove a research from the list or restore it; the agent never sends them.
+ */
+type PersonCommand = Extract<ResearchCommand, { action: 'start-new' | 'relocate' | 'discard-draft' | 'archive-project' | 'unarchive-project' }>
+const PERSON_ACTIONS: ReadonlySet<ResearchCommand['action']> = new Set<PersonCommand['action']>([
+  'start-new', 'relocate', 'discard-draft', 'archive-project', 'unarchive-project',
+])
 /** Commands on one existing project. */
-type ProjectCommand = Exclude<ResearchCommand, DraftCommand>
+type ProjectCommand = Exclude<ResearchCommand, PersonCommand>
 /** Commands that record something in the project. */
 type RecordingCommand = Exclude<ProjectCommand, { action: ReadOnlyAction }>
 /** Commands whose whole effect is a record change. */
@@ -98,10 +104,18 @@ const MODE_QUESTION = '模式与路线'
 const GOAL_PHASE_ORDER: Record<ResearchGoal['phase'], number> = { active: 0, blocked: 1, paused: 2 }
 /** A record change prepared outside the project's lock and applied inside it. */
 type Commit = (project: ResearchProject) => ResearchResponse | Promise<ResearchResponse>
-/** Why the agent is refused a draft command. */
-const PERSON_ONLY = 'start-new, relocate and discard-draft are the person\'s commands (新研究 and 更改位置); the agent never sends them'
+/** Why the agent is refused a person's command. */
+const PERSON_ONLY = 'start-new, relocate, discard-draft, archive-project and unarchive-project are the person\'s commands '
+  + '(新研究, 更改位置, 移出列表 and 恢复); the agent never sends them'
 /** Why relocate or discard-draft is refused: the research is not the untouched draft (any more). */
 const NOT_A_DRAFT = '这项研究已经开始，不能再更改位置或丢弃 / This research has started, so it can no longer be moved or discarded'
+/** Why archive-project is refused on the untouched draft, which 新研究 reopens. */
+const DRAFT_STAYS = '还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list'
+
+/** Whether a command is one of the person's own, which the agent never sends. */
+function isPersonCommand(request: ResearchCommand): request is PersonCommand {
+  return PERSON_ACTIONS.has(request.action)
+}
 
 const evidenceTextSchema = z.array(z.object({ text: z.string(), locator: locatorSchema }))
 
@@ -303,8 +317,8 @@ export class ResearchWorkbench extends TypertRemoteService {
 
   /**
    * Read detached project snapshots and non-secret component settings.
-   * @returns every project without source bodies, with where it stands and whether it is the untouched draft,
-   * the preferences, the research home in effect and the component status.
+   * @returns every project without source bodies, with where it stands and whether it is the untouched draft
+   * or removed from the list, the preferences, the research home in effect and the component status.
    */
   @Remote
   async snapshot(): Promise<ResearchSnapshot> {
@@ -460,8 +474,9 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /**
-   * Save model roles, explicitly bound tool locations and the research home, never model secrets.
-   * A research home among the examples is refused.
+   * Save model roles, explicitly bound tool locations, the research home and
+   * whether examples are listed, never model secrets. A research home among
+   * the examples is refused.
    * @param preferences - the complete preference record.
    * @returns the preferences as stored.
    */
@@ -649,7 +664,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   /**
    * Dispatch a validated tool or desktop command. The desktop receives a job
    * for long operations; the agent waits for the result inside its tool call.
-   * `start-new`, `relocate` and `discard-draft` are the desktop's alone.
+   * `start-new`, `relocate`, `discard-draft`, `archive-project` and
+   * `unarchive-project` are the desktop's alone.
    * @param raw - the command as received.
    * @param signal - cancellation of the call.
    * @param actor - who acts: the desktop user or the agent.
@@ -658,9 +674,9 @@ export class ResearchWorkbench extends TypertRemoteService {
    */
   async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse> {
     const request = commandSchema.parse(raw) as ResearchCommand
-    if (request.action === 'start-new' || request.action === 'relocate' || request.action === 'discard-draft') {
+    if (isPersonCommand(request)) {
       if (actor !== 'user') throw new Error(PERSON_ONLY)
-      return this.draftCommand(request)
+      return this.personCommand(request)
     }
     const project = this.record(request.projectId)
     // An example can be read and checked; nothing is recorded into it, whoever asks.
@@ -743,8 +759,12 @@ export class ResearchWorkbench extends TypertRemoteService {
     }
   }
 
-  /** Open, move or remove the untouched draft; each waits for every creation before it, so two never make two drafts. */
-  private draftCommand(request: DraftCommand): Promise<ResearchResponse> {
+  /**
+   * Open, move or remove the untouched draft, or remove a research from the
+   * list or restore it; each waits for every creation before it, so two
+   * never make two drafts and a research is never archived while it is the draft.
+   */
+  private personCommand(request: PersonCommand): Promise<ResearchResponse> {
     switch (request.action) {
       case 'start-new': return this.serialize(() => this.startNew())
       case 'relocate': return this.serialize(() => this.relocate(request))
@@ -752,6 +772,63 @@ export class ResearchWorkbench extends TypertRemoteService {
         await this.discard(request.projectId)
         return { message: 'The untouched new research was removed' }
       })
+      case 'archive-project': return this.serialize(() => this.archive(request.projectId))
+      case 'unarchive-project': return this.serialize(() => this.unarchive(request.projectId))
+    }
+  }
+
+  /**
+   * archive-project: remove a research from the list. Every top-level
+   * conversation of it (bound to it, or working in its folder and in no
+   * research nested there) that is not archived yet is archived through the
+   * Workspace registry, the archive the shell's own archive action and its
+   * archived-conversations settings page use. The record stores when, and
+   * which conversations it archives, before any is archived, so a removal
+   * cut short can still be restored; repeating it archives any conversation
+   * added since. Delegated children follow their parent and are left alone;
+   * nothing on disk changes.
+   */
+  private async archive(id: ProjectId): Promise<ResearchResponse> {
+    const project = this.record(id)
+    if (isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
+    const projects = this.projects()
+    if ((await this.drafts([project], projects)).has(id)) throw new Error(DRAFT_STAYS)
+    const { items } = await this.ctx.sessionController.list({}, this.lifetime.signal)
+    const archived = new Set<string>(this.ctx.workspaceRegistry.archivedSessionIds)
+    const conversations = conversationsOf(project, projects, items)
+      .filter(conversation => conversation.origin !== 'subagent' && !archived.has(conversation.sessionId))
+      .map(conversation => conversation.sessionId)
+    await this.mutate(id, (current) => {
+      current.archivedAt ??= new Date().toISOString()
+      const recorded = [...new Set([...current.archivedConversations ?? [], ...conversations])]
+      if (recorded.length > 0) current.archivedConversations = recorded
+    })
+    for (const sessionId of conversations) await this.ctx.workspaceRegistry.archiveSession(sessionId)
+    return {
+      message: `Removed from the list: ${conversations.length} conversation(s) archived; its folder and runs are untouched`,
+      project: await this.presented(this.record(id)),
+    }
+  }
+
+  /**
+   * unarchive-project: list a research again. The conversations
+   * archive-project archived are unarchived before the record changes, so a
+   * restore cut short can be repeated; a conversation the person had
+   * archived before stays archived. A research in the list is answered as it is.
+   */
+  private async unarchive(id: ProjectId): Promise<ResearchResponse> {
+    const project = this.record(id)
+    if (isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
+    if (project.archivedAt === undefined) return { message: 'The research is in the list', project: await this.presented(project) }
+    const conversations = project.archivedConversations ?? []
+    for (const sessionId of conversations) await this.ctx.workspaceRegistry.unarchiveSession(sessionId as SessionId)
+    await this.mutate(id, (current) => {
+      delete current.archivedAt
+      delete current.archivedConversations
+    })
+    return {
+      message: `Restored to the list: ${conversations.length} conversation(s) unarchived`,
+      project: await this.presented(this.record(id)),
     }
   }
 
@@ -849,7 +926,7 @@ export class ResearchWorkbench extends TypertRemoteService {
    * confirmed) are reported instead. Otherwise the research is created
    * there, with the draft's autonomy, and the draft is discarded.
    */
-  private async relocate(request: Extract<DraftCommand, { action: 'relocate' }>): Promise<ResearchResponse> {
+  private async relocate(request: Extract<PersonCommand, { action: 'relocate' }>): Promise<ResearchResponse> {
     const draft = this.record(request.projectId)
     if (!(await this.drafts([draft], this.projects())).has(draft.id)) throw new Error(NOT_A_DRAFT)
     if (!isAbsolute(request.root)) throw new Error('Choose an absolute folder')
@@ -1331,8 +1408,9 @@ export class ResearchWorkbench extends TypertRemoteService {
 
   private async refreshRunning(): Promise<void> {
     for (const [id, stored] of this.domain.table('projects').entries()) {
-      // An example's runs are part of its story; they are never observed again.
-      if (isExampleRoot(stored.root)) continue
+      // An example's runs are part of its story and are never observed again; a
+      // research removed from the list keeps its runs, observed again once it is restored.
+      if (isExampleRoot(stored.root) || stored.archivedAt !== undefined) continue
       const snapshot = structuredClone(stored)
       try {
         for (const run of snapshot.experiments.filter(r => this.observable(r))) await this.observe(id, snapshot, run, 'status', this.lifetime.signal)
@@ -1495,7 +1573,7 @@ const MEDIA_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg
 
 /**
  * A project as the desktop reads it: without large source bodies, and with
- * the derived `example` and `draft` flags.
+ * the derived `example`, `draft` and `archived` flags.
  * @param project - the stored record.
  * @param draft - whether the service found it to be the untouched draft.
  * @returns a detached copy.
@@ -1506,6 +1584,7 @@ export function publicProject(project: ResearchProject, draft = false): Research
   for (const environment of result.environments) environment.details = truncateBytes(environment.details, 3000)
   if (isExampleRoot(result.root)) result.example = true
   if (draft) result.draft = true
+  if (result.archivedAt !== undefined) result.archived = true
   return result
 }
 

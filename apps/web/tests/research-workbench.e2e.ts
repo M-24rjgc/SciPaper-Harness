@@ -343,14 +343,88 @@ it('reuses one draft for New research, and carries its typed question into a res
   await saveFailureShot(page, 'research-second-conversation')
 })
 
+it('lists the researches in the sidebar, opens a second conversation, and removes a research from the list until it is restored', async () => {
+  const tree = page.getByRole('tree', { name: 'Researches', exact: true })
+  await tree.waitFor({ timeout: 15000 })
+  // The shell's workspace browser is shadowed: no workspace list, no Add workspace, no view options.
+  expect(await page.getByRole('button', { name: 'Add workspace' }).count()).toBe(0)
+  expect(await page.getByRole('button', { name: 'View options' }).count()).toBe(0)
+  // The research on screen is open on its blank conversation, which carries the typed question;
+  // ＋ New conversation waits until the person leaves it.
+  const research = tree.getByRole('treeitem', { name: /^Evidence study/ })
+  await expect.poll(() => research.getAttribute('aria-expanded'), { timeout: 15000 }).toBe('true')
+  const blank = tree.getByRole('treeitem', { name: 'New conversation', exact: true })
+  await expect.poll(() => blank.getAttribute('aria-selected'), { timeout: 15000 }).toBe('true')
+  const add = tree.getByRole('treeitem', { name: 'New conversation in “Evidence study”', exact: true })
+  expect(await add.count()).toBe(0)
+  // The conversation that has started opens from its row, and ＋ New conversation then offers the blank one again.
+  const bound = scaffold.ctx.research.getProject(projectId).sessionId!
+  await tree.locator(`[data-key="conversation:${bound}"]`).click()
+  await page.getByText('Start from the measured sample', { exact: true }).first().waitFor({ timeout: 15000 })
+  await add.waitFor({ timeout: 15000 })
+  await saveFailureShot(page, 'research-tree')
+  await add.click()
+  await page.getByText('What shall we work on today?', { exact: true }).first().waitFor({ timeout: 15000 })
+  await expect.poll(() => add.count(), { timeout: 15000 }).toBe(0)
+  // The search finds a conversation by what was said in it, through the shell's content search.
+  await page.getByRole('button', { name: 'Search researches and conversations', exact: true }).click()
+  await page.getByRole('textbox', { name: 'Search researches and conversations', exact: true }).fill('measured sample')
+  const results = page.getByRole('tree', { name: 'Search results', exact: true })
+  await results.getByRole('treeitem').filter({ hasText: 'Evidence study' }).first().waitFor({ timeout: 15000 })
+  await page.getByRole('textbox', { name: 'Search researches and conversations', exact: true }).press('Escape')
+  // The row menu renames the research.
+  const menuOf = async (name: string): Promise<void> => {
+    const row = tree.getByRole('treeitem', { name: new RegExp(`^${name}`) })
+    await row.hover()
+    await row.getByRole('button', { name: `More for “${name}”`, exact: true }).click()
+  }
+  await menuOf('Evidence study')
+  await page.getByRole('menuitem', { name: 'Rename', exact: true }).click()
+  const rename = page.getByRole('dialog', { name: 'Rename research', exact: true })
+  await rename.getByLabel('Name', { exact: true }).fill('Evidence study, measured')
+  await rename.getByRole('button', { name: 'Rename', exact: true }).click()
+  await expect.poll(() => scaffold.ctx.research.getProject(projectId).title, { timeout: 15000 }).toBe('Evidence study, measured')
+  const renamed = tree.getByRole('treeitem', { name: /^Evidence study, measured/ })
+  await renamed.waitFor({ timeout: 15000 })
+  // 移出列表 archives the research and its conversations; the conversation on screen went with it, so the person lands on the untouched draft.
+  await menuOf('Evidence study, measured')
+  await page.getByRole('menuitem', { name: 'Remove from list', exact: true }).click()
+  await expect.poll(async () => (await projects()).find(item => item.id === projectId)?.archived, { timeout: 15000 }).toBe(true)
+  await expect.poll(() => renamed.count(), { timeout: 15000 }).toBe(0)
+  await expect.poll(() => tree.getByRole('treeitem', { name: 'New research', exact: true }).getAttribute('aria-selected'), { timeout: 15000 }).toBe('true')
+  expect(existsSync(scaffold.ctx.research.getProject(projectId).root)).toBe(true)
+  // Settings list it among the removed researches, and 恢复 puts it back; the examples switch saves at once.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const settings = page.getByRole('dialog', { name: 'Settings' })
+  await settings.getByRole('button', { name: 'Research', exact: true }).click()
+  const examples = settings.getByRole('switch', { name: 'Show example researches', exact: true })
+  await examples.waitFor({ timeout: 15000 })
+  expect(await examples.getAttribute('aria-checked')).toBe('true')
+  await examples.click()
+  await expect.poll(async () => (await scaffold.ctx.research.snapshot()).preferences.showExamples, { timeout: 15000 }).toBe(false)
+  await examples.click()
+  await expect.poll(async () => (await scaffold.ctx.research.snapshot()).preferences.showExamples, { timeout: 15000 }).toBe(true)
+  await settings.getByText('Evidence study, measured', { exact: true }).waitFor({ timeout: 15000 })
+  await saveFailureShot(page, 'research-settings-removed')
+  await settings.getByRole('button', { name: 'Restore', exact: true }).click()
+  await expect.poll(async () => (await projects()).find(item => item.id === projectId)?.archived, { timeout: 15000 }).toBeUndefined()
+  await settings.getByRole('button', { name: 'Close' }).last().click()
+  await renamed.waitFor({ timeout: 15000 })
+})
+
 it('shows a settled reply with no feedback buttons or view tabs', async () => {
   await seedSession(scaffold, await readFile(SETTLED_SEED, 'utf8'), 'research-edition-settled')
   await page.reload({ waitUntil: 'load' })
-  const ungrouped = page.getByRole('treeitem', { name: /^Ungrouped/ }).first()
-  await ungrouped.waitFor({ timeout: 15000 })
-  if (await ungrouped.getAttribute('aria-expanded') !== 'true') await ungrouped.click()
+  // A conversation outside every folder is listed under 其他文件夹 (Other folders).
+  const tree = page.getByRole('tree', { name: 'Researches', exact: true })
+  const others = tree.getByRole('treeitem', { name: 'Other folders', exact: true })
+  await others.waitFor({ timeout: 15000 })
+  if (await others.getAttribute('aria-expanded') !== 'true') await others.click()
+  const loose = tree.getByRole('treeitem', { name: 'Conversations in no folder', exact: true })
+  await loose.waitFor({ timeout: 15000 })
+  if (await loose.getAttribute('aria-expanded') !== 'true') await loose.click()
   // Until its log is read, the seeded conversation's row is labelled with its folder's name.
-  await page.getByRole('treeitem', { name: new RegExp(basename(scaffold.workspaceCwd)) }).first().click({ timeout: 15000 })
+  await tree.getByRole('treeitem', { name: new RegExp(basename(scaffold.workspaceCwd)) }).first().click({ timeout: 15000 })
   const reply = page.getByText('DONE', { exact: true }).first()
   await reply.waitFor({ timeout: 30000 })
   await reply.hover()
