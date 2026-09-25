@@ -3,27 +3,49 @@ import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  BoardSnapshot, CreateProjectRequest, GalleryPage, ModeSummary, ProjectId, ResearchCommand, ResearchPreferences, ResearchProject,
-  ResearchResponse, ResearchSnapshot, ResearchTask,
+  BoardSnapshot, CreateProjectRequest, EvidenceRecord, GalleryPage, ModeSummary, ProjectId, ResearchCommand, ResearchPreferences,
+  ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
+import type { PresetDefaults } from './presets.ts'
 
 /** A figure gallery search, as the panel sends it. */
 export type GallerySearchRequest = Extract<ResearchCommand, { action: 'find-reference-figures' }>
 /** A read of the experiment board, as the board page sends it. */
 export type BoardViewRequest = Extract<ResearchCommand, { action: 'board-view' }>
 
+/** Where the 资料 (Sources) tab scrolls when it is opened: to its claims, below the sources. */
+export interface ResearchSourcesParams {
+  section?: 'claims' | undefined
+}
+
+declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
+  interface SidebarRightTabParamsMap {
+    /** The 资料 (Sources) tab, opened on its sources or scrolled to its claims. */
+    'research-sources': ResearchSourcesParams
+  }
+}
+
 /**
- * Everything the research surfaces read: the record, the host's background
- * jobs, and the last settled command result. No action's progress or failure
- * lives here; each control keeps its own (`Action.tsx`).
+ * Everything the research surfaces read: the record and the host's background
+ * jobs. No action's progress or failure lives here; each control keeps its own
+ * (`Action.tsx`).
  */
 export interface ResearchView {
   snapshot: ResearchSnapshot | null
   tasks: ResearchTask[]
-  /** The last result a `run` or `install` settled with, as the file panel shows it. */
-  response: ResearchResponse | null
+}
+
+/**
+ * Who wrote a literature source and when, from the reference record the host
+ * keeps beside it (`reference.json`) since the reference was verified and
+ * imported.
+ */
+export interface SourceReference {
+  authors: readonly string[]
+  year?: number | undefined
 }
 
 /** One claim and the project that holds it. */
@@ -33,16 +55,13 @@ export interface ClaimFocus {
 }
 
 /**
- * What one rail row asked the frame-wide overlay to open. The rail and the
- * overlay sit in different slot scopes and cannot pass props to each other, so
- * the selection travels through the plugin's own store instead.
+ * The claim a right-sidebar tab asked the frame-wide overlay to open. The tab
+ * and the overlay sit in different slot scopes and cannot pass props to each
+ * other, so the selection travels through the plugin's own store instead.
  */
 export interface ResearchFocus {
   /** The claim whose sources are on screen, or `null` while nothing is open. */
   claim: ClaimFocus | null
-  projectId?: string | undefined
-  artifactId?: string | undefined
-  panel?: 'workflow' | 'sources' | 'claims' | 'artifacts' | 'gallery' | 'experiments' | 'settings' | undefined
 }
 
 /** Working directory of every listed session, as the sessions service reports it. */
@@ -127,6 +146,10 @@ export interface ResearchInjected {
     research: ObservableSnapshot<ResearchView>
     focus: ObservableSnapshot<ResearchFocus>
     directories: ObservableSnapshot<SessionDirectories>
+    /** Whether the host can show a folder in the desktop's file manager. */
+    canReveal: ObservableSnapshot<boolean>
+    /** The research assistant's agent preset and a saved default replacing it, or null while the settings are not read. */
+    presets: ObservableSnapshot<PresetDefaults | null>
   }
   /** Create or adopt the project rooted at `request.root`; the record comes back so a caller can act on it. */
   create(request: CreateProjectRequest): Promise<ResearchProject>
@@ -134,13 +157,21 @@ export interface ResearchInjected {
    * Send one command. A long command starts a host job; the promise follows it
    * and settles with the job's result or rejects with its failure message, so
    * the caller's own pending state lasts as long as the work. The record is
-   * read again before the promise settles, and the result becomes `response`.
+   * read again before the promise settles.
    */
   run(request: ResearchCommand): Promise<ResearchResponse>
-  /** One page of the figure gallery; unlike `run`, it neither refreshes the record nor sets `response`. */
+  /** One page of the figure gallery; unlike `run`, it does not read the record again. */
   searchFigures(request: GallerySearchRequest): Promise<GalleryPage>
   /** The experiment board as last read, starting a new read when it asks; like searchFigures, it leaves the record alone. */
   board(request: BoardViewRequest): Promise<BoardSnapshot>
+  /**
+   * The authors and year of a literature source, read once per source revision
+   * from its reference record.
+   * @param projectId - the project that holds the source.
+   * @param source - a literature source, whose `path` names its reference record.
+   * @returns the reference, or undefined when it cannot be read; it never rejects.
+   */
+  reference(projectId: ProjectId, source: EvidenceRecord): Promise<SourceReference | undefined>
   /** Read the record and the job list again; a failed read keeps the previous ones and never rejects. */
   refresh(): Promise<void>
   /** Save the preferences, then store each provider key that was typed; an empty key leaves the stored one alone. */
@@ -157,12 +188,13 @@ export interface ResearchInjected {
    */
   openConversation(sessionId: string, workspaceId: string): Promise<void>
   /**
-   * Open a project file in the conversation's right sidebar, where PDFs,
-   * images and text render natively. Throws when no conversation's sidebar is
-   * mounted to show it.
+   * Open a project file in the conversation's right sidebar, read through the
+   * conversation on screen, where PDFs, images and text render natively and a
+   * `.drawio` file opens in the draw.io editor. Throws when no conversation's
+   * sidebar is mounted to show it.
    */
   openFile(root: string, path: string): void
-  /** Show the research folder's file tab in the right sidebar. */
+  /** Show the research folder's file tab (项目文件) in the right sidebar. */
   openFiles(): void
   /** Raise the claim sheet over the whole frame, or close it with `null`. */
   focusClaim(claim: ClaimFocus | null): void
@@ -170,7 +202,25 @@ export interface ResearchInjected {
   pickDirectory(): Promise<FolderPick>
   /** Open the research tab beside the conversation; only the person's click calls it. */
   showProgress(): void
-  expand(projectId?: string, panel?: ResearchFocus['panel'], artifactId?: string): void
+  /** The header chip's click: collapse the panel while it shows the research tab, else open the research tab. */
+  toggleProgress(): void
+  /** Show a folder in the desktop's file manager; rejects with the host's reason. */
+  reveal(path: string): Promise<void>
+  /**
+   * Remove the default agent preset saved in the settings, so new
+   * conversations compose from the research assistant's preset again;
+   * rejects when the settings kept it.
+   */
+  resetDefaultPreset(): Promise<void>
+  /** Open the experiment board (实验看板) tab beside the conversation, 560 px wide when the panel has no width yet. */
+  openBoard(): void
+  /**
+   * Open the 资料 (Sources) tab beside the conversation.
+   * @param section - `claims` scrolls the tab to its claims.
+   */
+  openSources(section?: ResearchSourcesParams['section']): void
+  /** Open the figure gallery (配图灵感) tab beside the conversation. */
+  openGallery(): void
 }
 
 /**
@@ -241,6 +291,19 @@ function comparable(path: string): string {
 }
 
 /**
+ * A path inside a project folder, relative to that folder.
+ * @param root - the project's absolute folder, either separator.
+ * @param path - an absolute path, either separator.
+ * @returns the `/`-separated path below `root`, or undefined when `path` is the folder itself or lies outside it.
+ */
+export function pathInProject(root: string, path: string): string | undefined {
+  const folder = comparable(root)
+  const slashed = path.replaceAll('\\', '/')
+  if (!comparable(slashed).startsWith(`${folder}/`)) return undefined
+  return slashed.slice(folder.length + 1)
+}
+
+/**
  * The innermost project whose folder is `path` or contains it.
  * @param projects - every project the snapshot carries.
  * @param path - an absolute folder, either separator.
@@ -272,12 +335,20 @@ export function sessionProject<T extends { sessionId?: string | undefined; root:
   return projectAtPath(projects, cwd)
 }
 
-/** This seat's project, read through the injected stores. */
+/**
+ * This seat's project, read through the injected stores.
+ * @param props - the seat's research face and the session it is mounted in.
+ * @returns the session's project, or undefined when it works outside every project.
+ */
 export function useSessionProject(props: WorkbenchProps & SessionSeatProps): ResearchProject | undefined {
   return sessionProject(props.useResearch(s => s).snapshot?.projects, props.sessionId, props.useDirectories(s => s))
 }
 
-/** The installed modes, read through the injected store; none before the first snapshot arrives. */
+/**
+ * The installed modes, read through the injected store; none before the first snapshot arrives.
+ * @param props - the seat's research face.
+ * @returns the modes in display order.
+ */
 export function useModes(props: WorkbenchProps): readonly ModeSummary[] {
   return props.useResearch(s => s).snapshot?.modes ?? []
 }

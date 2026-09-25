@@ -22,7 +22,7 @@
 
 模式由谁选定记在 `modeSetBy` 中。创建时指定了模式的项目记为 `user`；创建时没有指定模式的项目处于 `general`，`modeSetBy` 不设置，表示模式尚未选定。`set-mode` 按它的 `decidedBy`（缺省时为调用方）设置 `modeSetBy`，并追加一条 key 为 `mode` 的决策：问题是「模式与路线」，回答是以 id 写成的 `<mode>` 或 `<mode> · <route>`，理由即其 rationale。只有给出了理由，它才替换 `modeReason`；模式或路线改变时，`progress` 从头开始。`rename` 设置标题，清除 `untitled`（产品起的占位标题），并把同一标题给文件夹对应的 Workspace，除非已有别的 Workspace 用了这个标题。每次实验运行都把提交它的对话记为 `sessionId`；从桌面端提交的运行，以及在这个字段出现之前记录的运行，都没有它。
 
-`activeGoals(project)` 通过目标服务读取项目中已加载的顶层对话里尚未完成的目标（`ResearchGoal`：会话、目标描述、阶段、轮次与最近一次改动），正在推进轮次的排在前面。未加载的对话看不到。agent 的项目简报把读者自己的目标（没有时取第一个）报告为 `activeGoal`。
+`activeGoals(project)` 通过目标服务读取项目中已加载的顶层对话里尚未完成的目标（`ResearchGoal`：会话、目标描述、阶段、轮次与最近一次改动），正在推进轮次的排在前面。未加载的对话看不到。agent 的项目简报把读者自己的目标（没有时取第一个）报告为 `activeGoal`；每份快照都以 `goals` 带上项目的这些目标（推导得出、从不存储，没有目标时不出现）。
 
 根目录位于 `<数据目录>/demo` 中的项目是示例研究，随应用提供，用于新手教学（`src/files.ts` 中的 `isExampleRoot`）。快照和 agent 的项目简报会把它标为 `example: true`；这个标记是推导出来的，从不存储。示例对用户和 agent 都是只读的：可以读取和检查，但检查报告不会保存，任何会记录内容的命令都会被拒绝，并提示 `这是示例研究，只能查看 / This is an example research and is read-only`。看板显示最近一次读取的结果，其中的运行不再被观测，示例目录中也不会新建任何研究或文件夹。
 
@@ -46,7 +46,7 @@
 
 | 命令 | 作用 |
 |---|---|
-| `start-new {}` | 答复 `{project, sessionId}`：草稿（若不止一份，取最新的一份），或者在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一项研究，`n` 取当天（本地日期）最小的空闲序号，包括记录、以文件夹名命名的 Workspace 和一段空白对话。被手动删除的草稿文件夹会重新建立；对话被归档的草稿会得到一段新的空白对话。研究存放位置位于示例之中、位于另一项研究之内或位于系统文件夹时，命令被拒绝。 |
+| `start-new {}` | 答复 `{project, sessionId}`：草稿（最新的那项未动过的研究；较早的未动过的研究算作普通研究，可以用 `archive-project` 移出列表），或者在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一项研究，`n` 取当天（本地日期）最小的空闲序号，包括记录、以文件夹名命名的 Workspace 和一段空白对话。被手动删除的草稿文件夹会重新建立；对话被归档的草稿会得到一段新的空白对话。研究存放位置位于示例之中、位于另一项研究之内或位于系统文件夹时，命令被拒绝。 |
 | `relocate {projectId, root, confirmNonEmpty?}` | 只作用于草稿；`outcome` 说明所选文件夹是什么。`example`：位于示例之中。`existing`：它已经是 `project` 中的那项研究（附带其绑定的 `sessionId`）。`nested`：它位于 `project` 中那项研究之内，这项研究也可能就是草稿本身。这两种答复所指的研究都可能已被移出列表，此时它带有 `archived: true`。`needs-confirm`：它里面已有文件，且未设置 `confirmNonEmpty`。其余情况为 `moved`：在该处新建研究，沿用草稿的自主程度并带一段空白对话，然后丢弃草稿；`project` 与 `sessionId` 是新研究的。选草稿自己的文件夹时答复 `moved`，草稿保持不变。 |
 | `discard-draft {projectId}` | 只作用于草稿：归档它的对话，删除它文件夹的 Workspace 注册和它的记录，然后删除仍为空的各个初始文件夹，在根目录由草稿创建（`createdRoot`）时也删除根目录。里面有任何内容的文件夹都会保留；无法删除的文件夹会记入日志。 |
 
@@ -101,11 +101,11 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 `research_media` 的 find-reference-figures 检索一个配图库：约 3,500 张经人工复核的 ICLR、ICML、NeurIPS、CVPR、ACL 与 AAAI 论文（2023 至 2026 年）的 Figure 1 与概览图，来自 Top-Conf Figure Gallery。随包发布的只有它的索引（`runtime/figure-gallery/index.json.gz`，由 `scripts/build_figure_gallery.py` 构建）：每张图的论文、作者、会议、年份、视觉类型、Oral、Spotlight 与获奖标记、尺寸和设计分。筛选条件按会议、年份、类型和等级（`award` 包括最佳论文与荣誉提名）缩小范围；查询词用 BM25 在标题、作者、会议和类型上为剩下的图排序；没有查询词时，最受认可的图排在前面。配置了嵌入接口后，第一次查询会在后台把所有标题的嵌入写进产品主目录的缓存，之后的查询把标题嵌入与关键词排序融合。每页都会注明排序依据：`browse`、`keyword` 或 `semantic`。
 
-图片留在配图库那边。fetch-reference-figures `{galleryIds, label}` 从配图库的仓库、CDN 镜像或它的网站取回选中的图，缓存在产品主目录（`research/cache/figure-gallery`），并保存为 `figures/refs/<label>.gallery_<id>.<ext>`，旁边附一份写明论文及其版权的 `.source.json`；配图库已下架的图会报告它已不存在。同一个动作带 `arxivIds` 时，从 ar5iv 取其他论文的总览图。工作台的「配图灵感」标签页浏览同一份索引，图片通过宿主路由 `/api/research/gallery/image?id=` 加载。这些图是各模式画图技能的排版参考，绝不作为论文素材。
+图片留在配图库那边。fetch-reference-figures `{galleryIds, label}` 从配图库的仓库、CDN 镜像或它的网站取回选中的图，缓存在产品主目录（`research/cache/figure-gallery`），并保存为 `figures/refs/<label>.gallery_<id>.<ext>`，旁边附一份写明论文及其版权的 `.source.json`；配图库已下架的图会报告它已不存在。同一个动作带 `arxivIds` 时，从 ar5iv 取其他论文的总览图。对话旁右侧栏的「配图灵感」标签页浏览同一份索引，图片通过宿主路由 `/api/research/gallery/image?id=` 加载。这些图是各模式画图技能的排版参考，绝不作为论文素材。
 
 ## 实验看板
 
-工作台的「实验看板」标签页是一块看板，页面打开期间每十五秒读取一次；看着它不花一次模型调用。它的固定部分每个项目都一样：按状态统计的运行、每个在跑的运行及其进度和曲线、每台实验机器，以及所有运行（含命令、指标和曲线）。其余部分是 agent 的布局，由 `research_board` board-update 保存在 `.research/board/board.json`：由八种积木（`stats`、`table`、`chart`、`list`、`runs`、`text`、`kv`、`log`）组成的分区。积木里的值要么固定，要么按 id 或按名称和种子跟随运行。页面对着实时的项目记录解析它，所以运行一结束对应的格子就填上；同一名称有多个已完成的种子时，显示它们的均值和样本标准差。
+「实验看板」是对话旁右侧栏里的一个标签页，页面打开期间每十五秒读取一次；看着它不花一次模型调用。它的固定部分每个项目都一样：按状态统计的运行、每个在跑的运行及其进度和曲线、每台实验机器，以及所有运行（含命令、指标和曲线）。其余部分是 agent 的布局，由 `research_board` board-update 保存在 `.research/board/board.json`：由八种积木（`stats`、`table`、`chart`、`list`、`runs`、`text`、`kv`、`log`）组成的分区。积木里的值要么固定，要么按 id 或按名称和种子跟随运行。页面对着实时的项目记录解析它，所以运行一结束对应的格子就填上；同一名称有多个已完成的种子时，显示它们的均值和样本标准差。
 
 一次读取会运行三类脚本：带 `refresh` 的 `board-view` 最多每十秒启动一次，`board-refresh` 立即运行一次。机器探针（`runtime/board_probe.py`，只用标准库）对活跃运行、采集脚本和默认环境所在的每台主机各运行一次，本地或经 SSH。它通过 `nvidia-smi` 报告 GPU，报告处理器和内存占用（有 cgroup 配额和上限时按配额和上限计算）以及实验目录所在的磁盘；每次读取都往六小时的历史里加一个采样点。运行把进度记录逐行追加到 `$RESEARCH_PROGRESS_PATH`：监督进程的状态把最后一行带进运行记录的 `progress`，探针读取远程在跑运行的进度记录，远程运行结束后，它的进度记录随日志一起取回本地。采集脚本是 agent 自己写的只读脚本，每 `every` 秒（默认 30）用某个环境的解释器从标准输入运行。每个脚本打印 `{stats?, sections?, alerts?}`；解析不了的部分会被丢弃并指明，其余部分照常保留。每次读取的结果保存在 `.research/board/snapshot.json`，重新打开看板时立刻就能显示。
 
@@ -190,8 +190,9 @@ One durable owner for each project's evidence, files, decisions and execution re
 ```ts cordis-catalog
 /**
  * Read detached project snapshots and non-secret component settings.
- * @returns every project without source bodies, with where it stands and whether it is the untouched draft
- * or removed from the list, the preferences, the research home in effect and the component status.
+ * @returns every project without source bodies, with where it stands, the unfinished goals of its live
+ * conversations, and whether it is the untouched draft or removed from the list; the preferences, the
+ * research home in effect and the component status.
  */
 @Remote async snapshot(): Promise<ResearchSnapshot>
 
@@ -289,9 +290,10 @@ async projectAt(directory: string): Promise<ResearchProject | undefined>
  * the project (and in no project nested inside it) and whose goal is not
  * complete. A conversation that is not loaded is not seen.
  * @param project - the project record.
+ * @param projects - every project, which decides the research a working directory belongs to; read afresh when absent.
  * @returns the goals, those that drive rounds first, then the most recently changed.
  */
-activeGoals(project: ResearchProject): ResearchGoal[]
+activeGoals(project: ResearchProject, projects?: readonly ResearchProject[]): ResearchGoal[]
 
 /**
  * Dispatch a validated tool or desktop command. The desktop receives a job

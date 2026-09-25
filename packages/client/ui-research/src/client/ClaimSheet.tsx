@@ -14,8 +14,8 @@ import { digestText, locatorText, momentText } from './format.ts'
 import { MetricsGrid } from './MetricsGrid.tsx'
 import styles from './ClaimSheet.module.css'
 
-/** How a claim's own state reads as a badge. */
-const CLAIM_TONE: Record<ClaimRecord['state'], TagTone> = {
+/** How a claim's own state reads as a badge, here and in the Sources tab's claims. */
+export const CLAIM_TONE: Record<ClaimRecord['state'], TagTone> = {
   supported: 'success',
   proposed: 'warning',
   contradicted: 'danger',

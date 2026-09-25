@@ -284,7 +284,7 @@ function propsFor(
   opened: string[] = [],
   openFile: (root: string, path: string) => void = (_root, path) => { opened.push(path) },
 ): WorkbenchProps {
-  const view: ResearchView = { snapshot, tasks: [], response: null }
+  const view: ResearchView = { snapshot, tasks: [] }
   return {
     t: (key: string, params?: Record<string, unknown>) => {
       const template = (zh as Record<string, string>)[key] ?? key
@@ -296,7 +296,6 @@ function propsFor(
     useFocus: (select: (value: ResearchFocus) => unknown) => select({ claim }),
     focusClaim: (next: ClaimFocus | null) => { closed.push(next) },
     openFile,
-    expand: () => {},
     install: () => Promise.resolve(),
     configure: () => Promise.resolve(),
     refresh: () => Promise.resolve(),

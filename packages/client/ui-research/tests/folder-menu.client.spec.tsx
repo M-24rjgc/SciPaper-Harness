@@ -65,7 +65,7 @@ function setup(parts: Setup = {}) {
     snapshot: parts.projects === null
       ? null
       : { projects: parts.projects ?? [draft, sparse, longer, removed, example, taken], preferences: {}, components: [], modes: [] },
-    tasks: [], response: null,
+    tasks: [],
   }
   const picks = [...parts.picks ?? []]
   const answers = [...parts.answers ?? []]

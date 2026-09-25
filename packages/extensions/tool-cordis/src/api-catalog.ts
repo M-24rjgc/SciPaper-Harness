@@ -1456,7 +1456,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async snapshot(): Promise<ResearchSnapshot>',
         description: 'Read detached project snapshots and non-secret component settings.',
         parameters: [],
-        returns: 'every project without source bodies, with where it stands and whether it is the untouched draft or removed from the list, the preferences, the research home in effect and the component status.',
+        returns: 'every project without source bodies, with where it stands, the unfinished goals of its live conversations, and whether it is the untouched draft or removed from the list; the preferences, the research home in effect and the component status.',
       },
       {
         signature: 'researchHome(): string',
@@ -1530,9 +1530,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'that project, or undefined outside every project.',
       },
       {
-        signature: 'activeGoals(project: ResearchProject): ResearchGoal[]',
+        signature: 'activeGoals(project: ResearchProject, projects?: readonly ResearchProject[]): ResearchGoal[]',
         description: 'The unfinished goals of a project\'s live conversations, read through the goal service: every live top-level session whose working directory lies in the project (and in no project nested inside it) and whose goal is not complete. A conversation that is not loaded is not seen.',
-        parameters: [{ name: 'project', description: 'the project record.' }],
+        parameters: [{ name: 'project', description: 'the project record.' }, { name: 'projects', description: 'every project, which decides the research a working directory belongs to; read afresh when absent.' }],
         returns: 'the goals, those that drive rounds first, then the most recently changed.',
       },
       {
@@ -5516,7 +5516,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchProject',
-    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    untitled?: boolean | undefined;\n    root: string;\n    createdRoot?: boolean | undefined;\n    example?: boolean | undefined;\n    draft?: boolean | undefined;\n    archivedAt?: string | undefined;\n    archivedConversations?: string[] | undefined;\n    archived?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    sessionId?: string | undefined;\n}',
+    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    untitled?: boolean | undefined;\n    root: string;\n    createdRoot?: boolean | undefined;\n    example?: boolean | undefined;\n    draft?: boolean | undefined;\n    archivedAt?: string | undefined;\n    archivedConversations?: string[] | undefined;\n    archived?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    goals?: ResearchGoal[] | undefined;\n    sessionId?: string | undefined;\n}',
   },
   {
     name: 'ResearchResponse',

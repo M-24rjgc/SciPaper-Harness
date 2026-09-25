@@ -80,6 +80,19 @@ const submitSave = (detail: HTMLElement): void => {
 }
 
 describe('the figure gallery panel', () => {
+  it('shows an example research\'s figures with their papers, and saves nothing into it', async () => {
+    const shipped = { ...project(), example: true }
+    const h = harness(shipped)
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('iclr2025-1')]))
+    fireEvent.click(view.getByRole('button', { name: /Figure iclr2025-1/ }))
+    const detail = view.getByRole('article', { name: 'Figure iclr2025-1' })
+    expect(within(detail).getByRole('link', { name: zh.galleryOpenPaper })).toBeTruthy()
+    expect(within(detail).queryByRole('button', { name: zh.gallerySave })).toBeNull()
+    expect(within(detail).queryByLabelText(zh.galleryLabel)).toBeNull()
+    expect(h.saves).toEqual([])
+  })
+
   it('browses the gallery first, with filters drawn from its facets', async () => {
     const h = harness(project())
     const view = render(<Gallery {...h.props} />)

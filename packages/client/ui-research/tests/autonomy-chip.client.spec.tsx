@@ -54,7 +54,7 @@ function world(projects: ResearchProject[], preset: string | undefined = 'worksp
 
 function propsOf(w: World): AutonomyChipProps {
   const snapshot = { projects: w.projects, preferences: {}, components: [], modes: MODES }
-  const view: ResearchView = { snapshot, tasks: [], response: null }
+  const view: ResearchView = { snapshot, tasks: [] }
   return {
     sessionId: SESSION,
     locked: w.locked,

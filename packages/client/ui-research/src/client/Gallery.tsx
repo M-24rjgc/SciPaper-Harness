@@ -52,7 +52,7 @@ const patternName = (pattern: string, t: Translate): string => {
 /** The mark a figure is filed under: an award outranks the Oral or Spotlight mark the paper may also carry. */
 const tierOf = (figure: GalleryFigure): Tier | undefined => figure.award ? 'award' : figure.tier
 
-/** The panel: filters, the grid of figures, and the one open for a closer look. */
+/** The panel: filters, the grid of figures, and the one open for a closer look; an example research saves no reference. */
 export function Gallery(props: WorkbenchProps & { project: ResearchProject }): ReactNode {
   const { project, t } = props
   const [draft, setDraft] = useState(NO_FILTERS)
@@ -114,7 +114,8 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
     {page && <p className={styles.status}>{t('galleryCount', { n: page.total })} · {t(BASIS_KEYS[page.basis])}</p>}
     {open && <Detail
       key={open.id} t={t} figure={open}
-      onSave={label => save(open, label)} onClose={() => { setOpen(null) }}
+      {...project.example === true ? {} : { onSave: (label: string) => save(open, label) }}
+      onClose={() => { setOpen(null) }}
     />}
     {page?.total === 0 && <p className={styles.empty}>{t('galleryEmpty')}</p>}
     <ul className={styles.grid}>{figures.map((figure) => {
@@ -138,8 +139,8 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
 interface DetailProps {
   t: Translate
   figure: GalleryFigure
-  /** Save this figure as a reference under the label; settles when the host job does. */
-  onSave: (label: string) => Promise<unknown>
+  /** Save this figure as a reference under the label; settles when the host job does. Absent where nothing may be saved. */
+  onSave?: ((label: string) => Promise<unknown>) | undefined
   onClose: () => void
 }
 
@@ -149,8 +150,9 @@ function Detail(props: DetailProps): ReactNode {
   const [label, setLabel] = useState('method-overview')
   const saving = useAction()
   const named = figure.authors.slice(0, SHOWN_AUTHORS).join(', ')
-  const authors = figure.authors.length > SHOWN_AUTHORS ? t('galleryAuthorsMore', { names: named, n: figure.authors.length - SHOWN_AUTHORS }) : named
+  const authors = figure.authors.length > SHOWN_AUTHORS ? t('authorsMore', { names: named, n: figure.authors.length - SHOWN_AUTHORS }) : named
   const tier = tierOf(figure)
+  const onSave = props.onSave
   return <article className={styles.detail} aria-label={figure.title}>
     <img className={styles.large} src={galleryImageUrl(figure.id)} alt={figure.title} />
     <div className={styles.info}>
@@ -158,10 +160,10 @@ function Detail(props: DetailProps): ReactNode {
       <p>{authors}</p>
       <p className={styles.meta}>{venueName(figure.venue)} {figure.year} · {patternName(figure.pattern, t)}{tier && ` · ${t(TIER_KEYS[tier])}`}</p>
       <a href={figure.paper} target="_blank" rel="noreferrer">{t('galleryOpenPaper')}</a>
-      <form className={styles.save} onSubmit={(event) => { event.preventDefault(); saving.start(() => props.onSave(label)) }}>
+      {onSave && <form className={styles.save} onSubmit={(event) => { event.preventDefault(); saving.start(() => onSave(label)) }}>
         <label>{t('galleryLabel')}<input value={label} required pattern="[a-z0-9]+(-[a-z0-9]+)*" onChange={(event) => { setLabel(event.target.value) }} /></label>
         <button type="submit" disabled={saving.pending}>{t('gallerySave')}</button>
-      </form>
+      </form>}
       {saving.pending && <p role="status">{t('gallerySaving')}</p>}
       {saving.done && <p role="status">{t('gallerySaved')}</p>}
       <ActionError t={t} error={saving.error} />

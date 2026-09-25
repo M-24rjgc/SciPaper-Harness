@@ -714,6 +714,12 @@ describe('the research service records; it never drives the agent', () => {
       { sessionId: 'paused', objective: 'paused', phase: 'paused', roundsStarted: 2, updatedAt: 5 },
     ])
     expect(service.activeGoals(service.getProject(nested.id)).map(item => item.sessionId)).toEqual(['inner'])
+    // Each snapshot carries them with their research, in the same order; a research without one carries none.
+    const quiet = await service.create({ title: 'Quiet', root: join(root, 'quiet'), brief: '' })
+    const listed = (await service.snapshot()).projects
+    expect(listed.find(item => item.id === p.id)?.goals?.map(item => item.sessionId)).toEqual(['newer', 'older', 'blocked', 'paused'])
+    expect(listed.find(item => item.id === nested.id)?.goals?.map(item => item.sessionId)).toEqual(['inner'])
+    expect(listed.find(item => item.id === quiet.id)).not.toHaveProperty('goals')
   })
 
   it('gives every conversation of a research the permission preset of its autonomy, as it changes and as each one opens', async () => {
@@ -1509,6 +1515,10 @@ describe('新研究 opens one untouched draft research, which can move and be di
     // With the file gone, the second is untouched again; the newest draft is the one reopened.
     await rm(join(second.project!.root, 'notes.md'))
     expect((await startNew(service)).project?.id).toBe(fourth.project?.id)
+    // Only the newest is the draft: the second reads as a research of its own, which the person may remove from the list.
+    const drafted = (await service.snapshot()).projects.filter(project => project.draft === true).map(project => project.id)
+    expect(drafted).toEqual([fourth.project?.id])
+    expect((await command(service, { action: 'archive-project', projectId: second.project!.id })).project).toMatchObject({ archived: true })
 
     // A draft whose conversation was removed from the list opens a new blank one; a folder removed by hand comes back.
     archived.push(fourth.sessionId!)

@@ -317,15 +317,22 @@ export class ResearchWorkbench extends TypertRemoteService {
 
   /**
    * Read detached project snapshots and non-secret component settings.
-   * @returns every project without source bodies, with where it stands and whether it is the untouched draft
-   * or removed from the list, the preferences, the research home in effect and the component status.
+   * @returns every project without source bodies, with where it stands, the unfinished goals of its live
+   * conversations, and whether it is the untouched draft or removed from the list; the preferences, the
+   * research home in effect and the component status.
    */
   @Remote
   async snapshot(): Promise<ResearchSnapshot> {
     const projects = this.projects()
     const drafts = await this.draftsForView(projects, projects)
-    const withStanding = async (project: ResearchProject): Promise<ResearchProject> =>
-      ({ ...publicProject(project, drafts.has(project.id)), standing: await this.standing(project) })
+    const withStanding = async (project: ResearchProject): Promise<ResearchProject> => {
+      const goals = this.activeGoals(project, projects)
+      return {
+        ...publicProject(project, drafts.has(project.id)),
+        standing: await this.standing(project),
+        ...(goals.length === 0 ? {} : { goals }),
+      }
+    }
     return {
       projects: await Promise.all(projects.map(withStanding)),
       preferences: structuredClone(this.domain.global.get()),
@@ -567,14 +574,15 @@ export class ResearchWorkbench extends TypertRemoteService {
    * the project (and in no project nested inside it) and whose goal is not
    * complete. A conversation that is not loaded is not seen.
    * @param project - the project record.
+   * @param projects - every project, which decides the research a working directory belongs to; read afresh when absent.
    * @returns the goals, those that drive rounds first, then the most recently changed.
    */
-  activeGoals(project: ResearchProject): ResearchGoal[] {
-    const projects = this.projects()
+  activeGoals(project: ResearchProject, projects?: readonly ResearchProject[]): ResearchGoal[] {
+    const all = projects ?? this.projects()
     const goals: ResearchGoal[] = []
     for (const agent of this.ctx.agents.list()) {
       const { cwd, origin } = agent.session.header
-      if (cwd === undefined || origin === 'subagent' || innermost(projects, cwd)?.id !== project.id) continue
+      if (cwd === undefined || origin === 'subagent' || innermost(all, cwd)?.id !== project.id) continue
       let goal: GoalView | undefined
       // A goal log that no longer replays, or an agent unloaded since the listing, holds no goal to continue.
       try { goal = this.ctx.goals.get(agent) } catch { continue }
@@ -833,33 +841,54 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /**
-   * The untouched drafts among some projects, each with its listed
-   * conversations. A draft's record holds nothing but its autonomy
-   * (`blankRecord`), it is not an example, its folder holds only the empty
-   * scaffold, and every conversation of it is blank: bound to it or working
-   * in its folder, with no turn started. Sessions are listed only when a
-   * project passes the other tests.
+   * The untouched researches among some projects, each with its listed
+   * conversations. An untouched research's record holds nothing but its
+   * autonomy (`blankRecord`), it is not an example, its folder holds only the
+   * empty scaffold, and every conversation of it is blank: bound to it or
+   * working in its folder, with no turn started. Sessions are listed only
+   * when a project passes the other tests.
    * @param candidates - the projects to test.
    * @param all - every project, which decides the research a conversation's folder belongs to.
-   * @returns the drafts' ids, each with its conversations.
+   * @returns the untouched researches, each with its conversations.
    */
-  private async drafts(
-    candidates: readonly ResearchProject[],
-    all: readonly ResearchProject[] = candidates,
-  ): Promise<Map<ProjectId, SessionSummary[]>> {
+  private async untouched(
+    candidates: Iterable<ResearchProject>,
+    all: readonly ResearchProject[],
+  ): Promise<{ project: ResearchProject; conversations: SessionSummary[] }[]> {
     const unstarted: ResearchProject[] = []
     for (const project of candidates) {
       const recordBlank = blankRecord(project) && !isExampleRoot(project.root) && !this.started.has(project.id)
       if (recordBlank && await onlyScaffold(project.root)) unstarted.push(project)
     }
-    const drafts = new Map<ProjectId, SessionSummary[]>()
-    if (unstarted.length === 0) return drafts
+    const untouched: { project: ResearchProject; conversations: SessionSummary[] }[] = []
+    if (unstarted.length === 0) return untouched
     const { items } = await this.ctx.sessionController.list({}, this.lifetime.signal)
     for (const project of unstarted) {
       const conversations = conversationsOf(project, all, items)
-      if (conversations.every(conversation => conversation.blank)) drafts.set(project.id, conversations)
+      if (conversations.every(conversation => conversation.blank)) untouched.push({ project, conversations })
       else this.started.add(project.id)
     }
+    return untouched
+  }
+
+  /**
+   * The draft among some projects: the newest untouched research of all
+   * (`untouched`), so one whose files were removed again, or one restored to
+   * the list, reads as a research of its own beside a newer draft.
+   * @param candidates - the projects to test.
+   * @param all - every project, among which the newest untouched one is the draft.
+   * @returns the draft's id with its conversations, when it is among the candidates.
+   */
+  private async drafts(
+    candidates: readonly ResearchProject[],
+    all: readonly ResearchProject[] = candidates,
+  ): Promise<Map<ProjectId, SessionSummary[]>> {
+    const tested = new Map([...all.filter(blankRecord), ...candidates].map(project => [project.id, project]))
+    const [newest] = (await this.untouched(tested.values(), all))
+      .sort((a, b) => b.project.createdAt.localeCompare(a.project.createdAt))
+    const drafts = new Map<ProjectId, SessionSummary[]>()
+    const listed = newest !== undefined && candidates.some(project => project.id === newest.project.id)
+    if (listed) drafts.set(newest.project.id, newest.conversations)
     return drafts
   }
 
@@ -892,8 +921,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /**
-   * start-new: reopen the untouched draft (the newest, should there be more),
-   * or create `<research home>/<yyyy-mm-dd>-<n>` with the next free `n`, its
+   * start-new: reopen the draft (the newest untouched research), or create `<research home>/<yyyy-mm-dd>-<n>` with the next free `n`, its
    * record (`untitled`, titled 新研究, general with no mode chosen), its
    * folder's Workspace and one blank conversation. Nothing is reused or made
    * among the examples, and no draft is made inside another research.
@@ -901,7 +929,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   private async startNew(): Promise<ResearchResponse> {
     const projects = this.projects()
     const drafts = await this.drafts(projects)
-    const reused = projects.filter(project => drafts.has(project.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    const reused = projects.find(project => drafts.has(project.id))
     if (reused !== undefined) {
       // A draft folder removed by hand comes back with its empty folders.
       for (const directory of SCAFFOLD) await mkdir(join(reused.root, directory), { recursive: true })
@@ -960,9 +988,10 @@ export class ResearchWorkbench extends TypertRemoteService {
   private discard(id: ProjectId): Promise<void> {
     return this.queued(id, async () => {
       const project = this.record(id)
-      const conversations = (await this.drafts([project], this.projects())).get(id)
-      if (conversations === undefined) throw new Error(NOT_A_DRAFT)
-      for (const conversation of conversations) await this.ctx.workspaceRegistry.archiveSession(conversation.sessionId)
+      // Untouched is enough: a relocated draft has a newer one beside it by now.
+      const [untouched] = await this.untouched([project], this.projects())
+      if (untouched === undefined) throw new Error(NOT_A_DRAFT)
+      for (const conversation of untouched.conversations) await this.ctx.workspaceRegistry.archiveSession(conversation.sessionId)
       await this.ctx.workspaceRegistry.delete(project.workspaceId)
       await this.domain.table('projects').delete(id)
       try { await removeEmptyScaffold(project.root, project.createdRoot === true) } catch (error) {

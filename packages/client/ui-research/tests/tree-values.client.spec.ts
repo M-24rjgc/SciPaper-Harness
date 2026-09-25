@@ -11,7 +11,7 @@ import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-s
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
-import type { ExperimentRecord, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { ExperimentRecord, ResearchGoal, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import { deriveTree, flattenTree, searchTree, treeKey, type TreeModel, type TreeSources } from '../src/client/treeValues.ts'
 
 const EARLY = '2026-09-01T00:00:00.000Z'
@@ -143,6 +143,14 @@ describe('the dots', () => {
     // A run on the experiment board is work in progress; a queued one is not running yet.
     expect(tree([], [idle], [queued])?.signal).toBeUndefined()
     expect(tree([], [idle], [running])?.signal).toBe('ongoing')
+  })
+
+  it('lights a research whose live conversation holds a goal: ongoing while it drives rounds, waiting while it is blocked', () => {
+    const goal = (phase: ResearchGoal['phase']): ResearchGoal => ({ sessionId: 's-idle', objective: 'the paper', phase, roundsStarted: 1, updatedAt: 1 })
+    const tree = (goals: ResearchGoal[]) => deriveTree(sources({ projects: [{ ...sparse, goals }], sessions: [session('s-idle', '/research/sparse')] })).own[0]
+    expect(tree([goal('paused')])?.signal).toBeUndefined()
+    expect(tree([goal('active')])?.signal).toBe('ongoing')
+    expect(tree([goal('active'), goal('blocked')])?.signal).toBe('waiting')
   })
 })
 

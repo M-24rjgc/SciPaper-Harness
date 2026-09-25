@@ -23,14 +23,17 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type {
-  CreateProjectRequest, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
+  CreateProjectRequest, EvidenceRecord, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 import { apply, inject } from '../src/client/index.ts'
-import { ResearchBrand, ResearchMark, Workbench } from '../src/client/Workbench.tsx'
+import { ResearchBrand, ResearchMark } from '../src/client/Brand.tsx'
 import { ResearchHeroMark } from '../src/client/Hero.tsx'
 import { ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
+import { ResearchBoardTab, ResearchBoardTitle, ResearchGalleryTab, ResearchGalleryTitle, ResearchSourcesTitle } from '../src/client/Tabs.tsx'
+import { ResearchSourcesTab } from '../src/client/Sources.tsx'
+import { ResearchDiagramTab } from '../src/client/Diagram.tsx'
 import { ResearchClaimSheet } from '../src/client/ClaimSheet.tsx'
 import { ResearchRuns } from '../src/client/RunPanel.tsx'
 import { ResearchStatusChip } from '../src/client/Header.tsx'
@@ -48,8 +51,12 @@ import type {
 } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 
-/** This implementation's identity in the right-sidebar tab system (private to the plugin). */
+/** This implementation's identity in the right-sidebar tab system (private to the plugin), and each further tab type's. */
 const TAB_ID = '@deepseek-ai/dsh-client-ui-research'
+const BOARD_ID = `${TAB_ID}/board`
+const SOURCES_ID = `${TAB_ID}/sources`
+const GALLERY_ID = `${TAB_ID}/gallery`
+const DRAWIO_ID = `${TAB_ID}/drawio`
 
 const CLAIM_ID = 'claim-sparse'
 const CLAIM_TEXT = 'Block-sparse attention holds accuracy at a quarter of the FLOPs.'
@@ -124,8 +131,10 @@ interface TabType {
   id: string
   kind: string
   priority: string
-  title: () => string
-  guide: { id: string; order: number; title: () => string; description: () => string; icon: unknown }[]
+  title: (address: string) => string
+  patterns?: string[]
+  canOpen?: (address: string) => boolean
+  guide?: { id: string; order: number; title: () => string; description: () => string; icon: unknown }[]
 }
 
 const live: { dispose: () => Promise<void> }[] = []
@@ -134,6 +143,7 @@ afterEach(async () => {
   cleanup()
   for (const fiber of live.splice(0)) await fiber.dispose()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 /** What a bench starts with besides the defaults: the lists as the page finds them, and the host's file-manager answer. */
@@ -148,6 +158,10 @@ interface BenchServices {
   snapshot?: ResearchSnapshot
   /** The host's answer to whether it can show a folder in the file manager; yes by default. */
   canReveal?: Promise<RemoteResult<boolean>>
+  /** The `agent-presets` settings namespace as first read; not read yet by default. */
+  presetSettings?: { status: 'loading' | 'ready' | 'unavailable'; base: unknown; user: unknown; value: unknown; revision: number | undefined }
+  /** The settings refuse to clear the saved default. */
+  presetsKept?: boolean
 }
 
 async function bench(services: BenchServices = {}) {
@@ -159,7 +173,6 @@ async function bench(services: BenchServices = {}) {
   ctx.slots.register({
     name: 'root',
     children: {
-      'main': { kind: 'keyed', scope: 'root' },
       'sidebar.brand.name': { kind: 'single', scope: 'root' },
       'sidebar.brand.mark': { kind: 'single', scope: 'root' },
       'conversation.session.header.actions': { kind: 'list', scope: 'session' },
@@ -263,7 +276,38 @@ async function bench(services: BenchServices = {}) {
       return () => { policies.splice(policies.indexOf(policy), 1) }
     }),
   }
-  const sidebarRight = { openTab: vi.fn(), openResource: vi.fn() }
+  // The right panel collapsed and empty until a tab opens; the header chip reads what it shows.
+  const panel = { expanded: false, active: undefined as { kind: string } | undefined }
+  const sidebarRight = {
+    openTab: vi.fn((kind: string) => { panel.expanded = true; panel.active = { kind } }),
+    openResource: vi.fn(),
+    isExpanded: vi.fn(() => panel.expanded),
+    active: vi.fn(() => panel.active),
+    toggleExpanded: vi.fn(() => { panel.expanded = !panel.expanded }),
+  }
+  // The `agent-presets` namespace as the settings mirror holds it; `unset` answers as the settings mirror would.
+  const presetScope = createSnapshotStore<{ status: 'loading' | 'ready' | 'unavailable'; base: unknown; user: unknown; value: unknown; revision: number | undefined }>(
+    services.presetSettings ?? { status: 'loading', base: undefined, user: undefined, value: undefined, revision: undefined },
+  )
+  const unsetPreset = vi.fn((field: string): Promise<void> => {
+    presetScope.update((draft) => {
+      const kept = services.presetsKept === true
+      if (!kept && typeof draft.user === 'object' && draft.user !== null) draft.user = Object.fromEntries(Object.entries(draft.user).filter(([key]) => key !== field))
+      draft.revision = (draft.revision ?? 0) + 1
+    })
+    return Promise.resolve()
+  })
+  const bound: string[] = []
+  const settingsScope = {
+    bind: vi.fn((spec: { namespace: string }) => {
+      bound.push(spec.namespace)
+      return {
+        getSnapshot: () => presetScope.getSnapshot(),
+        subscribe: (listener: () => void) => presetScope.subscribe(listener),
+        unset: unsetPreset,
+      }
+    }),
+  }
   const tabs: TabType[] = []
   const sidebarRightTabs = {
     register: vi.fn((definition: TabType) => {
@@ -283,6 +327,7 @@ async function bench(services: BenchServices = {}) {
   ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('sidebarRight', sidebarRight as never)
   ctx.provide('sidebarRightTabs', sidebarRightTabs as never)
+  ctx.provide('settingsScope', settingsScope as never)
 
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
@@ -295,7 +340,7 @@ async function bench(services: BenchServices = {}) {
       : entries.find(entry => entry.options.id === cell || entry.options.key === cell))!
   }
   // Every seat is handed the same face; the plugin's own closure is behind it.
-  const injected = (seat('main').inject as unknown as () => ResearchInjected)()
+  const injected = (seat('shell.overlay', 'research-claim').inject as unknown as () => ResearchInjected)()
   // The entry screen's seats share their own face.
   const entry = (seat('conversation.hero.welcome', 'research-entry').inject as unknown as () => ResearchEntryInjected)()
   // apply() starts one read of its own; joining it leaves the store settled.
@@ -303,6 +348,7 @@ async function bench(services: BenchServices = {}) {
   return {
     ctx, dictionaries, directoryPicker, entry, face: injected, fiber, layout, remote, remoteSession, seat, tabs, policies,
     publishSessions, select, list, workspaceList, sidebarRight, uiWorkspace, sessions, renames, workspaces,
+    panel, presetScope, unsetPreset, bound,
   }
 }
 
@@ -319,6 +365,22 @@ describe('the research plugin', () => {
     b.face.showProgress()
     expect(b.layout.setInitialRightbarWidth).toHaveBeenCalledWith(320)
     expect(b.sidebarRight.openTab).toHaveBeenCalledWith('research')
+  })
+
+  it('opens each secondary tool as a tab beside the conversation, the board and the gallery wide, the Sources list as a column', async () => {
+    const b = await bench()
+    const opened = (): unknown[] => b.sidebarRight.openTab.mock.calls.map((call: unknown[]) => call)
+    const widths = (): unknown[] => b.layout.setInitialRightbarWidth.mock.calls.map((call: unknown[]) => call[0])
+    b.face.openBoard()
+    b.face.openGallery()
+    b.face.openSources()
+    b.face.openSources('claims')
+    b.face.openFiles()
+    expect(opened()).toEqual([
+      ['research-board'], ['research-gallery'], ['research-sources', {}], ['research-sources', { params: { section: 'claims' } }], ['files'],
+    ])
+    // A width only applies while the panel has none; the files tab keeps whatever the panel has.
+    expect(widths()).toEqual([560, 560, 320, 320])
   })
 
   it('hands the first run past the harness notice at once, showing nothing', () => {
@@ -355,15 +417,61 @@ describe('the research plugin', () => {
   it('injects exactly the services it reads', () => {
     expect(inject).toEqual([
       'remote', 'remote.research', 'remote.directoryPicker', 'remote.session', 'slots', 'locale', 'layout', 'sessions', 'workspaces',
-      'sidebarRight', 'uiWorkspace',
+      'sidebarRight', 'uiWorkspace', 'settingsScope',
     ])
+  })
+
+  it('has the header chip open the research tab, and close the panel while it shows the research tab', async () => {
+    const b = await bench()
+    b.face.toggleProgress()
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research')
+    expect(b.layout.setInitialRightbarWidth).toHaveBeenLastCalledWith(320)
+    // Showing the record, the chip collapses the panel; collapsed, it opens the record again.
+    b.face.toggleProgress()
+    expect(b.sidebarRight.toggleExpanded).toHaveBeenCalledTimes(1)
+    expect(b.panel.expanded).toBe(false)
+    b.face.toggleProgress()
+    expect(b.sidebarRight.openTab).toHaveBeenCalledTimes(2)
+    // Showing another tab, the chip brings the record forward instead of closing the panel.
+    b.face.openBoard()
+    b.face.toggleProgress()
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research')
+    expect(b.sidebarRight.toggleExpanded).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the research folder in the file manager from the record, and says why it could not', async () => {
+    const b = await bench()
+    expect(b.face.hooks.canReveal).toBe(b.entry.hooks.canReveal)
+    await b.face.reveal('/research/sparse')
+    expect(b.remoteSession.openWorkspacePath).toHaveBeenCalledWith({ path: '/research/sparse', action: 'reveal' }, expect.any(AbortSignal))
+    b.remoteSession.openWorkspacePath.mockResolvedValueOnce(bad('no desktop on this host'))
+    await expect(b.face.reveal('/research/sparse')).rejects.toThrow('no desktop on this host')
+  })
+
+  it('reads the agent presets from their settings namespace, and puts the research assistant back as the default', async () => {
+    const saved = { status: 'ready' as const, base: { default: 'research', modeSelectionEnabled: true }, user: { default: 'standard' }, value: { default: 'standard', modeSelectionEnabled: true }, revision: 3 }
+    const b = await bench({ presetSettings: { status: 'loading', base: undefined, user: undefined, value: undefined, revision: undefined } })
+    expect(b.bound).toEqual(['agent-presets'])
+    expect(b.face.hooks.presets.getSnapshot()).toBeNull()
+    b.presetScope.set(saved)
+    const before = b.face.hooks.presets.getSnapshot()
+    expect(before).toEqual({ research: 'research', saved: 'standard' })
+    // A change that leaves the presets as they were publishes nothing new.
+    b.presetScope.set({ ...saved, revision: 4 })
+    expect(b.face.hooks.presets.getSnapshot()).toBe(before)
+    await b.face.resetDefaultPreset()
+    expect(b.unsetPreset).toHaveBeenCalledWith('default')
+    expect(b.face.hooks.presets.getSnapshot()).toEqual({ research: 'research' })
+    // Settings that keep the saved default refuse the reset in the reader's language.
+    const kept = await bench({ presetSettings: saved, presetsKept: true })
+    expect(kept.face.hooks.presets.getSnapshot()).toEqual({ research: 'research', saved: 'standard' })
+    await expect(kept.face.resetDefaultPreset()).rejects.toThrow(en.legacyResetUnchanged)
   })
 
   it('takes every seat it needs, and gives all of them back with the fiber', async () => {
     const b = await bench()
 
     expect(b.dictionaries.get('research')).toEqual({ en, zh })
-    expect(b.seat('main', 'research')).toMatchObject({ locale: 'research', component: Workbench })
     expect(b.seat('sidebar.brand.name')).toMatchObject({ locale: 'research', component: ResearchBrand })
     expect(b.seat('sidebar.brand.mark')).toMatchObject({ component: ResearchMark })
     expect(b.seat('conversation.session.header.actions', 'research-status'))
@@ -379,8 +487,22 @@ describe('the research plugin', () => {
     expect(Object.keys((b.seat('conversation.input.dock', 'research-try').inject as unknown as () => ResearchEntryInjected)())).toEqual(Object.keys(b.entry))
     expect(b.seat('shell.overlay', 'research-claim'))
       .toMatchObject({ locale: 'research', component: ResearchClaimSheet, options: { order: 20 } })
-    expect(b.seat('sidebar.right.pane.tab', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRail })
-    expect(b.seat('sidebar.right.pane.tab.title', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRailTitle })
+    // The record and each secondary tool draw beside the conversation, every body with the same face.
+    const bodies: [string, unknown][] = [
+      [TAB_ID, ResearchRail], [BOARD_ID, ResearchBoardTab], [SOURCES_ID, ResearchSourcesTab], [GALLERY_ID, ResearchGalleryTab],
+      [DRAWIO_ID, ResearchDiagramTab],
+    ]
+    for (const [key, component] of bodies) {
+      const body = b.seat('sidebar.right.pane.tab', key)
+      expect(body).toMatchObject({ locale: 'research', component })
+      expect(Object.keys((body.inject as unknown as () => ResearchInjected)())).toEqual(Object.keys(b.face))
+    }
+    const titles: [string, unknown][] = [
+      [TAB_ID, ResearchRailTitle], [BOARD_ID, ResearchBoardTitle], [SOURCES_ID, ResearchSourcesTitle], [GALLERY_ID, ResearchGalleryTitle],
+    ]
+    for (const [key, component] of titles) expect(b.seat('sidebar.right.pane.tab.title', key)).toMatchObject({ locale: 'research', component })
+    // The draw.io editor's chip shows the file's name, captured when the tab opens.
+    expect(b.ctx.slots.entries('sidebar.right.pane.tab.title').map(entry => entry.options.key)).not.toContain(DRAWIO_ID)
 
     // Every research tool's calls get a research card; a research check gets its own.
     const cards = b.ctx.slots.entries('tool.call.toolview')
@@ -410,21 +532,31 @@ describe('the research plugin', () => {
     // The harness's own first-run notice is shadowed: a lower priority renders instead of it.
     expect(b.seat('settings.onboarding', 'welcome-notice')).toMatchObject({ component: SkipHarnessNotice, options: { priority: -1 } })
 
-    // The record reports beside the conversation as a builtin tab type.
-    expect(b.tabs).toHaveLength(1)
-    const type = b.tabs[0]!
-    expect([type.id, type.kind, type.priority]).toEqual([TAB_ID, 'research', 'builtin'])
-    expect(type.title()).toBe(en.railTitle)
-    expect(type.guide.map(entry => [entry.id, entry.order, entry.title(), entry.description(), entry.icon]))
+    // The record and the secondary tools are builtin tab types; only the record is offered on the guide page.
+    expect(b.tabs.map(type => [type.id, type.kind, type.priority, type.title('sidebar://page'), type.guide !== undefined])).toEqual([
+      [TAB_ID, 'research', 'builtin', en.railTitle, true],
+      [BOARD_ID, 'research-board', 'builtin', en.boardTitle, false],
+      [SOURCES_ID, 'research-sources', 'builtin', en.sourcesTab, false],
+      [GALLERY_ID, 'research-gallery', 'builtin', en.gallery, false],
+      [DRAWIO_ID, 'research-drawio', 'builtin', 'sidebar://page', false],
+    ])
+    expect(b.tabs[0]!.guide!.map(entry => [entry.id, entry.order, entry.title(), entry.description(), entry.icon]))
       .toEqual([['research', 15, en.railGuideTitle, en.railGuideDescription, ResearchHeroMark]])
+    // The draw.io editor claims `.drawio` file addresses of either scope, named by the file.
+    const drawio = b.tabs[4]!
+    expect(drawio.patterns).toEqual(['*.drawio'])
+    expect(drawio.canOpen!('dsh-resource://file/session/s1/figures/arch.drawio')).toBe(true)
+    expect(drawio.canOpen!('dsh-resource://file/absolute/C:/r/arch.drawio')).toBe(true)
+    expect(drawio.canOpen!('dsh-resource://file/elsewhere/arch.drawio')).toBe(false)
+    expect(drawio.title('dsh-resource://file/session/s1/figures/arch%20v2.drawio')).toBe('arch v2.drawio')
 
-    // The file workbench is no longer a peer application: nothing lists it.
+    // Nothing takes the main panel: the research is not a second application beside the conversation.
     expect(b.ctx.slots.entries('sidebar.panellist')).toHaveLength(0)
 
     await stop(b)
 
     for (const name of [
-      'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions',
+      'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions',
       'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock',
       'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
       'tool.call.toolview',
@@ -544,7 +676,7 @@ describe('the research plugin', () => {
     await b.face.refresh()
     expect(b.face.hooks.research.getSnapshot()).toEqual({ snapshot: LOADED, tasks: [
       task('task-running', 'running', 'still going'), task('task-broken', 'failed', 'the run never started'),
-    ], response: null })
+    ] })
   })
 
   it('shares one promise between concurrent reads, and keeps the last record when a read fails', async () => {
@@ -620,7 +752,7 @@ describe('the research plugin', () => {
     await polling
     expect(await running).toBe(OUTCOME)
     expect(b.remote.snapshot).toHaveBeenCalledTimes(1)
-    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ snapshot: LOADED, response: OUTCOME })
+    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ snapshot: LOADED })
   })
 
   it('sends each action to its own Remote method', async () => {
@@ -641,7 +773,6 @@ describe('the research plugin', () => {
     expect(await b.face.run(CHECK)).toBe(OUTCOME)
     expect(b.remote.command.mock.calls[0]![0]).toBe(CHECK)
     expect(b.remote.command.mock.calls[0]![1]).toBeInstanceOf(AbortSignal)
-    expect(b.face.hooks.research.getSnapshot().response).toBe(OUTCOME)
 
     // No key, no credential write.
     await b.face.configure({ python: '/usr/bin/python3' }, { image: '', embedding: '' })
@@ -651,12 +782,14 @@ describe('the research plugin', () => {
     await b.face.configure({}, { image: 'sk-image-key', embedding: 'sk-embed-key' })
     expect(b.remote.setCredential.mock.calls).toEqual([['image', 'sk-image-key'], ['embedding', 'sk-embed-key']])
 
+    // An install reads the record again once it settled, so the component list says what is installed.
     b.remote.installComponent.mockResolvedValueOnce(ok({ message: 'python ready' }))
+    b.remote.snapshot.mockClear()
     await b.face.install('python')
     expect(b.remote.installComponent).toHaveBeenCalledWith('python')
-    expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
+    expect(b.remote.snapshot).toHaveBeenCalledTimes(2)
 
-    // A gallery search answers with its page, and leaves the last response alone.
+    // A gallery search answers with its page and reads nothing else.
     const search = { action: 'find-reference-figures' as const, projectId: PROJECT.id, query: 'agent memory' }
     const gallery = {
       total: 0, offset: 0, figures: [], basis: 'keyword' as const,
@@ -665,19 +798,17 @@ describe('the research plugin', () => {
     b.remote.command.mockResolvedValueOnce(ok({ message: '0 figures', gallery }))
     expect(await b.face.searchFigures(search)).toBe(gallery)
     expect(b.remote.command).toHaveBeenLastCalledWith(search, expect.any(AbortSignal))
-    expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
     b.remote.command.mockResolvedValueOnce(ok({ message: 'no page' }))
     await expect(b.face.searchFigures(search)).rejects.toThrow(/returned no page/)
     b.remote.command.mockResolvedValueOnce(bad('gallery offline'))
     await expect(b.face.searchFigures(search)).rejects.toThrow('gallery offline')
 
-    // A board read answers with the board, and leaves the response alone the same way.
+    // A board read answers with the board the same way.
     const read = { action: 'board-view' as const, projectId: PROJECT.id, refresh: true }
     const board = { spec: { sections: [], collectors: [] }, refreshing: false, machines: [], series: {}, collected: {}, alerts: [] }
     b.remote.command.mockResolvedValueOnce(ok({ message: 'Experiment board', board }))
     expect(await b.face.board(read)).toBe(board)
     expect(b.remote.command).toHaveBeenLastCalledWith(read, expect.any(AbortSignal))
-    expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
     b.remote.command.mockResolvedValueOnce(ok({ message: 'nothing' }))
     await expect(b.face.board(read)).rejects.toThrow(/returned nothing/)
   })
@@ -688,19 +819,17 @@ describe('the research plugin', () => {
     let answer: ResearchResponse | undefined
     const running = b.face.run(IMPORT).then((response) => { answer = response })
     await idle()
-    // Not listed yet, then listed as running: the caller keeps waiting, and the response is not replaced yet.
+    // Not listed yet, then listed as running: the caller keeps waiting.
     expect(answer).toBeUndefined()
     b.remote.tasks.mockResolvedValue(ok([task('job-import', 'running', 'import')]))
     await b.face.refresh()
     await idle()
     expect(answer).toBeUndefined()
-    expect(b.face.hooks.research.getSnapshot().response).toBeNull()
     const imported = { message: 'Imported 1 source' }
     b.remote.tasks.mockResolvedValue(ok([task('job-import', 'completed', 'Imported 1 source', imported)]))
     await b.face.refresh()
     await running
     expect(answer).toBe(imported)
-    expect(b.face.hooks.research.getSnapshot().response).toBe(imported)
 
     // A job that settled before the action's own read: its message stands in for a result it did not carry.
     b.remote.command.mockResolvedValueOnce(ok({ message: 'refresh started', jobId: 'job-quiet' }))
@@ -731,7 +860,6 @@ describe('the research plugin', () => {
     expect(waiting.face.hooks.research.getSnapshot().tasks).toEqual([task('job-long', 'running', 'import')])
     await stop(waiting)
     await idle()
-    expect(waiting.face.hooks.research.getSnapshot().response).toBeNull()
 
     // Still reading: the command answered, and the fiber went before the action's own read landed.
     const reading = await bench()
@@ -743,7 +871,7 @@ describe('the research plugin', () => {
     await stop(reading)
     late.settle(ok(LOADED))
     await idle()
-    expect(reading.face.hooks.research.getSnapshot()).toEqual({ snapshot: BLANK, tasks: [], response: null })
+    expect(reading.face.hooks.research.getSnapshot()).toEqual({ snapshot: BLANK, tasks: [] })
 
     expect(outcomes).toEqual([])
   })
@@ -785,13 +913,8 @@ describe('the research plugin', () => {
     expect(b.uiWorkspace.openSession).not.toHaveBeenCalledWith('session-late')
   })
 
-  it('moves the frame onto the panel and one claim, and opens the research folder\'s files', async () => {
+  it('puts one claim over the whole frame through the focus store, and takes it down again', async () => {
     const b = await bench()
-
-    b.face.expand()
-    expect(b.layout.selectPanel).toHaveBeenLastCalledWith('research')
-    b.face.openFiles()
-    expect(b.sidebarRight.openTab).toHaveBeenCalledWith('files')
 
     b.remote.snapshot.mockResolvedValue(ok(LOADED))
     await b.face.refresh()
@@ -807,7 +930,7 @@ describe('the research plugin', () => {
 
     // The rail and the overlay never meet; the store is how one reaches the other.
     b.face.focusClaim({ projectId: PROJECT.id, claimId: CLAIM_ID })
-    expect(b.face.hooks.focus.getSnapshot()).toMatchObject({ claim: { projectId: PROJECT.id, claimId: CLAIM_ID }, panel: 'workflow' })
+    expect(b.face.hooks.focus.getSnapshot()).toEqual({ claim: { projectId: PROJECT.id, claimId: CLAIM_ID } })
     view.rerender(createElement(ResearchClaimSheet, props))
     expect(view.getByRole('dialog').getAttribute('aria-label')).toBe(zh.claim)
     expect(view.getByText(CLAIM_TEXT)).toBeTruthy()
@@ -838,20 +961,58 @@ describe('the research plugin', () => {
 })
 
 describe('the face a research seat acts through', () => {
-  it('opens project files in the right sidebar, and lets a refusal reach the caller', async () => {
-    const b = await bench()
+  it('opens project files in the right sidebar through the conversation on screen, and lets a refusal reach the caller', async () => {
+    const b = await bench({ current: 'session-a' })
     b.face.openFile('C:\\research\\sparse', 'paper\\main.pdf')
-    expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/absolute/C:/research/sparse/paper/main.pdf')
+    expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/session/session-a/C:/research/sparse/paper/main.pdf')
     b.sidebarRight.openResource.mockImplementationOnce(() => { throw new Error('no session is bound') })
     expect(() => { b.face.openFile('/r', 'x.pdf') }).toThrow('no session is bound')
+    // With no conversation on screen there is no sidebar to show it in.
+    b.select(undefined)
+    expect(() => { b.face.openFile('/r', 'x.pdf') }).toThrow('No conversation is on screen')
   })
 
   it('hands a research tool card the record and the same way into a project file', async () => {
-    const b = await bench()
+    const b = await bench({ current: 'session-a' })
     const card = (b.seat('tool.call.toolview', 'research_check').inject as unknown as () => ResearchToolInjected)()
     expect(card.hooks.research).toBe(b.face.hooks.research)
     card.openProjectFile('C:\\research\\sparse', 'refs.bib')
-    expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/absolute/C:/research/sparse/refs.bib')
+    expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/session-a/C:/research/sparse/refs.bib')
+  })
+
+  it('reads a literature source\'s authors and year once per revision, and leaves them out when its record cannot be read', async () => {
+    const b = await bench()
+    const answered = (value: unknown, ok = true): Promise<Response> =>
+      Promise.resolve({ ok, json: () => Promise.resolve(value) } as Response)
+    const answers: (() => Promise<Response>)[] = [
+      () => answered({ authors: ['Laban', 'Schnabel', 7], year: 2022 }),
+      () => answered({ authors: ['Fabbri'] }),
+      () => answered({}, false),
+      () => answered({ title: 'no authors' }),
+      () => answered(null),
+      () => Promise.reject(new Error('offline')),
+      () => answered({ authors: ['Kryscinski'], year: 2020 }),
+    ]
+    const fetched: string[] = []
+    vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit) => {
+      fetched.push(url)
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      return answers.shift()!()
+    }))
+    const source = (revision: number) => ({ id: 'ref', path: '.research/sources/ref/reference.json', revision }) as EvidenceRecord
+    expect(await b.face.reference(PROJECT.id, source(1))).toEqual({ authors: ['Laban', 'Schnabel'], year: 2022 })
+    // The same revision is read once; a new revision is read again, and a year is left out when there is none.
+    expect(await b.face.reference(PROJECT.id, source(1))).toEqual({ authors: ['Laban', 'Schnabel'], year: 2022 })
+    expect(await b.face.reference(PROJECT.id, source(2))).toEqual({ authors: ['Fabbri'] })
+    expect(fetched).toEqual([
+      '/api/research/file?projectId=project-sparse&path=.research%2Fsources%2Fref%2Freference.json',
+      '/api/research/file?projectId=project-sparse&path=.research%2Fsources%2Fref%2Freference.json',
+    ])
+    // A refused read, a record without authors, one that is not an object and a failed fetch each leave the byline out,
+    // and the next ask reads again.
+    for (let attempt = 0; attempt < 4; attempt++) expect(await b.face.reference(PROJECT.id, source(3))).toBeUndefined()
+    expect(await b.face.reference(PROJECT.id, source(3))).toEqual({ authors: ['Kryscinski'], year: 2020 })
+    expect(fetched).toHaveLength(7)
   })
 
   it('tracks every listed session\'s working directory as the list changes', async () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Navigation and forms must preserve project identity and backend command fields. */
+/** The environment form must preserve project identity and backend command fields. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
@@ -7,7 +7,6 @@ import type { ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { ResearchView, WorkbenchProps } from '../src/client/contract.ts'
 import { EnvironmentForm } from '../src/client/EnvironmentForm.tsx'
-import { Workbench } from '../src/client/Workbench.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -20,14 +19,14 @@ const failed = (reason: string): string => t('actionFailed', { reason })
 
 function props() {
   const snapshot = { projects: [other, project], preferences: {}, components: [], modes: [] }
-  const view: ResearchView = { snapshot, tasks: [], response: null }
+  const view: ResearchView = { snapshot, tasks: [] }
   return {
     t,
     useResearch: (selector: (v: ResearchView) => unknown) => selector(view),
-    useFocus: () => ({ claim: null, projectId: project.id, panel: 'artifacts' }),
+    useFocus: () => ({ claim: null }),
     create: vi.fn().mockResolvedValue(project), run: vi.fn().mockResolvedValue({ message: '' }),
     openConversation: vi.fn().mockResolvedValue(undefined),
-    expand: vi.fn(), focusClaim: vi.fn(), refresh: vi.fn(),
+    focusClaim: vi.fn(), refresh: vi.fn(),
   } as unknown as WorkbenchProps
 }
 
@@ -38,13 +37,6 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reje
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
-
-it('opens files for the project selected by navigation, not the first snapshot row', () => {
-  const p = props()
-  const ui = render(<Workbench {...p} />)
-  expect((ui.getByLabelText(zh.projects) as HTMLSelectElement).value).toBe(project.id)
-  expect(ui.getByRole('button', { name: zh.artifacts }).getAttribute('aria-current')).toBe('page')
-})
 
 describe('the environment form', () => {
   it('preserves SSH targeting and never installs packages in an existing interpreter', async () => {

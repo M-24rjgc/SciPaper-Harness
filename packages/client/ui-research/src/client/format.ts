@@ -9,8 +9,9 @@
  *
  * @module @deepseek-ai/dsh-client-ui-research/format
  */
+import { sessionFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import type {
-  Autonomy, CreateProjectRequest, ExperimentRecord, LocalizedText, ModeSummary, ResearchProject, SourceLocator,
+  Autonomy, ExperimentRecord, LocalizedText, ModeSummary, ResearchProject, SourceLocator, StandingPhase,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { ResearchKey } from './locales.ts'
 
@@ -139,17 +140,16 @@ export function elapsedOf(run: ExperimentRecord): number | undefined {
 }
 
 /**
- * The right sidebar's address for a file inside a project, in the
- * `dsh-resource://file/absolute/…` grammar the native file preview opens.
+ * The right sidebar's address for a file inside a project, read through one
+ * conversation: the `dsh-resource://file/session/<id>/<absolute path>` address
+ * the native file viewers open (they refuse the session-less `absolute` scope).
+ * @param sessionId - the conversation whose host reads the file.
  * @param root - absolute project root, either separator.
  * @param path - path relative to the project root.
  * @returns the resource address; `:` stays literal so a drive letter reads as written.
  */
-export function projectFileAddress(root: string, path: string): string {
-  const absolute = `${root.replaceAll('\\', '/').replace(/\/+$/, '')}/${path.replaceAll('\\', '/').replace(/^\.?\//, '')}`
-  const unc = absolute.startsWith('//')
-  const encoded = absolute.replace(/^\/+/, '').split('/').map(segment => encodeURIComponent(segment).replace(/%3A/gi, ':')).join('/')
-  return `dsh-resource://file/absolute/${unc ? '/' : ''}${encoded}`
+export function projectFileAddress(sessionId: string, root: string, path: string): string {
+  return sessionFileAddress(sessionId, `${root.replaceAll('\\', '/').replace(/\/+$/, '')}/${path.replaceAll('\\', '/').replace(/^\.?\//, '')}`)
 }
 
 /**
@@ -189,54 +189,50 @@ export function modePhases(modes: readonly ModeSummary[], project: Pick<Research
   return (pack?.phases ?? []).filter(phase => onRoute(phase.routes)).map(phase => phase.id)
 }
 
-/** The value one mode choice carries in a form: the mode id, and the route after a slash. */
-export function modeChoice(mode: string, route?: string): string {
-  return route === undefined ? mode : `${mode}/${route}`
-}
-
-/**
- * Split a mode choice back into mode and route.
- * @param value - a value {@link modeChoice} produced.
- * @returns the mode, and the route when the choice names one.
- */
-export function parseModeChoice(value: string): { mode: string; route?: string } {
-  const [mode = '', route] = value.split('/')
-  return route === undefined ? { mode } : { mode, route }
-}
-
-/**
- * The mode a creation form chose, ready to spread into the request. A form
- * rendered before the modes arrived chose nothing, and the service then
- * starts the project in the general mode.
- * @param form - the submitted form, whose `mode` field a mode select fills.
- * @returns the mode and route fields of the request.
- */
-export function chosenMode(form: FormData): Pick<CreateProjectRequest, 'mode' | 'route'> {
-  const value = form.get('mode')
-  return typeof value === 'string' && value ? parseModeChoice(value) : {}
-}
-
 /**
  * Where a project stands among its phases, from the standing the host
- * derives: finished; a deferred phase that nothing before it still waits on;
- * the current phase and how many are done (`引用 3/9`); or, once every phase
- * is done but the paper is not finished, that it needs another check.
+ * derives: finished; a deferred phase that nothing before it still waits
+ * on; the current phase and how many are done; or, once every phase is done
+ * but the paper is not finished, that it needs another check.
+ */
+export type StandingPlace =
+  | { kind: 'finished' }
+  | { kind: 'deferred'; phase: StandingPhase }
+  | { kind: 'current'; phase: StandingPhase; done: number; total: number }
+  | { kind: 'recheck' }
+
+/**
+ * Where a project stands among its phases.
+ * @param project - the project as the snapshot carries it.
+ * @returns the place, or undefined for a mode without phases or a snapshot without a standing.
+ */
+export function standingPlace(project: ResearchProject): StandingPlace | undefined {
+  const phases = project.standing?.phases ?? []
+  if (phases.length === 0) return undefined
+  if (project.standing?.finished === true) return { kind: 'finished' }
+  const current = phases.find(phase => phase.state === 'current')
+  const deferred = phases.find(phase => phase.state === 'deferred')
+  if (deferred && (!current || phases.indexOf(deferred) < phases.indexOf(current))) return { kind: 'deferred', phase: deferred }
+  if (!current) return { kind: 'recheck' }
+  return { kind: 'current', phase: current, done: phases.filter(phase => phase.state === 'done').length, total: phases.length }
+}
+
+/**
+ * Where a project stands among its phases, in words: 已完成 ✓; `{phase}已推迟`;
+ * the current phase and how many are done (`引用 3/9`); or 待复查.
  * @param project - the project as the snapshot carries it.
  * @param t - bound dictionary lookup.
  * @returns the phrase, or undefined for a mode without phases or a snapshot without a standing.
  */
 export function standingPhrase(project: ResearchProject, t: Translate): string | undefined {
-  const phases = project.standing?.phases ?? []
-  if (phases.length === 0) return undefined
-  if (project.standing?.finished === true) return t('standingFinished')
-  const current = phases.find(phase => phase.state === 'current')
-  const deferred = phases.find(phase => phase.state === 'deferred')
-  if (deferred && (!current || phases.indexOf(deferred) < phases.indexOf(current))) {
-    return t('standingDeferred', { phase: packText(deferred.label, t) })
+  const place = standingPlace(project)
+  switch (place?.kind) {
+    case undefined: return undefined
+    case 'finished': return t('standingFinished')
+    case 'deferred': return t('standingDeferred', { phase: packText(place.phase.label, t) })
+    case 'recheck': return t('standingRecheck')
+    case 'current': return `${packText(place.phase.label, t)} ${place.done}/${place.total}`
   }
-  if (!current) return t('standingRecheck')
-  const done = phases.filter(phase => phase.state === 'done').length
-  return `${packText(current.label, t)} ${done}/${phases.length}`
 }
 
 /**

@@ -20,8 +20,7 @@ import type {
   EnvironmentId, ExperimentRecord, ResearchCommand, ResearchProject, ResearchResponse,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import { ResearchRuns, type RunPanelOwnerProps } from '../src/client/RunPanel.tsx'
-import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
+import { ResearchRuns, type RunPanelProps } from '../src/client/RunPanel.tsx'
 import { zh } from '../src/client/locales.ts'
 
 const LIMIT = 100_000
@@ -83,7 +82,8 @@ function addRun(project: ResearchProject, name: string, reported: Partial<Experi
     seed: SEED, maxSeconds: 600, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [code.id],
     metricsPath: 'metrics.json',
   }, randomUUID())
-  const run = { ...submitted, ...reported }
+  // The service records the submitting conversation on the run; this spec's runs are this conversation's unless a test says otherwise.
+  const run = { ...submitted, sessionId: SESSION, ...reported }
   project.experiments.push(run)
   return run
 }
@@ -92,7 +92,8 @@ interface Mounted {
   panel: ReturnType<typeof render>
   commands: ResearchCommand[]
   drafts: string[]
-  expanded: string[]
+  /** How many times a card asked for the experiment board. */
+  boards: number[]
   /** Draw the panel again, as the store does after the host re-read the record. */
   redraw: () => void
 }
@@ -100,17 +101,18 @@ interface Mounted {
 /** The panel over one project, recording every command and every composer draft. */
 function mount(
   project: ResearchProject | null,
-  options: { respond?: (command: ResearchCommand) => Promise<ResearchResponse>; draft?: string } = {},
+  options: { respond?: (command: ResearchCommand) => Promise<ResearchResponse>; draft?: string; blank?: boolean } = {},
 ): Mounted {
-  const { respond = () => Promise.resolve({ message: '' }), draft = '' } = options
+  const { respond = () => Promise.resolve({ message: '' }), draft = '', blank = false } = options
   const commands: ResearchCommand[] = []
   const drafts: string[] = []
-  const expanded: string[] = []
+  const boards: number[] = []
   if (project) project.sessionId = SESSION
   const view = {
     snapshot: project === null ? null : { projects: [project], preferences: {}, components: [], modes: [] },
-    tasks: [], response: null,
+    tasks: [],
   }
+  const list = { byId: { [SESSION]: { id: SESSION, blank } } }
   const props = {
     sessionId: SESSION,
     t: (key: string, params?: Record<string, unknown>) => {
@@ -120,12 +122,13 @@ function mount(
     run: (command: ResearchCommand) => { commands.push(command); return respond(command) },
     useResearch: (select: (value: typeof view) => unknown) => select(view),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
+    useSessions: (select: (value: typeof list) => unknown) => select(list),
     input: { draft },
     inputActions: { setDraft: (text: string) => { drafts.push(text) } },
-    expand: (projectId: string, panel: string) => { expanded.push(`${projectId}:${panel}`) },
-  } as unknown as WorkbenchProps & RunPanelOwnerProps & SessionSeatProps
+    openBoard: () => { boards.push(boards.length + 1) },
+  } as unknown as RunPanelProps
   const panel = render(<ResearchRuns {...props} />)
-  return { panel, commands, drafts, expanded, redraw: () => { panel.rerender(<ResearchRuns {...props} />) } }
+  return { panel, commands, drafts, boards, redraw: () => { panel.rerender(<ResearchRuns {...props} />) } }
 }
 
 /** Press 停止 on the panel, then confirm it in the question that follows. */
@@ -143,6 +146,48 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     expect(project.experiments).toEqual([])
     expect(mount(null).panel.container.firstChild).toBeNull()
     expect(mount(project).panel.container.firstChild).toBeNull()
+  })
+
+  it('draws only the runs this conversation submitted; the others and the runs recorded without one are on the board', async () => {
+    const project = await submittedProject()
+    addRun(project, 'elsewhere', { status: 'running', sessionId: 'session-other' })
+    const unrecorded = addRun(project, 'unrecorded', { status: 'running' })
+    delete unrecorded.sessionId
+    expect(mount(project).panel.container.firstChild).toBeNull()
+    cleanup()
+    addRun(project, 'mine', { status: 'running', startedAt: new Date().toISOString() })
+    const { panel } = mount(project)
+    expect(panel.getAllByRole('article').map(card => card.textContent?.split(' ')[0])).toEqual(['mine'])
+  })
+
+  it('draws nothing on a blank conversation unless one of its runs is still open', async () => {
+    const project = await submittedProject()
+    addRun(project, 'finished', { status: 'completed' })
+    expect(mount(project, { blank: true }).panel.container.firstChild).toBeNull()
+    cleanup()
+    addRun(project, 'waiting')
+    const { panel } = mount(project, { blank: true })
+    expect(panel.getByText(/^waiting /)).toBeTruthy()
+  })
+
+  it('lets an example\'s runs be read and followed to the board, and offers nothing else', async () => {
+    const project = await submittedProject()
+    project.example = true
+    addRun(project, 'running', { status: 'running', startedAt: new Date().toISOString() })
+    addRun(project, 'lost', { status: 'unknown' })
+    addRun(project, 'finished', { status: 'completed', collected: true })
+    const { panel, commands, boards } = mount(project, { respond: () => Promise.resolve({ message: 'Experiment logs', content: 'epoch 1' }) })
+    fireEvent.click(panel.getByRole('button', { name: say('runsShowSettled', { n: 1 }) }))
+    for (const name of [zh.runStop, zh.runReconnect, zh.dismiss, zh.runPlot]) expect(panel.queryByRole('button', { name })).toBeNull()
+    // The unconfirmed run is named without pointing at a reconnect the example lacks.
+    expect(panel.getByText(zh.runUnknownNoteExample)).toBeTruthy()
+    expect(panel.queryByText(zh.runUnknownNote)).toBeNull()
+    expect(panel.getAllByRole('button', { name: zh.logs })).toHaveLength(3)
+    fireEvent.click(panel.getAllByRole('button', { name: zh.boardOpen })[0]!)
+    fireEvent.click(panel.getAllByRole('button', { name: zh.logs })[0]!)
+    await flush()
+    expect(boards).toEqual([1])
+    expect(commands.map(command => command.action)).toEqual(['experiment-logs'])
   })
 
   it('measures a running run against its own time limit', async () => {
@@ -203,7 +248,7 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     })
     // A run that reports a fraction before its supervisor stamped a start has no time yet.
     addRun(project, 'block-sparse-32k', { progress: { values: {}, fraction: 0.75, at: new Date().toISOString() } })
-    const { panel, expanded } = mount(project)
+    const { panel, boards } = mount(project)
     expect(panel.getByText('25% · fold 1/4')).toBeTruthy()
     expect(panel.getByText('50%')).toBeTruthy()
     expect(panel.getAllByText(new RegExp(`^${zh.runElapsed} `))).toHaveLength(3)
@@ -213,7 +258,7 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     const widths = [...panel.container.querySelectorAll<HTMLElement>('[style]')].map(bar => bar.style.width)
     expect(widths).toEqual(expect.arrayContaining(['25%', '50%']))
     fireEvent.click(panel.getAllByRole('button', { name: zh.boardOpen })[0]!)
-    expect(expanded).toEqual([`${project.id}:experiments`])
+    expect(boards).toEqual([1])
   })
 
   it('says a queued run is queued, not running, with nothing elapsed yet', async () => {

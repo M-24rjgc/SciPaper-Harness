@@ -102,7 +102,7 @@ function propsOf(w: World, face: ReturnType<typeof faceOf>, store: ReturnType<Re
     snapshot: projects === null
       ? null
       : { projects, preferences: w.showExamples === undefined ? {} : { showExamples: w.showExamples }, components: [], modes: MODES },
-    tasks: [], response: null,
+    tasks: [],
   }
   return {
     t, wide: w.wide ?? true,

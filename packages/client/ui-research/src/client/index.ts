@@ -6,26 +6,31 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
+import type { EvidenceRecord, ProjectId, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
+import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import type {
   EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
-  SessionDirectories,
+  SessionDirectories, SourceReference,
 } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
-import { projectFileAddress } from './format.ts'
-import { Workbench, ResearchMark, ResearchBrand } from './Workbench.tsx'
+import { projectFileAddress, researchFileUrl } from './format.ts'
+import { DEFAULT_PRESET_FIELD, PRESET_SETTINGS_NAMESPACE, presetDefaults, type PresetDefaults } from './presets.ts'
+import { ResearchMark, ResearchBrand } from './Brand.tsx'
 import { ResearchHeroMark } from './Hero.tsx'
 import { ResearchRail, ResearchRailTitle } from './Rail.tsx'
+import { ResearchBoardTab, ResearchBoardTitle, ResearchGalleryTab, ResearchGalleryTitle, ResearchSourcesTitle } from './Tabs.tsx'
+import { ResearchSourcesTab } from './Sources.tsx'
+import { diagramTitle, ResearchDiagramTab } from './Diagram.tsx'
 import { ResearchClaimSheet } from './ClaimSheet.tsx'
 import { ResearchRuns } from './RunPanel.tsx'
 import { ResearchStatusChip } from './Header.tsx'
@@ -41,12 +46,24 @@ import { guardExampleComposers } from './examples.ts'
 import { ResearchCheckCard, ResearchToolCard } from './ResearchToolView.tsx'
 import { en, zh, type ResearchKey } from './locales.ts'
 
-/** This implementation's identity in the right-sidebar tab system. */
+/** This implementation's identity in the right-sidebar tab system; each further tab type is named below it. */
 const RESEARCH_TAB_ID = '@deepseek-ai/dsh-client-ui-research'
-/** The tab kind this package owns. */
+/** The research record's tab kind. */
 const RESEARCH_TAB_KIND = 'research'
+/** The secondary tools' page kinds, and the draw.io editor's resource kind, each with its implementation id. */
+const BOARD_TAB = { id: `${RESEARCH_TAB_ID}/board`, kind: 'research-board' } as const
+const SOURCES_TAB = { id: `${RESEARCH_TAB_ID}/sources`, kind: 'research-sources' } as const
+const GALLERY_TAB = { id: `${RESEARCH_TAB_ID}/gallery`, kind: 'research-gallery' } as const
+const DIAGRAM_TAB = { id: `${RESEARCH_TAB_ID}/drawio`, kind: 'research-drawio' } as const
 /** The right-sidebar tab kind of the research folder's file tree, owned by ui-sidebar-files. */
 const FILES_TAB_KIND = 'files'
+/**
+ * The width a tab suggests for the right panel, which applies only while the
+ * panel has none yet: the record and the Sources list are a column; the board
+ * and the figures need room (D16).
+ */
+const NARROW_TAB_PX = 320
+const WIDE_TAB_PX = 560
 /** How long a conversation may take to appear in the session list before its folder's blank conversation opens instead. */
 const LISTING_WAIT_MS = 5000
 /** How long 这里就是一项新的研究 (This already is a new research) stays on the entry screen. */
@@ -56,7 +73,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap
 export type { ResearchInjected, ResearchView, WorkbenchProps } from './contract.ts'
 export const inject = [
   'remote', 'remote.research', 'remote.directoryPicker', 'remote.session', 'slots', 'locale', 'layout', 'sessions', 'workspaces', 'sidebarRight',
-  'uiWorkspace',
+  'uiWorkspace', 'settingsScope',
 ]
 
 /**
@@ -78,9 +95,9 @@ export function apply(ctx: Context): void {
     document.body.dataset.researchWorkbench = ''
     return () => { delete document.body.dataset.researchWorkbench }
   }, 'research.appearance')
-  const state = createSnapshotStore<ResearchView>({ snapshot: null, tasks: [], response: null })
-  // The rail and the frame-wide claim sheet live in different slot scopes, so the
-  // selection between them travels through a store rather than through props.
+  const state = createSnapshotStore<ResearchView>({ snapshot: null, tasks: [] })
+  // The Sources tab and the frame-wide claim sheet live in different slot scopes, so
+  // the selection between them travels through a store rather than through props.
   const focus = createSnapshotStore<ResearchFocus>({ claim: null })
   // Every conversation in a project folder shows that project, so seats need each session's working directory.
   const sessions = ctx.get('sessions') as unknown as ISessions
@@ -138,12 +155,10 @@ export function apply(ctx: Context): void {
       controller.signal.addEventListener('abort', stop)
     })
   }
-  /** Follow a command's answer to its end, read the record again, and keep the result for the file panel. */
+  /** Follow a command's answer to its end, reading the record again first. */
   const follow = async (first: ResearchResponse): Promise<ResearchResponse> => {
     await reread()
-    const response = await settled(first)
-    state.update((s) => { s.response = response })
-    return response
+    return settled(first)
   }
   /** Resolve true once the session list carries the session, false when it has not within the wait or the plugin went away. */
   const whenListed = (sessionId: SessionId): Promise<boolean> =>
@@ -155,10 +170,70 @@ export function apply(ctx: Context): void {
     if (result.error.code === 'directory-picker/unavailable') return { kind: 'unavailable' }
     throw new Error(result.error.message)
   }
-  const openProjectFile = (root: string, path: string): void => { ctx.sidebarRight.openResource(projectFileAddress(root, path)) }
-  const showProgress = (): void => {
-    ctx.layout.setInitialRightbarWidth(320)
-    ctx.sidebarRight.openTab(RESEARCH_TAB_KIND)
+  // A file opens through the conversation on screen, which is the one whose right sidebar is mounted.
+  const openProjectFile = (root: string, path: string): void => {
+    const current = sessions.list.getSnapshot().current
+    if (current === undefined) throw new Error('No conversation is on screen to show the file beside')
+    ctx.sidebarRight.openResource(projectFileAddress(current, root, path))
+  }
+  const openTab = (kind: string, width: number): void => {
+    ctx.layout.setInitialRightbarWidth(width)
+    ctx.sidebarRight.openTab(kind)
+  }
+  const showProgress = (): void => { openTab(RESEARCH_TAB_KIND, NARROW_TAB_PX) }
+  // The header chip is the record's door both ways: it closes the panel only while the panel shows the record.
+  const toggleProgress = (): void => {
+    if (ctx.sidebarRight.isExpanded() && ctx.sidebarRight.active()?.kind === RESEARCH_TAB_KIND) ctx.sidebarRight.toggleExpanded()
+    else showProgress()
+  }
+  // Whether the host can show a folder in the desktop's file manager: asked once, false until the host says so.
+  const canReveal = createSnapshotStore(false)
+  void ctx.remote.session.canOpenWorkspacePath().then((result) => {
+    if (result.ok && !controller.signal.aborted) canReveal.set(result.value)
+  }, (_failure: unknown) => {
+    // Without an answer the menus offer no file-manager row; nothing else depends on it.
+  })
+  const reveal = async (path: string): Promise<void> => {
+    unwrap(await ctx.remote.session.openWorkspacePath({ path, action: 'reveal' }, controller.signal))
+  }
+  // Which agent preset conversations compose from: the research assistant's, unless the settings keep another as the default.
+  const presetScope = ctx.settingsScope.bind({ namespace: PRESET_SETTINGS_NAMESPACE })
+  const presets = createSnapshotStore<PresetDefaults | null>(null)
+  const readPresets = (): void => {
+    const next = presetDefaults(presetScope.getSnapshot())
+    const known = presets.getSnapshot()
+    if (next?.research !== known?.research || next?.saved !== known?.saved) presets.set(next)
+  }
+  readPresets()
+  ctx.effect(() => presetScope.subscribe(readPresets), 'research.agent-presets')
+  const resetDefaultPreset = async (): Promise<void> => {
+    await presetScope.unset(DEFAULT_PRESET_FIELD)
+    // A refused write reloads the settings instead of failing, so a default still saved is the refusal.
+    if (presetDefaults(presetScope.getSnapshot())?.saved !== undefined) throw new Error(ctx.locale.bind('research')('legacyResetUnchanged'))
+  }
+  // A literature source's authors and year live in the reference record beside it; each revision is read once.
+  const references = new Map<string, Promise<SourceReference | undefined>>()
+  const readReference = async (projectId: ProjectId, source: EvidenceRecord): Promise<SourceReference | undefined> => {
+    const response = await fetch(researchFileUrl(projectId, source.path), { signal: controller.signal })
+    if (!response.ok) return undefined
+    const value: unknown = await response.json()
+    const authors: unknown = typeof value === 'object' && value !== null && 'authors' in value ? value.authors : undefined
+    if (!Array.isArray(authors)) return undefined
+    const names = (authors as unknown[]).filter((name): name is string => typeof name === 'string')
+    const year: unknown = (value as { year?: unknown }).year
+    return typeof year === 'number' ? { authors: names, year } : { authors: names }
+  }
+  const reference: ResearchInjected['reference'] = (projectId, source) => {
+    const key = `${projectId}\n${source.path}\n${source.revision}`
+    const known = references.get(key)
+    if (known !== undefined) return known
+    // A reference that cannot be read, refused or failing or naming no authors, leaves the byline out until a later tab asks again.
+    const read = readReference(projectId, source).catch((_failure: unknown) => undefined).then((found) => {
+      if (found === undefined) references.delete(key)
+      return found
+    })
+    references.set(key, read)
+    return read
   }
   const create: ResearchInjected['create'] = async (request) => {
     const project = unwrap(await ctx.remote.research.create(request))
@@ -167,10 +242,13 @@ export function apply(ctx: Context): void {
   }
   const run: ResearchInjected['run'] = async request => follow(unwrap(await ctx.remote.research.command(request, controller.signal)))
   const injected = (): ResearchInjected => ({
-    hooks: { research: state, focus, directories }, refresh,
+    hooks: { research: state, focus, directories, canReveal, presets }, refresh,
     openFile: openProjectFile,
     openFiles: () => { ctx.sidebarRight.openTab(FILES_TAB_KIND) },
     showProgress,
+    toggleProgress,
+    reveal,
+    resetDefaultPreset,
     focusClaim: (claim) => { focus.update((s) => { s.claim = claim }) },
     create,
     pickDirectory: pickFolder,
@@ -191,17 +269,24 @@ export function apply(ctx: Context): void {
       if (keys.embedding) unwrap(await ctx.remote.research.setCredential('embedding', keys.embedding))
       await reread()
     },
-    install: async (component) => { await follow(unwrap(await ctx.remote.research.installComponent(component))) },
+    reference,
+    // The component list says what is installed, so it is read again once the install has settled.
+    install: async (component) => {
+      await follow(unwrap(await ctx.remote.research.installComponent(component)))
+      await reread()
+    },
     openConversation: async (sessionId, workspaceId) => {
       const listed = await whenListed(sessionId as SessionId)
       if (controller.signal.aborted) return
       if (listed) ctx.uiWorkspace.openSession(sessionId as SessionId)
       else await ctx.uiWorkspace.openWorkspace(workspaceId as Parameters<UiWorkspace['openWorkspace']>[0])
     },
-    expand: (projectId, panel = 'workflow', artifactId) => {
-      focus.update((s) => { s.projectId = projectId; s.panel = panel; s.artifactId = artifactId })
-      ctx.layout.selectPanel('research' as MainPanelId)
+    openBoard: () => { openTab(BOARD_TAB.kind, WIDE_TAB_PX) },
+    openSources: (section) => {
+      ctx.layout.setInitialRightbarWidth(NARROW_TAB_PX)
+      ctx.sidebarRight.openTab(SOURCES_TAB.kind, section === undefined ? {} : { params: { section } })
     },
+    openGallery: () => { openTab(GALLERY_TAB.kind, WIDE_TAB_PX) },
   })
   // Where startup and 新研究 go (ui-workspace's entry policy), and the untouched draft's moves.
   const entryView = createSnapshotStore<EntryView>({ notice: null })
@@ -223,13 +308,6 @@ export function apply(ctx: Context): void {
       unregister()
     }
   }, 'research.entry-policy')
-  // Whether the host can show a folder in the desktop's file manager: asked once, false until the host says so.
-  const canReveal = createSnapshotStore(false)
-  void ctx.remote.session.canOpenWorkspacePath().then((result) => {
-    if (result.ok && !controller.signal.aborted) canReveal.set(result.value)
-  }, (_failure: unknown) => {
-    // Without an answer the menu offers no file-manager row; nothing else depends on it.
-  })
   const entryInjected = (): ResearchEntryInjected => ({
     hooks: { research: state, directories, entry: entryView, canReveal },
     chooseFolder: () => pickFolder().catch((error: unknown): FolderPick => {
@@ -267,16 +345,13 @@ export function apply(ctx: Context): void {
       for (const sessionId of folder?.sessionIds ?? []) if (!archived.has(sessionId)) await ctx.uiWorkspace.archiveSession(sessionId)
       await workspaces.delete(workspaceId)
     },
-    reveal: async (path) => { unwrap(await ctx.remote.session.openWorkspacePath({ path, action: 'reveal' }, controller.signal)) },
+    reveal,
     searchConversations: async (query, signal) => unwrap(await sessions.search(query, signal)),
     searchResultLimit: sessions.searchResultLimit,
   })
-  // The project's files stay reachable, but not as a second application beside
-  // the conversation: nothing lists this panel, and the research tab opens it.
-  ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: 'research', locale: 'research', inject: injected }, Workbench))
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', locale: 'research' }, ResearchBrand))
   ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark' }, ResearchMark))
-  // Where the research stands, from the conversation header; clicking it opens the research tab.
+  // Where the research stands, from the conversation header; clicking it opens the research tab, or closes the panel showing it.
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({ name: 'conversation.session.header.actions', id: 'research-status', order: 5, locale: 'research', inject: injected }, ResearchStatusChip))
   // The blank-session entry: the research mark, the line under the headline, and two example sentences to start from.
   ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark' }, ResearchHeroMark))
@@ -284,7 +359,7 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-try', order: 7, locale: 'research', inject: entryInjected }, ResearchTryChips))
   // Submitted runs outlive the window, so the group reports itself above the composer.
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-runs', order: 6, locale: 'research', inject: injected }, ResearchRuns))
-  // A claim's sources open over the whole frame; the rail puts one in focus.
+  // A claim's sources open over the whole frame; the Sources tab puts one in focus.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-claim', order: 20, locale: 'research', inject: injected }, ResearchClaimSheet))
   // The research tools' calls read in the reader's language inside the conversation, a research check as its own card.
   const toolInjected = (): ResearchToolInjected => ({ hooks: { research: state }, openProjectFile })
@@ -319,7 +394,9 @@ export function apply(ctx: Context): void {
       name: 'sidebar.workspaces', priority: -1, locale: 'research', store: createResearchTreeStore(), inject: treeInjected,
     }, ResearchTree))
   }
-  // The research record reports beside the conversation, read-only.
+  // Beside the conversation: the research record, which reports read-only, and the secondary tools as tabs
+  // of their own, opened only from the record, a run card or the entry line. The guide page lists the record
+  // alone. A `.drawio` file opens in the draw.io editor, ahead of the plain text viewer.
   ctx.inject(['sidebarRightTabs'], (scope: Context) => {
     const t = scope.locale.bind('research')
     scope.effect(() => scope.sidebarRightTabs.register({
@@ -329,8 +406,29 @@ export function apply(ctx: Context): void {
       title: () => t('railTitle'),
       guide: [{ id: 'research', order: 15, title: () => t('railGuideTitle'), description: () => t('railGuideDescription'), icon: ResearchHeroMark }],
     }), 'research.rail-type')
-    scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({ name: 'sidebar.right.pane.tab', key: RESEARCH_TAB_ID, locale: 'research', inject: injected }, ResearchRail))
-    scope.slots.inject('sidebar.right.pane.tab.title', () => scope.slots.register({ name: 'sidebar.right.pane.tab.title', key: RESEARCH_TAB_ID, locale: 'research' }, ResearchRailTitle))
+    scope.effect(() => scope.sidebarRightTabs.register({ ...BOARD_TAB, priority: 'builtin', title: () => t('boardTitle') }), 'research.board-type')
+    scope.effect(() => scope.sidebarRightTabs.register({ ...SOURCES_TAB, priority: 'builtin', title: () => t('sourcesTab') }), 'research.sources-type')
+    scope.effect(() => scope.sidebarRightTabs.register({ ...GALLERY_TAB, priority: 'builtin', title: () => t('gallery') }), 'research.gallery-type')
+    scope.effect(() => scope.sidebarRightTabs.register({
+      ...DIAGRAM_TAB,
+      priority: 'builtin',
+      patterns: ['*.drawio'],
+      canOpen: address => parseFileAddress(address) !== undefined,
+      title: diagramTitle,
+    }), 'research.drawio-type')
+    scope.slots.inject('sidebar.right.pane.tab', function* () {
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: RESEARCH_TAB_ID, locale: 'research', inject: injected }, ResearchRail)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: BOARD_TAB.id, locale: 'research', inject: injected }, ResearchBoardTab)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: SOURCES_TAB.id, locale: 'research', inject: injected }, ResearchSourcesTab)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: GALLERY_TAB.id, locale: 'research', inject: injected }, ResearchGalleryTab)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: DIAGRAM_TAB.id, locale: 'research', inject: injected }, ResearchDiagramTab)
+    })
+    scope.slots.inject('sidebar.right.pane.tab.title', function* () {
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab.title', key: RESEARCH_TAB_ID, locale: 'research' }, ResearchRailTitle)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab.title', key: BOARD_TAB.id, locale: 'research' }, ResearchBoardTitle)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab.title', key: SOURCES_TAB.id, locale: 'research' }, ResearchSourcesTitle)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab.title', key: GALLERY_TAB.id, locale: 'research' }, ResearchGalleryTitle)
+    })
   })
   const timer = setInterval(() => { void refresh() }, 3000)
   ctx.effect(() => () => { controller.abort(); clearInterval(timer) }, 'research.refresh')

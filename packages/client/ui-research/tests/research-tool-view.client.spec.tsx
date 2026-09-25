@@ -86,7 +86,7 @@ interface Seat {
 
 function props(block: ResearchToolProps['block'], seat: Seat = {}): { props: ResearchToolProps; opened: [string, string][] } {
   const opened: [string, string][] = []
-  const view: ResearchView = { snapshot: seat.snapshot === undefined ? SNAPSHOT : seat.snapshot, tasks: [], response: null }
+  const view: ResearchView = { snapshot: seat.snapshot === undefined ? SNAPSHOT : seat.snapshot, tasks: [] }
   const toolName = 'kind' in block ? block.call?.name ?? 'research_check' : block.name
   return {
     opened,

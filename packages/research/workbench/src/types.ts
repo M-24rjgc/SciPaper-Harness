@@ -424,6 +424,12 @@ export interface ResearchProject {
   progress?: ResearchProgress | undefined
   /** Where the project stands: derived for each snapshot, never stored; absent elsewhere. */
   standing?: ResearchStanding | undefined
+  /**
+   * The unfinished goals of the project's live conversations (`activeGoals`),
+   * those that drive rounds first: derived for each snapshot, never stored;
+   * absent when there is none, and elsewhere.
+   */
+  goals?: ResearchGoal[] | undefined
   sessionId?: string | undefined
 }
 export interface ModelBinding {

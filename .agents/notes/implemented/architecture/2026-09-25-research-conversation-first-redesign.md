@@ -223,6 +223,94 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 - **Elsewhere in ui-research.** `land()` and 换到另一项研究 skip removed researches, and 打开它 on a removed research restores it before carrying the draft. `standingText` is built on the new `standingPhrase`.
 - **Tests and goldens.** `tree-values.client.spec.ts` and `research-tree.client.spec.tsx` cover the derivation, clicks, keyboard, menus, dialogs, search and rail; `plugin.client.spec.ts` the registration, the shadowed browser's declared child and the tree face; the settings, entry and folder-menu specs removed researches. The research Web e2e reads the tree, opens a conversation and ＋ 新对话, finds a conversation by its text, renames, removes and restores a research, and toggles 显示示例研究; its settled-reply scenario opens its conversation through 其他文件夹. The `lifecycle-chrome` `hero` and `plan-active` goldens lose the 研究项目 navigation, on those lines only.
 
+### Step 11: the secondary tools are tabs beside the conversation, and the Workbench goes (ui-research)
+
+- **Tab types.** ui-research registers four more right-sidebar tab types in the builtin band. Each body sits in `sidebar.right.pane.tab` under its own id (`@deepseek-ai/dsh-client-ui-research/board`, `/sources`, `/gallery`, `/drawio`) with the research tab's face. The three pages register live chip titles. The guide page still offers the research tab alone. Each body shows the research of its conversation (`useSessionProject`). A conversation in no research reads the research tab's line, and an example opens with 示例研究：随应用提供的演示，只能查看。
+  - **实验看板 (`research-board`).** `Board.tsx` without the manual run form. 停止, behind its confirmation, is not drawn in an example. With no run and no section it reads 这项研究还没有实验。需要时助手会在这里登记运行。
+  - **资料 (`research-sources`, `Sources.tsx`).** Each source shows authors · year, `DOI …`, what the research holds of it (全文, 仅摘要, 仅元数据 or 数据) and 需要更新 when stale. 在原文里打开这一页 opens its `path` in the sidebar's viewers, and 全文 opens its `fullTextPath`. Below come the claims with their state tags, in the claim sheet's tones; a claim raises the sheet through `focusClaim`. The authors and year live in the literature source's `reference.json`, which the record does not carry. The face's `reference(projectId, source)` fetches it through `/api/research/file` and keeps the answer per project, path and revision. A refused or failed read, or a record without authors, answers undefined and shows no byline, and a later tab asks again. An open with `{ section: 'claims' }` (a `SidebarRightTabParamsMap` entry) scrolls to the claims, and any other open scrolls to the top, because a new tab starts at the scroll position the pane's previous tab left. The tab imports, searches and verifies nothing.
+  - **配图灵感 (`research-gallery`).** `Gallery.tsx`. An example gets no 存为参考图 form. A figure's detail lays out in one column below about 520 px.
+  - **draw.io (`research-drawio`).** A resource type with `patterns: ['*.drawio']` and a `canOpen` that accepts any file address `parseFileAddress` reads. It outranks the text viewer's fallback band for every `.drawio` address, including the files tab's.
+    - The body resolves the file (an absolute path as written, a relative one against its conversation's working directory) to a path in the research folder. Outside it, the tab says 这个 draw.io 文件不在研究文件夹里，这里无法编辑。
+    - The diagram loads through `read-artifact`. A file the record does not list is first registered (`register-artifact`, kind `diagram`, no links). An example cannot register one, so there the tab reads 研究记录里没有这张图。
+    - Saving works as it did in the Workbench: `save-artifact` with the revision the editor loaded and the artifact's own links. Autosaves are debounced by 1.5 s and written one at a time, the latest winning. An autosave still waiting when the tab closes is written then.
+    - While the snapshot's `components` does not list draw.io as installed, the tab offers 安装组件. An install reads the record again once it settles, and the frame is keyed by the install count, so it loads afresh.
+    - An example's diagram loads with `autosave: 0` and `noSaveBtn=1`, and its save messages are ignored.
+- **Openers.** `openBoard()`, `openSources(section?)` and `openGallery()` replace `expand(projectId, panel, artifactId)`, beside the existing `openFiles()`. Each calls `layout.setInitialRightbarWidth` and then `sidebarRight.openTab`. The board and the gallery suggest 560 px, the research and Sources tabs 320 px (D16).
+  - **Rail counts.** 证据 opens Sources, 论点 opens Sources at its claims, the files count opens the files tab, and 实验 opens the board.
+  - **Rail tools row.** It opens the board, the gallery and the files tab.
+  - **Run card.** 看板 opens the board.
+- **A project file opens through the conversation on screen.** The sidebar's file viewers claim only session-scoped file addresses. `openFile`'s `dsh-resource://file/absolute/…` address was claimed by no type and threw, so issue links, claim-sheet sources and check-card files all failed with 没能完成. `projectFileAddress(sessionId, root, path)` now builds `dsh-resource://file/session/<id>/<absolute path>` with `sessionFileAddress` from `@deepseek-ai/dsh-util-workspace-path`, which replaces the `dsh-util-crypto` development dependency, and `openFile` passes the current session. The host reads a session-scoped absolute path without confining it to the workspace.
+- **Removed.**
+  - `Workbench.tsx` and its module, and the `main` registration.
+  - `ModeSelect.tsx` with `modeChoice`, `parseModeChoice` and `chosenMode`, and `ActionButton`.
+  - `expand()`, and the focus store's `projectId`, `panel` and `artifactId`.
+  - `ResearchView.response`, which only the Workbench showed.
+  - 77 locale keys only the Workbench used, including the four that named the full workbench.
+  - Renamed: `galleryAuthorsMore` becomes `authorsMore`, which the sources share.
+  - Moved: `ResearchMark` and `ResearchBrand` to `Brand.tsx`.
+  - Kept: `openConversation` stays on the face.
+- **File actions.** The shell's files tab has no seat for per-file actions, so no single file offers 用默认程序打开 or 在资源管理器中打开, and the shell is unchanged.
+- **Tests.**
+  - New specs: `tabs`, `sources`, `diagram`, `brand` and `contract`.
+  - Extended specs: `board` and `gallery` cover examples. `plugin` covers the registrations, the openers and their widths, session-scoped addresses, `reference` and the read after an install.
+  - The research Web e2e opens the claim through the Sources tab and returns to the research tab through the header chip. A new scenario opens Sources and a source's file in the text viewer, the board's empty state, and a `.drawio` file from the files tab, which registers it and offers the install.
+  - `gen-client-catalog` lists the new occupants and drops the research `main` key.
+
+### Step 11: the research record reads the research's standing, and run cards stay in their conversation (ui-research)
+
+- **The record (`Rail.tsx`).** The research tab, its guide entry and the header chip's tooltip are now called 研究记录 / Research record, the name the entry line already used. From top to bottom:
+  - **The research.** Its title, a dashed 示例 tag for an example, and its folder in muted text. 在资源管理器中打开 shows while `session.canOpenWorkspacePath()` answered yes. An example opens with 示例研究：随应用提供的演示，只能查看。. The face gains the `canReveal` hook and `reveal(path)`, which rejects with the host's reason; the tree's menu uses it too.
+  - **Mode · route · who chose it.** `spark-to-paper · 从实测结果开始 · 你选定`, or 助手选定, or 示例作者选定 in an example, with `modeReason` under it. The route falls back to the pack's default route. The line reads 模式待定 while `modeSetBy` is unset. 想换模式？ adds 我想把这项研究换成别的模式，你看哪种合适？ to the draft of the conversation beside the tab (the tab seat's own `useInput` and `inputActions`) and sends nothing; an example has none. The autonomy line is unchanged.
+  - **现在 (Now).** `nowLine` (`activity.ts`) takes the first of these:
+    - a conversation of the research waiting on an approval, a plan review or a question: 等你回答（对话「X」）, with 跳过去 unless it is this conversation;
+    - a goal that drives rounds: 助手正在推进：{current phase}（对话「X」）, without the phase in a mode that has none;
+    - running runs (not queued, not unconfirmed): n 个实验运行中, with 打开实验看板;
+    - a blocked goal: 助手在等你：见对话「X」, with 跳过去;
+    - once checked, the current phase: 下一步：{phase} — {its first hint};
+    - a deferred phase with no current phase left: {phase}已推迟：结果格保留「--」，等你补上结果后继续;
+    - finished: 全部检查通过, with the ✓ in `state-success`;
+    - never checked: 还没有检查过;
+    - every phase done but the paper not finished: 各阶段都已完成，还需要再检查一次;
+    - the general mode, the mode not chosen included: 通用模式：直接在对话里提需求.
+  - **现在 details.** The next-phase, finished, never-checked and recheck lines offer 在对话中提出：{sentence} (继续：{phase}, 导出投稿包, 检查一下现在的进度), which adds the sentence to the draft; an example offers none. A conversation goes by its title, or 新对话 while it is blank or unlisted. The lines that wait on the person use the warn colour; the goal and run lines use the ongoing blue.
+  - **阶段 (Phases) and 待处理 (Open issues).** As step 6 built them, under a 阶段 head. Before any check nothing shows under the phases, because the 现在 line says so.
+  - **决策 (Decisions).** The three newest, marked 你 / 助手 (示例作者 in an example), question and answer only. A decision with key `mode` reads 模式与路线, with the mode and route by their pack names, or by their ids when the pack or route is gone.
+  - **Counts.** 资料 (with its 待更新 tag), 论点, 文件 and 实验, named as the tabs they open. The files count shows its own error in place.
+  - **Tools row.** Unchanged.
+  - **Removed.** The decisions' rationale lines, the note under the phases before any check, `ProjectStatus`, and the keys `checkNever`, `railSourcesLabel` (证据) and `artifacts` (论文与图表).
+- **What is live (`activity.ts`).** `researchActivity` reads:
+  - the listed conversations whose research this is (`sessionProject`), and the first of them that waits on the person;
+  - the goals, as the snapshot carries them;
+  - the running runs.
+
+  From these it derives one dot: warn outranks ongoing. `conversationSignal`, `goalSignal` and `strongestSignal` moved here from `treeValues.ts`. The tree row's dot now also takes the research's goals: a blocked one is warn, one that drives rounds is ongoing, a paused one shows nothing.
+- **One draft (host).** Only the newest untouched research is the draft. A research whose files were removed again, or one restored to the list while still blank, is untouched too, and both used to read as drafts, so the tree showed two italic 新研究 rows. `drafts` now tests every blank record and keeps the newest, so the older one is an ordinary research the person can remove from the list. `discard` asks only that its research be untouched, because a relocated draft already has a newer one beside it.
+- **Goals in the snapshot (host).** `ResearchProject.goals` carries `activeGoals(project)` for each snapshot: derived, never stored, absent when there is none. `activeGoals` takes an optional `projects` list, so one snapshot resolves every project against one list. The typert validators and the remotes bundle carry the field.
+- **The header chip (`Header.tsx`).**
+  - Its forms: 模式待定 while the mode is not chosen; the mode alone when it has no phases (通用); `{mode} · {phase} n/m`; `{mode} · 已完成` with a verified ✓; `{phase}已推迟` alone once nothing before the deferred phase is left; `{mode} · 待复查`. In an example they all follow `示例 ·`. `standingPlace` (`format.ts`) gives the place, and `standingPhrase` reads it.
+  - The `· 全自动` suffix is gone; the composer's chip names the autonomy.
+  - The dot is the research's. It pulses in the ongoing blue unless the person prefers reduced motion.
+  - A click calls the face's new `toggleProgress()`. While `sidebarRight.isExpanded()` holds and `sidebarRight.active()` is the research tab, it collapses the panel (`toggleExpanded()`); otherwise it opens the research tab as `showProgress()` does.
+- **A saved default preset that is not the research assistant's.**
+  - Where it is read: the agent-preset roster composes a session that names no preset from `agent-presets.default`, the person's layer over the row's `default`, while `modeSelectionEnabled` is not false.
+  - ui-research binds that namespace with `ctx.settingsScope.bind` (new inject `settingsScope`). The bind adds no wire read, and the settings mirror refreshes it when the document changes.
+  - `presetDefaults` (`presets.ts`) gives `research`, the namespace's composition `default`, and `saved`, the person's `default` while it names another preset and selection is on.
+  - In any conversation of the person's own research, the record then says 新对话会使用「{preset}」而不是科研助手：设置里把它存成了默认。 with 改回科研助手, which runs `scope.unset('default')`.
+  - A refused settings write reloads instead of rejecting, so a default still saved after the unset is reported as 设置里仍保存着原来的默认.
+  - A conversation whose `agentPreset` projection names another preset reads 此对话未使用科研助手，研究工具不可用。新开一段对话即可。, or only its first sentence beside the saved-default line.
+  - An example says neither. No shell or preset code changes.
+- **Run cards (`RunPanel.tsx`).**
+  - They show only runs whose `sessionId` is this conversation. Runs of other conversations, and runs recorded without one, are on the board only.
+  - A blank conversation draws nothing unless one of its runs is open.
+  - In an example there is no 重新连上, 知道了, 停止 or 用它画图. The unconfirmed note there reads 提交回执丢了，无法确认它是否还在跑。. 日志 and 看板 stay.
+  - The props are the input dock seat's `PropsRuntime<'conversation.input.dock'>`; `RunPanelOwnerProps` is gone.
+- **The board (`Board.tsx`).**
+  - An example's board is read once with `refresh: false` and not watched, because the host never reads an example's board again. It draws neither 立即读取 nor 每 15 秒, and its unconfirmed-run banner reads {name}：状态无法确认.
+  - Elsewhere the board's run card offers 重新连上 and 知道了 for an unconfirmed run (`experiment-refresh`, `experiment-dismiss`, each with its own error in place). A run from another conversation, or one without a conversation, has a card above no composer. The banner reads {name}：状态无法确认，请在下方「正在运行」里它的卡片上重新连上.
+- **Tests.**
+  - New specs: `activity` and `presets`. `rail` is rewritten. `header`, `run-panel`, `board`, `tree-values` and `plugin` are extended; `plugin` covers `toggleProgress`, `reveal`, the presets scope and the reset. The host `loader` spec covers the snapshot's goals.
+  - The research Web e2e reads the mode line and the 现在 line after a check. It adds the suggested sentence to the draft, closes the panel with the chip while the record shows and opens it again, opens 资料 from its count, and submits a run as the assistant from the conversation on screen, so its card shows there.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -351,6 +439,38 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 
 **List a conversation restored alone under 其他文件夹 (step 10).** It would call a conversation of a removed research folderless; restoring the research brings it back where it belongs.
 
+**Keep a stripped Workbench (step 11).** A main panel replaces the conversation, which is the second application the plan removes (sections 3.5 and 10). The right-panel tabs keep one reporting place beside the conversation.
+
+**Show the board as a conversation view tab (step 11).** It would bring back a view tab strip and move reporting into the main surface (D16).
+
+**Force 560 px through a new layout action (step 11).** `ILayout` only suggests a first width. Widening an open panel needs a shell method, which step 11 does not add, and the dock's 全屏 already gives the board the whole frame.
+
+**Render draw.io through the document preview's extension registry (step 11).** `documentPreviews` dispatches renderers inside the text tab with that tab's load modes and toolbar, and it loads bytes through the workspace-files Remote. The editor needs the research's artifact and revision (`read-artifact`, `save-artifact`) and a frame of its own; a tab type claiming `*.drawio` gives it both without a shell change.
+
+**Register the diagram on every open (step 11).** It would record external edits under the artifact's links, which fails once a linked source goes stale, and it writes a revision nobody asked for. Registration happens only for a file the record does not know.
+
+**Carry authors and year in the snapshot (step 11).** The record has no fields for them, and the examples' records are never rewritten. A derived field would read every reference record on each snapshot, whereas the file route already serves the record on demand.
+
+**Offer the file actions in the tab menu (step 11).** `sidebar.right.tab.menu.item` extends a tab's own menu, not a row of the files tree; per-file actions need a seat in the files tab.
+
+**Teach the text viewer the absolute scope (step 11).** It is a shell change, and a session-scoped address reaches the same file through the viewers as shipped.
+
+**Read the default from `agentPresets.list()` (step 11).** Its `isDefault` marks the default in force, but not the deployment's. The client could not tell a saved override from the edition's own default without naming `research` itself. The settings namespace carries both layers, and its mirror follows document changes.
+
+**Ignore a stale saved default in the roster (step 11).** It changes the preset package's selection policy, and it drops a choice the settings still hold without telling anyone. Showing the choice and offering the reset leaves it to the person.
+
+**Recognise a research preset by its composition rows (step 11).** It reads each preset's composition for the research tools row on every snapshot. This edition ships no preset chooser, and its deployment default is the research assistant's preset.
+
+**Derive goals in the browser from the session list's `goal` projection (step 11).** List rows carry projection values only as cached hints for sessions this window has not bound, so a goal driving another conversation would show late or not at all. The host's `activeGoals` reads the live goal service, as the brief does.
+
+**Show runs recorded without a conversation in every conversation (step 11).** Spec section 3.3 keeps them there. They would put one research's runs into each of its conversations again. The board lists them and gives them a card's actions.
+
+**Close the record only with the dock's own collapse (step 11).** The spec makes the chip the door both ways. `ISidebarRight` already offers `isExpanded()`, `active()` and `toggleExpanded()`, so no shell change is needed.
+
+**Keep the autonomy on the chip (step 11).** The composer's chip names it (step 8), and the spec's chip forms do not.
+
+**Keep the tab name 研究进展 (step 11).** The spec and the entry line call the panel 研究记录. One name for one panel.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -410,3 +530,19 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 - A goal between two rounds, a queued run and a run whose state is unconfirmed show no dot.
 - A folder taken out of the list loses its Workspace registration; its conversations, restored from 已归档会话, come back as conversations in no folder.
 - A conversation restored alone while its research is removed shows nowhere until the research is restored.
+- The board opens at 560 px only while the right panel has no width yet. Once the research tab set 320 px, the board opens at the panel's width, and 全屏 gives it the frame.
+- A tab opened in a pane starts at the scroll position the previous tab left. The Sources tab scrolls to its section; the board and the gallery do not.
+- A registered diagram edited outside the research tools since it was recorded is refused on save as a revision conflict, until a compile or the agent records it again. There is no 接纳外部修改.
+- Opening a `.drawio` file the record does not list records it as revision 1 of a diagram.
+- Each page load costs one request per literature source for its byline. A source whose reference record cannot be read shows none.
+- From the files tab a single file can be neither shown in the file manager nor opened with the default application.
+- A goal in a conversation nobody has loaded shows no dot and no 现在 line, because the goal service sees loaded conversations only.
+- Runs the desktop submitted, and runs recorded before runs kept their conversation, have no card above any composer; the board lists them.
+- A waiting question counts while the shell's pending-interaction map carries it; its domains publish it for the conversations this window follows.
+- The 现在 line's first rule counts approvals and plan reviews as well as questions, as the tree's dot does, and reads 等你回答 for each.
+- While the mode is not chosen, the 现在 line reads 通用模式：直接在对话里提需求 beside 模式待定.
+- A copy of the research preset under another id reads as another preset, and its conversations get the note.
+- The saved-default note shows only in the research record; the chip and the entry screen say nothing about it. 改回科研助手 clears `default` alone and leaves `modeSelectionEnabled` as it is.
+- An example's board with no stored read reads 尚未读取 and offers no way to read it.
+- An older untouched research beside the draft is listed as 新研究 in upright type, and is removed from the list like any research.
+- The chip closes the panel only while the research tab is the active tab of the active pane. With another tab in front, it opens the record, suggesting 320 px only while the panel has no width yet.

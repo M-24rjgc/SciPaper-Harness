@@ -19,8 +19,8 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import {
-  appendedDraft, checkedText, chosenMode, dateText, digestText, durationText, elapsedOf, galleryImageUrl, locatorText, modeChoice, modeName,
-  modePhases, momentText, packText, parseModeChoice, projectFileAddress, researchFileUrl, standingText,
+  appendedDraft, checkedText, dateText, digestText, durationText, elapsedOf, galleryImageUrl, locatorText, modeName,
+  modePhases, momentText, packText, projectFileAddress, researchFileUrl, standingText,
 } from '../src/client/format.ts'
 import type { Translate } from '../src/client/format.ts'
 import { en, zh } from '../src/client/locales.ts'
@@ -193,10 +193,10 @@ describe('the research file route reaches the stored snapshot', () => {
 })
 
 describe('other addresses the research surfaces open', () => {
-  it('reach a project file in the native sidebar from a drive, POSIX or UNC root', () => {
-    expect(projectFileAddress('C:\\Research\\p\\', '.\\paper\\main.pdf')).toBe('dsh-resource://file/absolute/C:/Research/p/paper/main.pdf')
-    expect(projectFileAddress('/home/me/p//', './figures/a b#1.png')).toBe('dsh-resource://file/absolute/home/me/p/figures/a%20b%231.png')
-    expect(projectFileAddress('\\\\server\\share\\p', 'x.pdf')).toBe('dsh-resource://file/absolute//server/share/p/x.pdf')
+  it('reach a project file in the native sidebar through the conversation on screen, from a drive, POSIX or UNC root', () => {
+    expect(projectFileAddress('s 1', 'C:\\Research\\p\\', '.\\paper\\main.pdf')).toBe('dsh-resource://file/session/s%201/C:/Research/p/paper/main.pdf')
+    expect(projectFileAddress('s1', '/home/me/p//', './figures/a b#1.png')).toBe('dsh-resource://file/session/s1//home/me/p/figures/a%20b%231.png')
+    expect(projectFileAddress('s1', '\\\\server\\share\\p', 'x.pdf')).toBe('dsh-resource://file/session/s1///server/share/p/x.pdf')
   })
 
   it('reach one gallery figure through the host route, whatever its id holds', () => {
@@ -281,18 +281,6 @@ describe('modes, routes and phases read in the interface language', () => {
     expect(modePhases([{ ...MODES[1]!, defaultRoute: undefined }], { mode: 'spark-to-paper' })).toEqual(['plan', 'cite'])
   })
 
-  it('carries a mode choice through a form and back', () => {
-    expect([modeChoice('general'), modeChoice('spark-to-paper', 'data')]).toEqual(['general', 'spark-to-paper/data'])
-    expect([parseModeChoice('general'), parseModeChoice('spark-to-paper/data')]).toEqual([{ mode: 'general' }, { mode: 'spark-to-paper', route: 'data' }])
-    const form = (value?: string): FormData => {
-      const data = new FormData()
-      if (value !== undefined) data.set('mode', value)
-      return data
-    }
-    expect(chosenMode(form(modeChoice('spark-to-paper', 'proposal')))).toEqual({ mode: 'spark-to-paper', route: 'proposal' })
-    // A form rendered before the modes arrived chose nothing, and the service picks the general mode.
-    expect([chosenMode(form('')), chosenMode(form())]).toEqual([{}, {}])
-  })
 })
 
 describe('where a project stands reads from the standing the host derived', () => {

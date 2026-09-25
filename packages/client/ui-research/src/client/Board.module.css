@@ -2,7 +2,7 @@
 .root p { margin: 0; }
 .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px 20px; flex-wrap: wrap; }
 .heading { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 420px; max-width: 760px; }
-.heading h2 { margin: 0; }
+.heading h2 { margin: 0; font-size: 15px; letter-spacing: -.2px; }
 .heading p { color: var(--dsw-alias-label-secondary); }
 .sync { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
 .live { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--dsw-alias-label-secondary); }

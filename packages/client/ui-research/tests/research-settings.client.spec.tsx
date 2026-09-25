@@ -104,7 +104,7 @@ function snapshotOf(parts: {
 }
 
 function viewOf(snapshot: ResearchSnapshot | null): ResearchView {
-  return { snapshot, tasks: [], response: null }
+  return { snapshot, tasks: [] }
 }
 
 function blank(): Recorded {

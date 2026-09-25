@@ -60,7 +60,7 @@ function world(init: { sessions?: SessionListState; workspaces?: WorkspaceSnapsh
   const workspaces = createSnapshotStore<WorkspaceSnapshot>(init.workspaces ?? workspacesOf([]))
   const projects = init.projects === undefined ? [] : init.projects
   const research = createSnapshotStore<ResearchView>({
-    snapshot: projects === null ? null : { projects, preferences: {}, components: [], modes: [] }, tasks: [], response: null,
+    snapshot: projects === null ? null : { projects, preferences: {}, components: [], modes: [] }, tasks: [],
   })
   const entry = createSnapshotStore<EntryView>({ notice: null })
   const lifetime = new AbortController()
@@ -107,7 +107,7 @@ function world(init: { sessions?: SessionListState; workspaces?: WorkspaceSnapsh
     },
     listWorkspaces: (items: readonly WorkspaceView[], archived: string[] = []) => { workspaces.set(workspacesOf(items, archived)) },
     setProjects: (next: ResearchProject[]) => {
-      research.set({ snapshot: { projects: next, preferences: {}, components: [], modes: [] }, tasks: [], response: null })
+      research.set({ snapshot: { projects: next, preferences: {}, components: [], modes: [] }, tasks: [] })
     },
   }
 }

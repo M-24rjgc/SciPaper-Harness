@@ -214,6 +214,56 @@ describe('the experiment board page', () => {
     expect(view.queryByRole('list')).toBeNull()
   })
 
+  it('shows an example\'s board as last read, once, and lets its runs be read but not acted on', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const shipped = { ...fixture(), example: true }
+    const h = harness(shipped, () => Promise.resolve(snapshot()), () => Promise.resolve({ message: 'no log', content: 'epoch 2' }))
+    const ui = render(<Board {...h.props} />)
+    await flush()
+    // The host reads an example's board no further, so the page neither asks it to nor offers to.
+    expect(h.reads).toEqual([{ action: 'board-view', projectId: shipped.id, refresh: false }])
+    expect(ui.queryByRole('button', { name: zh.boardSyncNow })).toBeNull()
+    expect(ui.queryByLabelText(zh.boardAuto)).toBeNull()
+    await act(async () => { vi.advanceTimersByTime(60_000) })
+    expect(h.reads).toHaveLength(1)
+    // The unconfirmed run is named without pointing at an action the example lacks.
+    expect(ui.getByText(t('boardUnknownRunExample', { name: 'lost' }))).toBeTruthy()
+    expect(ui.queryByText(t('boardUnknownRun', { name: 'lost' }))).toBeNull()
+    expect(ui.getAllByRole('button', { name: zh.logs }).length).toBeGreaterThan(0)
+    for (const name of [zh.runStop, zh.runReconnect, zh.dismiss]) expect(ui.queryByRole('button', { name })).toBeNull()
+    fireEvent.click(ui.getAllByRole('button', { name: zh.logs })[0]!)
+    await flush()
+    expect(h.commands.map(command => command.action)).toEqual(['experiment-logs'])
+  })
+
+  it('reconnects or dismisses an unconfirmed run from its card, whichever conversation submitted it', async () => {
+    const project = fixture()
+    const answers: Record<string, Error | undefined> = {}
+    const h = harness(project, () => Promise.resolve(snapshot()), (command) => {
+      const failure = answers[command.action]
+      return failure === undefined ? Promise.resolve({ message: '' }) : Promise.reject(failure)
+    })
+    const ui = render(<Board {...h.props} />)
+    await flush()
+    const lost = ui.getAllByRole('article').find(card => card.textContent?.startsWith('lost'))!
+    fireEvent.click(within(lost).getByRole('button', { name: zh.runReconnect }))
+    fireEvent.click(within(lost).getByRole('button', { name: zh.dismiss }))
+    await flush()
+    expect(h.commands).toEqual([
+      { action: 'experiment-refresh', projectId: project.id, runId: 'lostrun' },
+      { action: 'experiment-dismiss', projectId: project.id, runId: 'lostrun' },
+    ])
+    expect(within(lost).queryByRole('alert')).toBeNull()
+    answers['experiment-refresh'] = new Error('supervisor unreachable')
+    answers['experiment-dismiss'] = new Error('already settled')
+    fireEvent.click(within(lost).getByRole('button', { name: zh.runReconnect }))
+    fireEvent.click(within(lost).getByRole('button', { name: zh.dismiss }))
+    await flush()
+    expect(within(lost).getAllByRole('alert').map(line => line.textContent)).toEqual([
+      t('actionFailed', { reason: 'supervisor unreachable' }), t('actionFailed', { reason: 'already settled' }),
+    ])
+  })
+
   it('reports each run in flight by its progress, its time, and its curves, and stops it once confirmed or reads its logs', async () => {
     const project = fixture()
     const answers: Record<string, ResearchResponse | Error> = { 'experiment-logs': { message: 'no log', content: 'epoch 2' } }

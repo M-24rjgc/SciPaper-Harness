@@ -175,10 +175,12 @@ it('lands on a new research, moves it to a chosen folder, records evidence and o
   await input.press('Enter')
   // The scenario records no model reply; the sent message alone ends the blank conversation and brings the header.
   await page.getByText('Start from the measured sample', { exact: true }).first().waitFor({ timeout: 30000 })
-  await page.getByTitle('Research progress', { exact: true }).first().click({ timeout: 15000 })
-  // The claim opens over the whole frame with the source it rests on.
+  await page.getByTitle('Research record', { exact: true }).first().click({ timeout: 15000 })
+  // The claims count opens the Sources tab beside the conversation, at its claims; nothing takes the main panel.
   await page.getByRole('button', { name: /^Claims/ }).first().click({ timeout: 15000 })
-  await page.getByText('The measured value is 42.', { exact: true }).first().click({ timeout: 15000 })
+  await page.getByText('Start from the measured sample', { exact: true }).first().waitFor()
+  // The claim opens over the whole frame with the source it rests on.
+  await page.getByText('The measured value is 42.', { exact: true }).filter({ visible: true }).first().click({ timeout: 15000 })
   const claim = page.getByRole('dialog')
   await expect.poll(() => claim.innerText()).toContain(source.title)
   await saveFailureShot(page, 'research-claim-sources')
@@ -186,8 +188,8 @@ it('lands on a new research, moves it to a chosen folder, records evidence and o
 })
 
 it('reports the mode and checks the assistant records, and changes only the autonomy', async () => {
-  // Back from the project's files to its conversation, where the research tab sits beside the chat.
-  await page.getByRole('button', { name: 'Research conversation', exact: true }).first().click()
+  // The header chip brings the research tab back beside the conversation.
+  await page.getByTitle('Research record', { exact: true }).first().click({ timeout: 15000 })
   // The autonomy is changed in the composer, in the seat of the shell's access chip; the tab only names it.
   const chip = (name: string) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first()
   await chip('Autonomy, current: Checkpoints').waitFor({ timeout: 15000 })
@@ -227,18 +229,69 @@ it('reports the mode and checks the assistant records, and changes only the auto
     .toMatchObject({ question: '模式与路线', answer: 'spark-to-paper · proposal', by: 'user', key: 'mode' })
   await command({ action: 'check', projectId })
   expect(scaffold.ctx.research.getProject(projectId).progress).toMatchObject({ mode: 'spark-to-paper', route: 'proposal' })
-  // The project's file panel draws the same status while hidden; only the tab beside the conversation counts.
   await page.getByText('Open issues', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30000 })
   await page.getByText(/^Checked /).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await page.getByRole('img', { name: 'Current phase', exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   // Each issue group names its check in the reader's language; the checks' own words wait behind Details.
   await page.getByText('Details', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  // The record reads the mode as the person chose it, and its Now line names the next phase.
+  await page.getByText('spark-to-paper · From a proposal · you chose it', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await page.getByText(/^Next: /).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await saveFailureShot(page, 'research-tab-check')
+  // Its suggestion only fills the composer; the person still decides whether to send it.
+  const suggest = page.getByRole('button', { name: /^Suggest in the conversation: Continue: / }).filter({ visible: true }).first()
+  const sentence = ((await suggest.textContent()) ?? '').replace('Suggest in the conversation: ', '')
+  await suggest.click()
+  await expect.poll(() => input.innerText()).toBe(sentence)
+  await input.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.press('Backspace')
+  await expect.poll(async () => (await input.innerText()).trim()).toBe('')
   // A decision the agent records reaches the tab on the next poll; one that defers the experiments marks that phase.
   await command({ action: 'record-decision', projectId, question: 'Which dataset?', answer: 'The measured sample' })
   await page.getByText('The measured sample', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await command({ action: 'record-decision', projectId, question: 'Run the experiments here?', answer: 'Later, on the lab server', key: 'experiments-deferred' })
   await page.getByText('Deferred', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+})
+
+it('opens the secondary tools as tabs beside the conversation, and a .drawio file in the draw.io editor', async () => {
+  const tool = (name: string) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first()
+  const chip = page.getByTitle('Research record', { exact: true }).first()
+  const sourcesCount = page.getByRole('button', { name: /^Sources/ }).filter({ visible: true }).first()
+  // The record is on screen, so the header chip closes the panel; clicking it again opens the record.
+  await sourcesCount.waitFor({ timeout: 15000 })
+  await chip.click({ timeout: 15000 })
+  await expect.poll(() => sourcesCount.count(), { timeout: 15000 }).toBe(0)
+  await chip.click()
+  // The sources count opens 资料 (Sources); a source opens in the sidebar's own viewer, read through this conversation.
+  await sourcesCount.click({ timeout: 15000 })
+  const sources = page.getByRole('heading', { name: /^Sources\s*1$/ }).filter({ visible: true }).first()
+  await sources.waitFor({ timeout: 15000 })
+  await page.getByText('source.csv', { exact: true }).filter({ visible: true }).first().waitFor()
+  await saveFailureShot(page, 'research-sources-tab')
+  await tool('Open this page in the source').click()
+  await page.getByText('measurement,value', { exact: false }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  // The board opens from the tools row, empty until the assistant registers a run; the conversation stays on screen.
+  await page.getByTitle('Research record', { exact: true }).first().click()
+  await tool('Experiment board').click({ timeout: 15000 })
+  await page.getByText('This research has no experiments yet. The assistant registers runs here when it needs them.', { exact: true })
+    .filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  expect(await page.getByText('Start from the measured sample', { exact: true }).filter({ visible: true }).count()).toBeGreaterThan(0)
+  await saveFailureShot(page, 'research-board-tab')
+  // A .drawio file in the research files opens in the draw.io editor, which registers the file with the record.
+  const { root } = scaffold.ctx.research.getProject(projectId)
+  await mkdir(join(root, 'figures'), { recursive: true })
+  await writeFile(join(root, 'figures', 'flow.drawio'), '<mxfile><diagram name="Flow"></diagram></mxfile>\n')
+  await page.getByTitle('Research record', { exact: true }).first().click()
+  await tool('Research files').click({ timeout: 15000 })
+  await page.locator('[data-files-entry="directory"][data-files-path$="/figures"] > button').filter({ visible: true }).first().click({ timeout: 15000 })
+  await page.locator('[data-files-entry="file"][data-files-path$="/flow.drawio"] > button').filter({ visible: true }).first().click({ timeout: 15000 })
+  await expect.poll(() => scaffold.ctx.research.getProject(projectId).artifacts.find(item => item.path === 'figures/flow.drawio')?.kind, { timeout: 15000 })
+    .toBe('diagram')
+  // The scaffold's home has no draw.io component, so the editor offers its install.
+  await page.getByText('The draw.io editor is a local component. Install it once to edit diagrams here.', { exact: true })
+    .filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await saveFailureShot(page, 'research-drawio-tab')
 })
 
 it('gives every conversation of the research the permission preset its autonomy selects', async () => {
@@ -267,15 +320,18 @@ it.skipIf(!python)('executes a real local CPU task, collects metrics and exports
   } })
   const project = scaffold.ctx.research.getProject(projectId)
   const runId = randomUUID()
-  await command({ action: 'experiment', projectId, requestId: runId, spec: {
+  // The assistant submits the run from the conversation on screen, which the run records.
+  const sessionId = project.sessionId!
+  await scaffold.ctx.research.execute({ action: 'experiment', projectId, requestId: runId, spec: {
     name: 'Measured value', environmentId: project.environments[0]!.id, argv: ['{python}', 'code/run.py'],
     cwd: '.', seed: 42, maxSeconds: 30, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [codeId], metricsPath: 'metrics.json',
-  } })
+  } }, new AbortController().signal, 'agent', sessionId)
+  expect(scaffold.ctx.research.getProject(projectId).experiments[0]?.sessionId).toBe(sessionId)
   const waited = await command({ action: 'experiment-wait', projectId, runIds: [runId as ExperimentId], timeoutSeconds: 60 })
   expect(waited.runs?.[0]?.status).toBe('completed')
   expect(scaffold.ctx.research.getProject(projectId).experiments[0]?.metrics).toEqual({ score: 42 })
   expect(scaffold.ctx.research.getProject(projectId).evidence.some(item => item.kind === 'experiment')).toBe(true)
-  // Finished runs fold into one row above the composer; opening it shows the card.
+  // Finished runs of this conversation fold into one row above its composer; opening it shows the card.
   await page.getByRole('button', { name: /^Show finished runs \(\d+\)$/ }).filter({ visible: true }).first().click({ timeout: 15000 })
   await page.getByText('Measured value · seed 42', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await saveFailureShot(page, 'research-experiment-complete')
@@ -448,7 +504,7 @@ it('speaks Chinese on the entry screen of a new research', async () => {
   try {
     await zhPage.goto(scaffold.authenticatedUrl)
     // A new window lands on the research used last, on its conversation that has started.
-    await zhPage.getByTitle('研究进展', { exact: true }).first().waitFor({ timeout: 30000 })
+    await zhPage.getByTitle('研究记录', { exact: true }).first().waitFor({ timeout: 30000 })
     await zhPage.getByRole('button', { name: '新研究', exact: true }).last().click({ timeout: 30000 })
     await zhPage.getByText('今天想推进什么？', { exact: true }).first().waitFor({ timeout: 15000 })
     await zhPage.locator('[data-composer-input][data-placeholder="说说你的研究问题，或把论文、数据拖进来（/ 调用指令，@ 引用文件或对话）"]')

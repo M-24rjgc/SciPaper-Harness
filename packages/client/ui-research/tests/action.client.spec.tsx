@@ -8,7 +8,7 @@
 import { StrictMode, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
-import { ActionButton, ActionError, useAction } from '../src/client/Action.tsx'
+import { ActionError, useAction } from '../src/client/Action.tsx'
 import type { Translate } from '../src/client/format.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -33,75 +33,6 @@ function deferred(): { promise: Promise<void>; resolve: () => void; reject: (rea
 
 /** Let started work run and the outcome it settles with reach the screen. */
 const settle = async (): Promise<void> => { await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 0) }) }) }
-
-describe('a button that runs one action', () => {
-  it('holds itself off and says what it is doing while its work runs, then comes back', async () => {
-    const saving = deferred()
-    const work = vi.fn(() => saving.promise)
-    const view = render(<ActionButton t={t} label={zh.save} pendingLabel={zh.saving} work={work} />)
-    fireEvent.click(view.getByRole('button', { name: zh.save }))
-    const button = view.getByRole('button')
-    expect(button.textContent).toBe(zh.saving)
-    expect(button).toHaveProperty('disabled', true)
-    await settle()
-    expect(work).toHaveBeenCalledTimes(1)
-    await act(async () => { saving.resolve(); await saving.promise })
-    await settle()
-    expect(button.textContent).toBe(zh.save)
-    expect(button).toHaveProperty('disabled', false)
-    expect(view.queryByRole('alert')).toBeNull()
-  })
-
-  it('keeps its label while it works when it has no word for working', async () => {
-    const refreshing = deferred()
-    const view = render(<ActionButton t={t} label={zh.refresh} work={() => refreshing.promise} />)
-    fireEvent.click(view.getByRole('button', { name: zh.refresh }))
-    expect(view.getByRole('button', { name: zh.refresh })).toHaveProperty('disabled', true)
-    await act(async () => { refreshing.resolve(); await refreshing.promise })
-    await settle()
-    expect(view.getByRole('button', { name: zh.refresh })).toHaveProperty('disabled', false)
-  })
-
-  it('says why its work failed beneath it, and clears the reason on the next press', async () => {
-    const first = deferred()
-    const second = deferred()
-    const attempts = [first, second]
-    const view = render(<ActionButton t={t} label={zh.exportPaper} work={() => attempts.shift()?.promise} />)
-    const press = (): void => { fireEvent.click(view.getByRole('button', { name: zh.exportPaper })) }
-    press()
-    await act(async () => { first.reject(new Error('disk full')); await first.promise.catch(() => {}) })
-    await settle()
-    expect(view.getByRole('alert').textContent).toBe(failed('disk full'))
-    expect(view.getByRole('button', { name: zh.exportPaper })).toHaveProperty('disabled', false)
-    press()
-    expect(view.queryByRole('alert')).toBeNull()
-    // A failure that is not an Error still reads as its own words.
-    await act(async () => { second.reject('the host went offline'); await second.promise.catch(() => {}) })
-    await settle()
-    expect(view.getByRole('alert').textContent).toBe(failed('the host went offline'))
-  })
-
-  it('stays held off while the caller holds it off, whatever its own state', async () => {
-    const work = vi.fn()
-    const view = render(<ActionButton t={t} label={zh.save} pendingLabel={zh.saving} disabled work={work} />)
-    const button = view.getByRole('button', { name: zh.save })
-    expect(button).toHaveProperty('disabled', true)
-    fireEvent.click(button)
-    await settle()
-    expect(work).not.toHaveBeenCalled()
-    view.rerender(<ActionButton t={t} label={zh.save} pendingLabel={zh.saving} disabled={false} work={work} />)
-    fireEvent.click(button)
-    await settle()
-    expect(work).toHaveBeenCalledTimes(1)
-  })
-
-  it('still reports its outcome after the development mount, unmount and mount again', async () => {
-    const view = render(<StrictMode><ActionButton t={t} label={zh.save} work={() => Promise.reject(new Error('read-only file'))} /></StrictMode>)
-    fireEvent.click(view.getByRole('button', { name: zh.save }))
-    await settle()
-    expect(view.getByRole('alert').textContent).toBe(failed('read-only file'))
-  })
-})
 
 /** A control built on its own action, as the save forms are: a status line, and a way to open afresh. */
 function SaveForm(props: { work: () => unknown }): ReactNode {
@@ -146,6 +77,26 @@ describe('a control that keeps its own action', () => {
     expect(view.queryByRole('status')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: zh.cancel }))
     expect(view.queryByRole('alert')).toBeNull()
+  })
+
+  it('says why its work failed in the failure\'s own words, and clears the reason on the next attempt', async () => {
+    const first = deferred()
+    const attempts = [first, deferred()]
+    const view = render(<SaveForm work={() => attempts.shift()?.promise} />)
+    fireEvent.click(view.getByRole('button', { name: zh.save }))
+    // A failure that is not an Error still reads as its own words.
+    await act(async () => { first.reject('the host went offline'); await first.promise.catch(() => {}) })
+    await settle()
+    expect(view.getByRole('alert').textContent).toBe(failed('the host went offline'))
+    fireEvent.click(view.getByRole('button', { name: zh.save }))
+    expect(view.queryByRole('alert')).toBeNull()
+  })
+
+  it('still reports its outcome after the development mount, unmount and mount again', async () => {
+    const view = render(<StrictMode><SaveForm work={() => Promise.reject(new Error('read-only file'))} /></StrictMode>)
+    fireEvent.click(view.getByRole('button', { name: zh.save }))
+    await settle()
+    expect(view.getByRole('alert').textContent).toBe(failed('read-only file'))
   })
 
   it('drops quietly the outcome of work that settles after the control closed', async () => {

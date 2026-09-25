@@ -31,7 +31,7 @@ function project(fields: Record<string, unknown>): ResearchProject {
 }
 
 function bench(projects: ResearchProject[], directories: SessionDirectories) {
-  const research = createSnapshotStore<ResearchView>({ snapshot: { projects } as never, tasks: [], response: null })
+  const research = createSnapshotStore<ResearchView>({ snapshot: { projects } as never, tasks: [] })
   const dirs = createSnapshotStore<SessionDirectories>(directories)
   const blocks = blockRegistry()
   const stop = guardExampleComposers({ research, directories: dirs, blocks, reason: () => REASON })
@@ -66,7 +66,7 @@ describe('the example guard', () => {
     dirs.set({ moved: 'C:\\research\\mine', other: 'C:\\home\\demo\\sparse' })
     expect(blocks.reason('moved')).toBeUndefined()
     expect(blocks.reason('other')).toBe(REASON)
-    research.set({ snapshot: null, tasks: [], response: null })
+    research.set({ snapshot: null, tasks: [] })
     expect(blocks.reason('other')).toBeUndefined()
   })
 
@@ -80,10 +80,10 @@ describe('the example guard', () => {
 
   it('keeps a block another plugin raised after its own was replaced', () => {
     const { blocks, research } = bench([project({ example: true })], { a: 'C:\\home\\demo\\sparse' })
-    research.set({ snapshot: { projects: [project({ example: false })] } as never, tasks: [], response: null })
+    research.set({ snapshot: { projects: [project({ example: false })] } as never, tasks: [] })
     expect(blocks.reason('a')).toBeUndefined()
     blocks.set('a' as SessionId, { reason: 'no model' })
-    research.set({ snapshot: { projects: [project({ example: false })] } as never, tasks: [], response: null })
+    research.set({ snapshot: { projects: [project({ example: false })] } as never, tasks: [] })
     expect(blocks.reason('a')).toBe('no model')
   })
 })

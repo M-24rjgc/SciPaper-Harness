@@ -1,14 +1,19 @@
 /**
- * The experiment group as it stands right now, above the composer. Submitted
- * runs outlive the window, so this is a report on independent processes, not a
- * control panel: the only things it offers are the ones a person actually
- * needs mid-run — read the output, reconnect or dismiss an unconfirmed run, or
- * stop one after confirming.
+ * The runs this conversation submitted, as they stand right now, above the
+ * composer. Submitted runs outlive the window, so this is a report on
+ * independent processes, not a control panel: the only things it offers are
+ * the ones a person actually needs mid-run — read the output, reconnect or
+ * dismiss an unconfirmed run, or stop one after confirming. Runs another
+ * conversation submitted, and runs recorded without their conversation, are
+ * on the experiment board only; an example's runs are only read.
  */
 import { useState, type ReactNode } from 'react'
 import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ExperimentRecord, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
-import { useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
+import { useSessionProject, type WorkbenchProps } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { appendedDraft, durationText, elapsedOf } from './format.ts'
 import { MetricsGrid } from './MetricsGrid.tsx'
@@ -22,13 +27,8 @@ const VISIBLE_RUNS = 5
 const MS_PER_SECOND = 1000
 const PERCENT = 100
 
-/** The composer seat this panel drafts into, as the input dock supplies it. */
-export interface RunPanelOwnerProps {
-  /** The composer's state as the dock last drew it; its draft is what a suggestion is appended to. */
-  input: { draft: string }
-  /** Replace the composer draft; the person still decides whether to send it. */
-  inputActions: { setDraft(text: string): void }
-}
+/** Composed props of the run cards: the composer dock's seat, whose draft a suggestion is appended to, and the research face. */
+export type RunPanelProps = PropsRuntime<'conversation.input.dock'> & WorkbenchProps
 
 function statusMark(run: ExperimentRecord): string | undefined {
   if (run.status === 'queued') return styles.markQueued
@@ -46,8 +46,8 @@ function OpenTag(props: WorkbenchProps & { record: ExperimentRecord }): ReactNod
   return <Tag tone="neutral">{t('runRunning')}</Tag>
 }
 
-/** One run: what it is, how far it has got, and the things worth doing to it. */
-function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: ResearchProject; record: ExperimentRecord }): ReactNode {
+/** One run: what it is, how far it has got, and the things worth doing to it; in an example, only reading it. */
+function RunCard(props: RunPanelProps & { project: ResearchProject; record: ExperimentRecord }): ReactNode {
   const { project, record, t } = props
   const [logs, setLogs] = useState('')
   const reading = useAction()
@@ -57,6 +57,7 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
   const limit = record.spec.maxSeconds * MS_PER_SECOND
   const open = OPEN_RUN_STATUS.includes(record.status)
   const unknown = record.status === 'unknown'
+  const acting = project.example !== true
   const environment = project.environments.find(item => item.id === record.spec.environmentId)
   const fraction = record.progress?.fraction
   const runId = record.id
@@ -92,26 +93,26 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
       </div>
     </>}
 
-    {unknown && <p className={styles.runNote}>{t('runUnknownNote')}</p>}
+    {unknown && <p className={styles.runNote}>{t(acting ? 'runUnknownNote' : 'runUnknownNoteExample')}</p>}
     <MetricsGrid metrics={Object.keys(record.metrics).length === 0 && open ? record.progress?.values ?? {} : record.metrics} />
 
     <div className={styles.actions}>
       <button type="button" className={styles.action} disabled={reading.pending} onClick={showLogs}>{t('logs')}</button>
-      <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'experiments') }}>{t('boardOpen')}</button>
-      {unknown && <button
+      <button type="button" className={styles.action} onClick={() => { props.openBoard() }}>{t('boardOpen')}</button>
+      {acting && unknown && <button
         type="button"
         className={styles.action}
         disabled={reconnecting.pending}
         onClick={() => { reconnecting.start(() => props.run({ action: 'experiment-refresh', projectId: project.id, runId })) }}
       >{t('runReconnect')}</button>}
-      {unknown && <button
+      {acting && unknown && <button
         type="button"
         className={styles.action}
         disabled={dismissing.pending}
         onClick={() => { dismissing.start(() => props.run({ action: 'experiment-dismiss', projectId: project.id, runId })) }}
       >{t('dismiss')}</button>}
-      {open && !unknown && <StopRun {...props} stopClassName={styles.stop} keepClassName={styles.action} />}
-      {record.status === 'completed' && <button
+      {acting && open && !unknown && <StopRun {...props} stopClassName={styles.stop} keepClassName={styles.action} />}
+      {acting && record.status === 'completed' && <button
         type="button"
         className={styles.action}
         onClick={() => { props.inputActions.setDraft(appendedDraft(props.input.draft, t('runPlotDraft', { name: record.spec.name, seed: record.spec.seed }))) }}
@@ -126,17 +127,19 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
 }
 
 /**
- * The submitted group, newest first; nothing is drawn before a run exists.
+ * The runs this conversation submitted, newest first; nothing is drawn before
+ * it submitted one, and a blank conversation shows only a run still open.
  * Runs that still need a person stay open; finished ones fold into one row so
  * the conversation above the composer stays readable.
  */
-export function ResearchRuns(props: WorkbenchProps & RunPanelOwnerProps & SessionSeatProps): ReactNode {
-  const { t } = props
+export function ResearchRuns(props: RunPanelProps): ReactNode {
+  const { t, sessionId } = props
   const [expanded, setExpanded] = useState(false)
   const project = useSessionProject(props)
-  if (!project || project.experiments.length === 0) return null
-  const runs = [...project.experiments].reverse()
+  const blank = props.useSessions(state => state.byId[sessionId]?.blank === true)
+  const runs = (project?.experiments ?? []).filter(record => record.sessionId === sessionId).reverse()
   const open = runs.filter(record => OPEN_RUN_STATUS.includes(record.status))
+  if (!project || runs.length === 0 || (blank && open.length === 0)) return null
   const settled = runs.filter(record => !OPEN_RUN_STATUS.includes(record.status))
   const listed = expanded ? [...open, ...settled] : open
   const shown = listed.slice(0, VISIBLE_RUNS)

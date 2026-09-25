@@ -3,7 +3,9 @@
  * the reads stand, the runs in flight, each experiment machine and every run.
  * The sections between are the agent's layout. The page asks the service for
  * the board every fifteen seconds while it is open; the service's scripts do
- * the reading, so watching an experiment never costs a model call.
+ * the reading, so watching an experiment never costs a model call. An
+ * example's board is its last read: the host reads it no further, so it
+ * offers no reading and no run actions.
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import type { BoardAlert, BoardMachine, BoardSnapshot, BoardStat, ExperimentRecord, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
@@ -55,6 +57,9 @@ export function Board(props: BoardProps): ReactNode {
   const [error, setError] = useState('')
   const [auto, setAuto] = useState(true)
   const [asked, setAsked] = useState(0)
+  // The host never reads an example's board again, so its board is read once and not watched.
+  const live = project.example !== true
+  const watching = auto && live
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -64,16 +69,16 @@ export function Board(props: BoardProps): ReactNode {
         setSnapshot(next)
         setError('')
         if (next.refreshing) timer = setTimeout(() => { load(false) }, READING_MS)
-        else if (auto) timer = setTimeout(() => { load(true) }, AUTO_MS)
+        else if (watching) timer = setTimeout(() => { load(true) }, AUTO_MS)
       }, (reason: unknown) => {
         if (!active) return
         setError(errorText(reason))
-        if (auto) timer = setTimeout(() => { load(true) }, AUTO_MS)
+        if (watching) timer = setTimeout(() => { load(true) }, AUTO_MS)
       })
     }
-    load(true)
+    load(live)
     return () => { active = false; clearTimeout(timer) }
-  }, [project.id, auto, asked])
+  }, [project.id, watching, live, asked])
   const runs = project.experiments
   const inFlight = newestFirst(runs.filter(run => ACTIVE_RUN_STATUS.includes(run.status)))
   const sections = snapshot ? mergedSections(snapshot.spec, snapshot.collected) : []
@@ -81,7 +86,9 @@ export function Board(props: BoardProps): ReactNode {
   const alerts: BoardAlert[] = [
     ...snapshot?.alerts ?? [],
     ...collected.flatMap(([, output]) => output.alerts),
-    ...runs.filter(run => run.status === 'unknown').map(run => ({ level: 'warning' as const, text: t('boardUnknownRun', { name: run.spec.name }) })),
+    // Outside an example an unconfirmed run is reconnected from its card on this board, wherever it was submitted.
+    ...runs.filter(run => run.status === 'unknown')
+      .map(run => ({ level: 'warning' as const, text: t(live ? 'boardUnknownRun' : 'boardUnknownRunExample', { name: run.spec.name }) })),
   ]
   const state = error ? 'offline' : snapshot?.refreshing ? 'reading' : snapshot?.capturedAt ? 'live' : 'stale'
   const stateKeys: Record<typeof state, ResearchKey> = { offline: 'boardOffline', reading: 'boardReading', live: 'boardLive', stale: 'boardStale' }
@@ -95,8 +102,10 @@ export function Board(props: BoardProps): ReactNode {
       <div className={styles.sync}>
         <span className={styles.live} data-state={state} role="status"><i />{t(stateKeys[state])}</span>
         {snapshot?.capturedAt !== undefined && <span className={styles.muted}>{t('boardReadAt', { time: momentText(snapshot.capturedAt, t) })}</span>}
-        <label className={styles.toggle}><input type="checkbox" checked={auto} onChange={(event) => { setAuto(event.target.checked) }} />{t('boardAuto')}</label>
-        <button type="button" onClick={() => { setAsked(asked + 1) }}>{t('boardSyncNow')}</button>
+        {live && <>
+          <label className={styles.toggle}><input type="checkbox" checked={auto} onChange={(event) => { setAuto(event.target.checked) }} />{t('boardAuto')}</label>
+          <button type="button" onClick={() => { setAsked(asked + 1) }}>{t('boardSyncNow')}</button>
+        </>}
       </div>
     </header>
     {snapshot?.spec.tags !== undefined && <div className={styles.tags}>{snapshot.spec.tags.map(tag => <span key={tag}>{tag}</span>)}</div>}
@@ -151,23 +160,40 @@ function runFraction(run: ExperimentRecord): number {
   return (elapsedOf(run) ?? 0) / (run.spec.maxSeconds * MS_PER_SECOND)
 }
 
-/** Stop a run, or read its logs: the two things a person does to a run in flight. */
+/**
+ * Read a run's logs, stop a run in flight, or reconnect or dismiss one whose
+ * state is unconfirmed, as its card in the conversation that submitted it
+ * would; an example's runs are only read.
+ */
 function RunActions(props: BoardProps & { record: ExperimentRecord }): ReactNode {
   const { project, record: run, t } = props
   const [logs, setLogs] = useState('')
   const reading = useAction()
+  const reconnecting = useAction()
+  const dismissing = useAction()
   const showLogs = (): void => {
     reading.start(async () => {
       const response = await props.run({ action: 'experiment-logs', projectId: project.id, runId: run.id })
       setLogs(response.content ?? response.message)
     })
   }
+  const acting = project.example !== true
+  const unknown = run.status === 'unknown'
+  const stoppable = acting && ACTIVE_RUN_STATUS.includes(run.status) && !unknown
   return <>
     <div className={styles.actions}>
       <button type="button" disabled={reading.pending} onClick={showLogs}>{t('logs')}</button>
-      {ACTIVE_RUN_STATUS.includes(run.status) && run.status !== 'unknown' && <StopRun {...props} record={run} stopClassName={styles.stop} />}
+      {stoppable && <StopRun {...props} record={run} stopClassName={styles.stop} />}
+      {acting && unknown && <>
+        <button type="button" disabled={reconnecting.pending}
+          onClick={() => { reconnecting.start(() => props.run({ action: 'experiment-refresh', projectId: project.id, runId: run.id })) }}>{t('runReconnect')}</button>
+        <button type="button" disabled={dismissing.pending}
+          onClick={() => { dismissing.start(() => props.run({ action: 'experiment-dismiss', projectId: project.id, runId: run.id })) }}>{t('dismiss')}</button>
+      </>}
     </div>
     <ActionError t={t} error={reading.error} />
+    <ActionError t={t} error={reconnecting.error} />
+    <ActionError t={t} error={dismissing.error} />
     {logs !== '' && <pre className={styles.log}>{logs}</pre>}
   </>
 }

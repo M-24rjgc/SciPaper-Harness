@@ -41,7 +41,7 @@ function lineProps(parts: {
   directories?: Record<string, string>
 }) {
   const snapshot = parts.snapshot === undefined ? snapshotOf([draft, named, example]) : parts.snapshot
-  const view: ResearchView = { snapshot, tasks: [], response: null }
+  const view: ResearchView = { snapshot, tasks: [] }
   const list = { current: parts.current as SessionId | undefined, byId: {} } as unknown as SessionListState
   const showProgress = vi.fn()
   const props = {
@@ -109,7 +109,7 @@ describe('the line under the headline', () => {
 /** Props of the Try sentences above one session's composer. */
 function tryProps(parts: { draftText?: string; blank?: boolean | undefined; projects?: ResearchProject[] | null; sessionId?: string }) {
   const sessionId = (parts.sessionId ?? 's-draft') as SessionId
-  const view: ResearchView = { snapshot: parts.projects === null ? null : snapshotOf(parts.projects ?? [draft]), tasks: [], response: null }
+  const view: ResearchView = { snapshot: parts.projects === null ? null : snapshotOf(parts.projects ?? [draft]), tasks: [] }
   const byId = parts.blank === undefined ? {} : { [sessionId]: { blank: parts.blank } }
   const list = { current: sessionId, byId } as unknown as SessionListState
   const setDraft = vi.fn()

@@ -73,29 +73,3 @@ export function ActionError(props: { t: Translate; error: string; className?: st
   if (props.error === '') return null
   return <p className={props.className ?? styles.error} role="alert">{props.t('actionFailed', { reason: props.error })}</p>
 }
-
-/** What a button that runs one action says, and the work one press starts. */
-export interface ActionButtonProps {
-  t: Translate
-  label: string
-  /** Said instead of `label` while the work runs; `label` stays when absent. */
-  pendingLabel?: string | undefined
-  className?: string | undefined
-  /** Held off by the caller, whatever the action's own state. */
-  disabled?: boolean | undefined
-  work: () => unknown
-}
-
-/**
- * A button that owns one action: it holds itself off while its work runs, and
- * the failure line follows it.
- */
-export function ActionButton(props: ActionButtonProps): ReactNode {
-  const action = useAction()
-  return <>
-    <button type="button" className={props.className} disabled={props.disabled === true || action.pending} onClick={() => { action.start(props.work) }}>
-      {action.pending && props.pendingLabel !== undefined ? props.pendingLabel : props.label}
-    </button>
-    <ActionError t={props.t} error={action.error} />
-  </>
-}

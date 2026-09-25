@@ -10,15 +10,16 @@
  * (subagent) sessions and visual-review reviewers are never rows, though
  * their activity lights their research's dot.
  */
-import type { SessionListState, SessionSearchResultItem, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionListState, SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import { conversationSignal, goalSignal, strongestSignal, type ActivitySignal } from './activity.ts'
 import { projectAtPath, sessionProject } from './contract.ts'
 
 /** What a row's dot says: something waits for the person (warn), or something runs (ongoing blue). */
-export type TreeSignal = 'waiting' | 'ongoing'
+export type TreeSignal = ActivitySignal
 
 /** One conversation row. */
 export interface TreeConversation {
@@ -81,22 +82,6 @@ export interface TreeSources {
   showExamples: boolean
 }
 
-/** Pending interaction kinds that wait for the person, as the session rows of the shell present them. */
-const WAITING_KINDS: ReadonlySet<string> = new Set(['approval', 'plan-review', 'question'])
-
-/** A session's own dot: waiting outranks running. */
-function signalOf(summary: SessionSummary, pending: SessionPendingInteractionSnapshot): TreeSignal | undefined {
-  const interaction = pending.get(summary.id)
-  if (interaction !== undefined && WAITING_KINDS.has(interaction.kind)) return 'waiting'
-  return summary.running ? 'ongoing' : undefined
-}
-
-/** The strongest of several dots. */
-function strongest(signals: readonly (TreeSignal | undefined)[]): TreeSignal | undefined {
-  if (signals.includes('waiting')) return 'waiting'
-  return signals.includes('ongoing') ? 'ongoing' : undefined
-}
-
 /** A timestamp as epoch milliseconds; one that does not parse counts as never. */
 function epoch(iso: string): number {
   const at = Date.parse(iso)
@@ -143,7 +128,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
     const summary = list.byId[id]
     if (summary === undefined || archived.has(id)) continue
     const project = researchOf(id)
-    const signal = signalOf(summary, pending)
+    const signal = conversationSignal(summary, pending)
     if (project !== undefined && signal !== undefined) push(signals, project.id, signal)
     const topLevel = summary.parentId === undefined && summary.origin !== 'subagent' && !reviewers.has(id)
     if (!topLevel || (summary.blank && id !== current)) continue
@@ -171,7 +156,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
       current: isCurrent,
       onBlank: isCurrent && currentBlank,
       registered: registered.has(project.workspaceId),
-      signal: strongest([...signals.get(project.id) ?? [], running]),
+      signal: strongestSignal([...signals.get(project.id) ?? [], ...(project.goals ?? []).map(goalSignal), running]),
       at: Math.max(epoch(project.updatedAt), ...started.map(conversation => conversation.updatedAt)),
     }
   }
@@ -187,7 +172,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
       return {
         workspaceId: item.workspaceId, title: item.title, path: item.path, conversations,
         current: conversations.some(conversation => conversation.id === current),
-        signal: strongest(conversations.map(conversation => conversation.signal)),
+        signal: strongestSignal(conversations.map(conversation => conversation.signal)),
       }
     })
   loose.sort(byRecency)
