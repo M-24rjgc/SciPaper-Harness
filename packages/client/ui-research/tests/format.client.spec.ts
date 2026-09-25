@@ -7,18 +7,25 @@
  * locator, the stored path of a source — come from the service's own import
  * rather than from a hand-written record.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import { importEvidence } from '@deepseek-ai/dsh-research-workbench/src/artifacts.ts'
-import type { EvidenceRecord, ResearchProject, SourceLocator } from '@deepseek-ai/dsh-research-workbench/types'
+import { newExperiment } from '@deepseek-ai/dsh-research-workbench/src/experiments.ts'
+import type {
+  EnvironmentId, EnvironmentRecord, EvidenceRecord, ExperimentRecord, ResearchProject, SourceLocator,
+} from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import { dateText, digestText, durationText, locatorText, momentText, researchFileUrl } from '../src/client/format.ts'
+import {
+  appendedDraft, chosenMode, dateText, digestText, durationText, elapsedOf, galleryImageUrl, locatorText, modeChoice, modeName, modePhases,
+  momentText, packText, parseModeChoice, phaseName, projectFileAddress, researchFileUrl, standingText,
+} from '../src/client/format.ts'
 import type { Translate } from '../src/client/format.ts'
 import { en, zh } from '../src/client/locales.ts'
 import type { ResearchKey } from '../src/client/locales.ts'
+import { MODES } from './fixtures/modes.ts'
 
 const LIMIT = 100_000
 /** Any origin: `researchFileUrl` returns a site-relative address. */
@@ -181,5 +188,161 @@ describe('the research file route reaches the stored snapshot', () => {
     const url = new URL(address, ORIGIN)
     expect(url.searchParams.get('projectId')).toBe('proj 1/2')
     expect(url.searchParams.get('path')).toBe(path)
+  })
+})
+
+describe('other addresses the research surfaces open', () => {
+  it('reach a project file in the native sidebar from a drive, POSIX or UNC root', () => {
+    expect(projectFileAddress('C:\\Research\\p\\', '.\\paper\\main.pdf')).toBe('dsh-resource://file/absolute/C:/Research/p/paper/main.pdf')
+    expect(projectFileAddress('/home/me/p//', './figures/a b#1.png')).toBe('dsh-resource://file/absolute/home/me/p/figures/a%20b%231.png')
+    expect(projectFileAddress('\\\\server\\share\\p', 'x.pdf')).toBe('dsh-resource://file/absolute//server/share/p/x.pdf')
+  })
+
+  it('reach one gallery figure through the host route, whatever its id holds', () => {
+    const url = new URL(galleryImageUrl('neurips2024-19&size=full'), ORIGIN)
+    expect(url.pathname).toBe('/api/research/gallery/image')
+    expect(url.searchParams.get('id')).toBe('neurips2024-19&size=full')
+    expect([...url.searchParams.keys()]).toEqual(['id'])
+  })
+})
+
+describe('a run is timed by the supervisor\'s own clock', () => {
+  const NOW = Date.parse('2026-09-25T12:00:00.000Z')
+  const at = (secondsBeforeNow: number): string => new Date(NOW - secondsBeforeNow * 1000).toISOString()
+  const environment: EnvironmentRecord = {
+    id: 'env-local' as EnvironmentId, name: 'local', kind: 'uv', target: 'local', python: 'python', requirements: [],
+    fingerprint: 'f', status: 'ready', details: '', isDefault: true,
+  }
+  /** A run as the service records it on submission: queued, not yet started. */
+  function submitted(): ExperimentRecord {
+    const project = newProject({ root: join(tmpdir(), 'research-runs'), title: 'Runs', brief: '' }, 'workspace' as WorkspaceId)
+    project.environments.push(environment)
+    return newExperiment(project, {
+      environmentId: environment.id, name: 'baseline', argv: ['{python}', 'code/train.py'], cwd: '.', seed: 1, maxSeconds: 600,
+      gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], metricsPath: 'metrics.json',
+    }, 'run-1')
+  }
+  afterEach(() => { vi.useRealTimers() })
+
+  it('has no elapsed time before the supervisor starts it, or when its start stamp does not parse', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+    const run = submitted()
+    expect(run.status).toBe('queued')
+    expect(elapsedOf(run)).toBeUndefined()
+    expect(elapsedOf({ ...run, status: 'running', startedAt: 'not a time' })).toBeUndefined()
+  })
+
+  it('measures a run still occupying the supervisor to now, and keeps counting', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+    const running = { ...submitted(), status: 'running' as const, startedAt: at(90), updatedAt: at(30) }
+    expect(elapsedOf(running)).toBe(90_000)
+    expect(elapsedOf({ ...running, status: 'unknown' })).toBe(90_000)
+    vi.setSystemTime(NOW + 10_000)
+    expect(elapsedOf(running)).toBe(100_000)
+  })
+
+  it('stops a finished run at the moment it reported finishing', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+    const done = { ...submitted(), status: 'completed' as const, startedAt: at(600), finishedAt: at(60), updatedAt: at(5) }
+    expect(elapsedOf(done)).toBe(540_000)
+    vi.setSystemTime(NOW + 3_600_000)
+    expect(elapsedOf(done)).toBe(540_000)
+  })
+
+  it('stops an interrupted run the supervisor never stamped at the observation that found it stopped', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+    const interrupted = { ...submitted(), status: 'interrupted' as const, startedAt: at(300), updatedAt: at(120) }
+    expect(elapsedOf(interrupted)).toBe(180_000)
+    // A finishing stamp that does not parse is no better than none.
+    expect(elapsedOf({ ...interrupted, finishedAt: 'garbled' })).toBe(180_000)
+    // With no readable observation either, the run is measured to now.
+    expect(elapsedOf({ ...interrupted, updatedAt: '' })).toBe(300_000)
+  })
+
+  it('never reads a negative time when the stamps disagree', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
+    expect(elapsedOf({ ...submitted(), status: 'failed', startedAt: at(10), finishedAt: at(20) })).toBe(0)
+  })
+})
+
+describe('modes, routes and phases read in the interface language', () => {
+  it('names a pack by its own text in each language, and a pack no longer installed by its id', () => {
+    expect([packText({ en: 'Plan', zh: '规划' }, tEn), packText({ en: 'Plan', zh: '规划' }, tZh)]).toEqual(['Plan', '规划'])
+    expect([modeName(MODES, 'general', tEn), modeName(MODES, 'general', tZh), modeName(MODES, 'retired', tZh)]).toEqual(['General', '通用', 'retired'])
+  })
+
+  it('names a phase by its label in its mode, and an unknown phase or mode by the phase id', () => {
+    expect([phaseName(MODES, 'spark-to-paper', 'cite', tEn), phaseName(MODES, 'spark-to-paper', 'cite', tZh)]).toEqual(['Citations', '引用'])
+    expect([phaseName(MODES, 'spark-to-paper', 'gone', tZh), phaseName(MODES, 'retired', 'cite', tZh)]).toEqual(['gone', 'cite'])
+  })
+
+  it('lists the phases on the project route, the pack default route when none is recorded, and none without a pack', () => {
+    expect(modePhases(MODES, { mode: 'general' })).toEqual([])
+    expect(modePhases(MODES, { mode: 'retired', route: 'data' })).toEqual([])
+    expect(modePhases(MODES, { mode: 'spark-to-paper' })).toEqual(['plan', 'cite', 'experiments'])
+    expect(modePhases(MODES, { mode: 'spark-to-paper', route: 'data' })).toEqual(['data', 'plan', 'cite'])
+    // A pack without a default route keeps only the phases every route has.
+    expect(modePhases([{ ...MODES[1]!, defaultRoute: undefined }], { mode: 'spark-to-paper' })).toEqual(['plan', 'cite'])
+  })
+
+  it('carries a mode choice through a form and back', () => {
+    expect([modeChoice('general'), modeChoice('spark-to-paper', 'data')]).toEqual(['general', 'spark-to-paper/data'])
+    expect([parseModeChoice('general'), parseModeChoice('spark-to-paper/data')]).toEqual([{ mode: 'general' }, { mode: 'spark-to-paper', route: 'data' }])
+    const form = (value?: string): FormData => {
+      const data = new FormData()
+      if (value !== undefined) data.set('mode', value)
+      return data
+    }
+    expect(chosenMode(form(modeChoice('spark-to-paper', 'proposal')))).toEqual({ mode: 'spark-to-paper', route: 'proposal' })
+    // A form rendered before the modes arrived chose nothing, and the service picks the general mode.
+    expect([chosenMode(form('')), chosenMode(form())]).toEqual([{}, {}])
+  })
+})
+
+describe('where a project stands reads from its last check under its current mode and route', () => {
+  const project = (): ResearchProject => newProject({ root: '/research/sparse', title: 'Sparse', brief: '', mode: 'spark-to-paper', route: 'data' }, 'workspace' as WorkspaceId)
+  const check = (phases: { id: string; done: boolean }[], over: { mode?: string; route?: string } = {}): NonNullable<ResearchProject['lastCheck']> =>
+    ({ clean: false, scope: 'all', mode: 'spark-to-paper', route: 'data', checkedAt: '2026-09-25T10:00:00.000Z', findings: [], phases: phases.map(phase => ({ ...phase, missing: [] })), ...over })
+
+  it('names only the mode before any check, or when the check listed no phases', () => {
+    const fresh = project()
+    expect(standingText(fresh, MODES, tZh)).toBe('spark-to-paper')
+    expect(standingText({ ...fresh, lastCheck: check([]) }, MODES, tZh)).toBe('spark-to-paper')
+    expect(standingText({ ...fresh, mode: 'general', route: undefined }, MODES, tEn)).toBe('General')
+  })
+
+  it('names the first unfinished phase and how many are done', () => {
+    const phases = [{ id: 'data', done: true }, { id: 'plan', done: false }, { id: 'cite', done: false }]
+    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tZh)).toBe('spark-to-paper · 规划 1/3')
+    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tEn)).toBe('spark-to-paper · Plan 1/3')
+  })
+
+  it('says the check is clean once every phase is done', () => {
+    const phases = [{ id: 'data', done: true }, { id: 'plan', done: true }]
+    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tZh)).toBe(`spark-to-paper · ${zh.checkClean}`)
+    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tEn)).toBe(`spark-to-paper · ${en.checkClean}`)
+  })
+
+  it('ignores a check made under another mode or route', () => {
+    const phases = [{ id: 'plan', done: false }]
+    expect(standingText({ ...project(), lastCheck: check(phases, { mode: 'general' }) }, MODES, tZh)).toBe('spark-to-paper')
+    expect(standingText({ ...project(), lastCheck: check(phases, { route: 'proposal' }) }, MODES, tZh)).toBe('spark-to-paper')
+  })
+})
+
+describe('a suggested sentence joins the composer draft without replacing it', () => {
+  const sentence = tZh('runPlotDraft', { name: 'baseline', seed: 1 })
+
+  it('fills an empty draft, or one holding only whitespace, with the sentence alone', () => {
+    expect(sentence).toBe('用 baseline（种子 1）的结果画一张图，放进论文。')
+    expect(appendedDraft('', sentence)).toBe(sentence)
+    expect(appendedDraft('  \n\t', sentence)).toBe(sentence)
+  })
+
+  it('puts the sentence on its own line after what was typed, keeping the typed words as they are', () => {
+    expect(appendedDraft('  先对比两种稀疏模式。', sentence)).toBe(`  先对比两种稀疏模式。\n${sentence}`)
+    expect(appendedDraft('先对比两种稀疏模式。\n\n  ', sentence)).toBe(`先对比两种稀疏模式。\n${sentence}`)
+    const english = tEn('runPlotDraft', { name: 'ablation', seed: 7 })
+    expect(appendedDraft(appendedDraft('Compare both patterns.', sentence), english)).toBe(`Compare both patterns.\n${sentence}\n${english}`)
   })
 })

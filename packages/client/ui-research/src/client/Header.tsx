@@ -14,23 +14,11 @@ export function ResearchStatusChip(props: WorkbenchProps & SessionSeatProps): Re
   const project = useSessionProject(props)
   const modes = useModes(props)
   if (!project) return null
-  return <button type="button" className={styles.chip} onClick={() => props.showProgress?.()} title={t('railGuideTitle')}>
+  return <button type="button" className={styles.chip} onClick={() => { props.showProgress() }} title={t('railGuideTitle')}>
     <span className={styles.stage}>{standingText(project, modes, t)}</span>
     {project.autonomy === 'automatic' && <>
       <span className={styles.separator}>·</span>
       <span className={styles.position}>{t('autonomyShortAutomatic')}</span>
     </>}
   </button>
-}
-
-/** The project's files, the experiment board and the figure gallery, reachable from the conversation header. */
-export function ResearchProjectActions(props: WorkbenchProps & SessionSeatProps): ReactNode {
-  const { t } = props
-  const project = useSessionProject(props)
-  if (!project) return null
-  return <span className={styles.actions}>
-    <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'artifacts') }}>{t('projectFolder')}</button>
-    <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'experiments') }}>{t('boardTitle')}</button>
-    <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'gallery') }}>{t('gallery')}</button>
-  </span>
 }

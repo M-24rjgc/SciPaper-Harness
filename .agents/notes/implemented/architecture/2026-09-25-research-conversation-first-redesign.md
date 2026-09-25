@@ -55,6 +55,22 @@ The copy changes in the dictionaries of five shell packages; no key and no compo
 
 The unit specs of the five packages pin the new values as literal text, in the language each spec renders. The browser goldens and locators that quoted the old values change on those lines only. Three inherited goldens (`subagent-conversation` and `subagent-interrupt`) also read a child session's access chip as `全自动 · Automatic`, the display name step 1 gives `research-auto`, where they had recorded `Custom`. The two `lifecycle-chrome` entry-screen goldens also take ui-research's current entry-screen paragraphs, which had changed after those goldens were recorded. The `onboarding-deepseek-config` golden of the key dialog changes the same way, but no run compares it: that scenario first waits for the upstream welcome notice, which ui-research shadows. `deepseek-messages-settings` and `onboarding-usable-provider` open the new dialog in the browser. `apps/web/tests/research-workbench.e2e.ts` reads the entry screen before any research exists (the headline, the Choose research chip and the fallback placeholder), the blank conversation of a research, and the composer under a settled reply in English, and the entry screen of a new research in Chinese.
 
+### Step 3: the research surfaces stop destroying files and stop acting on their own
+
+`ui-research` and the research host change; no shell code changes.
+
+- **Saving never empties a binary file.** `writeArtifact` refuses `save-artifact` on a binary file before it reads or writes anything, whoever asks. A file is binary by its extension (images, PDF, archives, office documents, fonts, arrays) or, under any other name, when its first 8 KiB hold a NUL byte (`isBinaryFile`, `files.ts`). `read-artifact` answers such a file with `binary: true` and no text, and the file panel then shows no editor and holds 保存 off. 保存 is also held off until something was typed, so the default new-file path is never written empty.
+- **Nothing opens or starts by itself.** The dock that opened the research tab whenever a research conversation mounted is gone, and so are the entry cards that did nothing, the promise row, and the claim and figure cards above the composer. The research tab opens only from the header chip. The header's 项目文件夹, 实验看板 and 配图灵感 buttons move into the tab's tools row, beside the research files.
+- **The rail reports.** It loses the mode select, 运行检查, 推进流程 and the environment block, whose 已就绪 was never probed. The assistant sets the mode, runs checks and drives goals. The rail keeps the autonomy select until step 8 moves it to the composer. The 实验 row shows only when the route has an experiments phase or runs exist.
+- **Every control keeps its own progress and failure.** The plugin-wide `busy` and `error` are gone: `useAction` (`Action.tsx`) gives each control its own pending state and a failure line beside it. `run` follows a host job until it settles, so a control stays pending as long as the work does and a failed job shows its message.
+- **Runs.** 停止 asks 确认取消这次实验？停止后无法继续。 once (`StopRun.tsx`). A queued run reads 排队中 in neutral grey, not 运行中. 用它画图 appends its sentence to the draft instead of replacing what was typed.
+- **Smaller fixes.**
+  - The claim sheet looks the claim up in its own project, since claim ids are unique only within a project.
+  - Opening a conversation waits up to five seconds for the session list to carry it, then opens the research folder's blank conversation; before, a card could throw `unknown session`.
+  - Settings drop 主模型, which was saved but never read.
+  - An environment earns no tag for a status that was never probed.
+- **Developer cells shadowed.** Empty occupants take the composer's turn, step, token-rate and cache pills (`conversation.composer.dock#stats`), General settings' default permission (`settings.general.item#permission`, which the research's autonomy decides) and the open-configuration-file action (`settings.action#open-document`). They register only when `ui-research`'s `hideDeveloperCells` is true, which the Web bundle sets on its row. A client row's `config` reaches only the package's Host half, so that half validates it and puts it into every served page as the `__DSH_RESEARCH__` global, the way `client-connection` hands the browser its recovery timing; the browser half reads it when it applies. The Web e2e scaffold turns it off for the inherited scenarios together with the rows of step 1, so their goldens keep the pills.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -73,6 +89,10 @@ The unit specs of the five packages pin the new values as literal text, in the l
 
 **Refresh the goldens for the copy (step 2).** For the same reason as in step 1, the goldens change in place, on the lines that quote the old values; those lines are exactly what a refresh would rewrite.
 
+**Guard binary files by extension only (step 3).** A dataset or checkpoint under an unusual name would still be emptied. The NUL-byte probe reads at most 8 KiB, and a text file never contains a NUL byte.
+
+**Keep one error banner and clear it per action (step 3).** A banner above the panel tells nobody which button failed, and two actions in flight overwrite each other's message. A line beside each control needs no clearing rules.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -83,3 +103,5 @@ The unit specs of the five packages pin the new values as literal text, in the l
 - Until the entry policy of step 9 lands, 新研究 creates no research while no folder is chosen, which is when the fallback placeholder shows, so its 新建 (start new) points at a button that does not do that yet; opening a listed research, or choosing a folder with the chip, works.
 - Every shell locale string that names DeepSeek, Harness or DSH and still renders in the shipped composition names a model the person selects (the model picker's DeepSeek descriptions, the DeepSeek endpoint placeholders in the Models settings). The inherited welcome notice about DeepSeek Harness 0.1 is in `ui-settings-models`, but `ui-research` occupies that onboarding step with a component that renders nothing, and the web-search description sits on the disabled plugin settings page. The model-visible system prompt still introduces the agent as powered by DeepSeek Harness (`includeHarnessIdentity`), and the web-search provider's missing-key error still points to Settings > Plugins; neither is UI copy.
 - The inherited user guide (`docs/user/guide`) and upstream Agent Notes still quote the shell's old labels, such as **Choose workspace** and `Deep diving...`.
+- A person who wants a check, the pipeline or another mode now asks the assistant in the conversation. Until step 6 the rail's phases still read the last check whatever its scope.
+- Until step 9 the 新建项目目录… pill and the composer's folder button stay as the only direct ways to put a research in a chosen folder.

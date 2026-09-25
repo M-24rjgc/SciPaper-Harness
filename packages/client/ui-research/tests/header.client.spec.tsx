@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
 
 /**
- * The conversation header's research share. It names the mode and the phase
+ * The conversation header's research chip. It names the mode and the phase
  * the last check left open, for this session's project only — found through the
- * session's binding or its working directory — and offers the project files.
+ * session's binding or its working directory — and it is the one door to the
+ * research record: the record opens when the person clicks it, never by itself.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import { ResearchProjectActions, ResearchStatusChip } from '../src/client/Header.tsx'
-import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
+import { ResearchStatusChip } from '../src/client/Header.tsx'
+import type { ResearchView, SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 
@@ -25,24 +26,24 @@ function project(root: string, mode?: string, route?: string): ResearchProject {
 
 function propsFor(
   projects: ResearchProject[],
-  log: { expanded: string[]; progress: number },
+  log: { progress: number },
   directories: Record<string, string> = {},
 ): WorkbenchProps & SessionSeatProps {
-  const view = { snapshot: projects.length > 0 ? { projects, preferences: {}, components: [], modes: MODES } : null, tasks: [], busy: false, error: '', response: null }
+  const snapshot = projects.length > 0 ? { projects, preferences: {}, components: [], modes: MODES } : null
+  const view: ResearchView = { snapshot, tasks: [], response: null }
   return {
     sessionId: SESSION,
     t: (key: string, params?: Record<string, unknown>) => {
       const template = (zh as Record<string, string>)[key] ?? key
       return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
     },
-    useResearch: (select: (value: typeof view) => unknown) => select(view),
+    useResearch: (select: (value: ResearchView) => unknown) => select(view),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select(directories),
-    expand: (projectId: string, panel?: string) => { log.expanded.push(panel === 'artifacts' ? projectId : `${projectId}:${panel}`) },
     showProgress: () => { log.progress += 1 },
   } as unknown as WorkbenchProps & SessionSeatProps
 }
 
-const log = (): { expanded: string[]; progress: number } => ({ expanded: [], progress: 0 })
+const log = (): { progress: number } => ({ progress: 0 })
 
 describe('the header names where this session\'s project stands', () => {
   it('draws nothing until the session works in a research project', () => {
@@ -50,7 +51,6 @@ describe('the header names where this session\'s project stands', () => {
     stranger.sessionId = 'session-elsewhere'
     expect(render(<ResearchStatusChip {...propsFor([], log())} />).container.textContent).toBe('')
     expect(render(<ResearchStatusChip {...propsFor([stranger], log())} />).container.textContent).toBe('')
-    expect(render(<ResearchProjectActions {...propsFor([stranger], log())} />).container.textContent).toBe('')
   })
 
   it('names the mode before any check, and a pack that is gone by its id', () => {
@@ -75,11 +75,8 @@ describe('the header names where this session\'s project stands', () => {
       findings: [],
     }
     // Any conversation opened inside the project folder shows it, bound or not.
-    const records = log()
-    const chip = render(<ResearchStatusChip {...propsFor([mine], records, { [SESSION]: 'c:/research/MINE/paper' })} />)
+    const chip = render(<ResearchStatusChip {...propsFor([mine], log(), { [SESSION]: 'c:/research/MINE/paper' })} />)
     expect(chip.container.textContent).toBe(`spark-to-paper · 引用 1/3·${zh.autonomyShortAutomatic}`)
-    fireEvent.click(chip.getByRole('button'))
-    expect(records.progress).toBe(1)
   })
 
   it('says the check is clean once every phase is done', () => {
@@ -92,20 +89,22 @@ describe('the header names where this session\'s project stands', () => {
     mine.route = 'data'
     expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe('spark-to-paper')
   })
+})
 
-  it('opens the project files of this session\'s project, never a stranger\'s', () => {
+describe('the chip is the door to the research record', () => {
+  it('opens the record on each click and never by itself', () => {
     const stranger = project('/research/stranger')
     const mine = project('/research/mine')
     mine.sessionId = SESSION
     const records = log()
-    const actions = render(<ResearchProjectActions {...propsFor([stranger, mine], records)} />)
-    fireEvent.click(actions.getByRole('button', { name: zh.projectFolder }))
-    expect(records.expanded).toEqual([mine.id])
-    // The figure gallery opens from the same place.
-    fireEvent.click(actions.getByRole('button', { name: zh.gallery }))
-    expect(records.expanded).toEqual([mine.id, `${mine.id}:gallery`])
-    // So does the experiment board.
-    fireEvent.click(actions.getByRole('button', { name: zh.boardTitle }))
-    expect(records.expanded.at(-1)).toBe(`${mine.id}:experiments`)
+    const chip = render(<ResearchStatusChip {...propsFor([stranger, mine], records)} />)
+    // Showing the chip opens nothing beside the conversation.
+    expect(records.progress).toBe(0)
+    const button = chip.getByRole('button', { name: '通用' })
+    expect(button.getAttribute('title')).toBe(zh.railGuideTitle)
+    fireEvent.click(button)
+    expect(records.progress).toBe(1)
+    fireEvent.click(button)
+    expect(records.progress).toBe(2)
   })
 })

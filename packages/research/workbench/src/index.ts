@@ -30,7 +30,7 @@ import { FigureGallery } from './gallery.ts'
 import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
-import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isInside, projectPath, readText, sameDirectory, truncateBytes, writeNew } from './files.ts'
+import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isBinaryFile, isInside, projectPath, readText, sameDirectory, truncateBytes, writeNew } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
 import type {
   ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand,
@@ -480,10 +480,10 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'read-artifact': {
         const artifact = project.artifacts.find(a => a.id === request.artifactId)
         if (!artifact) throw new Error('Artifact not found')
-        const content = /\.(png|jpe?g|webp|pdf|zip)$/i.test(artifact.path)
-          ? ''
-          : await readText(await projectPath(project.root, artifact.path), this.config.maxSourceBytes)
-        return { message: `Revision ${artifact.revision}`, content, path: artifact.path }
+        const target = await projectPath(project.root, artifact.path)
+        // A binary file has no text to return, and save-artifact refuses to write text over it.
+        if (await isBinaryFile(target)) return { message: `Revision ${artifact.revision}; a binary file, so no text`, content: '', path: artifact.path, binary: true }
+        return { message: `Revision ${artifact.revision}`, content: await readText(target, this.config.maxSourceBytes), path: artifact.path }
       }
       case 'experiment-logs': {
         const run = project.experiments.find(r => r.id === request.runId)

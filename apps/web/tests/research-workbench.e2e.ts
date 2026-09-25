@@ -74,11 +74,13 @@ async function command(request: ResearchCommand): Promise<ResearchResponse> {
 }
 
 it('creates a project from the welcome screen, records evidence and opens a claim with its sources', async () => {
-  await page.getByText('Bring a spark or the results you already have.', { exact: false }).first().waitFor()
   // The shell's entry copy is the research product's; with no research yet the composer says where to start one.
   await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
   await page.getByRole('button', { name: 'Choose research', exact: true }).first().waitFor()
   await page.locator('[data-composer-input][data-placeholder="Start new research or open one on the left first"]').first().waitFor()
+  // The entry screen offers no cards and no promise row.
+  expect(await page.getByText('I already have material', { exact: true }).count()).toBe(0)
+  expect(await page.getByText('Every conclusion points back to the page it came from', { exact: true }).count()).toBe(0)
   await saveFailureShot(page, 'research-welcome')
   const viewport = page.viewportSize()!
   await page.setViewportSize({ width: 390, height: 844 })
@@ -113,6 +115,14 @@ it('creates a project from the welcome screen, records evidence and opens a clai
     content: 'from pathlib import Path\nimport json\nPath("metrics.json").write_text(json.dumps({"score":42}))\nprint("run-complete")\n',
     evidence: [], claimIds: [], inputArtifacts: [] })
   codeId = scaffold.ctx.research.getProject(projectId).artifacts.find(item => item.path === 'code/run.py')!.id
+  // Nothing opened the research tab on its own. Once the conversation has begun, its header chip opens it.
+  expect(await page.getByRole('button', { name: /^Claims/ }).filter({ visible: true }).count()).toBe(0)
+  const input = page.locator('[data-composer-input][contenteditable="true"]').first()
+  await writeComposerDraft(page, input, 'Start from the measured sample')
+  await input.press('Enter')
+  // The scenario records no model reply; the sent message alone ends the blank conversation and brings the header.
+  await page.getByText('Start from the measured sample', { exact: true }).first().waitFor({ timeout: 30000 })
+  await page.getByTitle('Research progress', { exact: true }).first().click({ timeout: 15000 })
   // The claim opens over the whole frame with the source it rests on.
   await page.getByRole('button', { name: /^Claims/ }).first().click({ timeout: 15000 })
   await page.getByText('The measured value is 42.', { exact: true }).first().click({ timeout: 15000 })
@@ -122,23 +132,23 @@ it('creates a project from the welcome screen, records evidence and opens a clai
   await page.keyboard.press('Escape')
 })
 
-it('steers mode and autonomy from the research tab and records every choice in the ledger', async () => {
+it('reports the mode and checks the assistant records, and changes only the autonomy', async () => {
   // Back from the project's files to its conversation, where the research tab sits beside the chat.
   await page.getByRole('button', { name: 'Research conversation', exact: true }).first().click()
-  const mode = page.locator('select').filter({ has: page.locator('option[value="spark-to-paper/proposal"]') }).first()
-  await mode.waitFor({ timeout: 15000 })
-  await mode.selectOption('spark-to-paper/proposal')
-  await expect.poll(() => scaffold.ctx.research.getProject(projectId).mode).toBe('spark-to-paper')
-  expect(scaffold.ctx.research.getProject(projectId)).toMatchObject({ route: 'proposal', modeSetBy: 'user' })
-  await page.locator('select').filter({ has: page.locator('option[value="automatic"]') }).first().selectOption('automatic')
+  const autonomy = page.locator('select').filter({ has: page.locator('option[value="automatic"]') }).first()
+  await autonomy.waitFor({ timeout: 15000 })
+  // The tab chooses no mode and runs no check or pipeline: those are the assistant's.
+  expect(await page.locator('select').filter({ has: page.locator('option[value="spark-to-paper/proposal"]') }).count()).toBe(0)
+  expect(await page.getByRole('button', { name: 'Run check', exact: true }).count()).toBe(0)
+  expect(await page.getByRole('button', { name: 'Run the pipeline', exact: true }).count()).toBe(0)
+  await autonomy.selectOption('automatic')
   await expect.poll(() => scaffold.ctx.research.getProject(projectId).autonomy).toBe('automatic')
-  // A pipeline mode offers to hand the pipeline to the assistant as a goal (not started here: the stub model never finishes one).
-  await page.getByRole('button', { name: 'Run the pipeline', exact: true }).first().waitFor({ timeout: 15000 })
-  await page.getByRole('button', { name: 'Run check', exact: true }).first().click()
-  // The check reads the whole project and its gates, which can take longer than the default one-second poll.
-  await expect.poll(() => scaffold.ctx.research.getProject(projectId).lastCheck?.mode, { timeout: 30000 }).toBe('spark-to-paper')
+  // The assistant sets the mode and checks; the tab reports both.
+  await command({ action: 'set-mode', projectId, mode: 'spark-to-paper', route: 'proposal' })
+  await command({ action: 'check', projectId })
+  expect(scaffold.ctx.research.getProject(projectId).lastCheck?.mode).toBe('spark-to-paper')
   // The project's file panel draws the same status while hidden; only the tab beside the conversation counts.
-  await page.getByText(/^Still open/).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await page.getByText(/^Still open/).filter({ visible: true }).first().waitFor({ timeout: 30000 })
   await saveFailureShot(page, 'research-tab-check')
   // A decision the agent records reaches the tab on the next poll.
   await command({ action: 'record-decision', projectId, question: 'Which dataset?', answer: 'The measured sample' })
@@ -180,7 +190,7 @@ it.skipIf(!texBin)('compiles a real PDF and keeps visual review configuration ex
 
 it('offers a new project from a blank conversation and keeps the composer draft when cancelled', async () => {
   await page.getByRole('button', { name: 'New research', exact: true }).last().click()
-  await page.getByText('Bring a spark or the results you already have.', { exact: false }).first().waitFor()
+  await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
   const createProject = page.getByRole('button', { name: 'New project folder…', exact: true }).first()
   await createProject.waitFor()
   // The edition ships no preset chooser: no preset chip beside the composer.
@@ -213,6 +223,8 @@ it('shows a settled reply with no feedback buttons or view tabs', async () => {
   await page.getByRole('button', { name: 'Branch into a new conversation' }).first().waitFor({ timeout: 15000 })
   expect(await page.getByRole('button', { name: 'Good response' }).count()).toBe(0)
   expect(await page.getByRole('button', { name: 'Bad response' }).count()).toBe(0)
+  // The composer carries no turn, step, token-rate or cache-hit pills.
+  expect(await page.getByRole('button', { name: /Cache hit|tok\/s/ }).count()).toBe(0)
   // The conversation is the only view: no Chat / Trajectory tab strip.
   expect(await page.getByRole('tab', { name: 'Trajectory' }).count()).toBe(0)
   expect(await page.getByRole('tab', { name: 'Chat' }).count()).toBe(0)

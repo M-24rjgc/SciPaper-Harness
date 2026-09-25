@@ -11,13 +11,22 @@ export type GallerySearchRequest = Extract<ResearchCommand, { action: 'find-refe
 /** A read of the experiment board, as the board page sends it. */
 export type BoardViewRequest = Extract<ResearchCommand, { action: 'board-view' }>
 
-/** Everything the research surfaces read: the record, in-flight work, and the last outcome. */
+/**
+ * Everything the research surfaces read: the record, the host's background
+ * jobs, and the last settled command result. No action's progress or failure
+ * lives here; each control keeps its own (`Action.tsx`).
+ */
 export interface ResearchView {
   snapshot: ResearchSnapshot | null
   tasks: ResearchTask[]
-  busy: boolean
-  error: string
+  /** The last result a `run` or `install` settled with, as the file panel shows it. */
   response: ResearchResponse | null
+}
+
+/** One claim and the project that holds it. */
+export interface ClaimFocus {
+  projectId: string
+  claimId: string
 }
 
 /**
@@ -26,8 +35,8 @@ export interface ResearchView {
  * the selection travels through the plugin's own store instead.
  */
 export interface ResearchFocus {
-  /** Claim whose sources are on screen, or `null` while nothing is open. */
-  claimId: string | null
+  /** The claim whose sources are on screen, or `null` while nothing is open. */
+  claim: ClaimFocus | null
   projectId?: string | undefined
   artifactId?: string | undefined
   panel?: 'workflow' | 'sources' | 'claims' | 'artifacts' | 'gallery' | 'experiments' | 'settings' | undefined
@@ -45,28 +54,51 @@ export interface ResearchInjected {
   }
   /** Create or adopt the project rooted at `request.root`; the record comes back so a caller can act on it. */
   create(request: CreateProjectRequest): Promise<ResearchProject>
+  /**
+   * Send one command. A long command starts a host job; the promise follows it
+   * and settles with the job's result or rejects with its failure message, so
+   * the caller's own pending state lasts as long as the work. The record is
+   * read again before the promise settles, and the result becomes `response`.
+   */
   run(request: ResearchCommand): Promise<ResearchResponse>
-  /** One page of the figure gallery; unlike `run`, it neither marks the workbench busy nor refreshes the record. */
+  /** One page of the figure gallery; unlike `run`, it neither refreshes the record nor sets `response`. */
   searchFigures(request: GallerySearchRequest): Promise<GalleryPage>
-  /** The experiment board as last read, starting a new read when it asks; like searchFigures, it leaves the workbench alone. */
+  /** The experiment board as last read, starting a new read when it asks; like searchFigures, it leaves the record alone. */
   board(request: BoardViewRequest): Promise<BoardSnapshot>
+  /** Read the record and the job list again; a failed read keeps the previous ones and never rejects. */
   refresh(): Promise<void>
   /** Save the preferences, then store each provider key that was typed; an empty key leaves the stored one alone. */
   configure(preferences: ResearchPreferences, keys: { image: string; embedding: string }): Promise<void>
+  /** Install a managed component, following its job until it settles like `run` does. */
   install(component: 'python' | 'uv' | 'latex' | 'drawio'): Promise<void>
-  openConversation(sessionId: string): Promise<void>
+  /**
+   * Show one conversation. It waits until the session list carries the
+   * session, then selects it; a session that stays unlisted (not yet
+   * published, or unknown to this window) opens the Workspace's blank
+   * conversation instead.
+   * @param sessionId - the conversation to show.
+   * @param workspaceId - the Workspace of its research folder, opened when the session never appears.
+   */
+  openConversation(sessionId: string, workspaceId: string): Promise<void>
   /**
    * Run a slash command in one session without posting a message — the same
-   * path the composer's own pickers use for `/permission` and `/goal`.
+   * path the composer's own picker uses for `/permission`.
    */
   command(sessionId: string, line: string): Promise<void>
-  /** Open a project file in the conversation's right sidebar, where PDFs, images and text render natively. */
+  /**
+   * Open a project file in the conversation's right sidebar, where PDFs,
+   * images and text render natively. Throws when no conversation's sidebar is
+   * mounted to show it.
+   */
   openFile(root: string, path: string): void
+  /** Show the research folder's file tab in the right sidebar. */
+  openFiles(): void
   /** Raise the claim sheet over the whole frame, or close it with `null`. */
-  focusClaim(claimId: string | null): void
+  focusClaim(claim: ClaimFocus | null): void
   /** Ask the host for a project directory; `null` when the person dismissed the picker. */
   pickDirectory(): Promise<string | null>
-  showProgress?(): void
+  /** Open the research tab beside the conversation; only the person's click calls it. */
+  showProgress(): void
   expand(projectId?: string, panel?: ResearchFocus['panel'], artifactId?: string): void
 }
 

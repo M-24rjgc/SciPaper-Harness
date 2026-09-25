@@ -214,7 +214,7 @@ describe('the experiment board page', () => {
     expect(view.queryByRole('list')).toBeNull()
   })
 
-  it('reports each run in flight by its progress, its time, and its curves, and stops it or reads its logs', async () => {
+  it('reports each run in flight by its progress, its time, and its curves, and stops it once confirmed or reads its logs', async () => {
     const project = fixture()
     const answers: Record<string, ResearchResponse | Error> = { 'experiment-logs': { message: 'no log', content: 'epoch 2' } }
     const h = harness(project, () => Promise.resolve(snapshot()), (command) => {
@@ -240,7 +240,16 @@ describe('the experiment board page', () => {
     expect(within(unknown).getByText(zh.unknown)).toBeTruthy()
     expect(within(unknown).getByText('step')).toBeTruthy()
     expect(within(unknown).queryByRole('button', { name: zh.runStop })).toBeNull()
+    // Stopping asks once; keeping the run going sends nothing.
     fireEvent.click(within(running).getByRole('button', { name: zh.runStop }))
+    fireEvent.click(within(running).getByRole('button', { name: zh.runKeep }))
+    await flush()
+    expect(h.commands).toEqual([])
+    const stop = (card: HTMLElement): void => {
+      fireEvent.click(within(card).getByRole('button', { name: zh.runStop }))
+      fireEvent.click(within(within(card).getByRole('group', { name: zh.confirmStop })).getByRole('button', { name: zh.runStop }))
+    }
+    stop(running)
     fireEvent.click(within(running).getByRole('button', { name: zh.logs }))
     await flush()
     expect(within(running).getByText('epoch 2')).toBeTruthy()
@@ -248,13 +257,18 @@ describe('the experiment board page', () => {
     fireEvent.click(within(queued).getByRole('button', { name: zh.logs }))
     await flush()
     expect(within(queued).getByText('no log yet')).toBeTruthy()
+    // A refused read or stop says why under the run it concerns.
     answers['experiment-logs'] = new Error('host gone')
     answers['experiment-cancel'] = new Error('refused')
     fireEvent.click(within(unknown).getByRole('button', { name: zh.logs }))
-    fireEvent.click(within(queued).getByRole('button', { name: zh.runStop }))
+    stop(queued)
     await flush()
-    expect(within(unknown).getByText('host gone')).toBeTruthy()
+    expect(within(unknown).getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'host gone' }))
+    expect(within(queued).getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'refused' }))
+    expect(within(queued).getByRole('button', { name: zh.runStop })).toBeTruthy()
+    expect(within(running).queryByRole('alert')).toBeNull()
     expect(h.commands.map(command => command.action)).toEqual(['experiment-cancel', 'experiment-logs', 'experiment-logs', 'experiment-logs', 'experiment-cancel'])
+    expect(h.commands[0]).toEqual({ action: 'experiment-cancel', projectId: project.id, runId: 'live' })
     cleanup()
     // A run that reports a fraction before it started has no time to estimate from; one with no progress at all shows neither.
     const early = fixture()

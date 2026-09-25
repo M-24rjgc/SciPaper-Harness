@@ -2,7 +2,7 @@
 
 /** Creating a research project from a browser or native desktop composer. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,11 +15,18 @@ import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 
 const SESSION = 'session-new'
+const WORKSPACE = 'workspace' as WorkspaceId
 const roots: string[] = []
 afterEach(async () => {
   cleanup()
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
+
+const t = (key: string, params?: Record<string, unknown>): string => {
+  const template = (zh as Record<string, string>)[key] ?? key
+  return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
+}
+const failed = (reason: string): string => t('actionFailed', { reason })
 
 interface Recorder {
   created: CreateProjectRequest[]
@@ -27,35 +34,37 @@ interface Recorder {
   picked: string | null
   draft: string
   existing?: ResearchProject
+  directories: Record<string, string>
   failCreate?: boolean
-  opened: string[]
-  expanded: string[]
+  opened: [string, string][]
+  expanded: [string, string | undefined][]
   boundSession?: string
 }
 
 function recorder(over: Partial<Recorder> = {}): Recorder {
-  return { created: [], commands: [], picked: '/tmp/sparse-attention', draft: '', opened: [], expanded: [], ...over }
+  return { created: [], commands: [], picked: '/tmp/sparse-attention', draft: '', directories: {}, opened: [], expanded: [], ...over }
 }
 
 function propsFor(log: Recorder): WorkbenchProps & SessionSeatProps & NewProjectOwnerProps {
-  const view = { snapshot: { projects: log.existing ? [log.existing] : [], preferences: {}, components: [], modes: MODES }, tasks: [], busy: false, error: '', response: null }
+  const snapshot = { projects: log.existing ? [log.existing] : [], preferences: {}, components: [], modes: MODES }
+  const view = { snapshot, tasks: [], response: null }
   return {
     sessionId: SESSION,
-    t: (key: string) => (zh as Record<string, string>)[key] ?? key,
+    t,
     useResearch: (select: (value: typeof view) => unknown) => select(view),
     useInput: (select: (state: { draft: string }) => string) => select({ draft: log.draft }),
-    useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
+    useDirectories: (select: (value: Record<string, string>) => unknown) => select(log.directories),
     pickDirectory: () => Promise.resolve(log.picked),
     create: (request: CreateProjectRequest) => {
       log.created.push(request)
       if (log.failCreate) return Promise.reject(new Error('the folder is not writable'))
-      const created = newProject(request, 'workspace' as WorkspaceId)
+      const created = newProject(request, WORKSPACE)
       if (log.boundSession !== undefined) created.sessionId = log.boundSession
       return Promise.resolve(created)
     },
     run: (command: ResearchCommand) => { log.commands.push(command); return Promise.resolve({ message: '' }) },
-    expand: (projectId: string) => { log.expanded.push(projectId) },
-    openConversation: (sessionId: string) => { log.opened.push(sessionId); return Promise.resolve() },
+    expand: (projectId: string, panel?: string) => { log.expanded.push([projectId, panel]) },
+    openConversation: (sessionId: string, workspaceId: string) => { log.opened.push([sessionId, workspaceId]); return Promise.resolve() },
   } as unknown as WorkbenchProps & SessionSeatProps & NewProjectOwnerProps
 }
 
@@ -69,8 +78,19 @@ function submitForm(view: ReturnType<typeof render>, root: string): void {
   fireEvent.submit(view.getByRole('button', { name: zh.create }).closest('form')!)
 }
 
+/** Let the work a press started run its first step. */
+const settle = async (): Promise<void> => { await act(async () => { await Promise.resolve() }) }
+
+/** A promise the test settles by hand. */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason: unknown) => void } {
+  let resolve: (value: T) => void = () => {}
+  let reject: (reason: unknown) => void = () => {}
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
 describe('starting a project from the composer', () => {
-  it('keeps the draft as the brief, creates with the chosen mode and autonomy, starts nothing, and opens the project', async () => {
+  it('keeps the draft as the brief, creates with the chosen mode and autonomy, starts nothing, and opens the project conversation in its workspace', async () => {
     const root = await mkdtemp(join(tmpdir(), 'research-new-'))
     roots.push(root)
     const log = recorder({ draft: '  块稀疏能否保住长上下文准确率  ', boundSession: 'session-project' })
@@ -85,39 +105,48 @@ describe('starting a project from the composer', () => {
     expect(log.created).toEqual([{ title: 'Sparse attention', root, brief: '块稀疏能否保住长上下文准确率', mode: 'spark-to-paper', route: 'data', autonomy: 'automatic' }])
     // Creating a project sends nothing to the model: the conversation does the work.
     expect(log.commands).toEqual([])
-    expect(log.opened).toEqual(['session-project'])
+    expect(log.opened).toEqual([['session-project', WORKSPACE]])
+    expect(log.expanded).toEqual([])
   })
 
-  it('starts in the general mode by default, with checkpoint autonomy, and shows an unbound project in the workbench', async () => {
+  it('starts in the general mode by default, with checkpoint autonomy, and shows an unbound project on its workflow page', async () => {
     const log = recorder()
     const view = render(<ResearchNewProject {...propsFor(log)} />)
     openForm(view)
     submitForm(view, '/research/default')
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
     expect(log.created).toEqual([{ title: 'Sparse attention', root: '/research/default', brief: '', mode: 'general', autonomy: 'checkpoints' }])
-    expect(log.expanded).toHaveLength(1)
+    expect(log.expanded).toEqual([[expect.any(String) as unknown, 'workflow']])
+    expect(log.opened).toEqual([])
   })
 
-  it('fills a native-picked directory without creating until confirmation', async () => {
-    const log = recorder({ picked: 'C:\\Research\\project' })
-    const view = render(<ResearchNewProject {...propsFor(log)} />)
+  it('fills a native-picked directory without creating until confirmation, and holds the picker off while it is open', async () => {
+    const log = recorder()
+    const picking = deferred<string | null>()
+    const view = render(<ResearchNewProject {...propsFor(log)} pickDirectory={() => picking.promise} />)
     openForm(view)
     fireEvent.click(view.getByRole('button', { name: zh.pickDirectory }))
-    await waitFor(() => { expect(view.getByLabelText(zh.directory)).toHaveProperty('value', log.picked) })
+    expect(view.getByRole('button', { name: zh.pickDirectory })).toHaveProperty('disabled', true)
+    // The rest of the form stays usable while the picker is up.
+    expect(view.getByRole('button', { name: zh.create })).toHaveProperty('disabled', false)
+    await act(async () => { picking.resolve('C:\\Research\\project'); await picking.promise })
+    await waitFor(() => { expect(view.getByLabelText(zh.directory)).toHaveProperty('value', 'C:\\Research\\project') })
+    expect(view.getByRole('button', { name: zh.pickDirectory })).toHaveProperty('disabled', false)
     expect(log.created).toEqual([])
     fireEvent.click(view.getByRole('button', { name: zh.cancel }))
+    expect(view.queryByRole('dialog')).toBeNull()
     expect(log.commands).toEqual([])
   })
 
-  it('allows typing the directory when a remote browser has no native picker', async () => {
+  it('says why the native picker failed beside it, and still accepts a typed directory', async () => {
     const root = await mkdtemp(join(tmpdir(), 'research-browser-new-'))
     roots.push(root)
     const log = recorder()
-    const base = propsFor(log)
-    const view = render(<ResearchNewProject {...base} pickDirectory={() => Promise.reject(new Error('native picker unavailable'))} />)
+    const view = render(<ResearchNewProject {...propsFor(log)} pickDirectory={() => Promise.reject(new Error('native picker unavailable'))} />)
     openForm(view)
     fireEvent.click(view.getByRole('button', { name: zh.pickDirectory }))
-    expect((await view.findByRole('alert')).textContent).toContain('native picker unavailable')
+    expect((await view.findByRole('alert')).textContent).toBe(failed('native picker unavailable'))
+    expect(view.getByRole('button', { name: zh.pickDirectory })).toHaveProperty('disabled', false)
     submitForm(view, root)
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
     expect(log.created[0]?.root).toBe(root)
@@ -129,55 +158,73 @@ describe('starting a project from the composer', () => {
     openForm(view)
     fireEvent.change(view.getByLabelText(zh.directory), { target: { value: '/research/existing' } })
     fireEvent.click(view.getByRole('button', { name: zh.pickDirectory }))
-    await waitFor(() => { expect(view.getByLabelText(zh.directory)).toHaveProperty('value', '/research/existing') })
+    await waitFor(() => { expect(view.getByRole('button', { name: zh.pickDirectory })).toHaveProperty('disabled', false) })
+    expect(view.getByLabelText(zh.directory)).toHaveProperty('value', '/research/existing')
+    expect(view.queryByRole('alert')).toBeNull()
     expect(log.created).toEqual([])
   })
 
-  it('shows a rejected create and leaves the form available for correction', async () => {
+  it('shows a rejected create in the form, leaves it open for correction, and forgets the failure when the form is opened afresh', async () => {
     const log = recorder({ failCreate: true })
     const view = render(<ResearchNewProject {...propsFor(log)} />)
     openForm(view)
     submitForm(view, '/research/refused')
-    expect((await view.findByRole('alert')).textContent).toContain('the folder is not writable')
+    expect((await view.findByRole('alert')).textContent).toBe(failed('the folder is not writable'))
+    expect(view.getByRole('dialog')).toBeTruthy()
     expect(view.getByRole('button', { name: zh.create })).toHaveProperty('disabled', false)
     expect(log.commands).toEqual([])
+    fireEvent.click(view.getByRole('button', { name: zh.cancel }))
+    openForm(view)
+    expect(view.queryByRole('alert')).toBeNull()
   })
 
-  it('disables another submission while project creation is pending', async () => {
-    let resolveCreate: (project: ResearchProject) => void = () => {}
-    const log = recorder()
-    const base = propsFor(log)
-    const view = render(<ResearchNewProject {...base} create={() => new Promise((resolve) => { resolveCreate = resolve })} />)
+  it('keeps the form open with the reason when the new project conversation cannot be shown', async () => {
+    const log = recorder({ boundSession: 'session-project' })
+    const view = render(<ResearchNewProject {...propsFor(log)} openConversation={() => Promise.reject(new Error('session list unavailable'))} />)
+    openForm(view)
+    submitForm(view, '/research/unlisted')
+    expect((await view.findByRole('alert')).textContent).toBe(failed('session list unavailable'))
+    expect(view.getByRole('dialog')).toBeTruthy()
+    expect(log.created).toHaveLength(1)
+  })
+
+  it('holds off both the create button and the entry while project creation is pending', async () => {
+    const creating = deferred<ResearchProject>()
+    const view = render(<ResearchNewProject {...propsFor(recorder())} create={() => creating.promise} />)
     openForm(view)
     submitForm(view, '/research/pending')
     expect(view.getByRole('button', { name: zh.newProjectBusy })).toHaveProperty('disabled', true)
-    resolveCreate(newProject({ title: 'Pending', root: '/research/pending', brief: '' }, 'workspace' as WorkspaceId))
+    expect(view.getByRole('button', { name: zh.newProjectDirectory })).toHaveProperty('disabled', true)
+    await act(async () => { creating.resolve(newProject({ title: 'Pending', root: '/research/pending', brief: '' }, WORKSPACE)); await creating.promise })
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
+    expect(view.getByRole('button', { name: zh.newProjectDirectory })).toHaveProperty('disabled', false)
   })
 
-  it('is absent for its own project but available in an unattached conversation', () => {
-    const project = newProject({ root: '/research/project', title: 'Sparse attention', brief: '' }, 'workspace' as WorkspaceId)
+  it('ignores a second submission of the same form while the first is in flight', async () => {
+    const creating = deferred<ResearchProject>()
+    let calls = 0
+    const create = (): Promise<ResearchProject> => { calls += 1; return creating.promise }
+    const view = render(<ResearchNewProject {...propsFor(recorder())} create={create} />)
+    openForm(view)
+    submitForm(view, '/research/twice')
+    fireEvent.submit(view.getByRole('button', { name: zh.newProjectBusy }).closest('form')!)
+    await settle()
+    expect(calls).toBe(1)
+    await act(async () => { creating.resolve(newProject({ title: 'Twice', root: '/research/twice', brief: '' }, WORKSPACE)); await creating.promise })
+    await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
+    expect(calls).toBe(1)
+  })
+
+  it('is absent in a conversation that works in a project, bound or by its folder, and available in an unattached one', () => {
+    const project = newProject({ root: '/research/project', title: 'Sparse attention', brief: '' }, WORKSPACE)
     project.sessionId = SESSION
     const view = render(<ResearchNewProject {...propsFor(recorder({ existing: project }))} />)
     expect(view.queryByRole('button')).toBeNull()
     project.sessionId = 'another-session'
+    view.rerender(<ResearchNewProject {...propsFor(recorder({ existing: project, directories: { [SESSION]: '/research/project/paper' } }))} />)
+    expect(view.queryByRole('button')).toBeNull()
     view.rerender(<ResearchNewProject {...propsFor(recorder({ existing: project }))} />)
     expect(view.getByRole('button', { name: zh.newProjectDirectory })).toBeTruthy()
-  })
-
-  it('ignores a second submission of the same form while the first is in flight', async () => {
-    let resolveCreate: (project: ResearchProject) => void = () => {}
-    const log = recorder()
-    const base = propsFor(log)
-    let calls = 0
-    const create = (): Promise<ResearchProject> => { calls += 1; return new Promise((resolve) => { resolveCreate = resolve }) }
-    const view = render(<ResearchNewProject {...base} create={create} />)
-    openForm(view)
-    submitForm(view, '/research/twice')
-    fireEvent.submit(view.getByRole('button', { name: zh.newProjectBusy }).closest('form')!)
-    expect(calls).toBe(1)
-    resolveCreate(newProject({ title: 'Twice', root: '/research/twice', brief: '' }, 'workspace' as WorkspaceId))
-    await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
   })
 
   it('still opens when the stylesheet ships no class for the dialog', async () => {

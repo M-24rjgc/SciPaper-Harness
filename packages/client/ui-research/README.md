@@ -1,5 +1,5 @@
 ---
-description: "Research edition browser surfaces: blank-session project entry, header status, the right-sidebar research tab with mode, autonomy, phases, check findings and decisions, the claim evidence sheet, experiment runs and the experiment board, the project file panel and research settings."
+description: "Research edition browser surfaces: blank-session project entry, header status, the read-only right-sidebar research tab with autonomy, phases, check findings, decisions and tools, the claim evidence sheet, experiment runs and the experiment board, the project file panel and research settings."
 kind: "package-plugin"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Shows a research project beside the conversation and lets the person steer it: pick the mode and autonomy, run the check, start the pipeline, read the phases, findings and decisions, open a claim's sources, follow experiment runs on the experiment board, and edit, compile and export project files. Choosing automatic autonomy also selects the `research-auto` permission preset, and Run pipeline submits a `/goal` through the composer. It never drives the agent; it renders the host ledger and sends ordinary commands. Mount it with `@deepseek-ai/dsh-research-workbench`.
+Shows a research project beside the conversation, and reports rather than steers. The person reads the phases, findings and decisions, opens a claim's sources, follows experiment runs on the experiment board, and stops a run after confirming. The one setting changed here is autonomy, which also selects the `research-auto` permission preset. The assistant sets the mode and runs checks; nothing here starts work or opens a panel by itself. Every control shows its own progress and failure. Mount it with `@deepseek-ai/dsh-research-workbench`.
 
 ## Table of Contents
 
@@ -35,9 +35,13 @@ Mount the row in a client roster alongside the host-side service:
     maxReviewPages: 12
 - id: ui-research
   name: '@deepseek-ai/dsh-client-ui-research'
+  config:
+    hideDeveloperCells: true
 ```
 
-The plugin injects `remote`, `remote.research`, `remote.directoryPicker`, `slots`, `locale`, `layout`, `sessions` and `sidebarRight`. Without the host row the Remote is absent and nothing registers.
+`hideDeveloperCells` (default `false`) shadows the shell cells that are developer surfaces in this product: the composer's turn, step, token-rate and cache-hit pills, General settings' default permission, and the open-configuration-file action. The Host half validates it and puts it into every served page as the `__DSH_RESEARCH__` global, which the browser half reads when it applies; a client row's `config` reaches no browser plugin otherwise.
+
+The plugin injects `remote`, `remote.research`, `remote.directoryPicker`, `slots`, `locale`, `layout`, `sessions`, `sidebarRight` and `uiWorkspace`. Without the host row the Remote is absent and nothing registers.
 
 -----
 
@@ -47,17 +51,18 @@ The plugin injects `remote`, `remote.research`, `remote.directoryPicker`, `slots
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-Every surface reads one polled snapshot of projects, preferences and components, and finds the project of a session by its binding, else by the innermost project root containing the session's working directory, so every conversation in a project folder shows it. Commands go to the host Remote; `/goal` and `/permission` lines go through the session's own command path, as the native pickers do.
+Every surface reads one polled snapshot of projects, preferences and components, and finds the project of a session by its binding, else by the innermost project root containing the session's working directory, so every conversation in a project folder shows it. Commands go to the host Remote; a command that starts a host job settles when the job does. The autonomy control sends its `/permission` line through the session's own command path, as the native picker does. Every control that asks the host for something keeps its own pending state and failure line (`Action.tsx`); there is no plugin-wide busy flag or error banner.
 
 | Module | What it draws |
 | --- | --- |
-| `Hero.tsx` | Blank-session entry: the mark, a resume line for the latest project, openings, standing promises |
-| `Header.tsx` | The project's status chip and file actions in the conversation header |
-| `Rail.tsx` | The research tab: mode and autonomy controls, Run check, Run pipeline, phases, findings, decisions |
+| `Hero.tsx` | The flask mark on the blank-session entry and the research tab |
+| `Header.tsx` | The project's status chip in the conversation header; clicking it opens the research tab |
+| `Rail.tsx` | The research tab: autonomy, phases, findings, decisions, counts, and the tools row (board, gallery, research files) |
 | `NewProject.tsx`, `ProjectEntry.tsx` | Project creation with mode and autonomy, and the sidebar project list |
-| `ClaimSheet.tsx` | One claim and every source under it, over the whole frame |
-| `RunPanel.tsx`, `MetricsGrid.tsx` | Submitted experiments above the composer, with their metrics |
-| `Workbench.tsx`, `ContextCards.tsx` | The project's files: sources, manuscript and diagram editors, runs, export |
+| `ClaimSheet.tsx` | One claim and every source under it, over the whole frame, looked up in its own project |
+| `RunPanel.tsx`, `MetricsGrid.tsx`, `StopRun.tsx` | Submitted experiments above the composer, with their metrics, and stopping one after a confirmation |
+| `Workbench.tsx` | The project's files: sources, manuscript and diagram editors, runs, export; saving never writes over a binary file |
+| `Action.tsx`, `EmptyCell.tsx` | One control's own progress and failure line; the empty cell that shadows the composer statistics, the default-permission setting and the open-config-file action |
 | `Board.tsx`, `BoardBlocks.tsx`, `LineChart.tsx`, `boardValues.ts` | The experiment board tab: runs in flight, machines, the agent's sections resolved against the live record, every run, and the line charts |
 | `Gallery.tsx` | The figure gallery tab: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/` |
 | `ResearchSettings.tsx`, `EnvironmentForm.tsx` | Model roles, managed components, bound environments |
@@ -73,11 +78,11 @@ All copy is locale-owned per the [locale-owned client UI copy](../../../.agents/
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the commands and records its controls write: Run pipeline submits `/goal <objective>` and the autonomy control submits `/permission research-auto` or `/permission workspace-write` through the session's command path, while mode, autonomy and decisions land in the host ledger that the agent reads with `research_project current`.
+Indirectly, through the commands and records its controls write: the autonomy control submits `/permission research-auto` or `/permission workspace-write` through the session's command path, and autonomy lands in the host ledger that the agent reads with `research_project current`. Suggested sentences (a plot request from a finished run) are appended to the composer draft and reach the model only when the person sends them.
 
 #### KV Cache effect
 
-No direct invalidation; the goal, permission and research-tool consumers own any request-prefix changes.
+No direct invalidation; the permission and research-tool consumers own any request-prefix changes.
 
 ## Known Limitations and Deferred Work
 

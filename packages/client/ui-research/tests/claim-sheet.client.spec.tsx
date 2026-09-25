@@ -7,7 +7,7 @@
  * backend itself refuses the next time the claim is written.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,7 +20,7 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchClaimSheet } from '../src/client/ClaimSheet.tsx'
-import type { ResearchFocus, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
+import type { ClaimFocus, ResearchFocus, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 
 const LIMIT = 100_000
@@ -267,11 +267,24 @@ async function scene(): Promise<Scene> {
   return { project, notes, paper, preprint, runData, warmupData, supported, fileOnly, ghosted }
 }
 
-/** What the plugin injects: the two store faces the sheet reads, and a recording `focusClaim`. */
+/** The rail's focus on one claim of one project. */
+function focusOn(project: ResearchProject, claimId: string): ClaimFocus {
+  return { projectId: project.id, claimId }
+}
+
+/**
+ * What the plugin injects: the two store faces the sheet reads, a recording
+ * `focusClaim`, and a sidebar that records each file it is asked to show
+ * unless `openFile` stands in for it.
+ */
 function propsFor(
-  snapshot: ResearchSnapshot | null, claimId: string | null, closed: (string | null)[], opened: string[] = [],
+  snapshot: ResearchSnapshot | null,
+  claim: ClaimFocus | null,
+  closed: (ClaimFocus | null)[],
+  opened: string[] = [],
+  openFile: (root: string, path: string) => void = (_root, path) => { opened.push(path) },
 ): WorkbenchProps {
-  const view: ResearchView = { snapshot, tasks: [], busy: false, error: '', response: null }
+  const view: ResearchView = { snapshot, tasks: [], response: null }
   return {
     t: (key: string, params?: Record<string, unknown>) => {
       const template = (zh as Record<string, string>)[key] ?? key
@@ -280,9 +293,9 @@ function propsFor(
     },
     run: () => Promise.resolve({ message: '' }),
     useResearch: (select: (value: ResearchView) => unknown) => select(view),
-    useFocus: (select: (value: ResearchFocus) => unknown) => select({ claimId }),
-    focusClaim: (next: string | null) => { closed.push(next) },
-    openFile: (_root: string, path: string) => { opened.push(path) },
+    useFocus: (select: (value: ResearchFocus) => unknown) => select({ claim }),
+    focusClaim: (next: ClaimFocus | null) => { closed.push(next) },
+    openFile,
     expand: () => {},
     install: () => Promise.resolve(),
     configure: () => Promise.resolve(),
@@ -292,33 +305,102 @@ function propsFor(
   } as unknown as WorkbenchProps
 }
 
-/** The snapshot the plugin publishes for one project. */
-function snapshotOf(project: ResearchProject): ResearchSnapshot {
-  return { projects: [project], preferences: {}, components: [], modes: [] }
+/** The snapshot the plugin publishes for these projects. */
+function snapshotOf(...projects: ResearchProject[]): ResearchSnapshot {
+  return { projects, preferences: {}, components: [], modes: [] }
+}
+
+/** One press, and the sheet's open action settling behind it. */
+async function press(control: HTMLElement): Promise<void> {
+  fireEvent.click(control)
+  await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) })
 }
 
 describe('the claim sheet shows what stands under one claim', () => {
   it('stays shut until the rail puts a claim that exists in focus', async () => {
     const { project } = await scene()
-    const closed: (string | null)[] = []
+    const closed: (ClaimFocus | null)[] = []
     const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), null, closed)} />)
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
 
     // Focused before the first snapshot arrived.
-    view.rerender(<ResearchClaimSheet {...propsFor(null, 'claim-accuracy', closed)} />)
+    view.rerender(<ResearchClaimSheet {...propsFor(null, focusOn(project, 'claim-accuracy'), closed)} />)
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
 
     // Focused on a claim this project no longer carries.
-    view.rerender(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-withdrawn', closed)} />)
+    view.rerender(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-withdrawn'), closed)} />)
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+
+    // Focused on a project that has left the snapshot, though its claim id lives on elsewhere.
+    view.rerender(<ResearchClaimSheet {...propsFor(snapshotOf(project), { projectId: 'project-removed', claimId: 'claim-accuracy' }, closed)} />)
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
     expect(closed).toEqual([])
   })
 
+  it('looks the claim up in the project the rail named, never in another one with the same claim id', async () => {
+    const { project } = await scene()
+    // A replication study in another folder, whose own first claim happens to
+    // take the same id: claim ids are unique within a project only.
+    const replication = newProject({
+      root: `${project.root}-replication`,
+      title: 'Sparse attention replication',
+      mode: 'spark-to-paper', route: 'data',
+      brief: '在另一套数据上复现块稀疏的结论',
+    }, 'workspace' as WorkspaceId)
+    putClaim(replication, {
+      id: 'claim-accuracy',
+      text: '复现里块稀疏的精度还没有测出来。',
+      kind: 'hypothesis',
+      state: 'proposed',
+      evidence: [],
+      artifactIds: [],
+    })
+    // The replication is listed first, so a lookup across projects would find its claim.
+    const snapshot = snapshotOf(replication, project)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshot, focusOn(project, 'claim-accuracy'), [])} />)
+    expect(view.getByText('在 1/4 FLOPs 预算下，块稀疏注意力保住了长上下文精度。')).toBeTruthy()
+    expect(view.getByText(zh.supported)).toBeTruthy()
+    expect(view.queryByText('复现里块稀疏的精度还没有测出来。')).toBeNull()
+
+    view.rerender(<ResearchClaimSheet {...propsFor(snapshot, focusOn(replication, 'claim-accuracy'), [])} />)
+    expect(view.getByText('复现里块稀疏的精度还没有测出来。')).toBeTruthy()
+    expect(view.getByText(zh.proposed)).toBeTruthy()
+    expect(view.getByText(zh.claimNoSources)).toBeTruthy()
+    expect(view.queryByText('在 1/4 FLOPs 预算下，块稀疏注意力保住了长上下文精度。')).toBeNull()
+
+    // A claim only the first project carries does not open under the replication.
+    view.rerender(<ResearchClaimSheet {...propsFor(snapshot, focusOn(replication, 'claim-memory'), [])} />)
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('shows a file the sidebar could not open inside the sheet, and clears it once a file opens', async () => {
+    const { project, paper } = await scene()
+    const asked: string[] = []
+    let refuse = true
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-accuracy'), [], [], (root, path) => {
+      asked.push(`${root}|${path}`)
+      if (refuse) throw new Error('no conversation is open to show it')
+    })} />)
+    const sheet = within(view.getByRole('dialog'))
+    expect(sheet.queryByRole('alert')).toBeNull()
+
+    await press(sheet.getByText(zh.claimOpenSource))
+    expect(asked).toEqual([`${project.root}|${paper.path}`])
+    expect(sheet.getByRole('alert').textContent).toBe('没能完成：no conversation is open to show it')
+    // The sheet stays up with the claim still on screen.
+    expect(sheet.getByText('在 1/4 FLOPs 预算下，块稀疏注意力保住了长上下文精度。')).toBeTruthy()
+
+    refuse = false
+    await press(sheet.getByText('paper/appendix.md · 第 1 版'))
+    expect(asked.at(-1)).toBe(`${project.root}|paper/appendix.md`)
+    expect(sheet.queryByRole('alert')).toBeNull()
+  })
+
   it('draws a supported claim, both directions of its appearances, and both kinds of source', async () => {
     const { project, paper, runData } = await scene()
-    const closed: (string | null)[] = []
+    const closed: (ClaimFocus | null)[] = []
     const opened: string[] = []
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-accuracy', closed, opened)} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-accuracy'), closed, opened)} />)
 
     expect(view.getByRole('dialog').getAttribute('aria-label')).toBe(zh.claim)
     expect(view.getByText(zh.supported).getAttribute('data-tone')).toBe('success')
@@ -334,16 +416,17 @@ describe('the claim sheet shows what stands under one claim', () => {
     expect(view.getByText(zh.verified).getAttribute('data-tone')).toBe('success')
     expect(view.getByText(ABSTRACT)).toBeTruthy()
     expect(view.getByText(digest(paper.sha256))).toBeTruthy()
-    fireEvent.click(view.getByText(zh.claimOpenSource))
+    await press(view.getByText(zh.claimOpenSource))
     expect(opened).toEqual([paper.path])
 
     // The run behind the data source: seed, finish time, metrics, input snapshot.
     expect(view.getByText(zh.claimProjectData).getAttribute('data-tone')).toBe('info')
     const runMeta = view.getByText(/种子 20260919/)
-    fireEvent.click(view.getByText(zh.claimOpenRun))
+    await press(view.getByText(zh.claimOpenRun))
     expect(opened).toEqual([paper.path, runData.path])
-    fireEvent.click(view.getByText('paper/results.md · 第 1 版'))
+    await press(view.getByText('paper/results.md · 第 1 版'))
     expect(opened.at(-1)).toBe('paper/results.md')
+    expect(view.queryByRole('alert')).toBeNull()
     expect(runMeta.textContent).toMatch(/\d+ 月 \d+ 日 \d{2}:\d{2}/)
     expect(runMeta.textContent).toContain('第 1 版')
     expect(view.getByText('0.81')).toBeTruthy()
@@ -371,13 +454,13 @@ describe('the claim sheet shows what stands under one claim', () => {
   it('leaves a cancelled run without a quote, without measurements and without appearances', async () => {
     const { project, warmupData } = await scene()
     const opened: string[] = []
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-warmup', [], opened)} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-warmup'), [], opened)} />)
 
     expect(view.getByText(zh.proposed).getAttribute('data-tone')).toBe('warning')
     expect(view.queryByText(zh.claimAppearsIn)).toBeNull()
     expect(view.getByText(zh.claimProjectData)).toBeTruthy()
     expect(view.getByText('种子 7 · 第 1 版')).toBeTruthy()
-    fireEvent.click(view.getByText(zh.claimOpenRun))
+    await press(view.getByText(zh.claimOpenRun))
     expect(opened).toEqual([warmupData.path])
     expect(document.body.querySelector('blockquote')).toBeNull()
     expect(view.queryByText('accuracy')).toBeNull()
@@ -390,7 +473,7 @@ describe('the claim sheet shows what stands under one claim', () => {
 
   it('keeps an unverified preprint on screen behind a contradicted claim', async () => {
     const { project, preprint } = await scene()
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-decoding', [])} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-decoding'), [])} />)
 
     expect(view.getByText(zh.contradicted).getAttribute('data-tone')).toBe('danger')
     expect(view.queryByText(zh.verified)).toBeNull()
@@ -407,7 +490,7 @@ describe('the claim sheet shows what stands under one claim', () => {
 
   it('draws nothing for a source that left the project, and the backend refuses that claim', async () => {
     const { project, ghosted } = await scene()
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-ghosted', [])} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-ghosted'), [])} />)
 
     expect(view.getByText('撤稿那篇给出的缩放系数。')).toBeTruthy()
     expect(view.getByText(zh.claimSupporting)).toBeTruthy()
@@ -419,7 +502,7 @@ describe('the claim sheet shows what stands under one claim', () => {
 
   it('says outright when a claim has nothing under it', async () => {
     const { project } = await scene()
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-orphan', [])} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-orphan'), [])} />)
 
     expect(view.getByText(zh.claimNoSources)).toBeTruthy()
     expect(view.queryByText(zh.claimSourceMix)).toBeNull()
@@ -428,9 +511,9 @@ describe('the claim sheet shows what stands under one claim', () => {
 
   it('counts an imported file as neither, and drops its digest once the file is re-imported', async () => {
     const { project, notes, fileOnly } = await scene()
-    const closed: (string | null)[] = []
+    const closed: (ClaimFocus | null)[] = []
     const opened: string[] = []
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-memory', closed, opened)} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-memory'), closed, opened)} />)
 
     expect(view.getByText('第 1 行 · 第 1 版')).toBeTruthy()
     expect(view.getByText(NOTES_QUOTE)).toBeTruthy()
@@ -445,10 +528,10 @@ describe('the claim sheet shows what stands under one claim', () => {
     const next = await importEvidence(project, join(project.root, NOTES_FILE), NO_COMPONENTS, new AbortController().signal, LIMIT, notes)
     expect(next.revision).toBe(2)
     project.evidence = project.evidence.map(item => item.id === notes.id ? next : item)
-    view.rerender(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-memory', closed, opened)} />)
+    view.rerender(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-memory'), closed, opened)} />)
 
     expect(view.getByText('第 1 行 · 第 1 版')).toBeTruthy()
-    fireEvent.click(view.getByText(zh.claimOpenSource))
+    await press(view.getByText(zh.claimOpenSource))
     expect(opened).toEqual([next.path])
     expect(view.queryByText(digest(notes.sha256))).toBeNull()
     expect(view.queryByText(digest(next.sha256))).toBeNull()
@@ -462,7 +545,7 @@ describe('the claim sheet shows what stands under one claim', () => {
     invalidate(project, { evidenceId: notes.id })
     expect(project.evidence.find(item => item.id === runData.id)?.stale).toBe(true)
 
-    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-accuracy', [])} />)
+    const view = render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-accuracy'), [])} />)
     expect(view.getAllByText(zh.stale).every(tag => tag.getAttribute('data-tone') === 'warning')).toBe(true)
     // A run stays openable with its locked input snapshot even once it is stale.
     expect(view.getByText('输入快照 2 项 · 已锁定')).toBeTruthy()
@@ -472,18 +555,18 @@ describe('the claim sheet shows what stands under one claim', () => {
 
   it('still opens when the stylesheet ships no class for the dialog', async () => {
     const { project } = await scene()
-    expect(render(<ResearchClaimSheet {...propsFor(snapshotOf(project), 'claim-orphan', [])} />)
+    expect(render(<ResearchClaimSheet {...propsFor(snapshotOf(project), focusOn(project, 'claim-orphan'), [])} />)
       .getByRole('dialog').className.split(' ')).toHaveLength(2)
     cleanup()
 
     // A class named in the TSX but absent from the stylesheet resolves to
-    // `undefined` in a build — `.metric`, `.metricName` and `.metricValue` are
-    // exactly that today. Vitest answers every CSS-module lookup with a
-    // generated name, so the missing class is staged with an empty stylesheet.
+    // `undefined` in a build, and the dialog must still open without one.
+    // Vitest answers every CSS-module lookup with a generated name, so the
+    // missing class is staged with an empty stylesheet.
     vi.resetModules()
     vi.doMock('../src/client/ClaimSheet.module.css', () => ({ default: {} }))
     const { ResearchClaimSheet: Unstyled } = await import('../src/client/ClaimSheet.tsx')
-    const view = render(<Unstyled {...propsFor(snapshotOf(project), 'claim-orphan', [])} />)
+    const view = render(<Unstyled {...propsFor(snapshotOf(project), focusOn(project, 'claim-orphan'), [])} />)
     expect(view.getByRole('dialog').className.split(' ')).toHaveLength(1)
     expect(view.getByText(zh.claimNoSources)).toBeTruthy()
     vi.doUnmock('../src/client/ClaimSheet.module.css')

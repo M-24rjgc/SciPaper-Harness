@@ -400,8 +400,9 @@ export interface LaunchOptions {
   }
   /**
    * Re-enable the inherited Web rows the research edition ships disabled
-   * ({@link RESEARCH_EDITION_DISABLED_ROWS}), so the inherited scenarios and
-   * their goldens keep exercising those plugins in the assembled browser.
+   * ({@link RESEARCH_EDITION_DISABLED_ROWS}) and the shell cells ui-research
+   * shadows (`hideDeveloperCells`), so the inherited scenarios and their
+   * goldens keep exercising those plugins in the assembled browser.
    * Defaults to true. Every research scenario passes false and runs the rows
    * as shipped (`research-workbench`, `research-demo`, and the shipped-defaults
    * test of `shipped-composition`).
@@ -559,7 +560,11 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // off unless a scenario supplies its own collector.
     ...options.enableInheritedRows === false
       ? []
-      : RESEARCH_EDITION_DISABLED_ROWS.map(id => ({ id, disabled: false })),
+      : [
+        ...RESEARCH_EDITION_DISABLED_ROWS.map(id => ({ id, disabled: false })),
+        // The shell cells ui-research shadows in the shipped edition draw again.
+        { id: 'ui-research', config: { hideDeveloperCells: false } },
+      ],
     { id: 'session-log-deepseek', config: { enabled: false } },
     // The historical Messages fixture retains its recorded route during replay;
     // live configuration uses the shared DeepSeek route. Explicit overlays win.

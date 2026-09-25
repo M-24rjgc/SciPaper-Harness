@@ -3,10 +3,12 @@
 /**
  * The settings page against the backend's own contract: every preference
  * object the form emits is parsed by `preferencesSchema`, and the project
- * whose environments the page lists is the one `newProject` produces.
+ * whose environments the page lists is the one `newProject` produces. Saving
+ * and each install keep their own progress and failure, shown beside the
+ * control that started them.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,11 +22,15 @@ import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
 import type { ResearchView, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 
-/** What the page asked the plugin to do, in the order it asked. */
+/** What the page asked the plugin to do, in the order it asked, and the answers still held back. */
 interface Recorded {
   installs: ComponentStatus['id'][]
   saves: { preferences: ResearchPreferences; keys: { image: string; embedding: string } }[]
+  held: (() => void)[]
 }
+
+/** How the plugin answers: at once, with a refusal, or when the spec says so. */
+type Answer = 'accept' | 'refuse' | 'hold'
 
 const roots: string[] = []
 afterEach(async () => {
@@ -33,9 +39,10 @@ afterEach(async () => {
 })
 
 const configured: ResearchPreferences = {
+  // A main-model binding the page no longer offers, as a document saved before the change still carries it.
   main: { provider: 'deepseek', model: 'deepseek-chat' },
   vision: { provider: 'openai-compatible', model: 'qwen-vl' },
-  image: { baseUrl: 'https://images.example.com/v1', model: 'flux-1', size: '1536x1024' },
+  image: { baseUrl: 'https://images.example.com/v1', model: 'flux-1', size: '1536x1024', quality: 'low', apiStyle: 'chat' },
   embedding: { baseUrl: 'https://embed.example.com/v1', model: 'bge-m3' },
   python: 'C:/Python312/python.exe',
   uv: 'C:/tools/uv.exe',
@@ -44,6 +51,7 @@ const configured: ResearchPreferences = {
 
 const pythonReady: ComponentStatus = { id: 'python', installed: true, path: '/opt/dsh/python', version: '3.12.7' }
 const latexMissing: ComponentStatus = { id: 'latex', installed: false, path: '', version: '2025' }
+const drawioMissing: ComponentStatus = { id: 'drawio', installed: false, path: '', version: '24.7' }
 
 // Environment records are assigned rather than transitioned: the machine's
 // only maker, `createEnvironment`, shells out to a live interpreter over the
@@ -58,6 +66,11 @@ const readyEnvironment: EnvironmentRecord = {
   id: 'env-ablation' as EnvironmentId, name: 'ablation', kind: 'existing', target: 'local',
   python: '/usr/bin/python3', requirements: [], fingerprint: 'sha-ablation',
   status: 'ready', details: '', isDefault: false,
+}
+const pendingEnvironment: EnvironmentRecord = {
+  id: 'env-sweep' as EnvironmentId, name: 'sweep', kind: 'conda', target: 'local',
+  python: '/opt/conda/envs/sweep/bin/python', requirements: [], fingerprint: 'sha-sweep',
+  status: 'pending', details: '', isDefault: false,
 }
 const failedEnvironment: EnvironmentRecord = {
   id: 'env-cluster' as EnvironmentId, name: 'cluster', kind: 'uv', target: 'ssh',
@@ -85,21 +98,37 @@ function snapshotOf(parts: {
   return { preferences: parts.preferences ?? {}, components: parts.components ?? [], projects: parts.projects ?? [], modes: [] }
 }
 
-function viewOf(snapshot: ResearchSnapshot | null, busy = false): ResearchView {
-  return { snapshot, tasks: [], busy, error: '', response: null }
+function viewOf(snapshot: ResearchSnapshot | null): ResearchView {
+  return { snapshot, tasks: [], response: null }
 }
 
 function blank(): Recorded {
-  return { installs: [], saves: [] }
+  return { installs: [], saves: [], held: [] }
 }
 
-/** Let a refused install or save reach the page's own catch before asserting. */
+/** Let the page's own work reach the plugin, and its answer reach the page, inside React's act. */
 async function settle(): Promise<void> {
-  await new Promise((resolve) => { setTimeout(resolve, 0) })
+  await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 0) }) })
 }
 
-/** Props whose injected face records every request; `refuse` makes the plugin say no. */
-function propsFor(view: ResearchView, recorded: Recorded, refuse = false): WorkbenchProps {
+/** Let the plugin answer every request it held back, and the page take the answers in. */
+async function release(recorded: Recorded): Promise<void> {
+  for (const resolve of recorded.held.splice(0)) resolve()
+  await settle()
+}
+
+/** The failure line the page shows for a refusal with this reason. */
+function failure(reason: string): string {
+  return zh.actionFailed.replace('{reason}', reason)
+}
+
+/** Props whose injected face records every request and answers as `answer` says. */
+function propsFor(view: ResearchView, recorded: Recorded, answer: Answer = 'accept'): WorkbenchProps {
+  const reply = (reason: string): Promise<void> => {
+    if (answer === 'refuse') return Promise.reject(new Error(reason))
+    if (answer === 'hold') return new Promise<void>((resolve) => { recorded.held.push(resolve) })
+    return Promise.resolve()
+  }
   return {
     t: (key: string, params?: Record<string, unknown>) => {
       const template = (zh as Record<string, string>)[key] ?? key
@@ -108,11 +137,11 @@ function propsFor(view: ResearchView, recorded: Recorded, refuse = false): Workb
     useResearch: (select: (value: ResearchView) => unknown) => select(view),
     install: (component: ComponentStatus['id']) => {
       recorded.installs.push(component)
-      return refuse ? Promise.reject(new Error('the component store is unreachable')) : Promise.resolve()
+      return reply('the component store is unreachable')
     },
     configure: (preferences: ResearchPreferences, keys: { image: string; embedding: string }) => {
       recorded.saves.push({ preferences, keys })
-      return refuse ? Promise.reject(new Error('the credential store is unreachable')) : Promise.resolve()
+      return reply('the credential store is unreachable')
     },
   } as unknown as WorkbenchProps
 }
@@ -121,26 +150,33 @@ function input(element: HTMLElement): HTMLInputElement {
   return element as HTMLInputElement
 }
 
-describe('research settings is the one place research is configured', () => {
-  it('shows the last failure the plugin reported above the form', () => {
-    const view = { ...viewOf(null), error: 'the credential store is unreachable' }
-    expect(render(<ResearchSettingsSection {...propsFor(view, blank())} />).getByRole('alert').textContent).toBe('the credential store is unreachable')
-    cleanup()
-  })
+function button(element: HTMLElement): HTMLButtonElement {
+  return element as HTMLButtonElement
+}
 
-  it('offers every role unbound and lists nothing before a snapshot arrives', () => {
+describe('research settings is the one place research is configured', () => {
+  it('offers the three optional roles at their defaults and lists nothing before a snapshot arrives', () => {
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), blank())} />)
 
-    expect(page.getByText(zh.roleUnset)).toBeTruthy()
     expect(page.getByText(zh.roleVisionFollow)).toBeTruthy()
     expect(page.getByText(zh.roleImageOff)).toBeTruthy()
     expect(page.getByText(zh.roleEmbeddingOff)).toBeTruthy()
+    // Each role says what it takes, even unbound.
+    expect(page.getByText(zh.roleVisionNote)).toBeTruthy()
+    expect(page.getByText(zh.roleImageNote)).toBeTruthy()
+    expect(page.getByText(zh.roleEmbeddingNote)).toBeTruthy()
+    // The conversation's model is chosen in the composer, so there is no main-model role here.
+    expect(page.queryByText('主模型')).toBeNull()
+    expect(page.queryByLabelText(/主模型/)).toBeNull()
     expect(page.getByText(zh.noEnvironments)).toBeTruthy()
     expect(page.queryByText(zh.installed)).toBeNull()
     expect(page.queryByRole('button', { name: zh.notInstalled })).toBeNull()
+    // Nothing has been tried, so nothing has failed or been saved.
+    expect(page.queryByRole('alert')).toBeNull()
+    expect(page.queryByRole('status')).toBeNull()
 
-    expect(input(page.getByLabelText(zh.mainProvider)).value).toBe('')
-    expect(input(page.getByLabelText(zh.mainProvider)).type).toBe('text')
+    expect(input(page.getByLabelText(zh.visionProvider)).value).toBe('')
+    expect(input(page.getByLabelText(zh.visionProvider)).type).toBe('text')
     expect(input(page.getByLabelText(zh.pythonPath)).value).toBe('')
     // The image model and size arrive pre-filled (gpt-image-2); the endpoint stays empty until a key or an endpoint is given.
     expect(input(page.getByLabelText(zh.imageSize)).value).toBe('1536x1024')
@@ -155,9 +191,9 @@ describe('research settings is the one place research is configured', () => {
     expect(input(page.getByLabelText(zh.embeddingEndpoint)).value).toBe('')
   })
 
-  it('asks the backend to store nothing at all when the form is untouched', async () => {
+  it('asks the backend to store nothing at all when the form is untouched, and says why a refused save failed', async () => {
     const recorded = blank()
-    const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), recorded, true)} />)
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), recorded, 'refuse')} />)
 
     fireEvent.click(page.getByRole('button', { name: zh.save }))
     await settle()
@@ -166,39 +202,67 @@ describe('research settings is the one place research is configured', () => {
     // record rather than one full of empty strings the schema would reject.
     expect(recorded.saves).toEqual([{ preferences: {}, keys: { image: '', embedding: '' } }])
     expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual({})
-    // The plugin refused; the page is still standing and still unbound.
-    expect(page.getByText(zh.roleUnset)).toBeTruthy()
+    // The refusal shows under the form, and the save can be tried again.
+    expect(page.getByRole('alert').textContent).toBe(failure('the credential store is unreachable'))
+    expect(page.queryByRole('status')).toBeNull()
+    expect(button(page.getByRole('button', { name: zh.save })).disabled).toBe(false)
+    expect(page.getByText(zh.roleVisionFollow)).toBeTruthy()
   })
 
-  it('shows each standing binding and saves the edited one the schema accepts', async () => {
+  it('says it is saving until the plugin answers, then that the settings are saved', async () => {
     const recorded = blank()
-    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences: configured }), false), recorded)} />)
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), recorded, 'hold')} />)
 
-    expect(page.getByText('deepseek · deepseek-chat')).toBeTruthy()
+    fireEvent.change(page.getByLabelText(zh.pythonPath), { target: { value: '/usr/bin/python3' } })
+    fireEvent.click(page.getByRole('button', { name: zh.save }))
+    await settle()
+
+    const saving = button(page.getByRole('button', { name: zh.saving }))
+    expect(saving.disabled).toBe(true)
+    expect(page.queryByRole('status')).toBeNull()
+    // A second press while the first is in flight sends nothing more.
+    fireEvent.click(saving)
+    await settle()
+    expect(recorded.saves).toEqual([{ preferences: { python: '/usr/bin/python3' }, keys: { image: '', embedding: '' } }])
+
+    await release(recorded)
+    expect(page.getByRole('status').textContent).toBe(zh.settingsSaved)
+    expect(button(page.getByRole('button', { name: zh.save })).disabled).toBe(false)
+    expect(page.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows each standing binding and saves the edited one the schema accepts, dropping the old main-model binding', async () => {
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences: configured })), recorded)} />)
+
     expect(page.getByText('openai-compatible · qwen-vl')).toBeTruthy()
     expect(page.getByText('flux-1')).toBeTruthy()
     expect(page.getByText('bge-m3')).toBeTruthy()
-    expect(page.queryByText(zh.roleUnset)).toBeNull()
-    expect(input(page.getByLabelText(zh.mainModel)).value).toBe('deepseek-chat')
+    // The stored main binding is not shown anywhere on the page.
+    expect(page.queryByText('deepseek · deepseek-chat')).toBeNull()
+    expect(page.queryByDisplayValue('deepseek-chat')).toBeNull()
     expect(input(page.getByLabelText(zh.visionProvider)).value).toBe('openai-compatible')
+    expect(input(page.getByLabelText(zh.visionModel)).value).toBe('qwen-vl')
     expect(input(page.getByLabelText(zh.imageEndpoint)).value).toBe('https://images.example.com/v1')
+    expect(input(page.getByLabelText(zh.imageModel)).value).toBe('flux-1')
     expect(input(page.getByLabelText(zh.imageSize)).value).toBe('1536x1024')
+    expect((page.getByLabelText(zh.imageQuality) as HTMLSelectElement).value).toBe('low')
+    expect((page.getByLabelText(zh.imageApiStyle) as HTMLSelectElement).value).toBe('chat')
     expect(input(page.getByLabelText(zh.embeddingEndpoint)).value).toBe('https://embed.example.com/v1')
+    expect(input(page.getByLabelText(zh.embeddingModel)).value).toBe('bge-m3')
     expect(input(page.getByLabelText(zh.pythonPath)).value).toBe('C:/Python312/python.exe')
     expect(input(page.getByLabelText(zh.uvPath)).value).toBe('C:/tools/uv.exe')
     expect(input(page.getByLabelText(zh.texPath)).value).toBe('C:/texlive/2025/bin')
 
     // Pasted ids carry stray whitespace; the page trims before it saves.
-    fireEvent.change(page.getByLabelText(zh.mainProvider), { target: { value: '  deepseek  ' } })
-    fireEvent.change(page.getByLabelText(zh.mainModel), { target: { value: 'deepseek-reasoner' } })
-    fireEvent.change(page.getByLabelText(zh.visionProvider), { target: { value: 'zhipu' } })
+    fireEvent.change(page.getByLabelText(zh.visionProvider), { target: { value: '  zhipu  ' } })
     fireEvent.change(page.getByLabelText(zh.visionModel), { target: { value: 'glm-4v' } })
     fireEvent.change(page.getByLabelText(zh.imageEndpoint), { target: { value: 'https://images.example.com/v2' } })
     fireEvent.change(page.getByLabelText(zh.imageModel), { target: { value: 'flux-2' } })
     fireEvent.change(page.getByLabelText(zh.imageSize), { target: { value: '2048x2048' } })
     fireEvent.change(page.getByLabelText(zh.imageKey), { target: { value: 'sk-live-image-key' } })
     fireEvent.change(page.getByLabelText(zh.imageQuality), { target: { value: 'medium' } })
-    fireEvent.change(page.getByLabelText(zh.imageApiStyle), { target: { value: 'chat' } })
+    fireEvent.change(page.getByLabelText(zh.imageApiStyle), { target: { value: 'images' } })
     fireEvent.change(page.getByLabelText(zh.embeddingModel), { target: { value: 'bge-large' } })
     fireEvent.change(page.getByLabelText(zh.embeddingKey), { target: { value: 'sk-embed' } })
     fireEvent.change(page.getByLabelText(zh.pythonPath), { target: { value: '/usr/bin/python3' } })
@@ -208,11 +272,10 @@ describe('research settings is the one place research is configured', () => {
     await settle()
 
     const expected: ResearchPreferences = {
-      main: { provider: 'deepseek', model: 'deepseek-reasoner' },
       vision: { provider: 'zhipu', model: 'glm-4v' },
       image: {
         baseUrl: 'https://images.example.com/v2', model: 'flux-2',
-        size: '2048x2048', quality: 'medium', apiStyle: 'chat',
+        size: '2048x2048', quality: 'medium', apiStyle: 'images',
       },
       embedding: { baseUrl: 'https://embed.example.com/v1', model: 'bge-large' },
       python: '/usr/bin/python3',
@@ -223,6 +286,7 @@ describe('research settings is the one place research is configured', () => {
     // only the credential slot the backend will read it back from.
     expect(recorded.saves).toEqual([{ preferences: expected, keys: { image: 'sk-live-image-key', embedding: 'sk-embed' } }])
     expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual(expected)
+    expect(page.getByRole('status').textContent).toBe(zh.settingsSaved)
   })
 
   it('reads a control the form does not carry as empty rather than crashing', async () => {
@@ -289,62 +353,77 @@ describe('research settings is the one place research is configured', () => {
 
     expect(input(page.getByLabelText(zh.imageSize)).value).toBe('')
     expect(page.getByText('flux-1')).toBeTruthy()
-    expect(page.getByText(zh.roleUnset)).toBeTruthy()
+    // The roles it does not bind still read as their defaults.
+    expect(page.getByText(zh.roleVisionFollow)).toBeTruthy()
+    expect(page.getByText(zh.roleEmbeddingOff)).toBeTruthy()
   })
+})
 
-  it('tags a ready component and installs an absent one on request', async () => {
+describe('local components', () => {
+  it('tags a ready component, and says an absent one is installing until the plugin answers', async () => {
     const recorded = blank()
-    const snapshot = snapshotOf({ components: [pythonReady, latexMissing] })
-    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshot), recorded)} />)
+    const snapshot = snapshotOf({ components: [pythonReady, latexMissing, drawioMissing] })
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshot), recorded, 'hold')} />)
 
     expect(page.getByText('python')).toBeTruthy()
     expect(page.getByText('3.12.7')).toBeTruthy()
     expect(page.getByText(zh.installed).getAttribute('data-tone')).toBe('success')
     expect(page.getByText('latex')).toBeTruthy()
 
+    const [latex, drawio] = page.getAllByRole('button', { name: zh.notInstalled })
+    fireEvent.click(latex!)
+    await settle()
+
+    expect(recorded.installs).toEqual(['latex'])
+    const installing = button(page.getByRole('button', { name: zh.installing }))
+    expect(installing.disabled).toBe(true)
+    // Each component keeps its own progress: the other install and the save stay open.
+    expect(button(drawio!).disabled).toBe(false)
+    expect(button(page.getByRole('button', { name: zh.save })).disabled).toBe(false)
+    fireEvent.click(installing)
+    await settle()
+    expect(recorded.installs).toEqual(['latex'])
+
+    await release(recorded)
+    // Until the next snapshot reports it ready, the row keeps offering the install, with no failure.
+    expect(page.getAllByRole('button', { name: zh.notInstalled })).toHaveLength(2)
+    expect(page.queryByRole('alert')).toBeNull()
+  })
+
+  it('says why a refused install failed under that component, and offers it again', async () => {
+    const recorded = blank()
+    const snapshot = snapshotOf({ components: [latexMissing] })
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshot), recorded, 'refuse')} />)
+
     fireEvent.click(page.getByRole('button', { name: zh.notInstalled }))
     await settle()
 
     expect(recorded.installs).toEqual(['latex'])
-  })
-
-  it('holds the install and the save while the plugin is busy', () => {
-    const recorded = blank()
-    const snapshot = snapshotOf({ components: [latexMissing] })
-    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshot, true), recorded)} />)
-
-    const held = page.getByRole('button', { name: zh.notInstalled }) as HTMLButtonElement
-    expect(held.disabled).toBe(true)
-    expect((page.getByRole('button', { name: zh.save }) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.click(held)
-    expect(recorded.installs).toEqual([])
-  })
-
-  it('stays standing when the install is refused', async () => {
-    const recorded = blank()
-    const snapshot = snapshotOf({ components: [latexMissing] })
-    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshot), recorded, true)} />)
-
-    fireEvent.click(page.getByRole('button', { name: zh.notInstalled }))
+    expect(page.getByRole('alert').textContent).toBe(failure('the component store is unreachable'))
+    const again = button(page.getByRole('button', { name: zh.notInstalled }))
+    expect(again.disabled).toBe(false)
+    fireEvent.click(again)
     await settle()
-
-    expect(recorded.installs).toEqual(['latex'])
-    // The refusal is the plugin's to report; the row keeps offering the action.
-    expect(page.getByRole('button', { name: zh.notInstalled })).toBeTruthy()
+    expect(recorded.installs).toEqual(['latex', 'latex'])
   })
+})
 
-  it('lists every project environment with the tag its state earns', async () => {
-    const project = await projectWithEnvironments([defaultEnvironment, readyEnvironment, failedEnvironment])
+describe('experiment environments', () => {
+  it('lists every project environment, tagging only the default and the states that need attention', async () => {
+    const project = await projectWithEnvironments([defaultEnvironment, readyEnvironment, pendingEnvironment, failedEnvironment])
     const snapshot = snapshotOf({ projects: [project] })
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshot), blank())} />)
 
     expect(page.queryByText(zh.noEnvironments)).toBeNull()
     expect(page.getByText(zh.environmentDefault).getAttribute('data-tone')).toBe('info')
-    expect(page.getAllByText(zh.ready).every(tag => tag.getAttribute('data-tone') === 'success')).toBe(true)
+    // `ready` is only what creation found, never probed since, so it earns no tag.
+    expect(page.queryByText(zh.ready)).toBeNull()
+    expect(page.getByText(zh.pending).getAttribute('data-tone')).toBe('warning')
     expect(page.getByText(zh.failed).getAttribute('data-tone')).toBe('warning')
     // Each row names the project it belongs to, so two projects never blur.
     expect(page.getByText(`${project.title} · ${zh.local} · ${readyEnvironment.python}`)).toBeTruthy()
     expect(page.getByText(`${project.title} · ${zh.ssh} · ${failedEnvironment.python}`)).toBeTruthy()
     expect(page.getByText('baseline')).toBeTruthy()
+    expect(page.getByText('sweep')).toBeTruthy()
   })
 })

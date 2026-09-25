@@ -14,6 +14,8 @@ import { durationText, elapsedOf, momentText, type Translate } from './format.ts
 import { LineChart } from './LineChart.tsx'
 import type { ResearchKey } from './locales.ts'
 import { MetricsGrid } from './MetricsGrid.tsx'
+import { ActionError, useAction } from './Action.tsx'
+import { StopRun } from './StopRun.tsx'
 import styles from './Board.module.css'
 
 type BoardProps = WorkbenchProps & { project: ResearchProject }
@@ -153,18 +155,19 @@ function runFraction(run: ExperimentRecord): number {
 function RunActions(props: BoardProps & { record: ExperimentRecord }): ReactNode {
   const { project, record: run, t } = props
   const [logs, setLogs] = useState('')
+  const reading = useAction()
   const showLogs = (): void => {
-    void props.run({ action: 'experiment-logs', projectId: project.id, runId: run.id })
-      .then((response) => { setLogs(response.content ?? response.message) }, (reason: unknown) => { setLogs(errorText(reason)) })
+    reading.start(async () => {
+      const response = await props.run({ action: 'experiment-logs', projectId: project.id, runId: run.id })
+      setLogs(response.content ?? response.message)
+    })
   }
   return <>
     <div className={styles.actions}>
-      <button type="button" onClick={showLogs}>{t('logs')}</button>
-      {ACTIVE_RUN_STATUS.includes(run.status) && run.status !== 'unknown' && <button
-        type="button" className={styles.stop}
-        onClick={() => { void props.run({ action: 'experiment-cancel', projectId: project.id, runId: run.id }).catch(() => {}) }}
-      >{t('runStop')}</button>}
+      <button type="button" disabled={reading.pending} onClick={showLogs}>{t('logs')}</button>
+      {ACTIVE_RUN_STATUS.includes(run.status) && run.status !== 'unknown' && <StopRun {...props} record={run} stopClassName={styles.stop} />}
     </div>
+    <ActionError t={t} error={reading.error} />
     {logs !== '' && <pre className={styles.log}>{logs}</pre>}
   </>
 }

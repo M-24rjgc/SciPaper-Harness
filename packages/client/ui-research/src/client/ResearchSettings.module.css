@@ -26,6 +26,7 @@
 .save:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
 
 .components { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.componentCell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .component { display: flex; align-items: center; gap: 9px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 9px; padding: 10px 12px; }
 .componentOn, .componentOff { width: 7px; height: 7px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
 .componentOn { background: var(--dsw-alias-state-success-primary); }
@@ -52,7 +53,6 @@
 .sectionHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .sectionHead > div:has(form) { width: 100%; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 12px; }
-.error { color: var(--dsw-alias-state-error-primary); font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 650px) { .roleHead { grid-template-columns: 1fr; } .roleStanding, .roleNote { grid-column: 1; grid-row: auto; } }
 .root, .root * { box-sizing: border-box; }
 .groupTitle, .roleTitle { font-size: 14px; }

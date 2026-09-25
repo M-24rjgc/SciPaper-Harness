@@ -15,7 +15,8 @@
 .runNote { margin: 0; font-size: 12px; line-height: 1.7; color: var(--dsw-alias-label-secondary); }
 .runRow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 
-.markRunning, .markDone, .markAttention { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
+.markQueued, .markRunning, .markDone, .markAttention { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; box-sizing: border-box; }
+.markQueued { border: 0.5px solid var(--dsw-alias-border-l4); }
 .markRunning { background: var(--dsw-alias-state-success-primary); box-shadow: 0 0 0 3px var(--dsw-alias-state-success-tertiary); }
 .markDone { background: var(--dsw-alias-state-success-primary); }
 .markAttention { background: var(--dsw-alias-state-warn-primary); }
@@ -28,6 +29,7 @@
 .action:hover, .stop:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .action:focus-visible, .stop:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
 .stop { border-color: var(--dsw-alias-state-warn-primary); color: var(--dsw-alias-state-warn-primary); }
+.action:disabled { opacity: .5; cursor: default; }
 
 .logs {
   margin: 0;

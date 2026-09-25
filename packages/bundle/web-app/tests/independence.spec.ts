@@ -39,6 +39,10 @@ describe('the Web composition of the research edition', () => {
     expect(JSON.stringify(enabled)).not.toContain('deepseeksvc')
   })
 
+  it('has the research client shadow the shell\'s developer cells', () => {
+    expect(row('ui-research')).toMatchObject({ config: { hideDeveloperCells: true } })
+  })
+
   it('gives the automatic autonomy preset a display name', () => {
     const presets = (row('permission').config as { presets?: Record<string, unknown> } | undefined)?.presets
     expect(presets?.['research-auto']).toMatchObject({

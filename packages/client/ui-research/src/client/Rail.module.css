@@ -7,10 +7,12 @@
 .field { display: flex; flex-direction: column; gap: 3px; }
 .fieldLabel { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
 .select { font: inherit; font-size: 12px; padding: 5px 6px; border-radius: 6px; border: 0.5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
-.buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-.button { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
-.button:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.button:focus-visible, .select:focus-visible, .link:focus-visible { outline: 2px solid var(--dsw-alias-state-success-primary); outline-offset: 2px; }
+.select:disabled { opacity: .6; }
+.tools { display: flex; flex-direction: column; gap: 6px; border-top: 0.5px solid var(--dsw-alias-border-l3); padding-top: 11px; }
+.toolRow { display: flex; flex-wrap: wrap; gap: 6px; }
+.tool { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.tool:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.tool:focus-visible, .select:focus-visible, .link:focus-visible { outline: 2px solid var(--dsw-alias-state-success-primary); outline-offset: 2px; }
 .spine { list-style: none; margin: 0; padding: 3px 0 5px; display: flex; flex-direction: column; gap: 12px; }
 .stage { display: flex; align-items: flex-start; gap: 9px; }
 .stageBody { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }

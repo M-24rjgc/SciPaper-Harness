@@ -1,10 +1,15 @@
 /** Project environment creation uses the same inspected/managed backend operation as the agent. */
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import type { EnvironmentRecord } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkbenchProps } from './contract.ts'
+import { ActionError, useAction } from './Action.tsx'
 import styles from './ResearchSettings.module.css'
 
-/** Environment settings remain project scoped, including SSH and dependency locking. */
+/**
+ * Environment settings remain project scoped, including SSH and dependency
+ * locking. Preparing an environment is a host job; the form waits for it, keeps
+ * what was typed when it fails, and closes once it succeeded.
+ */
 export function EnvironmentForm(props: WorkbenchProps): ReactNode {
   const { t } = props
   const view = props.useResearch(s => s)
@@ -12,15 +17,7 @@ export function EnvironmentForm(props: WorkbenchProps): ReactNode {
   const [kind, setKind] = useState<EnvironmentRecord['kind']>('uv')
   const [target, setTarget] = useState<EnvironmentRecord['target']>('local')
   const [open, setOpen] = useState(false)
-  const [error, setError] = useState('')
-  const [pendingId, setPendingId] = useState<string>()
-  const task = view.tasks.find(item => item.id === pendingId)
-  useEffect(() => {
-    if (!task || task.status === 'running') return
-    setPendingId(undefined)
-    if (task.status === 'completed') setOpen(false)
-    else setError(task.message)
-  }, [task?.status, task?.message])
+  const preparing = useAction()
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
@@ -29,16 +26,16 @@ export function EnvironmentForm(props: WorkbenchProps): ReactNode {
     // A project select left with no options is absent from the form data, which matches no project.
     const project = projects.find(p => p.id === data.get('project'))
     if (!project) return
-    setError('')
-    void props.run({ action: 'environment', projectId: project.id, environment: {
+    const environment = {
       name: value('name'), kind, target, python: value('python'),
       requirements: kind === 'uv' ? value('requirements').split('\n').map(v => v.trim()).filter(Boolean) : [],
       isDefault: data.get('default') === 'on',
       ...(target === 'ssh' ? { sshHost: value('sshHost'), remoteRoot: value('remoteRoot') } : {}),
-    } }).then((response) => {
-      if (response.jobId) setPendingId(response.jobId)
-      else setOpen(false)
-    }).catch((problem: unknown) => { setError(String(problem)) })
+    }
+    preparing.start(async () => {
+      await props.run({ action: 'environment', projectId: project.id, environment })
+      setOpen(false)
+    })
   }
   return <div>
     <button className={styles.install} type="button" disabled={projects.length === 0} aria-expanded={open} onClick={() =>{  setOpen(!open) }}>{t('newEnvironment')}</button>
@@ -54,9 +51,9 @@ export function EnvironmentForm(props: WorkbenchProps): ReactNode {
       {kind === 'uv' && <label className={styles.field}>{t('requirements')}<textarea name="requirements" className={styles.input} rows={3} /></label>}
       <label className={styles.check}><input type="checkbox" name="default" defaultChecked />{t('defaultEnvironment')}</label>
       <p className={styles.groupHint}>{t('environmentHelp')}</p>
-      {error && <p className={styles.error} role="alert">{error}</p>}
-      {pendingId && <p className={styles.groupHint} role="status">{task?.message ?? t('running')}</p>}
-      <button disabled={view.busy || !!pendingId} className={styles.save}>{t('addEnvironment')}</button>
+      <ActionError t={t} error={preparing.error} />
+      {preparing.pending && <p className={styles.groupHint} role="status">{t('running')}</p>}
+      <button disabled={preparing.pending} className={styles.save}>{t('addEnvironment')}</button>
     </form>}
   </div>
 }

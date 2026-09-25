@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { newProject, putClaim, searchEvidence, invalidate, validateLinks } from '../src/project.ts'
-import { assertUsableProjectRoot, errorText, isInside, isMetadataPath, keepRevision, projectPath, hashBytes, protectedDirectories, sameDirectory, truncateBytes, writeNew } from '../src/files.ts'
+import { assertUsableProjectRoot, errorText, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, hashBytes, protectedDirectories, sameDirectory, truncateBytes, writeNew } from '../src/files.ts'
 import { adoptExternalEdit, importEvidence, importTemplate, texExecutable, writeArtifact, exportPaper } from '../src/artifacts.ts'
 import { collectRunOutputs, observationDue, validateExperiment } from '../src/experiments.ts'
 import { migrateProject, researchDomain } from '../src/schema.ts'
@@ -66,6 +66,32 @@ describe('artifacts are recorded, never refused for being edited elsewhere', () 
       .rejects.toThrow(/revision 0, not 1/)
     const stale = await writeArtifact(p, { action: 'save-artifact', projectId: p.id, path: 'b.txt', content: 'y', kind: 'figure', ...input, inputArtifacts: [{ id: saved.id, revision: 1 }] }, 'agent', 10000)
     expect(stale.inputArtifacts).toEqual([{ id: saved.id, revision: 1 }])
+  })
+
+  it('never saves text over a binary file, known by its type or by a NUL byte, and leaves its bytes and record alone', async () => {
+    const p = await project()
+    await mkdir(join(p.root, 'figures'), { recursive: true })
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16])
+    await writeFile(join(p.root, 'figures/photo.JPG'), jpeg)
+    const photo = await writeArtifact(p, { action: 'register-artifact', projectId: p.id, path: 'figures/photo.JPG', kind: 'image', ...input }, 'user', 10000)
+    const recorded = structuredClone(p.artifacts)
+    await expect(writeArtifact(p, { action: 'save-artifact', projectId: p.id, path: 'figures/photo.JPG', content: '', kind: 'image', expectedRevision: photo.revision, ...input }, 'user', 10000))
+      .rejects.toThrow(/Refusing to save text over the binary file figures\/photo\.JPG/)
+    expect(await readFile(join(p.root, 'figures/photo.JPG'))).toEqual(jpeg)
+    expect(p.artifacts).toEqual(recorded)
+    // A binary type that does not exist yet is refused by its name; no file appears.
+    await expect(writeArtifact(p, { action: 'save-artifact', projectId: p.id, path: 'paper/draft.pdf', content: 'x', kind: 'manuscript', ...input }, 'agent', 10000))
+      .rejects.toThrow(/binary file paper\/draft\.pdf/)
+    await expect(readFile(join(p.root, 'paper/draft.pdf'))).rejects.toThrow(/ENOENT/)
+    // Any other name: the first bytes decide, and a NUL past the probe window does not count.
+    await writeFile(join(p.root, 'model.ckpt'), Buffer.from([7, 0, 7]))
+    await expect(writeArtifact(p, { action: 'save-artifact', projectId: p.id, path: 'model.ckpt', content: 'x', kind: 'supplement', ...input }, 'agent', 10000))
+      .rejects.toThrow(/binary file model\.ckpt/)
+    expect(await isBinaryFile(join(p.root, 'model.ckpt'))).toBe(true)
+    await writeFile(join(p.root, 'long.log'), `${'a'.repeat(8192)}\0`)
+    expect(await isBinaryFile(join(p.root, 'long.log'))).toBe(false)
+    expect(await isBinaryFile(join(p.root, 'absent.txt'))).toBe(false)
+    expect(await isBinaryFile(join(p.root, 'absent.woff2'))).toBe(true)
   })
 
   it('refuses the metadata directory however the path is spelled (B4)', async () => {

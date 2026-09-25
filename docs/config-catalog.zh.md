@@ -442,6 +442,25 @@ export interface Config {
 
 来源：[`packages/client/hmr/src/index.ts:31`](../packages/client/hmr/src/index.ts)
 
+<a id="deepseek-aidsh-client-ui-research"></a>
+
+## `@deepseek-ai/dsh-client-ui-research`
+
+```ts config-catalog
+/** Research edition configuration, read by the browser half from the served page. */
+export interface Config {
+  /**
+   * Shadow the shell cells that are developer surfaces in this product: the
+   * turn, step, token-rate and cache-hit pills under the composer, General
+   * settings' default permission (the research's autonomy decides it), and the
+   * button that opens the raw configuration file. The shipped Web bundle sets it.
+   */
+  hideDeveloperCells?: boolean
+}
+```
+
+来源：[`packages/client/ui-research/src/index.ts:10`](../packages/client/ui-research/src/index.ts)
+
 <a id="deepseek-aidsh-compaction-basic"></a>
 
 ## `@deepseek-ai/dsh-compaction-basic`
@@ -1938,7 +1957,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/research/workbench/src/index.ts:41`](../packages/research/workbench/src/index.ts)
+来源：[`packages/research/workbench/src/index.ts:42`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 
@@ -3643,7 +3662,6 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-reference`（[`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
-- `@deepseek-ai/dsh-client-ui-research`（[`packages/client/ui-research/src/index.ts`](../packages/client/ui-research/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-session`（[`packages/client/ui-session/src/index.ts`](../packages/client/ui-session/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings`（[`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts)）

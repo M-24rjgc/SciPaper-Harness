@@ -8,7 +8,8 @@ import { Modal, Tag, type TagTone } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ClaimRecord, EvidenceLink, EvidenceRecord, ResearchProject,
 } from '@deepseek-ai/dsh-research-workbench/types'
-import type { WorkbenchProps } from './contract.ts'
+import type { ClaimFocus, WorkbenchProps } from './contract.ts'
+import { ActionError, useAction } from './Action.tsx'
 import { digestText, locatorText, momentText } from './format.ts'
 import { MetricsGrid } from './MetricsGrid.tsx'
 import styles from './ClaimSheet.module.css'
@@ -33,8 +34,11 @@ function runOf(project: ResearchProject, source: EvidenceRecord): ResearchProjec
   return project.experiments.find(run => source.path.includes(`/runs/${run.id}/`))
 }
 
+/** How the sheet opens a file: the sheet's own action, so a refusal shows inside the sheet. */
+type OpenFile = (path: string) => void
+
 /** One source card: what it says, where exactly it says it, and how to go read it. */
-function Source(props: WorkbenchProps & { project: ResearchProject; link: EvidenceLink }): ReactNode {
+function Source(props: WorkbenchProps & { project: ResearchProject; link: EvidenceLink; open: OpenFile }): ReactNode {
   const { project, link, t } = props
   const source = project.evidence.find(item => item.id === link.evidenceId)
   if (!source) return null
@@ -65,7 +69,7 @@ function Source(props: WorkbenchProps & { project: ResearchProject; link: Eviden
         <button
           type="button"
           className={styles.open}
-          onClick={() => { props.openFile(project.root, source.path) }}
+          onClick={() => { props.open(source.path) }}
         >{t(run ? 'claimOpenRun' : 'claimOpenSource')}</button>
         {run
           ? <span className={styles.digest}>{t('claimSnapshot', { n: run.spec.codeArtifactIds.length + run.spec.dataEvidenceIds.length })}</span>
@@ -92,6 +96,8 @@ function Mix(props: WorkbenchProps & { project: ResearchProject; claim: ClaimRec
 /** The claim, its consequences, and every source behind it. */
 function Sheet(props: WorkbenchProps & { project: ResearchProject; claim: ClaimRecord }): ReactNode {
   const { project, claim, t } = props
+  const opening = useAction()
+  const open: OpenFile = (path) => { opening.start(() => { props.openFile(project.root, path) }) }
   const written = appearances(project, claim)
   return <div className={styles.sheet}>
     <header className={styles.head}>
@@ -99,12 +105,13 @@ function Sheet(props: WorkbenchProps & { project: ResearchProject; claim: ClaimR
       <Tag tone={CLAIM_TONE[claim.state]}>{t(claim.state)}</Tag>
       <button type="button" className={styles.close} title={t('close')} onClick={() => { props.focusClaim(null) }}>×</button>
     </header>
+    <ActionError t={t} error={opening.error} />
     <div className={styles.columns}>
       <div className={styles.left}>
         <p className={styles.claimText}>{claim.text}</p>
         {written.length > 0 && <div className={styles.group}>
           <span className={styles.groupHead}>{t('claimAppearsIn')}</span>
-          {written.map(artifact => <button key={artifact.id} type="button" className={styles.appearance} onClick={() => { props.openFile(project.root, artifact.path) }}>
+          {written.map(artifact => <button key={artifact.id} type="button" className={styles.appearance} onClick={() => { open(artifact.path) }}>
             {artifact.path} · {t('revisionN', { n: artifact.revision })}
           </button>)}
         </div>}
@@ -118,11 +125,22 @@ function Sheet(props: WorkbenchProps & { project: ResearchProject; claim: ClaimR
         <span className={styles.groupHead}>{t('claimSupporting')}</span>
         {claim.evidence.length === 0
           ? <p className={styles.groupBody}>{t('claimNoSources')}</p>
-          : claim.evidence.map((link, index) => <Source key={`${link.evidenceId}-${index}`} {...props} project={project} link={link} />)}
+          : claim.evidence.map((link, index) => <Source key={`${link.evidenceId}-${index}`} {...props} project={project} link={link} open={open} />)}
         <p className={styles.footer}>{t('claimFooter')}</p>
       </div>
     </div>
   </div>
+}
+
+/** The focused claim, looked up in its own project only: claim ids are unique within a project, not across projects. */
+function focusedClaim(
+  projects: readonly ResearchProject[] | undefined,
+  focus: ClaimFocus | null,
+): { project: ResearchProject; claim: ClaimRecord } | undefined {
+  if (focus === null) return undefined
+  const project = projects?.find(item => item.id === focus.projectId)
+  const claim = project?.claims.find(item => item.id === focus.claimId)
+  return project && claim ? { project, claim } : undefined
 }
 
 /** Frame-wide seat: it draws only while the rail has put a claim in focus. */
@@ -130,11 +148,7 @@ export function ResearchClaimSheet(props: WorkbenchProps): ReactNode {
   const { t } = props
   const focus = props.useFocus(s => s)
   const view = props.useResearch(s => s)
-  const found = focus.claimId === null
-    ? undefined
-    : view.snapshot?.projects
-      .flatMap(project => project.claims.map(claim => ({ project, claim })))
-      .find(entry => entry.claim.id === focus.claimId)
+  const found = focusedClaim(view.snapshot?.projects, focus.claim)
   return <Modal
     open={found !== undefined}
     onClose={() => { props.focusClaim(null) }}
@@ -142,6 +156,6 @@ export function ResearchClaimSheet(props: WorkbenchProps): ReactNode {
     headless
     className={styles.dialog ?? ''}
   >
-    {found && <Sheet {...props} project={found.project} claim={found.claim} />}
+    {found && <Sheet key={`${found.project.id}/${found.claim.id}`} {...props} project={found.project} claim={found.claim} />}
   </Modal>
 }

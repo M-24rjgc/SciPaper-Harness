@@ -5478,7 +5478,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n}',
   },
   {
     name: 'ResearchSnapshot',

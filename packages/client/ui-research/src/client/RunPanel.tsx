@@ -1,15 +1,18 @@
 /**
  * The experiment group as it stands right now, above the composer. Submitted
  * runs outlive the window, so this is a report on independent processes, not a
- * control panel: the only things it offers are the two a person actually needs
- * mid-run — read the output, or stop it.
+ * control panel: the only things it offers are the ones a person actually
+ * needs mid-run — read the output, reconnect or dismiss an unconfirmed run, or
+ * stop one after confirming.
  */
 import { useState, type ReactNode } from 'react'
 import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ExperimentRecord, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import { useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
-import { durationText, elapsedOf } from './format.ts'
+import { ActionError, useAction } from './Action.tsx'
+import { appendedDraft, durationText, elapsedOf } from './format.ts'
 import { MetricsGrid } from './MetricsGrid.tsx'
+import { StopRun } from './StopRun.tsx'
 import styles from './RunPanel.module.css'
 
 /** Runs still occupying a supervisor. */
@@ -21,20 +24,34 @@ const PERCENT = 100
 
 /** The composer seat this panel drafts into, as the input dock supplies it. */
 export interface RunPanelOwnerProps {
+  /** The composer's state as the dock last drew it; its draft is what a suggestion is appended to. */
+  input: { draft: string }
   /** Replace the composer draft; the person still decides whether to send it. */
   inputActions: { setDraft(text: string): void }
 }
 
 function statusMark(run: ExperimentRecord): string | undefined {
-  if (run.status === 'running' || run.status === 'queued') return styles.markRunning
+  if (run.status === 'queued') return styles.markQueued
+  if (run.status === 'running') return styles.markRunning
   if (run.status === 'completed') return styles.markDone
   return styles.markAttention
+}
+
+/** The status tag of a run still occupying a supervisor: waiting, running, or unconfirmed. */
+function OpenTag(props: WorkbenchProps & { record: ExperimentRecord }): ReactNode {
+  const { record, t } = props
+  if (record.status === 'queued') return <Tag tone="neutral">{t('queued')}</Tag>
+  if (record.status === 'unknown') return <Tag tone="warning">{t('unknown')}</Tag>
+  return <Tag tone="success">{t('runRunning')}</Tag>
 }
 
 /** One run: what it is, how far it has got, and the things worth doing to it. */
 function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: ResearchProject; record: ExperimentRecord }): ReactNode {
   const { project, record, t } = props
   const [logs, setLogs] = useState('')
+  const reading = useAction()
+  const reconnecting = useAction()
+  const dismissing = useAction()
   const elapsed = elapsedOf(record)
   const limit = record.spec.maxSeconds * MS_PER_SECOND
   const open = OPEN_RUN_STATUS.includes(record.status)
@@ -43,16 +60,17 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
   const fraction = record.progress?.fraction
   const runId = record.id
   const showLogs = (): void => {
-    void props.run({ action: 'experiment-logs', projectId: project.id, runId })
-      .then((response) => { setLogs(response.content ?? response.message) })
-      .catch((error: unknown) => { setLogs(String(error)) })
+    reading.start(async () => {
+      const response = await props.run({ action: 'experiment-logs', projectId: project.id, runId })
+      setLogs(response.content ?? response.message)
+    })
   }
   return <article className={styles.run}>
     <div className={styles.runHead}>
       <span className={statusMark(record)}></span>
       <span className={styles.runName}>{record.spec.name} · {t('runSeed')} {record.spec.seed}</span>
       {open
-        ? <Tag tone={unknown ? 'warning' : 'success'}>{t(unknown ? 'unknown' : 'runRunning')}</Tag>
+        ? <OpenTag {...props} />
         : record.collected && <Tag tone="success">{t('runCollected')}</Tag>}
       {elapsed !== undefined && !open && <span className={styles.runMeta}>{durationText(elapsed, t)}</span>}
       {environment && <span className={styles.runEnvironment} title={environment.python}>
@@ -77,29 +95,30 @@ function RunCard(props: WorkbenchProps & RunPanelOwnerProps & { project: Researc
     <MetricsGrid metrics={Object.keys(record.metrics).length === 0 && open ? record.progress?.values ?? {} : record.metrics} />
 
     <div className={styles.actions}>
-      <button type="button" className={styles.action} onClick={showLogs}>{t('logs')}</button>
+      <button type="button" className={styles.action} disabled={reading.pending} onClick={showLogs}>{t('logs')}</button>
       <button type="button" className={styles.action} onClick={() => { props.expand(project.id, 'experiments') }}>{t('boardOpen')}</button>
       {unknown && <button
         type="button"
         className={styles.action}
-        onClick={() => { void props.run({ action: 'experiment-refresh', projectId: project.id, runId }).catch(() => {}) }}
+        disabled={reconnecting.pending}
+        onClick={() => { reconnecting.start(() => props.run({ action: 'experiment-refresh', projectId: project.id, runId })) }}
       >{t('runReconnect')}</button>}
       {unknown && <button
         type="button"
         className={styles.action}
-        onClick={() => { void props.run({ action: 'experiment-dismiss', projectId: project.id, runId }).catch(() => {}) }}
+        disabled={dismissing.pending}
+        onClick={() => { dismissing.start(() => props.run({ action: 'experiment-dismiss', projectId: project.id, runId })) }}
       >{t('dismiss')}</button>}
-      {open && !unknown && <button
-        type="button"
-        className={styles.stop}
-        onClick={() => { void props.run({ action: 'experiment-cancel', projectId: project.id, runId }).catch(() => {}) }}
-      >{t('runStop')}</button>}
+      {open && !unknown && <StopRun {...props} stopClassName={styles.stop} keepClassName={styles.action} />}
       {record.status === 'completed' && <button
         type="button"
         className={styles.action}
-        onClick={() => { props.inputActions.setDraft(t('runPlotDraft', { name: record.spec.name, seed: record.spec.seed })) }}
+        onClick={() => { props.inputActions.setDraft(appendedDraft(props.input.draft, t('runPlotDraft', { name: record.spec.name, seed: record.spec.seed }))) }}
       >{t('runPlot')}</button>}
     </div>
+    <ActionError t={t} error={reading.error} />
+    <ActionError t={t} error={reconnecting.error} />
+    <ActionError t={t} error={dismissing.error} />
 
     {logs !== '' && <pre className={styles.logs}>{logs}</pre>}
   </article>

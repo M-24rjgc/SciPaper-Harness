@@ -1,18 +1,20 @@
 // @vitest-environment jsdom
 
 /**
- * The research rail. It says how the project is run and where it stands by its
- * last check, and every command it emits is handed back to the validator the
- * service parses commands with. It never starts work by itself: the only two
- * actions are a check and handing the pipeline to the assistant as a goal.
+ * The research rail. It reports how the project stands by its last check, what
+ * was decided and what the project holds, and offers the project's tools. The
+ * assistant sets the mode and runs the checks, so the one thing a person
+ * changes here is the autonomy; that control keeps its own pending and failure
+ * state, and every command it emits is handed back to the validator the
+ * service parses commands with.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
-import type { EnvironmentId, EvidenceId, ResearchCommand, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { EvidenceId, ExperimentRecord, ResearchCommand, ResearchProject, RunStatus } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import { ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
+import { ProjectStatus, ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
 import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
@@ -27,6 +29,22 @@ interface Log {
   lines: [string, string][]
   opened: [string, string][]
   expanded: [string, string | undefined][]
+  /** How many times the research folder's file tab was asked for. */
+  files: number
+}
+
+/** How the host answers; it accepts everything unless a test says otherwise. */
+interface Host {
+  run?: () => Promise<unknown>
+  command?: () => Promise<unknown>
+  openFile?: () => void
+  openFiles?: () => void
+}
+
+/** The Chinese dictionary, interpolating `{name}` the way the locale seat does. */
+function t(key: string, params?: Record<string, unknown>): string {
+  const template = (zh as Record<string, string>)[key] ?? key
+  return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
 }
 
 /** A project in the given mode and route; the general mode when none is named. */
@@ -36,33 +54,52 @@ function project(mode?: string, route?: string): ResearchProject {
   return record
 }
 
-function mount(projects: ResearchProject[], options: { fail?: boolean } = {}): { rail: ReturnType<typeof render>; log: Log } {
-  const log: Log = { commands: [], lines: [], opened: [], expanded: [] }
-  const view = { snapshot: { projects, preferences: {}, components: [], modes: MODES }, tasks: [], busy: false, error: '', response: null }
+/** One recorded run in the given state. */
+function run(id: string, status: RunStatus): ExperimentRecord {
+  return { id: id as never, spec: {} as never, status, createdAt: '', updatedAt: '', directory: '', inputRevision: 1, environmentFingerprint: '', metrics: {}, message: '', snapshotPath: '', collected: false }
+}
+
+function seat(projects: ResearchProject[], host: Host): { props: WorkbenchProps & SessionSeatProps; log: Log } {
+  const log: Log = { commands: [], lines: [], opened: [], expanded: [], files: 0 }
+  const view = { snapshot: { projects, preferences: {}, components: [], modes: MODES }, tasks: [], response: null }
   const props = {
     sessionId: SESSION,
-    t: (key: string, params?: Record<string, unknown>) => {
-      const template = (zh as Record<string, string>)[key] ?? key
-      return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
-    },
+    t,
     useResearch: (select: (value: typeof view) => unknown) => select(view),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
     run: (command: ResearchCommand) => {
       log.commands.push(command)
-      return options.fail ? Promise.reject(new Error('refused')) : Promise.resolve({ message: '' })
+      return host.run ? host.run() : Promise.resolve({ message: '' })
     },
-    command: (sessionId: string, line: string) => { log.lines.push([sessionId, line]); return Promise.resolve() },
-    openFile: (root: string, path: string) => { log.opened.push([root, path]) },
+    command: (sessionId: string, line: string) => {
+      log.lines.push([sessionId, line])
+      return host.command ? host.command() : Promise.resolve()
+    },
+    openFile: (root: string, path: string) => { log.opened.push([root, path]); host.openFile?.() },
+    openFiles: () => { log.files += 1; host.openFiles?.() },
     expand: (projectId: string, panel?: string) => { log.expanded.push([projectId, panel]) },
   } as unknown as WorkbenchProps & SessionSeatProps
+  return { props, log }
+}
+
+/** The rail beside the conversation `SESSION`. */
+function mount(projects: ResearchProject[], host: Host = {}): { rail: ReturnType<typeof render>; log: Log } {
+  const { props, log } = seat(projects, host)
   return { rail: render(<ResearchRail {...props} />), log }
 }
 
-const settle = (): Promise<void> => new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+/** Let the host's answers land. */
+const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }
+
+/** A host answer that waits until the test lets it through. */
+function held(): { answer: () => Promise<unknown>; release: () => void } {
+  let release = (): void => {}
+  const pending = new Promise<unknown>((resolve) => { release = () => { resolve({ message: '' }) } })
+  return { answer: () => pending, release: () => { release() } }
+}
 
 describe('the research rail', () => {
   it('names itself, and says so when the folder is not a research project yet', () => {
-    const t = (key: string) => (zh as Record<string, string>)[key] ?? key
     expect(render(<ResearchRailTitle t={t as WorkbenchProps['t']} />).container.textContent).toBe(zh.railTitle)
     cleanup()
     const stranger = project()
@@ -70,59 +107,67 @@ describe('the research rail', () => {
     expect(mount([stranger]).rail.getByText(zh.railNoProject)).toBeTruthy()
   })
 
-  it('switches the mode and route, and changes its autonomy together with the conversation\'s access preset', async () => {
+  it('offers the autonomy as its one setting, and changes it together with the conversation\'s access preset', async () => {
     const general = project()
     const { rail, log } = mount([general])
-    const [mode, autonomy] = rail.getAllByRole('combobox') as HTMLSelectElement[]
-    expect(mode!.value).toBe('general')
-    expect([...mode!.options].map(option => option.textContent)).toEqual(['通用', 'spark-to-paper · 从提案开始', 'spark-to-paper · 从实测结果开始'])
-    expect([...mode!.options].map(option => option.title)).toEqual(['全部工具，不走流水线', '结果先留空', '数字追溯到数据'])
-    // The general mode has no pipeline: no phases, no pipeline button.
-    expect(rail.queryByRole('button', { name: zh.pipelineRun })).toBeNull()
-    expect(rail.queryByText(zh.checkNever)).toBeNull()
+    // The mode is the assistant's to set: the autonomy is the only choice on the rail.
+    const [autonomy, ...others] = rail.getAllByRole('combobox') as HTMLSelectElement[]
+    expect(others).toEqual([])
+    expect(autonomy!.value).toBe('checkpoints')
+    expect([...autonomy!.options].map(option => option.textContent)).toEqual([zh.autonomyCheckpoints, zh.autonomyAutomatic])
 
-    fireEvent.change(mode!, { target: { value: 'spark-to-paper/data' } })
-    fireEvent.change(mode!, { target: { value: 'general' } })
     fireEvent.change(autonomy!, { target: { value: 'automatic' } })
     await settle()
     fireEvent.change(autonomy!, { target: { value: 'checkpoints' } })
     await settle()
     expect(log.commands).toEqual([
-      { action: 'set-mode', projectId: general.id, mode: 'spark-to-paper', route: 'data' },
-      { action: 'set-mode', projectId: general.id, mode: 'general' },
       { action: 'set-autonomy', projectId: general.id, autonomy: 'automatic' },
       { action: 'set-autonomy', projectId: general.id, autonomy: 'checkpoints' },
     ])
     for (const command of log.commands) expect(commandSchema.parse(command)).toEqual(command)
     expect(log.lines).toEqual([[SESSION, '/permission research-auto'], [SESSION, '/permission workspace-write']])
+    expect(rail.queryByRole('alert')).toBeNull()
   })
 
-  it('keeps showing a mode whose pack is no longer installed, until another is chosen', () => {
-    const { rail } = mount([project('retired-pack')])
-    const mode = rail.getAllByRole('combobox')[0] as HTMLSelectElement
-    expect(mode.value).toBe('retired-pack')
-    expect(mode.options[0]).toMatchObject({ textContent: 'retired-pack', disabled: true })
-  })
-
-  it('does not switch the access preset when the autonomy change was refused', async () => {
-    const { rail, log } = mount([project()], { fail: true })
-    fireEvent.change(rail.getAllByRole('combobox')[1]!, { target: { value: 'automatic' } })
-    fireEvent.click(rail.getByRole('button', { name: zh.checkRun }))
+  it('holds the autonomy while a change is being saved', async () => {
+    const saving = held()
+    const { rail } = mount([project()], { run: saving.answer })
+    const autonomy = rail.getByRole('combobox') as HTMLSelectElement
+    fireEvent.change(autonomy, { target: { value: 'automatic' } })
+    expect(autonomy.disabled).toBe(true)
+    saving.release()
     await settle()
-    expect(log.commands.map(command => command.action)).toEqual(['set-autonomy', 'check'])
+    expect(autonomy.disabled).toBe(false)
+  })
+
+  it('says why an autonomy change failed, and leaves the access preset alone when the change was refused', async () => {
+    const refused = mount([project()], { run: () => Promise.reject(new Error('refused')) })
+    fireEvent.change(refused.rail.getByRole('combobox'), { target: { value: 'automatic' } })
+    await settle()
+    expect(refused.rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'refused' }))
+    expect(refused.log.lines).toEqual([])
+    expect((refused.rail.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false)
+    cleanup()
+
+    // The autonomy was recorded, but the conversation kept its old access preset.
+    const stuck = mount([project()], { command: () => Promise.reject(new Error('no such preset')) })
+    fireEvent.change(stuck.rail.getByRole('combobox'), { target: { value: 'automatic' } })
+    await settle()
+    expect(stuck.log.commands.map(command => command.action)).toEqual(['set-autonomy'])
+    expect(stuck.rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'no such preset' }))
+  })
+
+  it('changes the autonomy from outside a conversation without touching any access preset', async () => {
+    const general = project()
+    const { props, log } = seat([general], {})
+    const status = render(<ProjectStatus {...props} project={general} commandSession={undefined} />)
+    fireEvent.change(status.getByRole('combobox'), { target: { value: 'automatic' } })
+    await settle()
+    expect(log.commands).toEqual([{ action: 'set-autonomy', projectId: general.id, autonomy: 'automatic' }])
     expect(log.lines).toEqual([])
   })
 
-  it('runs a check, and hands a pipeline mode to the assistant as a goal', () => {
-    const routed = project('spark-to-paper', 'data')
-    const { rail, log } = mount([routed])
-    fireEvent.click(rail.getByRole('button', { name: zh.checkRun }))
-    fireEvent.click(rail.getByRole('button', { name: zh.pipelineRun }))
-    expect(log.commands).toEqual([{ action: 'check', projectId: routed.id }])
-    expect(log.lines).toEqual([[SESSION, `/goal 按spark-to-paper模式逐阶段完成「${routed.title}」的论文，并加载该模式指定的技能；research_check 全部通过即完成。`]])
-  })
-
-  it('shows the phases of the last check, what still blocks each, and the errors with the files they name', () => {
+  it('shows the phases of the last check, what still blocks each, and the errors with the files they name', async () => {
     const routed = project('spark-to-paper', 'proposal')
     routed.lastCheck = {
       clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '',
@@ -148,11 +193,26 @@ describe('the research rail', () => {
     expect(rail.queryByText('hidden third')).toBeNull()
     expect(rail.getByText(zh.findings)).toBeTruthy()
     expect(rail.getByText(/7 个错误 · 1 个提醒/)).toBeTruthy()
+    expect(rail.getByText('No LaTeX manuscript yet')).toBeTruthy()
     // Five errors are listed; the rest are only counted.
     expect(rail.queryByText('untraced 3')).toBeNull()
     fireEvent.click(rail.getByRole('button', { name: 'paper/main.tex:12' }))
     fireEvent.click(rail.getByRole('button', { name: 'paper/main.tex' }))
+    await settle()
     expect(log.opened).toEqual([[ROOT, 'paper/main.tex'], [ROOT, 'paper/main.tex']])
+  })
+
+  it('says why a finding\'s file could not be opened', async () => {
+    const routed = project('spark-to-paper', 'proposal')
+    routed.lastCheck = {
+      clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '', phases: [],
+      findings: [{ check: 'compile', severity: 'error', message: 'The paper has not been compiled yet', file: 'paper/main.tex' }],
+    }
+    const { rail } = mount([routed], { openFile: () => { throw new Error('no sidebar') } })
+    expect(rail.queryByRole('alert')).toBeNull()
+    fireEvent.click(rail.getByRole('button', { name: 'paper/main.tex' }))
+    await settle()
+    expect(rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'no sidebar' }))
   })
 
   it('asks for a check when the last one was for another route or mode, and shows no phases in the general mode', () => {
@@ -168,11 +228,15 @@ describe('the research rail', () => {
     switched.lastCheck = { ...switched.lastCheck, mode: 'spark-to-paper', phases: [] }
     expect(mount([switched]).rail.getByText(zh.checkNever)).toBeTruthy()
     cleanup()
+    const unchecked = mount([project('spark-to-paper')])
+    expect(unchecked.rail.getByText(zh.checkNever)).toBeTruthy()
+    expect(unchecked.rail.queryByText(zh.findings)).toBeNull()
+    cleanup()
     const general = project()
     general.lastCheck = { clean: true, scope: 'all', mode: 'general', checkedAt: '', phases: [], findings: [] }
     const second = mount([general])
     expect(second.rail.queryByText(zh.checkNever)).toBeNull()
-    expect(second.rail.queryByRole('button', { name: zh.pipelineRun })).toBeNull()
+    expect(second.rail.getByText(zh.checkClean)).toBeTruthy()
   })
 
   it('lists the newest decisions with who made them and why', () => {
@@ -184,6 +248,7 @@ describe('the research rail', () => {
       routed.decisions.push({ id: `d${index}`, question: `Q${index}`, answer: `A${index}`, by: index % 2 === 0 ? 'user' : 'agent', rationale: index === 5 ? 'because data' : '', at: '' })
     }
     const next = mount([routed]).rail
+    expect(next.queryByText(zh.noDecisions)).toBeNull()
     expect(next.queryByText('A0')).toBeNull()
     expect(next.getByText(`${zh.decisionByAgent} · Q5`)).toBeTruthy()
     expect(next.getByText(`${zh.decisionByUser} · Q4`)).toBeTruthy()
@@ -193,16 +258,51 @@ describe('the research rail', () => {
   it('counts sources, claims, files and runs, each opening its place in the workbench', () => {
     const routed = project('spark-to-paper')
     routed.evidence.push({ id: 'e' as EvidenceId, title: 't', kind: 'file', path: 'p', sha256: 's', revision: 1, importedAt: '', chunks: [], coverage: 'data', verified: true, stale: true })
-    routed.experiments.push({ id: 'r' as never, spec: {} as never, status: 'running', createdAt: '', updatedAt: '', directory: '', inputRevision: 1, environmentFingerprint: '', metrics: {}, message: '', snapshotPath: '', collected: false })
-    routed.environments.push({ id: 'env' as EnvironmentId, name: 'gpu', kind: 'uv', target: 'ssh', python: '/opt/py', requirements: [], fingerprint: 'f', status: 'ready', details: '', isDefault: false })
+    routed.experiments.push(run('done', 'completed'), run('waiting', 'queued'))
     const { rail, log } = mount([routed])
     expect(rail.getByText('1 待更新')).toBeTruthy()
-    expect(rail.getByText(zh.runRunning)).toBeTruthy()
-    expect(rail.getByText(`gpu · ${zh.ssh} · /opt/py`)).toBeTruthy()
+    expect(rail.getByTitle(zh.railExperimentsLabel).textContent).toBe(`${zh.railExperimentsLabel}${zh.runRunning}2`)
     for (const label of [zh.railSourcesLabel, zh.claims, zh.artifacts, zh.railExperimentsLabel]) fireEvent.click(rail.getByTitle(label))
     expect(log.expanded).toEqual([[routed.id, 'sources'], [routed.id, 'claims'], [routed.id, 'artifacts'], [routed.id, 'experiments']])
     cleanup()
-    const bare = project()
-    expect(mount([bare]).rail.getByText(zh.railNotStarted)).toBeTruthy()
+    // Nothing stale and nothing moving: the rows carry no tags.
+    const quiet = project('spark-to-paper')
+    quiet.experiments.push(run('done', 'completed'))
+    const calm = mount([quiet]).rail
+    expect(calm.getByTitle(zh.railSourcesLabel).textContent).toBe(`${zh.railSourcesLabel}0`)
+    expect(calm.getByTitle(zh.railExperimentsLabel).textContent).toBe(`${zh.railExperimentsLabel}1`)
+  })
+
+  it('shows the runs row only on a route with an experiments phase, or once a run exists', () => {
+    // A route that plans experiments says none has started yet.
+    expect(mount([project('spark-to-paper', 'proposal')]).rail.getByTitle(zh.railExperimentsLabel).textContent).toBe(`${zh.railExperimentsLabel}${zh.railNotStarted}`)
+    cleanup()
+    expect(mount([project('spark-to-paper', 'data')]).rail.queryByTitle(zh.railExperimentsLabel)).toBeNull()
+    cleanup()
+    expect(mount([project()]).rail.queryByTitle(zh.railExperimentsLabel)).toBeNull()
+    cleanup()
+    // A run the assistant registered anyway is part of the record.
+    const general = project()
+    general.experiments.push(run('probe', 'failed'))
+    expect(mount([general]).rail.getByTitle(zh.railExperimentsLabel).textContent).toBe(`${zh.railExperimentsLabel}1`)
+  })
+
+  it('opens the experiment board, the figure gallery and the research files from its tools row', async () => {
+    const general = project()
+    const { rail, log } = mount([general])
+    fireEvent.click(rail.getByRole('button', { name: zh.boardTitle }))
+    fireEvent.click(rail.getByRole('button', { name: zh.gallery }))
+    fireEvent.click(rail.getByRole('button', { name: zh.researchFiles }))
+    await settle()
+    expect(log.expanded).toEqual([[general.id, 'experiments'], [general.id, 'gallery']])
+    expect(log.files).toBe(1)
+    expect(rail.queryByRole('alert')).toBeNull()
+  })
+
+  it('says why the research files could not be shown', async () => {
+    const { rail } = mount([project()], { openFiles: () => { throw new Error('no sidebar') } })
+    fireEvent.click(rail.getByRole('button', { name: zh.researchFiles }))
+    await settle()
+    expect(rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'no sidebar' }))
   })
 })

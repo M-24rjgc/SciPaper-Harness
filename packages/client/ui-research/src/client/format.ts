@@ -237,6 +237,18 @@ export function standingText(project: ResearchProject, modes: readonly ModeSumma
 }
 
 /**
+ * A composer draft with one suggested sentence added: the sentence alone into
+ * an empty draft, otherwise on its own line after what was already typed. A
+ * suggestion never replaces the person's words.
+ * @param draft - the composer draft as it stands.
+ * @param sentence - the text to add.
+ * @returns the draft to set.
+ */
+export function appendedDraft(draft: string, sentence: string): string {
+  return draft.trim() === '' ? sentence : `${draft.trimEnd()}\n${sentence}`
+}
+
+/**
  * The address of a figure gallery image; the host fetches it into its cache on first view.
  * @param id - a gallery figure id.
  * @returns the host route that serves it.

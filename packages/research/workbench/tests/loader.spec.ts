@@ -408,12 +408,32 @@ describe('the research service records; it never drives the agent', () => {
     const saved = await run({ action: 'save-artifact', path: 'paper/main.tex', content: '\\documentclass{article}\n\\begin{document}x\\end{document}', kind: 'manuscript' })
     expect(saved.message).toMatch(/revision 1/)
     const artifactId = service.getProject(p.id).artifacts[0]!.id
-    expect((await run({ action: 'read-artifact', artifactId })).content).toContain('documentclass')
+    const text = await run({ action: 'read-artifact', artifactId })
+    expect(text.content).toContain('documentclass')
+    expect(text).not.toHaveProperty('binary')
     await expect(run({ action: 'read-artifact', artifactId: 'nope' })).rejects.toThrow(/not found/)
-    await write(join(p.root, 'figures/plot.png'), 'png')
+    // A binary file reads as no text, and no one can save text over it: the bytes and the record stay as they were.
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13])
+    await mkdir(join(p.root, 'figures'), { recursive: true })
+    await writeFile(join(p.root, 'figures/plot.png'), png)
     await run({ action: 'register-artifact', path: 'figures/plot.png', kind: 'figure' })
-    const imageId = service.getProject(p.id).artifacts.find(a => a.path === 'figures/plot.png')!.id
-    expect((await run({ action: 'read-artifact', artifactId: imageId })).content).toBe('')
+    const image = service.getProject(p.id).artifacts.find(a => a.path === 'figures/plot.png')!
+    expect(await run({ action: 'read-artifact', artifactId: image.id })).toMatchObject({ content: '', binary: true, path: 'figures/plot.png' })
+    for (const actor of ['user', 'agent'] as const) {
+      await expect(run({ action: 'save-artifact', path: 'figures/plot.png', content: '', kind: 'figure', expectedRevision: image.revision }, actor))
+        .rejects.toThrow(/Refusing to save text over the binary file figures\/plot\.png/)
+    }
+    expect(await readFile(join(p.root, 'figures/plot.png'))).toEqual(png)
+    expect(service.getProject(p.id).artifacts.find(a => a.path === 'figures/plot.png')).toEqual(image)
+    // Under a name that says nothing, the bytes decide.
+    const weights = Buffer.from([1, 2, 0, 3])
+    await mkdir(join(p.root, 'data'), { recursive: true })
+    await writeFile(join(p.root, 'data/weights.bin'), weights)
+    await run({ action: 'register-artifact', path: 'data/weights.bin', kind: 'supplement' })
+    const blob = service.getProject(p.id).artifacts.find(a => a.path === 'data/weights.bin')!
+    expect(await run({ action: 'read-artifact', artifactId: blob.id })).toMatchObject({ content: '', binary: true })
+    await expect(run({ action: 'save-artifact', path: 'data/weights.bin', content: 'text', kind: 'supplement' }, 'user')).rejects.toThrow(/binary file data\/weights\.bin/)
+    expect(await readFile(join(p.root, 'data/weights.bin'))).toEqual(weights)
     await run({ action: 'claim', claim: { id: 'h', text: 'It helps', kind: 'hypothesis', state: 'proposed', evidence: [], artifactIds: [] } })
     expect(service.getProject(p.id).claims).toHaveLength(1)
     const clean = await run({ action: 'check', scope: 'figures' })

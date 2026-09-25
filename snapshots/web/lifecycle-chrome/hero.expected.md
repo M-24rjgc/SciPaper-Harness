@@ -24,10 +24,6 @@
   - img
   - text: Settings
 - text: What shall we work on today?
-- paragraph: Bring a spark or the results you already have. I carry the research to a paper that holds up — asking you at the key decisions, or deciding on my own, as you choose.
-- article: I already have material Papers, data, drafts, logs. Every import keeps its version and the exact place a quote came from, and the paper is written from the results you have. “Import these 6 PDFs and results.csv, and sort out what each one actually shows”
-- article: I only have an idea Develop it into a method paper first — everything written except the results — then run the experiments and fill them in. “Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?”
-- article: Pick up where I left off Back to the point it stopped, with the evidence of that moment and whatever decision is still open. Your research projects will appear here.
 - button "New project folder…"
 - button "Choose research":
   - img
@@ -47,4 +43,3 @@
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
-- text: "Checkpoints or fully automatic: you choose how often I ask Every conclusion points back to the page it came from Experiments run on their own; closing the window will not stop them"

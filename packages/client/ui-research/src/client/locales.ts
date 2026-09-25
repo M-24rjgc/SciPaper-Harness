@@ -1,7 +1,6 @@
 /** User-facing research workspace copy. */
 export const en = {
   // Product and navigation
-  openEditor: 'Open editor',
   selectCodeFiles: 'Code files (select one or more)',
   selectDataSources: 'Data sources (select one or more)',
   advancedSettings: 'Image service and tool paths',
@@ -19,19 +18,9 @@ export const en = {
   experiments: 'Experiment board',
   settings: 'Tools & models',
 
-  // Blank-session entry
-  heroIntro: 'Bring a spark or the results you already have. I carry the research to a paper that holds up — asking you at the key decisions, or deciding on my own, as you choose.',
-  heroCardMaterials: 'I already have material',
-  heroCardMaterialsBody: 'Papers, data, drafts, logs. Every import keeps its version and the exact place a quote came from, and the paper is written from the results you have.',
-  heroCardIdea: 'I only have an idea',
-  heroCardIdeaBody: 'Develop it into a method paper first — everything written except the results — then run the experiments and fill them in.',
-  heroCardResume: 'Pick up where I left off',
-  heroCardResumeBody: 'Back to the point it stopped, with the evidence of that moment and whatever decision is still open.',
+  // Example sentences for a blank research; the entry screen's suggestion chips add them to the draft
   heroOpeningMaterials: '“Import these 6 PDFs and results.csv, and sort out what each one actually shows”',
   heroOpeningIdea: '“Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?”',
-  heroPromiseDecide: 'Checkpoints or fully automatic: you choose how often I ask',
-  heroPromiseTrace: 'Every conclusion points back to the page it came from',
-  heroPromiseRuns: 'Experiments run on their own; closing the window will not stop them',
 
   // The decision that is the user's
 
@@ -157,8 +146,10 @@ export const en = {
   gallerySave: 'Save as reference',
   gallerySaving: 'Saving it under figures/refs/ with a record of its paper. Then ask the assistant to draw with it as reference.',
   galleryCopyright: 'The figure belongs to its paper\'s authors and publisher. Study its layout; never put it in your paper.',
+  gallerySaved: 'Saved under figures/refs/ with a record of its paper. Ask the assistant to draw with it as reference.',
   gallerySource: 'From {name}',
   unsaved: 'Unsaved edits',
+  binaryFile: 'This is a binary file, so it cannot be edited here. Use Preview to look at it.',
   versionConflict: 'Preserve the current file before retrying this save.',
   blocking: 'Fix before submission',
   advisory: 'Worth reviewing',
@@ -194,7 +185,7 @@ export const en = {
   metricsPath: 'Metrics filename',
   submitExperiment: 'Submit experiment',
   noRunsYet: 'No run has been submitted yet.',
-  confirmStop: 'Cancel this run?',
+  confirmStop: 'Cancel this run? A stopped run cannot be resumed.',
   logs: 'Logs',
   metrics: 'Metrics',
   cpuOnly: 'CPU only',
@@ -202,8 +193,6 @@ export const en = {
 
   // Tools and models
   modelHelp: 'Text and vision providers are configured in the usual Models settings; name their provider IDs here. Image generation uses its own optional endpoint.',
-  mainProvider: 'Main model provider ID',
-  mainModel: 'Main model ID',
   visionProvider: 'Vision provider ID (optional)',
   visionModel: 'Vision model ID (optional)',
   imageEndpoint: 'Image API base URL (optional)',
@@ -229,10 +218,13 @@ export const en = {
   install: 'Install component',
   installed: 'Ready',
   notInstalled: 'Install when needed',
+  installing: 'Installing…',
   settingsSaved: 'Settings saved',
 
   // Shared actions and status
+  actionFailed: 'Could not finish: {reason}',
   save: 'Save',
+  saving: 'Saving…',
   cancel: 'Cancel',
   close: 'Close',
   dismiss: 'Dismiss',
@@ -263,8 +255,8 @@ export const en = {
   newProjectBusy: 'Setting up…',
   newProjectHint: 'Choose the folder this research will live in. Papers, figures, code and run records are written there, and nothing outside it is touched.',
 
-  // Session header: where the project stands, and the two things to do to it
-  projectFolder: 'Project folder',
+  // Research context rail: the tools row
+  researchFiles: 'Research files',
 
   // Research context rail
   railCollapse: 'Collapse this panel',
@@ -306,6 +298,8 @@ export const en = {
   runPlot: 'Plot from this run',
   runReconnect: 'Reconnect',
   runStop: 'Stop',
+  runStopping: 'Stopping…',
+  runKeep: 'Keep running',
   runUnknownNote: 'The submission receipt was lost. Nothing is re-run automatically; reconnecting is what decides whether it is still going.',
   runPlotDraft: 'Plot the results of {name} (seed {seed}) and place the figure in the paper.',
   runMore: '{n} more runs',
@@ -389,11 +383,9 @@ export const en = {
 
   // Settings
   settingsSubtitle: 'Model roles, local components, experiment environments',
-  roleMain: 'Main model',
-  roleMainBody: 'Reads the literature, writes, drives the tools',
   roleVision: 'Vision model',
   roleVisionBody: 'Checks whether the typeset page and the figures read',
-  roleVisionFollow: 'Follows the main model',
+  roleVisionFollow: "Follows the conversation's model",
   roleVisionNote: 'Unconfigured, compilation and structural checks still run',
   roleImage: 'Illustration endpoint',
   roleImageBody: 'Artwork and method-diagram drafts',
@@ -403,7 +395,6 @@ export const en = {
   roleEmbeddingBody: 'Semantic recall and novelty over the knowledge graph',
   roleEmbeddingOff: 'Off: recall and novelty match words',
   roleEmbeddingNote: 'Any OpenAI-compatible /embeddings endpoint; a key alone uses OpenAI text-embedding-3-small',
-  roleUnset: 'Not set',
   localComponents: 'Local components',
   localComponentsNote: 'Installed inside the product; your own setup is left alone',
   experimentEnvironments: 'Experiment environments',
@@ -417,15 +408,11 @@ export const en = {
   autonomyCheckpoints: 'Checkpoints — ask me at key decisions',
   autonomyAutomatic: 'Automatic — decide and keep going',
   autonomyShortAutomatic: 'Automatic',
-  checkRun: 'Run check',
   checkClean: 'Check clean',
   checkErrors: '{n} errors',
   checkWarnings: '{n} warnings',
-  checkNever: 'Not checked for this mode yet. Run a check to see the phases.',
+  checkNever: 'Not checked for this mode yet. Ask the assistant for a check, and the phases appear here.',
   findings: 'Still open',
-  pipelineRun: 'Run the pipeline',
-  pipelineRunHelp: 'Hands the pipeline to the assistant as a goal: it works phase by phase until the check is clean, asking at checkpoints if you chose them.',
-  goalObjective: 'Complete the {mode} paper for “{title}” phase by phase, loading the skills the mode names; done when research_check is clean.',
   decisions: 'Decisions',
   decisionByUser: 'You',
   decisionByAgent: 'Assistant',
@@ -439,7 +426,6 @@ export type ResearchKey = keyof typeof en
 /** The same dictionary in Chinese; the Record type makes a missing or extra key a compile error. */
 export const zh: Record<ResearchKey, string> = {
   // 产品与导航
-  openEditor: '打开编辑',
   selectCodeFiles: '代码文件（可多选）',
   selectDataSources: '数据材料（可多选）',
   advancedSettings: '生图服务与工具路径',
@@ -457,19 +443,9 @@ export const zh: Record<ResearchKey, string> = {
   experiments: '实验看板',
   settings: '工具与模型',
 
-  // 空会话入口
-  heroIntro: '带上一个灵感，或手头已有的实验结果。我把研究一路推进到经得起推敲的论文——在关键决策处问你，或按你的选择自行决定。',
-  heroCardMaterials: '我已经有材料',
-  heroCardMaterialsBody: '论文、数据、草稿、日志。每次导入都保留版本和引文的确切出处，论文由你已有的结果写成。',
-  heroCardIdea: '我只有一个想法',
-  heroCardIdeaBody: '先把它写成方法论文——除实验结果外全部完成——再跑实验、填入结果。',
-  heroCardResume: '接着上次做',
-  heroCardResumeBody: '回到停下的地方，带着当时的证据和未决的决策。',
+  // 空白研究的示例说法；入口页的提示标签会把它们加进输入框
   heroOpeningMaterials: '“把这 6 篇 PDF 和 results.csv 导进来，理一下各自证明了什么”',
   heroOpeningIdea: '“块稀疏注意力能在 1/4 FLOPs 下保住长上下文准确率吗”',
-  heroPromiseDecide: '检查点或全自动：由你决定我多久问一次',
-  heroPromiseTrace: '每个结论都能点回原文那一页',
-  heroPromiseRuns: '实验独立运行，关掉界面也不会断',
 
   // 由你来做的决策
 
@@ -595,8 +571,10 @@ export const zh: Record<ResearchKey, string> = {
   gallerySave: '存为参考图',
   gallerySaving: '正在存入 figures/refs/，并附上论文出处。存好后，在对话里让助手参考它画图即可。',
   galleryCopyright: '图片版权归原论文作者与出版方。学它的排版，不要把它放进你的论文。',
+  gallerySaved: '已存入 figures/refs/，并附上论文出处。在对话里让助手参考它画图即可。',
   gallerySource: '来自 {name}',
   unsaved: '有未保存的修改',
+  binaryFile: '这是二进制文件，不能在这里编辑。可以用「预览」查看。',
   versionConflict: '请先保留当前文件，再重试保存。',
   blocking: '投稿前必须处理',
   advisory: '建议复核',
@@ -632,7 +610,7 @@ export const zh: Record<ResearchKey, string> = {
   metricsPath: '指标文件名',
   submitExperiment: '提交实验',
   noRunsYet: '尚未提交任何实验。',
-  confirmStop: '确认取消这次实验？',
+  confirmStop: '确认取消这次实验？停止后无法继续。',
   logs: '日志',
   metrics: '指标',
   cpuOnly: '仅 CPU',
@@ -640,8 +618,6 @@ export const zh: Record<ResearchKey, string> = {
 
   // 工具与模型
   modelHelp: '文本与视觉服务商在原有“模型”设置中配置，这里填写对应的 ID。生图使用独立的可选接口。',
-  mainProvider: '主模型服务商 ID',
-  mainModel: '主模型 ID',
   visionProvider: '视觉服务商 ID（可选）',
   visionModel: '视觉模型 ID（可选）',
   imageEndpoint: '生图 API 地址（可选）',
@@ -667,10 +643,13 @@ export const zh: Record<ResearchKey, string> = {
   install: '安装组件',
   installed: '已就绪',
   notInstalled: '按需安装',
+  installing: '正在安装…',
   settingsSaved: '设置已保存',
 
   // 通用操作与状态
+  actionFailed: '没能完成：{reason}',
   save: '保存',
+  saving: '正在保存…',
   cancel: '取消',
   close: '关闭',
   dismiss: '知道了',
@@ -696,13 +675,13 @@ export const zh: Record<ResearchKey, string> = {
   noTasks: '暂无操作记录。',
   operationStarted: '操作已开始',
 
-  // 会话标题栏：研究停在哪里，以及可以对它做的两件事
   // 在对话开始之前，从输入框新建项目
   newProjectDirectory: '新建项目目录…',
   newProjectBusy: '正在建立…',
   newProjectHint: '选一个目录，这项研究就住在里面。论文、图表、代码和运行记录都写在那儿，目录之外的东西不会被动。',
 
-  projectFolder: '项目文件夹',
+  // 研究进展侧栏：工具行
+  researchFiles: '研究文件',
 
   // 研究进展侧栏
   railCollapse: '收起这一栏',
@@ -744,6 +723,8 @@ export const zh: Record<ResearchKey, string> = {
   runPlot: '用它画图',
   runReconnect: '重新连上',
   runStop: '停止',
+  runStopping: '正在停止…',
+  runKeep: '继续运行',
   runUnknownNote: '提交回执丢了，不会自动重跑。重连之后再判断它到底有没有在跑。',
   runPlotDraft: '用 {name}（种子 {seed}）的结果画一张图，放进论文。',
   runMore: '另有 {n} 次运行',
@@ -827,11 +808,9 @@ export const zh: Record<ResearchKey, string> = {
 
   // 设置
   settingsSubtitle: '模型分工、本地组件、实验环境',
-  roleMain: '主模型',
-  roleMainBody: '读文献、写稿、跑工具',
   roleVision: '视觉模型',
   roleVisionBody: '检查排版和图是否可读',
-  roleVisionFollow: '跟随主模型',
+  roleVisionFollow: '跟随对话所用的模型',
   roleVisionNote: '未配置时，仍可做编译与结构检查',
   roleImage: '生图接口',
   roleImageBody: '插画与方法图草稿',
@@ -841,7 +820,6 @@ export const zh: Record<ResearchKey, string> = {
   roleEmbeddingBody: '知识图谱的语义召回与新颖性比对',
   roleEmbeddingOff: '未启用：召回与新颖性按词匹配',
   roleEmbeddingNote: '任何兼容 OpenAI /embeddings 的接口；只填密钥时用 OpenAI 的 text-embedding-3-small',
-  roleUnset: '未设置',
   localComponents: '本地组件',
   localComponentsNote: '装在产品内部，不改你的系统环境',
   experimentEnvironments: '实验环境',
@@ -855,15 +833,11 @@ export const zh: Record<ResearchKey, string> = {
   autonomyCheckpoints: '检查点——关键决策时问我',
   autonomyAutomatic: '全自动——自行决策并持续推进',
   autonomyShortAutomatic: '全自动',
-  checkRun: '运行检查',
   checkClean: '检查通过',
   checkErrors: '{n} 个错误',
   checkWarnings: '{n} 个提醒',
-  checkNever: '尚未按当前模式检查。运行一次检查即可看到各阶段。',
+  checkNever: '尚未按当前模式检查。在对话里让助手检查一下，各阶段就会出现在这里。',
   findings: '尚待处理',
-  pipelineRun: '推进流程',
-  pipelineRunHelp: '把流程作为目标交给助手：它逐阶段推进，直到检查全部通过；若选择了检查点，会在关键处询问你。',
-  goalObjective: '按{mode}模式逐阶段完成「{title}」的论文，并加载该模式指定的技能；research_check 全部通过即完成。',
   decisions: '决策记录',
   decisionByUser: '你',
   decisionByAgent: '助手',

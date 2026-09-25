@@ -529,6 +529,8 @@ export interface ResearchResponse {
   jobId?: string | undefined
   message: string
   content?: string | undefined
+  /** read-artifact: true when the file is binary, so `content` is empty and save-artifact refuses it; absent for a text file. */
+  binary?: boolean | undefined
   path?: string | undefined
   paths?: string[] | undefined
   literature?: LiteratureItem[] | undefined

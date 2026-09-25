@@ -570,3 +570,7 @@
         maxReviewPages: 12
     - id: ui-research
       name: '@deepseek-ai/dsh-client-ui-research'
+      # The composer's statistics pills, the default-permission setting and
+      # the open-config-file action are developer surfaces in this product.
+      config:
+        hideDeveloperCells: true

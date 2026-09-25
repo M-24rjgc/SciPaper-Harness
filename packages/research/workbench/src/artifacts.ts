@@ -7,7 +7,7 @@ import { zipSync, strToU8 } from 'fflate'
 import { z } from 'zod'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { ComponentManager, runtimeAsset } from './components.ts'
-import { atomicWrite, errorText, hashFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
+import { atomicWrite, errorText, hashFile, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
 import { bibliographyFiles, findMainManuscript, flattenPaper, graphicReferences, listProjectFiles, paperDigest } from './latex.ts'
 import { checked, runProcess } from './process.ts'
 import { invalidate, validateLinks } from './project.ts'
@@ -170,7 +170,9 @@ export async function adoptExternalEdit(project: ResearchProject, artifact: Arti
  * Register or save a file. An unregistered or externally edited file is
  * adopted as a revision first, so nothing is lost and nothing dead-ends. A
  * supplied `expectedRevision` protects an editor's unsaved view: a mismatch
- * says which revision is current so the caller can re-read and merge.
+ * says which revision is current so the caller can re-read and merge. Saving
+ * text over a binary file ({@link isBinaryFile}) is refused before anything
+ * is read or written, whoever asks.
  */
 export async function writeArtifact(
   project: ResearchProject,
@@ -179,6 +181,9 @@ export async function writeArtifact(
   limit: number,
 ): Promise<ArtifactRecord> {
   const { target, normalized } = await artifactPath(project, request.path)
+  if (request.action === 'save-artifact' && await isBinaryFile(target)) {
+    throw new Error(`Refusing to save text over the binary file ${normalized}; register-artifact records a new revision of it after it was edited elsewhere`)
+  }
   let previous = project.artifacts.find(a => a.path === normalized)
   validateLinks(project, request.evidence)
   for (const input of request.inputArtifacts) {

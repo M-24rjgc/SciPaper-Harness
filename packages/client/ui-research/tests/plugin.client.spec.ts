@@ -3,13 +3,14 @@
 /**
  * What the research plugin contributes, and what the face it injects into every
  * seat actually does. The slot registry is real, because "registered" is
- * exactly what the registry says it is; the Remote, locale, layout, session and
- * right-sidebar faces are recorders, because what matters here is the call each
- * action makes, the state it leaves in the two stores, and that disposing the
- * fiber takes back every registration and stops the polling clock.
+ * exactly what the registry says it is; the Remote, locale, layout, session,
+ * workspace-navigation and right-sidebar faces are recorders, because what
+ * matters here is the call each action makes, what it hands back to its caller,
+ * the state it leaves in the stores, and that disposing the fiber takes back
+ * every registration and stops the polling clock.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { Context } from '@deepseek-ai/cordis'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -18,16 +19,19 @@ import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   CreateProjectRequest, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
-import { apply as applyHost } from '../src/index.ts'
+import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { ResearchBrand, ResearchMark, Workbench } from '../src/client/Workbench.tsx'
-import { ResearchDock, ResearchHeroMark, ResearchPromise } from '../src/client/Hero.tsx'
+import { ResearchHeroMark } from '../src/client/Hero.tsx'
 import { ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
 import { ResearchClaimSheet } from '../src/client/ClaimSheet.tsx'
 import { ResearchRuns } from '../src/client/RunPanel.tsx'
-import { ResearchProjectActions, ResearchStatusChip } from '../src/client/Header.tsx'
+import { ResearchStatusChip } from '../src/client/Header.tsx'
+import { ResearchProjectEntry, ResearchProjects } from '../src/client/ProjectEntry.tsx'
+import { ResearchNewProject } from '../src/client/NewProject.tsx'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
 import { SkipHarnessNotice } from '../src/client/Onboarding.tsx'
+import { EmptyCell } from '../src/client/EmptyCell.tsx'
 import type { ResearchFocus, ResearchInjected, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 
@@ -40,6 +44,7 @@ const CLAIM_TEXT = 'Block-sparse attention holds accuracy at a quarter of the FL
 /** Enough project for the claim sheet: the sheet only reads claims, artifacts, evidence and runs. */
 const PROJECT = {
   id: 'project-sparse',
+  workspaceId: 'workspace-sparse',
   title: 'Sparse attention scaling study',
   claims: [{
     id: CLAIM_ID,
@@ -59,6 +64,7 @@ const LOADED: ResearchSnapshot = { projects: [PROJECT], preferences: {}, compone
 const OUTCOME: ResearchResponse = { message: 'experiment submitted' }
 const NEW_PROJECT: CreateProjectRequest = { title: 'Sparse attention', root: '/tmp/sparse', brief: '' }
 const CHECK: ResearchCommand = { action: 'check', projectId: PROJECT.id }
+const IMPORT: ResearchCommand = { action: 'import', projectId: PROJECT.id, paths: ['data/results.csv'] }
 
 /** One durable task handle in the shape the Host stores it. */
 function task(id: string, status: ResearchTask['status'], message: string, result?: ResearchResponse): ResearchTask {
@@ -84,14 +90,20 @@ function bad(message: string): RemoteResult<never> {
 }
 
 /** A promise this spec settles by hand, so an in-flight call can be observed. */
-function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void; fail: (reason: unknown) => void } {
+function deferred<T>(): { promise: Promise<T>; settle: (value: T) => void } {
   let settle!: (value: T) => void
-  let fail!: (reason: unknown) => void
-  const promise = new Promise<T>((resolve, reject) => {
-    settle = resolve
-    fail = reject
-  })
-  return { promise, settle, fail }
+  const promise = new Promise<T>((resolve) => { settle = resolve })
+  return { promise, settle }
+}
+
+/** Let the plugin's own promise chains run, where the clock is fake. */
+async function flush(): Promise<void> {
+  for (let round = 0; round < 6; round++) await Promise.resolve()
+}
+
+/** Let every promise chain the recorders started run to its end, on the real clock. */
+function idle(): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, 0) })
 }
 
 /** One contributed right-sidebar tab type, as the registry records it. */
@@ -111,7 +123,7 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-async function bench(history: ResearchTask[] = []) {
+async function bench() {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   // The frame this plugin registers into: every seat it takes has to be
@@ -134,6 +146,8 @@ async function bench(history: ResearchTask[] = []) {
       'shell.overlay': { kind: 'list', scope: 'root' },
       'settings.section': { kind: 'list', scope: 'root' },
       'settings.onboarding': { kind: 'list', scope: 'root' },
+      'settings.general.item': { kind: 'list', scope: 'root' },
+      'settings.action': { kind: 'list', scope: 'root' },
       'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
       'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
     },
@@ -141,7 +155,7 @@ async function bench(history: ResearchTask[] = []) {
 
   const remote = {
     snapshot: vi.fn((): Answer<ResearchSnapshot> => Promise.resolve(ok(BLANK))),
-    tasks: vi.fn((): Answer<ResearchTask[]> => Promise.resolve(ok(history))),
+    tasks: vi.fn((): Answer<ResearchTask[]> => Promise.resolve(ok([]))),
     create: vi.fn((_request: CreateProjectRequest): Answer<ResearchProject> => Promise.resolve(ok(PROJECT))),
     command: vi.fn((_request: ResearchCommand, _signal: AbortSignal): Answer<ResearchResponse> => Promise.resolve(ok(OUTCOME))),
     configure: vi.fn((_preferences: unknown): Answer<unknown> => Promise.resolve(ok({}))),
@@ -170,11 +184,11 @@ async function bench(history: ResearchTask[] = []) {
   const commandResult: { current: RemoteResult<{ matched: boolean }> } = { current: ok({ matched: true }) }
   const face = { command: vi.fn((_line: string) => Promise.resolve(commandResult.current)) }
   const sessions = {
-    open: vi.fn(),
     list,
     binding: vi.fn((id: string) => id === 'session-a' ? { session: face } : undefined),
   }
   const publishSessions = (next: Record<string, { cwd?: string }>): void => { listed = next; for (const listener of listeners) listener() }
+  const uiWorkspace = { openSession: vi.fn(), openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()) }
   const sidebarRight = { openTab: vi.fn(), openResource: vi.fn() }
   const tabs: TabType[] = []
   const sidebarRightTabs = {
@@ -190,6 +204,7 @@ async function bench(history: ResearchTask[] = []) {
   ctx.provide('locale', locale as never)
   ctx.provide('layout', layout as never)
   ctx.provide('sessions', sessions as never)
+  ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('sidebarRight', sidebarRight as never)
   ctx.provide('sidebarRightTabs', sidebarRightTabs as never)
 
@@ -208,8 +223,8 @@ async function bench(history: ResearchTask[] = []) {
   // apply() starts one read of its own; joining it leaves the store settled.
   await injected.refresh()
   return {
-    ctx, dictionaries, directoryPicker, face: injected, fiber, layout, locale, remote, seat, sessions, tabs,
-    sessionFace: face, commandResult, publishSessions, sidebarRight,
+    ctx, dictionaries, directoryPicker, face: injected, fiber, layout, remote, seat, tabs,
+    sessionFace: face, commandResult, publishSessions, sidebarRight, uiWorkspace,
   }
 }
 
@@ -220,11 +235,12 @@ async function stop(target: { fiber: { dispose: () => Promise<void> } }): Promis
 }
 
 describe('the research plugin', () => {
-  it('suggests the research rail width only when opening a project', async () => {
+  it('suggests the research rail width only when the person opens the research tab', async () => {
     const b = await bench()
     expect(b.layout.setInitialRightbarWidth).not.toHaveBeenCalled()
-    b.face.showProgress?.()
+    b.face.showProgress()
     expect(b.layout.setInitialRightbarWidth).toHaveBeenCalledWith(320)
+    expect(b.sidebarRight.openTab).toHaveBeenCalledWith('research')
   })
 
   it('hands the first run past the harness notice at once, showing nothing', () => {
@@ -234,10 +250,33 @@ describe('the research plugin', () => {
     expect(complete).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the host half empty', () => {
-    expect(() => { applyHost() }).not.toThrow()
+  it('has the host half put the validated setting into every served page, and take it back', async () => {
+    const host = new Context()
+    host.provide('webServer', {} as never)
+    const served = async (config?: unknown): Promise<unknown[]> => {
+      const fiber = config === undefined ? host.plugin({ apply: applyHost }) : host.plugin({ apply: applyHost, Config: HostConfig }, config)
+      await fiber.await()
+      const rows: unknown[] = []
+      host.emit('webserver/index-inject', rows as never)
+      await fiber.dispose()
+      const after: unknown[] = []
+      host.emit('webserver/index-inject', after as never)
+      expect(after).toEqual([])
+      return rows
+    }
+    const global = (hideDeveloperCells: boolean): unknown[] => [{ kind: 'global', name: '__DSH_RESEARCH__', value: { hideDeveloperCells } }]
+    expect(await served({ hideDeveloperCells: true })).toEqual(global(true))
+    expect(await served({})).toEqual(global(false))
+    expect(await served()).toEqual(global(false))
+    // A row whose YAML says something other than a boolean fails the load.
+    expect(() => HostConfig({ hideDeveloperCells: 'yes' } as never)).toThrow()
+    // Without a Web server no page is served, and applying does nothing.
+    await new Context().plugin({ apply: applyHost }).await()
+  })
+
+  it('injects exactly the services it reads', () => {
     expect(inject).toEqual([
-      'remote', 'remote.research', 'remote.directoryPicker', 'slots', 'locale', 'layout', 'sessions', 'sidebarRight',
+      'remote', 'remote.research', 'remote.directoryPicker', 'slots', 'locale', 'layout', 'sessions', 'sidebarRight', 'uiWorkspace',
     ])
   })
 
@@ -250,19 +289,25 @@ describe('the research plugin', () => {
     expect(b.seat('sidebar.brand.mark')).toMatchObject({ component: ResearchMark })
     expect(b.seat('conversation.session.header.actions', 'research-status'))
       .toMatchObject({ locale: 'research', component: ResearchStatusChip, options: { order: 5 } })
-    expect(b.seat('conversation.session.header.utilities', 'research-project'))
-      .toMatchObject({ locale: 'research', component: ResearchProjectActions, options: { order: 5 } })
     expect(b.seat('conversation.hero.brand.mark')).toMatchObject({ component: ResearchHeroMark })
-    expect(b.seat('conversation.input.dock', 'research-openings'))
-      .toMatchObject({ locale: 'research', component: ResearchDock, options: { order: 5 } })
+    expect(b.seat('conversation.hero.welcome', 'research-create'))
+      .toMatchObject({ locale: 'research', component: ResearchProjectEntry, options: { order: 10 } })
+    expect(b.seat('sidebar.projects', 'research-projects')).toMatchObject({ locale: 'research', component: ResearchProjects })
+    expect(b.seat('conversation.input.left', 'research-new-project'))
+      .toMatchObject({ locale: 'research', component: ResearchNewProject, options: { order: 5 } })
     expect(b.seat('conversation.input.dock', 'research-runs'))
       .toMatchObject({ locale: 'research', component: ResearchRuns, options: { order: 6 } })
     expect(b.seat('shell.overlay', 'research-claim'))
       .toMatchObject({ locale: 'research', component: ResearchClaimSheet, options: { order: 20 } })
-    expect(b.seat('conversation.hero.footer', 'research-promise'))
-      .toMatchObject({ locale: 'research', component: ResearchPromise, options: { order: 5 } })
     expect(b.seat('sidebar.right.pane.tab', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRail })
     expect(b.seat('sidebar.right.pane.tab.title', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRailTitle })
+
+    // The entry screen carries no cards, intro or promises, the input dock no second research entry,
+    // and the header no file, board or gallery buttons.
+    expect(b.ctx.slots.entries('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-create'])
+    expect(b.ctx.slots.entries('conversation.hero.footer')).toHaveLength(0)
+    expect(b.ctx.slots.entries('conversation.input.dock').map(entry => entry.options.id)).toEqual(['research-runs'])
+    expect(b.ctx.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
 
     // The settings row names itself through the dictionary, at read time.
     const settings = b.seat('settings.section', 'research')
@@ -286,10 +331,9 @@ describe('the research plugin', () => {
     await stop(b)
 
     for (const name of [
-      'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions',
-      'conversation.session.header.utilities', 'conversation.hero.brand.mark', 'conversation.input.dock',
-      'conversation.composer.dock', 'shell.overlay', 'settings.section', 'settings.onboarding',
-      'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
+      'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions', 'sidebar.projects',
+      'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock', 'conversation.input.left',
+      'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
     ]) {
       expect(b.ctx.slots.entries(name as never)).toHaveLength(0)
     }
@@ -297,40 +341,59 @@ describe('the research plugin', () => {
     expect(b.dictionaries.size).toBe(0)
   })
 
-  it('folds each task exactly once: a result becomes the response, a failure becomes the error', async () => {
-    const b = await bench()
-    b.remote.snapshot.mockResolvedValue(ok(LOADED))
-    b.remote.tasks.mockResolvedValue(ok([
-      task('task-running', 'running', 'still going'),
-      task('task-quiet', 'completed', 'nothing to say'),
-      task('task-done', 'completed', 'stage finished', OUTCOME),
-      task('task-broken', 'failed', 'the run never started'),
-    ]))
-    await b.face.refresh()
+  // The composer's turn/step/token/cache pills, General settings' default access preset, and the open-config-file button.
+  const DEVELOPER_CELLS = [
+    ['conversation.composer.dock', 'stats'],
+    ['settings.general.item', 'permission'],
+    ['settings.action', 'open-document'],
+  ] as const
+  const Shipped = (): ReactNode => 'a shipped cell'
+  /** What each developer cell's outlet renders: the lowest-priority entry registered under that id. */
+  const winners = (ctx: Context): unknown[] => DEVELOPER_CELLS.map(([name]) => ctx.slots.entriesOfSlot(name)
+    .map(entry => [entry.options.id, entry.component]))
 
-    const first = b.face.hooks.research.getSnapshot()
-    expect(first.snapshot).toBe(LOADED)
-    expect(first.tasks).toHaveLength(4)
-    expect(first.response).toBe(OUTCOME)
-    expect(first.error).toBe('the run never started')
+  /** The global the host half puts into the served page. */
+  const page = globalThis as { __DSH_RESEARCH__?: unknown }
 
-    // A second read sees the same handles: already observed, so nothing folds again.
-    b.remote.tasks.mockResolvedValue(ok([
-      task('task-running', 'running', 'still going'),
-      task('task-done', 'completed', 'stage finished', { message: 'a later answer' }),
-      task('task-broken', 'failed', 'a later failure'),
-    ]))
-    await b.face.refresh()
-    expect(b.face.hooks.research.getSnapshot().response).toBe(OUTCOME)
-    expect(b.face.hooks.research.getSnapshot().error).toBe('the run never started')
+  it('draws nothing in place of the shell\'s developer cells when the page says so, and gives them back with the fiber', async () => {
+    page.__DSH_RESEARCH__ = { hideDeveloperCells: true }
+    try {
+      const b = await bench()
+      for (const [name, id] of DEVELOPER_CELLS) b.ctx.slots.register({ name, id } as never, Shipped)
 
-    // The running one is only folded once it stops running.
-    b.remote.tasks.mockResolvedValue(ok([task('task-running', 'completed', 'done at last', { message: 'late answer' })]))
-    await b.face.refresh()
-    expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'late answer' })
+      expect(winners(b.ctx)).toEqual([[['stats', EmptyCell]], [['permission', EmptyCell]], [['open-document', EmptyCell]]])
+      expect(render(createElement(EmptyCell)).container.innerHTML).toBe('')
+
+      await stop(b)
+      expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
+    } finally {
+      delete page.__DSH_RESEARCH__
+    }
   })
 
-  it('shares one promise between concurrent reads, and keeps a rejected read as the error', async () => {
+  it('leaves the shell\'s developer cells alone on a page without the setting', async () => {
+    for (const global of [undefined, {}, { hideDeveloperCells: 'yes' }]) {
+      if (global === undefined) delete page.__DSH_RESEARCH__
+      else page.__DSH_RESEARCH__ = global
+      const b = await bench()
+      for (const [name, id] of DEVELOPER_CELLS) b.ctx.slots.register({ name, id } as never, Shipped)
+      expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
+      await stop(b)
+    }
+    delete page.__DSH_RESEARCH__
+  })
+
+  it('keeps the record and the job list it reads, and nothing about any action\'s progress', async () => {
+    const b = await bench()
+    b.remote.snapshot.mockResolvedValue(ok(LOADED))
+    b.remote.tasks.mockResolvedValue(ok([task('task-running', 'running', 'still going'), task('task-broken', 'failed', 'the run never started')]))
+    await b.face.refresh()
+    expect(b.face.hooks.research.getSnapshot()).toEqual({ snapshot: LOADED, tasks: [
+      task('task-running', 'running', 'still going'), task('task-broken', 'failed', 'the run never started'),
+    ], response: null })
+  })
+
+  it('shares one promise between concurrent reads, and keeps the last record when a read fails', async () => {
     const b = await bench()
     const pending = deferred<RemoteResult<ResearchSnapshot>>()
     b.remote.snapshot.mockClear()
@@ -344,10 +407,12 @@ describe('the research plugin', () => {
     await first
     expect(b.face.hooks.research.getSnapshot().snapshot).toBe(LOADED)
 
-    // Once it settles the next call reads again, and a rejection is reported.
+    // Once it settles the next call reads again; a rejected or refused read never rejects and changes nothing.
     b.remote.snapshot.mockRejectedValueOnce(new Error('the carrier is down'))
+    await expect(b.face.refresh()).resolves.toBeUndefined()
+    b.remote.snapshot.mockResolvedValueOnce(bad('the ledger is locked'))
     await b.face.refresh()
-    expect(b.face.hooks.research.getSnapshot().error).toBe('Error: the carrier is down')
+    expect(b.face.hooks.research.getSnapshot().snapshot).toBe(LOADED)
   })
 
   it('drops a read that lands after the fiber is gone', async () => {
@@ -361,46 +426,53 @@ describe('the research plugin', () => {
     expect(b.face.hooks.research.getSnapshot().snapshot).toBe(BLANK)
   })
 
-  it('drops a read that fails after the fiber is gone', async () => {
-    const b = await bench()
-    const late = deferred<RemoteResult<ResearchSnapshot>>()
-    b.remote.snapshot.mockImplementationOnce(() => late.promise)
-    const failing = b.face.refresh()
-    await stop(b)
-    late.fail(new Error('too late'))
-    await failing
-    expect(b.face.hooks.research.getSnapshot().error).toBe('')
-  })
-
-  it('marks itself busy around an action, and keeps whatever the action threw', async () => {
+  it('hands every refusal to the caller that asked, and reads the record again after each action', async () => {
     const b = await bench()
     const slow = deferred<RemoteResult<ResearchProject>>()
     b.remote.create.mockImplementationOnce(() => slow.promise)
+    b.remote.snapshot.mockClear()
 
     const creating = b.face.create(NEW_PROJECT)
-    expect(b.face.hooks.research.getSnapshot().busy).toBe(true)
     slow.settle(ok(PROJECT))
-    await creating
-    expect(b.face.hooks.research.getSnapshot().busy).toBe(false)
-    expect(b.face.hooks.research.getSnapshot().error).toBe('')
+    expect(await creating).toBe(PROJECT)
+    expect(b.remote.snapshot).toHaveBeenCalledTimes(1)
 
     // A refused call: the Remote answered, the answer said no.
     b.remote.create.mockResolvedValueOnce(bad('that directory is already a project'))
     await expect(b.face.create(NEW_PROJECT)).rejects.toThrow('that directory is already a project')
-    expect(b.face.hooks.research.getSnapshot().error).toBe('that directory is already a project')
-    expect(b.face.hooks.research.getSnapshot().busy).toBe(false)
-
-    // A throw that is not an Error at all.
+    // A throw that is not an Error at all reaches the caller unchanged.
     b.remote.create.mockRejectedValueOnce('the bridge went away')
     await expect(b.face.create(NEW_PROJECT)).rejects.toBe('the bridge went away')
-    expect(b.face.hooks.research.getSnapshot().error).toBe('the bridge went away')
-    expect(b.face.hooks.research.getSnapshot().busy).toBe(false)
+    b.remote.command.mockResolvedValueOnce(bad('no such project'))
+    await expect(b.face.run(CHECK)).rejects.toThrow('no such project')
+    b.remote.configure.mockResolvedValueOnce(bad('invalid preferences'))
+    await expect(b.face.configure({}, { image: '', embedding: '' })).rejects.toThrow('invalid preferences')
+    b.directoryPicker.pick.mockResolvedValueOnce(bad('no native picker'))
+    await expect(b.face.pickDirectory()).rejects.toThrow('no native picker')
+  })
+
+  it('starts the read that follows an action after a read already in flight', async () => {
+    const b = await bench()
+    const inFlight = deferred<RemoteResult<ResearchSnapshot>>()
+    b.remote.snapshot.mockImplementationOnce(() => inFlight.promise)
+    const polling = b.face.refresh()
+    b.remote.snapshot.mockClear()
+    b.remote.snapshot.mockResolvedValue(ok(LOADED))
+    const running = b.face.run(CHECK)
+    await flush()
+    // The action's own read waits for the one that may predate it.
+    expect(b.remote.snapshot).not.toHaveBeenCalled()
+    inFlight.settle(ok(BLANK))
+    await polling
+    expect(await running).toBe(OUTCOME)
+    expect(b.remote.snapshot).toHaveBeenCalledTimes(1)
+    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ snapshot: LOADED, response: OUTCOME })
   })
 
   it('sends each action to its own Remote method', async () => {
     const b = await bench()
 
-    // The created record comes back, because the caller starts its first stage.
+    // The created record comes back, because the caller opens its conversation.
     expect(await b.face.create(NEW_PROJECT)).toBe(PROJECT)
     expect(b.remote.create).toHaveBeenCalledWith(NEW_PROJECT)
 
@@ -425,7 +497,7 @@ describe('the research plugin', () => {
     expect(b.remote.installComponent).toHaveBeenCalledWith('python')
     expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
 
-    // A gallery search answers with its page, and leaves the workbench's busy state and last response alone.
+    // A gallery search answers with its page, and leaves the last response alone.
     const search = { action: 'find-reference-figures' as const, projectId: PROJECT.id, query: 'agent memory' }
     const gallery = {
       total: 0, offset: 0, figures: [], basis: 'keyword' as const,
@@ -434,32 +506,133 @@ describe('the research plugin', () => {
     b.remote.command.mockResolvedValueOnce(ok({ message: '0 figures', gallery }))
     expect(await b.face.searchFigures(search)).toBe(gallery)
     expect(b.remote.command).toHaveBeenLastCalledWith(search, expect.any(AbortSignal))
-    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ busy: false, response: { message: 'python ready' } })
+    expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
     b.remote.command.mockResolvedValueOnce(ok({ message: 'no page' }))
     await expect(b.face.searchFigures(search)).rejects.toThrow(/returned no page/)
     b.remote.command.mockResolvedValueOnce(bad('gallery offline'))
     await expect(b.face.searchFigures(search)).rejects.toThrow('gallery offline')
 
-    // A board read answers with the board, and leaves the workbench alone the same way.
+    // A board read answers with the board, and leaves the response alone the same way.
     const read = { action: 'board-view' as const, projectId: PROJECT.id, refresh: true }
     const board = { spec: { sections: [], collectors: [] }, refreshing: false, machines: [], series: {}, collected: {}, alerts: [] }
     b.remote.command.mockResolvedValueOnce(ok({ message: 'Experiment board', board }))
     expect(await b.face.board(read)).toBe(board)
     expect(b.remote.command).toHaveBeenLastCalledWith(read, expect.any(AbortSignal))
-    expect(b.face.hooks.research.getSnapshot()).toMatchObject({ busy: false, response: { message: 'python ready' } })
+    expect(b.face.hooks.research.getSnapshot().response).toEqual({ message: 'python ready' })
     b.remote.command.mockResolvedValueOnce(ok({ message: 'nothing' }))
     await expect(b.face.board(read)).rejects.toThrow(/returned nothing/)
   })
 
-  it('moves the frame: back to a conversation, onto the panel, and onto one claim', async () => {
+  it('follows a job the host started until the job list reports it settled', async () => {
+    const b = await bench()
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'import started', jobId: 'job-import' }))
+    let answer: ResearchResponse | undefined
+    const running = b.face.run(IMPORT).then((response) => { answer = response })
+    await idle()
+    // Not listed yet, then listed as running: the caller keeps waiting, and the response is not replaced yet.
+    expect(answer).toBeUndefined()
+    b.remote.tasks.mockResolvedValue(ok([task('job-import', 'running', 'import')]))
+    await b.face.refresh()
+    await idle()
+    expect(answer).toBeUndefined()
+    expect(b.face.hooks.research.getSnapshot().response).toBeNull()
+    const imported = { message: 'Imported 1 source' }
+    b.remote.tasks.mockResolvedValue(ok([task('job-import', 'completed', 'Imported 1 source', imported)]))
+    await b.face.refresh()
+    await running
+    expect(answer).toBe(imported)
+    expect(b.face.hooks.research.getSnapshot().response).toBe(imported)
+
+    // A job that settled before the action's own read: its message stands in for a result it did not carry.
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'refresh started', jobId: 'job-quiet' }))
+    b.remote.tasks.mockResolvedValue(ok([task('job-quiet', 'completed', 'nothing to say')]))
+    expect(await b.face.run(IMPORT)).toEqual({ message: 'nothing to say' })
+
+    // A failed job rejects with the host's own message, and so does an install's.
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'cancel started', jobId: 'job-cancel' }))
+    b.remote.tasks.mockResolvedValue(ok([task('job-cancel', 'failed', 'The supervisor is unreachable')]))
+    await expect(b.face.run(IMPORT)).rejects.toThrow('The supervisor is unreachable')
+    b.remote.installComponent.mockResolvedValueOnce(ok({ message: 'install-latex started', jobId: 'job-latex' }))
+    b.remote.tasks.mockResolvedValue(ok([task('job-latex', 'interrupted', 'the application restarted')]))
+    await expect(b.face.install('latex')).rejects.toThrow('the application restarted')
+  })
+
+  it('leaves a followed job\'s caller alone once the fiber goes, while waiting on the job or still reading', async () => {
+    const outcomes: string[] = []
+    const record = (promise: Promise<unknown>): void => {
+      void promise.then(() => { outcomes.push('resolved') }, () => { outcomes.push('rejected') })
+    }
+
+    // Waiting on the job: the host lists it as running when the fiber goes.
+    const waiting = await bench()
+    waiting.remote.command.mockResolvedValueOnce(ok({ message: 'import started', jobId: 'job-long' }))
+    waiting.remote.tasks.mockResolvedValue(ok([task('job-long', 'running', 'import')]))
+    record(waiting.face.run(IMPORT))
+    await idle()
+    expect(waiting.face.hooks.research.getSnapshot().tasks).toEqual([task('job-long', 'running', 'import')])
+    await stop(waiting)
+    await idle()
+    expect(waiting.face.hooks.research.getSnapshot().response).toBeNull()
+
+    // Still reading: the command answered, and the fiber went before the action's own read landed.
+    const reading = await bench()
+    const late = deferred<RemoteResult<ResearchSnapshot>>()
+    reading.remote.command.mockResolvedValueOnce(ok({ message: 'import started', jobId: 'job-late' }))
+    reading.remote.snapshot.mockImplementationOnce(() => late.promise)
+    record(reading.face.run(IMPORT))
+    await idle()
+    await stop(reading)
+    late.settle(ok(LOADED))
+    await idle()
+    expect(reading.face.hooks.research.getSnapshot()).toEqual({ snapshot: BLANK, tasks: [], response: null })
+
+    expect(outcomes).toEqual([])
+  })
+
+  it('opens a conversation once it is listed, and the research folder\'s blank one when it never is', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const b = await bench()
 
-    await b.face.openConversation('session-42')
-    expect(b.sessions.open).toHaveBeenCalledWith('session-42')
-    expect(b.layout.selectPanel).toHaveBeenCalledWith(null)
+    // Listed already: selected at once.
+    await b.face.openConversation('session-a', 'workspace-sparse')
+    expect(b.uiWorkspace.openSession).toHaveBeenCalledWith('session-a')
+    expect(b.uiWorkspace.openWorkspace).not.toHaveBeenCalled()
+
+    // Listed a moment later, as a project's new conversation is: selected when it appears.
+    const arriving = b.face.openConversation('session-new', 'workspace-sparse')
+    b.publishSessions({ 'session-a': {} })
+    await flush()
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalledWith('session-new')
+    b.publishSessions({ 'session-a': {}, 'session-new': { cwd: '/research/sparse' } })
+    await arriving
+    expect(b.uiWorkspace.openSession).toHaveBeenLastCalledWith('session-new')
+
+    // Never listed within five seconds: the folder's blank conversation opens instead of a failure the person cannot act on.
+    const missing = b.face.openConversation('session-gone', 'workspace-sparse')
+    await vi.advanceTimersByTimeAsync(4999)
+    expect(b.uiWorkspace.openWorkspace).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    await missing
+    expect(b.uiWorkspace.openWorkspace).toHaveBeenCalledWith('workspace-sparse')
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalledWith('session-gone')
+
+    // The fiber going away ends the wait and opens nothing, then or later.
+    const abandoned = b.face.openConversation('session-late', 'workspace-sparse')
+    await stop(b)
+    await abandoned
+    b.publishSessions({ 'session-late': {} })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(b.uiWorkspace.openWorkspace).toHaveBeenCalledTimes(1)
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalledWith('session-late')
+  })
+
+  it('moves the frame onto the panel and one claim, and opens the research folder\'s files', async () => {
+    const b = await bench()
 
     b.face.expand()
     expect(b.layout.selectPanel).toHaveBeenLastCalledWith('research')
+    b.face.openFiles()
+    expect(b.sidebarRight.openTab).toHaveBeenCalledWith('files')
 
     b.remote.snapshot.mockResolvedValue(ok(LOADED))
     await b.face.refresh()
@@ -467,15 +640,15 @@ describe('the research plugin', () => {
       t: (key: string) => (zh as Record<string, string>)[key] ?? key,
       useResearch: (select: (value: ResearchView) => unknown) => select(b.face.hooks.research.getSnapshot()),
       useFocus: (select: (value: ResearchFocus) => unknown) => select(b.face.hooks.focus.getSnapshot()),
-      focusClaim: (claimId: string | null) => { b.face.focusClaim(claimId) },
+      focusClaim: (claim: ResearchFocus['claim']) => { b.face.focusClaim(claim) },
     } as unknown as WorkbenchProps
 
     const view = render(createElement(ResearchClaimSheet, props))
     expect(document.body.querySelector('[role="dialog"]')).toBeNull()
 
     // The rail and the overlay never meet; the store is how one reaches the other.
-    b.face.focusClaim(CLAIM_ID)
-    expect(b.face.hooks.focus.getSnapshot()).toMatchObject({ claimId: CLAIM_ID, panel: 'workflow' })
+    b.face.focusClaim({ projectId: PROJECT.id, claimId: CLAIM_ID })
+    expect(b.face.hooks.focus.getSnapshot()).toMatchObject({ claim: { projectId: PROJECT.id, claimId: CLAIM_ID }, panel: 'workflow' })
     view.rerender(createElement(ResearchClaimSheet, props))
     expect(view.getByRole('dialog').getAttribute('aria-label')).toBe(zh.claim)
     expect(view.getByText(CLAIM_TEXT)).toBeTruthy()
@@ -506,26 +679,21 @@ describe('the research plugin', () => {
 })
 
 describe('the face a research seat acts through', () => {
-  it('runs a slash command in a live session and reports what the host refused', async () => {
+  it('runs a slash command in a live session and hands back what the host refused', async () => {
     const b = await bench()
     await b.face.command('session-a', '/permission research-auto')
     expect(b.sessionFace.command).toHaveBeenCalledWith('/permission research-auto')
     b.commandResult.current = bad('no such preset')
     await expect(b.face.command('session-a', '/permission nope')).rejects.toThrow('no such preset')
-    await expect(b.face.command('session-missing', '/goal x')).rejects.toThrow(/not ready/)
-    expect(b.face.hooks.research.getSnapshot().error).toMatch(/not ready/)
+    await expect(b.face.command('session-missing', '/permission workspace-write')).rejects.toThrow(/not ready/)
   })
 
-  it('opens project files in the right sidebar, and keeps a refusal as the error', async () => {
+  it('opens project files in the right sidebar, and lets a refusal reach the caller', async () => {
     const b = await bench()
     b.face.openFile('C:\\research\\sparse', 'paper\\main.pdf')
     expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/absolute/C:/research/sparse/paper/main.pdf')
     b.sidebarRight.openResource.mockImplementationOnce(() => { throw new Error('no session is bound') })
-    b.face.openFile('/r', 'x.pdf')
-    expect(b.face.hooks.research.getSnapshot().error).toBe('no session is bound')
-    b.sidebarRight.openResource.mockImplementationOnce(() => { throw 'plain refusal' })
-    b.face.openFile('/r', 'x.pdf')
-    expect(b.face.hooks.research.getSnapshot().error).toBe('plain refusal')
+    expect(() => { b.face.openFile('/r', 'x.pdf') }).toThrow('no session is bound')
   })
 
   it('tracks every listed session\'s working directory as the list changes', async () => {
@@ -533,17 +701,5 @@ describe('the face a research seat acts through', () => {
     expect(b.face.hooks.directories.getSnapshot()).toEqual({ 'session-a': 'C:\\research\\sparse' })
     b.publishSessions({ 'session-c': { cwd: '/research/other' } })
     expect(b.face.hooks.directories.getSnapshot()).toEqual({ 'session-c': '/research/other' })
-  })
-
-  it('treats tasks already settled at the first read as history, and reports an interruption after it', async () => {
-    const b = await bench()
-    b.remote.tasks.mockResolvedValue(ok([task('task-late', 'interrupted', 'the application restarted')]))
-    await b.face.refresh()
-    expect(b.face.hooks.research.getSnapshot().error).toBe('the application restarted')
-    // A fresh window over settled history reports nothing from it, on the first read or after.
-    const fresh = await bench([task('task-old', 'failed', 'old failure', { message: 'old answer' })])
-    await fresh.face.refresh()
-    expect(fresh.face.hooks.research.getSnapshot().error).toBe('')
-    expect(fresh.face.hooks.research.getSnapshot().response).toBeNull()
   })
 })

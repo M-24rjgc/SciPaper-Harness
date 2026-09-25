@@ -8,6 +8,7 @@ import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ComponentStatus, ResearchPreferences } from '@deepseek-ai/dsh-research-workbench/types'
 import type { ResearchKey } from './locales.ts'
 import type { WorkbenchProps } from './contract.ts'
+import { ActionError, useAction } from './Action.tsx'
 import { EnvironmentForm } from './EnvironmentForm.tsx'
 import styles from './ResearchSettings.module.css'
 
@@ -75,7 +76,7 @@ function Role(props: {
       <span className={styles.roleTitle}>{props.title}</span>
       <span className={styles.roleBody}>{props.body}</span>
       <span className={styles.roleStanding}>{props.standing}</span>
-      {props.note !== '' && <span className={styles.roleNote}>{props.note}</span>}
+      <span className={styles.roleNote}>{props.note}</span>
     </summary>
     <div className={styles.roleFields}>
       <Field
@@ -93,20 +94,24 @@ function Role(props: {
 }
 
 /** One managed component, with the action only an absent one offers. */
-function Component(props: WorkbenchProps & { component: ComponentStatus; busy: boolean }): ReactNode {
+function Component(props: WorkbenchProps & { component: ComponentStatus }): ReactNode {
   const { component, t } = props
-  return <div className={styles.component}>
-    <span className={component.installed ? styles.componentOn : styles.componentOff}></span>
-    <span className={styles.componentName}>{component.id}</span>
-    <span className={styles.componentVersion}>{component.version}</span>
-    {component.installed
-      ? <Tag tone="success">{t('installed')}</Tag>
-      : <button
-        type="button"
-        className={styles.install}
-        disabled={props.busy}
-        onClick={() => { void props.install(component.id).catch(() => {}) }}
-      >{t('notInstalled')}</button>}
+  const installing = useAction()
+  return <div className={styles.componentCell}>
+    <div className={styles.component}>
+      <span className={component.installed ? styles.componentOn : styles.componentOff}></span>
+      <span className={styles.componentName}>{component.id}</span>
+      <span className={styles.componentVersion}>{component.version}</span>
+      {component.installed
+        ? <Tag tone="success">{t('installed')}</Tag>
+        : <button
+          type="button"
+          className={styles.install}
+          disabled={installing.pending}
+          onClick={() => { installing.start(() => props.install(component.id)) }}
+        >{t(installing.pending ? 'installing' : 'notInstalled')}</button>}
+    </div>
+    <ActionError t={t} error={installing.error} />
   </div>
 }
 
@@ -114,6 +119,7 @@ function Component(props: WorkbenchProps & { component: ComponentStatus; busy: b
 export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   const { t } = props
   const view = props.useResearch(s => s)
+  const saving = useAction()
   const preferences = view.snapshot?.preferences ?? {}
   const environments = (view.snapshot?.projects ?? []).flatMap(project =>
     project.environments.map(environment => ({ project: project.title, environment })))
@@ -122,8 +128,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
     const form = new FormData(event.currentTarget)
     const endpoint = text(form, 'imageEndpoint') || (text(form, 'imageKey') ? IMAGE_START.baseUrl : '')
     const embeddingEndpoint = text(form, 'embeddingEndpoint') || (text(form, 'embeddingKey') ? EMBEDDING_START.baseUrl : '')
+    // The conversation's model is chosen in the composer, so no main-model binding is written; one stored earlier is dropped here.
     const next: ResearchPreferences = {
-      ...(text(form, 'mainModel') ? { main: { provider: text(form, 'mainProvider'), model: text(form, 'mainModel') } } : {}),
       ...(text(form, 'visionModel') ? { vision: { provider: text(form, 'visionProvider'), model: text(form, 'visionModel') } } : {}),
       // A key alone is enough: the endpoint then defaults to OpenAI's. An untouched form enables nothing.
       ...(endpoint
@@ -140,11 +146,10 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       ...(text(form, 'uvPath') ? { uv: text(form, 'uvPath') } : {}),
       ...(text(form, 'texPath') ? { texBin: text(form, 'texPath') } : {}),
     }
-    void props.configure(next, { image: text(form, 'imageKey'), embedding: text(form, 'embeddingKey') }).catch(() => {})
+    const keys = { image: text(form, 'imageKey'), embedding: text(form, 'embeddingKey') }
+    saving.start(() => props.configure(next, keys))
   }
   const values: Partial<Record<ResearchKey, string | undefined>> = {
-    mainProvider: preferences.main?.provider,
-    mainModel: preferences.main?.model,
     visionProvider: preferences.vision?.provider,
     visionModel: preferences.vision?.model,
     imageEndpoint: preferences.image?.baseUrl,
@@ -158,20 +163,10 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   }
   return <div className={styles.root}>
     <p className={styles.subtitle}>{t('settingsSubtitle')}</p>
-    {view.error && <p className={styles.error} role="alert">{view.error}</p>}
 
     <form key={JSON.stringify(preferences)} className={styles.group} onSubmit={save}>
       <h3 className={styles.groupTitle}>{t('modelRoles')}</h3>
       <p className={styles.groupHint}>{t('modelHelp')}</p>
-      <Role
-        t={t}
-        title={t('roleMain')}
-        body={t('roleMainBody')}
-        standing={preferences.main === undefined ? t('roleUnset') : `${preferences.main.provider} · ${preferences.main.model}`}
-        note=""
-        fields={{ provider: 'mainProvider', model: 'mainModel' }}
-        values={values}
-      />
       <Role
         t={t}
         title={t('roleVision')}
@@ -219,7 +214,9 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
           <Field label={t('texPath')} name="texPath" {...(values.texPath ? { defaultValue: values.texPath } : {})} />
         </div>
       </details>
-      <button type="submit" className={styles.save} disabled={view.busy}>{t('save')}</button>
+      <button type="submit" className={styles.save} disabled={saving.pending}>{t(saving.pending ? 'saving' : 'save')}</button>
+      {saving.done && <p className={styles.groupHint} role="status">{t('settingsSaved')}</p>}
+      <ActionError t={t} error={saving.error} />
     </form>
 
     <section className={styles.group}>
@@ -227,7 +224,7 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       <p className={styles.groupHint}>{t('localComponentsNote')}</p>
       <div className={styles.components}>
         {view.snapshot?.components.map(component =>
-          <Component key={component.id} {...props} component={component} busy={view.busy} />)}
+          <Component key={component.id} {...props} component={component} />)}
       </div>
     </section>
 
@@ -243,7 +240,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
               {entry.project} · {t(entry.environment.target)} · {entry.environment.python}
             </span>
             {entry.environment.isDefault && <Tag tone="info">{t('environmentDefault')}</Tag>}
-            <Tag tone={entry.environment.status === 'ready' ? 'success' : 'warning'}>{t(entry.environment.status)}</Tag>
+            {/* `ready` is only what creation found, never probed since, so it earns no tag; an unusual state still does. */}
+            {entry.environment.status !== 'ready' && <Tag tone="warning">{t(entry.environment.status)}</Tag>}
           </div>)}
         </div>}
     </section>

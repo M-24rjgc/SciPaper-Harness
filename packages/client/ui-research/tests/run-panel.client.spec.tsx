@@ -7,7 +7,7 @@
  * the validator the service parses commands with.
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -38,9 +38,16 @@ function say(key: keyof typeof zh, params: Record<string, string | number> = {})
   return Object.entries(params).reduce((text, [name, value]) => text.replace(`{${name}}`, String(value)), zh[key])
 }
 
-/** Let the handlers the panel attached to its own promises run before asserting. */
-function settle(): Promise<void> {
-  return new Promise<void>((resolve) => { setTimeout(resolve, 0) })
+/** Let the work a press started, and the state it settles into, run before asserting. */
+async function flush(): Promise<void> {
+  await act(async () => { for (let index = 0; index < 6; index++) await Promise.resolve() })
+}
+
+/** A host answer the test settles by hand, to look at the panel while the work is under way. */
+function pending(): { promise: Promise<ResearchResponse>; resolve(response: ResearchResponse): void } {
+  let resolve = (_response: ResearchResponse): void => {}
+  const promise = new Promise<ResearchResponse>((done) => { resolve = done })
+  return { promise, resolve: (response) => { resolve(response) } }
 }
 
 /** A project with registered run code and a ready environment: all a run needs. */
@@ -81,18 +88,28 @@ function addRun(project: ResearchProject, name: string, reported: Partial<Experi
   return run
 }
 
+interface Mounted {
+  panel: ReturnType<typeof render>
+  commands: ResearchCommand[]
+  drafts: string[]
+  expanded: string[]
+  /** Draw the panel again, as the store does after the host re-read the record. */
+  redraw: () => void
+}
+
 /** The panel over one project, recording every command and every composer draft. */
 function mount(
   project: ResearchProject | null,
-  respond: (command: ResearchCommand) => Promise<ResearchResponse> = () => Promise.resolve({ message: '' }),
-): { panel: ReturnType<typeof render>; commands: ResearchCommand[]; drafts: string[]; expanded: string[] } {
+  options: { respond?: (command: ResearchCommand) => Promise<ResearchResponse>; draft?: string } = {},
+): Mounted {
+  const { respond = () => Promise.resolve({ message: '' }), draft = '' } = options
   const commands: ResearchCommand[] = []
   const drafts: string[] = []
   const expanded: string[] = []
   if (project) project.sessionId = SESSION
   const view = {
     snapshot: project === null ? null : { projects: [project], preferences: {}, components: [], modes: [] },
-    tasks: [], busy: false, error: '', response: null,
+    tasks: [], response: null,
   }
   const props = {
     sessionId: SESSION,
@@ -102,18 +119,19 @@ function mount(
     },
     run: (command: ResearchCommand) => { commands.push(command); return respond(command) },
     useResearch: (select: (value: typeof view) => unknown) => select(view),
-    inputActions: { setDraft: (text: string) => { drafts.push(text) } },
-    useFocus: () => ({ claimId: null }),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
-    focusClaim: () => {},
+    input: { draft },
+    inputActions: { setDraft: (text: string) => { drafts.push(text) } },
     expand: (projectId: string, panel: string) => { expanded.push(`${projectId}:${panel}`) },
-    install: () => Promise.resolve(),
-    configure: () => Promise.resolve(),
-    refresh: () => Promise.resolve(),
-    create: () => Promise.resolve(),
-    openConversation: () => Promise.resolve(),
   } as unknown as WorkbenchProps & RunPanelOwnerProps & SessionSeatProps
-  return { panel: render(<ResearchRuns {...props} />), commands, drafts, expanded }
+  const panel = render(<ResearchRuns {...props} />)
+  return { panel, commands, drafts, expanded, redraw: () => { panel.rerender(<ResearchRuns {...props} />) } }
+}
+
+/** Press 停止 on the panel, then confirm it in the question that follows. */
+function stopConfirmed(panel: ReturnType<typeof render>): void {
+  fireEvent.click(panel.getByRole('button', { name: zh.runStop }))
+  fireEvent.click(within(panel.getByRole('group', { name: zh.confirmStop })).getByRole('button', { name: zh.runStop }))
 }
 
 /** The session every project in this spec is dispatched into. */
@@ -127,10 +145,10 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     expect(mount(project).panel.container.firstChild).toBeNull()
   })
 
-  it('measures a running run against its own time limit and stops it', async () => {
+  it('measures a running run against its own time limit', async () => {
     const project = await submittedProject()
-    const run = addRun(project, 'block-sparse-4k', { status: 'running', startedAt: new Date(Date.now() - 125_000).toISOString() })
-    const { panel, commands } = mount(project)
+    addRun(project, 'block-sparse-4k', { status: 'running', startedAt: new Date(Date.now() - 125_000).toISOString() })
+    const { panel } = mount(project)
 
     expect(panel.getByText(zh.runRunning)).toBeTruthy()
     expect(panel.getByText(new RegExp(`^${zh.runElapsed} ${say('durationMinutes', { m: 2, s: '\\d+' })}$`))).toBeTruthy()
@@ -140,13 +158,38 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     // A fifth of the run's 10-minute limit has gone.
     const bar = panel.container.querySelector<HTMLElement>('[style]')!
     expect(Number.parseFloat(bar.style.width)).toBeCloseTo(20.8, 0)
+  })
 
+  it('stops a run only after the person confirms, and folds it away once the host stopped it', async () => {
+    const project = await submittedProject()
+    const run = addRun(project, 'block-sparse-4k', { status: 'running', startedAt: new Date().toISOString() })
+    const cancel = pending()
+    const { panel, commands, redraw } = mount(project, { respond: () => cancel.promise })
+
+    // A stopped run cannot be resumed, so the first press only asks.
     fireEvent.click(panel.getByRole('button', { name: zh.runStop }))
+    expect(within(panel.getByRole('group', { name: zh.confirmStop })).getByText(zh.confirmStop)).toBeTruthy()
+    fireEvent.click(panel.getByRole('button', { name: zh.runKeep }))
+    await flush()
+    expect(commands).toEqual([])
+    expect(panel.getByText(zh.runRunning)).toBeTruthy()
+
+    stopConfirmed(panel)
+    await flush()
+    expect(panel.getByRole('status').textContent).toBe(zh.runStopping)
+    expect(panel.queryByRole('button', { name: zh.runStop })).toBeNull()
     expect(commands).toEqual([{ action: 'experiment-cancel', projectId: project.id, runId: run.id }])
     // The service parses every incoming command with exactly this schema, and
     // then finds the run by the id the panel put in it.
     expect(commandSchema.parse(commands[0])).toEqual(commands[0])
     expect(project.experiments.findIndex(item => item.id === run.id)).toBe(0)
+
+    // The host reads the record again before the stop settles; a stopped run is a finished one.
+    Object.assign(run, { status: 'cancelled', finishedAt: new Date().toISOString() })
+    await act(async () => { cancel.resolve({ message: 'Cancelled' }) })
+    redraw()
+    expect(panel.queryByRole('article')).toBeNull()
+    expect(panel.getByRole('button', { name: say('runsShowSettled', { n: 1 }) })).toBeTruthy()
   })
 
   it('follows a run by its own progress line, shows its latest numbers, and opens the board', async () => {
@@ -173,13 +216,14 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     expect(expanded).toEqual([`${project.id}:experiments`])
   })
 
-  it('shows a queued run as open with nothing elapsed yet', async () => {
+  it('says a queued run is queued, not running, with nothing elapsed yet', async () => {
     const project = await submittedProject()
     const run = addRun(project, 'warmup')
     expect(run.status).toBe('queued')
     const { panel } = mount(project)
 
-    expect(panel.getByText(zh.runRunning)).toBeTruthy()
+    expect(panel.getByText(zh.queued)).toBeTruthy()
+    expect(panel.queryByText(zh.runRunning)).toBeNull()
     expect(panel.getByText(`${zh.runElapsed} ${say('durationSeconds', { s: 0 })}`)).toBeTruthy()
     expect(panel.container.querySelector<HTMLElement>('[style]')!.style.width).toBe('0%')
     expect(panel.getByRole('button', { name: zh.runStop })).toBeTruthy()
@@ -208,6 +252,16 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     expect(drafts[0]!).toContain(String(SEED))
   })
 
+  it('adds the plot request after what the person already typed instead of replacing it', async () => {
+    const project = await submittedProject()
+    addRun(project, 'block-sparse-4k', { status: 'completed', collected: true, metrics: { accuracy: 0.871 } })
+    const { panel, drafts } = mount(project, { draft: '先和基线对比一下。\n' })
+    fireEvent.click(panel.getByRole('button', { name: say('runsShowSettled', { n: 1 }) }))
+
+    fireEvent.click(panel.getByRole('button', { name: zh.runPlot }))
+    expect(drafts).toEqual([`先和基线对比一下。\n${say('runPlotDraft', { name: 'block-sparse-4k', seed: SEED })}`])
+  })
+
   it('keeps reporting a run whose environment and exit time no longer resolve', async () => {
     const project = await submittedProject()
     // A finish time the panel cannot read falls back to now. No supervisor
@@ -231,48 +285,76 @@ describe('the run panel reports the runs the experiment service admitted', () =>
     // A lost submission receipt is what produces `unknown`, and such a record
     // can carry a start time nothing ever reported; both are assigned.
     const run = addRun(project, 'long-context-32k', { status: 'unknown', startedAt: 'unreported' })
-    const { panel, commands } = mount(project)
+    const answers = { 'experiment-refresh': pending(), 'experiment-dismiss': pending() }
+    const { panel, commands } = mount(project, { respond: command => answers[command.action as keyof typeof answers].promise })
 
     expect(panel.getByText(zh.unknown)).toBeTruthy()
     expect(panel.getByText(zh.runUnknownNote)).toBeTruthy()
     expect(panel.container.querySelector('[style]')).toBeNull()
     expect(panel.queryByRole('button', { name: zh.runStop })).toBeNull()
 
+    // Each button holds itself off while its own request runs; the other stays available.
     fireEvent.click(panel.getByRole('button', { name: zh.runReconnect }))
+    await flush()
+    expect(panel.getByRole('button', { name: zh.runReconnect }).hasAttribute('disabled')).toBe(true)
+    expect(panel.getByRole('button', { name: zh.dismiss }).hasAttribute('disabled')).toBe(false)
     fireEvent.click(panel.getByRole('button', { name: zh.dismiss }))
+    await flush()
+    expect(panel.getByRole('button', { name: zh.dismiss }).hasAttribute('disabled')).toBe(true)
     expect(commands).toEqual([
       { action: 'experiment-refresh', projectId: project.id, runId: run.id },
       { action: 'experiment-dismiss', projectId: project.id, runId: run.id },
     ])
     for (const command of commands) expect(commandSchema.parse(command)).toEqual(command)
+
+    await act(async () => {
+      answers['experiment-refresh'].resolve({ message: 'Reconnected' })
+      answers['experiment-dismiss'].resolve({ message: 'Dismissed' })
+    })
+    await flush()
+    expect(panel.getByRole('button', { name: zh.runReconnect }).hasAttribute('disabled')).toBe(false)
+    expect(panel.getByRole('button', { name: zh.dismiss }).hasAttribute('disabled')).toBe(false)
+    expect(panel.queryByRole('alert')).toBeNull()
   })
 
-  it('swallows a refused stop and a refused reconnect instead of restating the run', async () => {
+  it('says beside each run why a stop, a reconnect or a dismiss was refused', async () => {
     const project = await submittedProject()
     addRun(project, 'block-sparse-4k', { status: 'running', startedAt: new Date().toISOString() })
     addRun(project, 'long-context-32k', { status: 'unknown' })
-    const { panel, commands } = mount(project, () => Promise.reject(new Error('The supervisor is unreachable')))
+    const { panel, commands } = mount(project, { respond: () => Promise.reject(new Error('The supervisor is unreachable')) })
+    const [unconfirmed, running] = panel.getAllByRole('article') as [HTMLElement, HTMLElement]
 
-    fireEvent.click(panel.getByRole('button', { name: zh.runStop }))
+    stopConfirmed(panel)
     fireEvent.click(panel.getByRole('button', { name: zh.runReconnect }))
     fireEvent.click(panel.getByRole('button', { name: zh.dismiss }))
-    await settle()
+    await flush()
 
     expect(commands.map(command => command.action)).toEqual(['experiment-cancel', 'experiment-refresh', 'experiment-dismiss'])
-    expect(panel.getByText(zh.runRunning)).toBeTruthy()
-    expect(panel.getByText(zh.unknown)).toBeTruthy()
-    expect(panel.queryByText(/unreachable/)).toBeNull()
+    const refusal = say('actionFailed', { reason: 'The supervisor is unreachable' })
+    expect(within(running).getAllByRole('alert').map(line => line.textContent)).toEqual([refusal])
+    expect(within(unconfirmed).getAllByRole('alert').map(line => line.textContent)).toEqual([refusal, refusal])
+    // The runs are reported as they were, and every control can be tried again.
+    expect(within(running).getByText(zh.runRunning)).toBeTruthy()
+    expect(within(running).getByRole('button', { name: zh.runStop })).toBeTruthy()
+    expect(within(unconfirmed).getByText(zh.unknown)).toBeTruthy()
+    expect(within(unconfirmed).getByRole('button', { name: zh.runReconnect }).hasAttribute('disabled')).toBe(false)
   })
 
   it('shows the log text the service read back', async () => {
     const project = await submittedProject()
     const run = addRun(project, 'block-sparse-4k', { status: 'running', startedAt: new Date().toISOString() })
-    const { panel, commands } = mount(project, () => Promise.resolve({ message: 'Experiment logs', content: 'epoch 3 | loss 0.412' }))
+    const read = pending()
+    const { panel, commands } = mount(project, { respond: () => read.promise })
 
     expect(panel.queryByText('epoch 3 | loss 0.412')).toBeNull()
     fireEvent.click(panel.getByRole('button', { name: zh.logs }))
+    await flush()
+    // One read at a time: the button holds itself off until the service answers.
+    expect(panel.getByRole('button', { name: zh.logs }).hasAttribute('disabled')).toBe(true)
+    await act(async () => { read.resolve({ message: 'Experiment logs', content: 'epoch 3 | loss 0.412' }) })
 
     expect(await panel.findByText('epoch 3 | loss 0.412')).toBeTruthy()
+    expect(panel.getByRole('button', { name: zh.logs }).hasAttribute('disabled')).toBe(false)
     expect(commands).toEqual([{ action: 'experiment-logs', projectId: project.id, runId: run.id }])
     expect(commandSchema.parse(commands[0])).toEqual(commands[0])
   })
@@ -280,19 +362,22 @@ describe('the run panel reports the runs the experiment service admitted', () =>
   it('falls back to the service message when a run has written no log yet', async () => {
     const project = await submittedProject()
     addRun(project, 'warmup')
-    const { panel } = mount(project, () => Promise.resolve({ message: 'Experiment logs' }))
+    const { panel } = mount(project, { respond: () => Promise.resolve({ message: 'Experiment logs' }) })
 
     fireEvent.click(panel.getByRole('button', { name: zh.logs }))
     expect(await panel.findByText('Experiment logs')).toBeTruthy()
   })
 
-  it('shows the failure in place of the logs when the read cannot be done', async () => {
+  it('says why the logs could not be read, under the run, instead of showing them', async () => {
     const project = await submittedProject()
     addRun(project, 'warmup')
-    const { panel } = mount(project, () => Promise.reject(new Error('Experiment logs: ssh exited 255')))
+    const { panel } = mount(project, { respond: () => Promise.reject(new Error('Experiment logs: ssh exited 255')) })
 
     fireEvent.click(panel.getByRole('button', { name: zh.logs }))
-    expect(await panel.findByText(/ssh exited 255/)).toBeTruthy()
+    await flush()
+    expect(panel.getByRole('alert').textContent).toBe(say('actionFailed', { reason: 'Experiment logs: ssh exited 255' }))
+    expect(panel.container.querySelector('pre')).toBeNull()
+    expect(panel.getByRole('button', { name: zh.logs }).hasAttribute('disabled')).toBe(false)
   })
 
   it('draws the five newest runs and collapses the rest into a count', async () => {

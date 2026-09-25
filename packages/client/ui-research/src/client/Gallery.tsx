@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { GalleryFigure, GalleryPage, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { GallerySearchRequest, WorkbenchProps } from './contract.ts'
+import { ActionError, useAction } from './Action.tsx'
 import { galleryImageUrl, type Translate } from './format.ts'
 import type { ResearchKey } from './locales.ts'
 import styles from './Gallery.module.css'
@@ -60,7 +61,6 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
   const [figures, setFigures] = useState<GalleryFigure[]>([])
   const [error, setError] = useState('')
   const [open, setOpen] = useState<GalleryFigure | null>(null)
-  const [saving, setSaving] = useState('')
   // Only the latest search may fill the grid: an earlier one that answers late is dropped.
   const latest = useRef(0)
   const load = (filters: Filters, offset: number): void => {
@@ -82,10 +82,8 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
     load(next, 0)
   }
   const submit = (event: FormEvent<HTMLFormElement>): void => { event.preventDefault(); load(draft, 0) }
-  const save = (figure: GalleryFigure, label: string): void => {
-    setSaving(figure.id)
-    void props.run({ action: 'fetch-reference-figures', projectId: project.id, galleryIds: [figure.id], label }).catch(() => {})
-  }
+  const save = (figure: GalleryFigure, label: string): Promise<unknown> =>
+    props.run({ action: 'fetch-reference-figures', projectId: project.id, galleryIds: [figure.id], label })
   const facet = (name: keyof GalleryPage['facets']): [string, number][] => Object.entries(page?.facets[name] ?? {})
   return <section className={styles.root}>
     <p className={styles.intro}>{t('galleryIntro')}</p>
@@ -115,14 +113,14 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
     {error && <div className={styles.error} role="alert">{error}</div>}
     {page && <p className={styles.status}>{t('galleryCount', { n: page.total })} · {t(BASIS_KEYS[page.basis])}</p>}
     {open && <Detail
-      key={open.id} t={t} figure={open} saving={saving === open.id}
-      onSave={(label) => { save(open, label) }} onClose={() => { setOpen(null) }}
+      key={open.id} t={t} figure={open}
+      onSave={label => save(open, label)} onClose={() => { setOpen(null) }}
     />}
     {page?.total === 0 && <p className={styles.empty}>{t('galleryEmpty')}</p>}
     <ul className={styles.grid}>{figures.map((figure) => {
       const tier = tierOf(figure)
       return <li key={figure.id}>
-        <button type="button" className={styles.card} aria-pressed={open?.id === figure.id} onClick={() => { setOpen(figure); setSaving('') }}>
+        <button type="button" className={styles.card} aria-pressed={open?.id === figure.id} onClick={() => { setOpen(figure) }}>
           <span className={styles.frame}><img src={galleryImageUrl(figure.id)} alt={figure.title} loading="lazy" /></span>
           <span className={styles.title}>{figure.title}</span>
           <span className={styles.meta}>
@@ -140,9 +138,8 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
 interface DetailProps {
   t: Translate
   figure: GalleryFigure
-  /** Whether a save of this figure has been started. */
-  saving: boolean
-  onSave: (label: string) => void
+  /** Save this figure as a reference under the label; settles when the host job does. */
+  onSave: (label: string) => Promise<unknown>
   onClose: () => void
 }
 
@@ -150,6 +147,7 @@ interface DetailProps {
 function Detail(props: DetailProps): ReactNode {
   const { figure, t } = props
   const [label, setLabel] = useState('method-overview')
+  const saving = useAction()
   const named = figure.authors.slice(0, SHOWN_AUTHORS).join(', ')
   const authors = figure.authors.length > SHOWN_AUTHORS ? t('galleryAuthorsMore', { names: named, n: figure.authors.length - SHOWN_AUTHORS }) : named
   const tier = tierOf(figure)
@@ -160,11 +158,13 @@ function Detail(props: DetailProps): ReactNode {
       <p>{authors}</p>
       <p className={styles.meta}>{venueName(figure.venue)} {figure.year} · {patternName(figure.pattern, t)}{tier && ` · ${t(TIER_KEYS[tier])}`}</p>
       <a href={figure.paper} target="_blank" rel="noreferrer">{t('galleryOpenPaper')}</a>
-      <form className={styles.save} onSubmit={(event) => { event.preventDefault(); props.onSave(label) }}>
+      <form className={styles.save} onSubmit={(event) => { event.preventDefault(); saving.start(() => props.onSave(label)) }}>
         <label>{t('galleryLabel')}<input value={label} required pattern="[a-z0-9]+(-[a-z0-9]+)*" onChange={(event) => { setLabel(event.target.value) }} /></label>
-        <button type="submit">{t('gallerySave')}</button>
+        <button type="submit" disabled={saving.pending}>{t('gallerySave')}</button>
       </form>
-      {props.saving && <p role="status">{t('gallerySaving')}</p>}
+      {saving.pending && <p role="status">{t('gallerySaving')}</p>}
+      {saving.done && <p role="status">{t('gallerySaved')}</p>}
+      <ActionError t={t} error={saving.error} />
       <p className={styles.note}>{t('galleryCopyright')}</p>
       <button type="button" onClick={props.onClose}>{t('close')}</button>
     </div>

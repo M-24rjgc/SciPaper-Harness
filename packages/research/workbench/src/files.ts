@@ -1,9 +1,9 @@
 /** Contained file access and immutable revisions for ordinary research files. */
 import { createHash, randomUUID } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { copyFile, mkdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { createReadStream, existsSync } from 'node:fs'
+import { copyFile, mkdir, open, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
+import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
 
 /** Resolve a project path and reject traversal through existing symlinks. */
 export async function projectPath(root: string, path: string): Promise<string> {
@@ -73,6 +73,34 @@ export async function writeNew(path: string, content: Uint8Array): Promise<boole
 export async function readText(path: string, limit: number): Promise<string> {
   if ((await stat(path)).size > limit) throw new Error(`Text exceeds the ${limit} byte limit: ${path}`)
   return readFile(path, 'utf8')
+}
+
+/** Extensions of file types that never hold editable text: images, PDF, archives, office documents, fonts, arrays. */
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.ico', '.pdf',
+  '.zip', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.tar', '.rar',
+  '.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp',
+  '.otf', '.ttf', '.woff', '.woff2', '.npy', '.npz', '.pt', '.pth', '.pkl', '.parquet',
+])
+/** How much of a file's start is read to find a NUL byte, which text files never contain. */
+const TEXT_PROBE_BYTES = 8192
+
+/**
+ * Whether a file holds bytes that a text editor would destroy: a known binary
+ * type by its extension, or, under any other name, a file whose first 8 KiB
+ * contain a NUL byte. A file that does not exist is judged by its name alone.
+ * @param path - absolute path of the file.
+ * @returns true for a binary file.
+ */
+export async function isBinaryFile(path: string): Promise<boolean> {
+  if (BINARY_EXTENSIONS.has(extname(path).toLowerCase())) return true
+  if (!existsSync(path)) return false
+  const handle = await open(path, 'r')
+  try {
+    const probe = Buffer.alloc(TEXT_PROBE_BYTES)
+    const { bytesRead } = await handle.read(probe, 0, TEXT_PROBE_BYTES, 0)
+    return probe.subarray(0, bytesRead).includes(0)
+  } finally { await handle.close() }
 }
 
 /** Case-fold a path where the platform's filesystem is case-insensitive. */

@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
-import type { GalleryFigure, GalleryPage, ResearchCommand, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { GalleryFigure, GalleryPage, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { Gallery } from '../src/client/Gallery.tsx'
 import type { GallerySearchRequest, WorkbenchProps } from '../src/client/contract.ts'
@@ -36,19 +36,18 @@ const page = (figures: GalleryFigure[], total = figures.length, basis: GalleryPa
   ({ total, offset, figures, basis, facets: FACETS, source: SOURCE })
 
 interface Pending { request: GallerySearchRequest; answer: (value: GalleryPage) => void; fail: (reason: unknown) => void }
+/** A save the host is still working on: it settles when its job does. */
+interface Saving { command: ResearchCommand; finish: (value: ResearchResponse) => void; fail: (reason: unknown) => void }
 
 interface Harness {
   props: WorkbenchProps & { project: ResearchProject }
   searches: Pending[]
-  runs: ResearchCommand[]
-  /** Whether the next save is refused. */
-  failRun: { next: boolean }
+  saves: Saving[]
 }
 
 function harness(project: ResearchProject): Harness {
   const searches: Pending[] = []
-  const runs: ResearchCommand[] = []
-  const failRun = { next: false }
+  const saves: Saving[] = []
   const props = {
     t, project,
     searchFigures: (request: GallerySearchRequest) => {
@@ -57,17 +56,27 @@ function harness(project: ResearchProject): Harness {
     },
     run: (command: ResearchCommand) => {
       expect(commandSchema.parse(command)).toBeTruthy()
-      runs.push(command)
-      return failRun.next ? Promise.reject(new Error('saving failed')) : Promise.resolve({ message: 'started', jobId: 'job' })
+      return new Promise<ResearchResponse>((finish, fail) => { saves.push({ command, finish, fail }) })
     },
   } as unknown as WorkbenchProps & { project: ResearchProject }
-  return { props, searches, runs, failRun }
+  return { props, searches, saves }
 }
 
 const project = (): ResearchProject => newProject({ root: '/research/agents', title: 'Agents', brief: '' }, 'w' as WorkspaceId)
+/** Let the work a press started run its first step. */
 const settle = async (): Promise<void> => { await act(async () => { await Promise.resolve() }) }
 async function answer(pending: Pending | undefined, value: GalleryPage): Promise<void> {
   await act(async () => { pending?.answer(value); await Promise.resolve() })
+}
+async function finish(saving: Saving | undefined, outcome: { value: ResearchResponse } | { reason: unknown }): Promise<void> {
+  await act(async () => {
+    if ('value' in outcome) saving?.finish(outcome.value)
+    else saving?.fail(outcome.reason)
+    await Promise.resolve()
+  })
+}
+const submitSave = (detail: HTMLElement): void => {
+  fireEvent.submit(within(detail).getByRole('button', { name: zh.gallerySave }).closest('form')!)
 }
 
 describe('the figure gallery panel', () => {
@@ -153,36 +162,72 @@ describe('the figure gallery panel', () => {
     expect(view.queryByRole('alert')).toBeNull()
   })
 
-  it('opens a figure with its paper, and saves it as a reference under the label given', async () => {
+  it('opens a figure with its paper, and saves it as a reference under the label given, saying so until the host job settles', async () => {
     const h = harness(project())
     const view = render(<Gallery {...h.props} />)
     const crowd = ['A One', 'B Two', 'C Three', 'D Four', 'E Five', 'F Six']
     await answer(h.searches[0], page([
       figure('iclr2025-1', { venue: 'iclr', year: 2025, authors: crowd, tier: 'oral', pattern: 'pipeline' }),
-      figure('neurips2024-2', { authors: ['Ada Lovelace', 'Alan Turing'] }),
     ]))
     fireEvent.click(view.getByRole('button', { name: /Figure iclr2025-1/ }))
     const detail = view.getByRole('article', { name: 'Figure iclr2025-1' })
     expect(within(detail).getByText('A One, B Two, C Three, D Four 等 2 人')).toBeTruthy()
     expect(within(detail).getByText('ICLR 2025 · 流程图 · Oral')).toBeTruthy()
     expect(within(detail).getByRole('link', { name: zh.galleryOpenPaper }).getAttribute('href')).toBe('https://papers.example/iclr2025-1')
-    expect(view.getByRole('button', { pressed: true }).textContent).toMatch(/^Figure iclr2025-1/)
-    fireEvent.change(within(detail).getByRole('textbox', { name: zh.galleryLabel }), { target: { value: 'agent-loop' } })
-    fireEvent.submit(within(detail).getByRole('button', { name: zh.gallerySave }).closest('form')!)
-    expect(h.runs).toEqual([{ action: 'fetch-reference-figures', projectId: h.props.project.id, galleryIds: ['iclr2025-1'], label: 'agent-loop' }])
-    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
     expect(within(detail).getByText(zh.galleryCopyright)).toBeTruthy()
+    expect(view.getByRole('button', { pressed: true }).textContent).toMatch(/^Figure iclr2025-1/)
+    expect(within(detail).queryByRole('status')).toBeNull()
 
-    // Another figure starts afresh: its own label, nothing saving; a failed save leaves the panel as it was.
-    fireEvent.click(view.getByRole('button', { name: /Figure neurips2024-2/ }))
-    const next = view.getByRole('article', { name: 'Figure neurips2024-2' })
-    expect(within(next).getByText('Ada Lovelace, Alan Turing')).toBeTruthy()
-    expect(within(next).getByText('NeurIPS 2024 · 架构图')).toBeTruthy()
-    expect(within(next).queryByRole('status')).toBeNull()
-    h.failRun.next = true
-    fireEvent.submit(within(next).getByRole('button', { name: zh.gallerySave }).closest('form')!)
+    fireEvent.change(within(detail).getByRole('textbox', { name: zh.galleryLabel }), { target: { value: 'agent-loop' } })
+    submitSave(detail)
+    // The save is held off and says it is working from the press until the host job settles.
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
+    expect(within(detail).getByRole('button', { name: zh.gallerySave })).toHaveProperty('disabled', true)
     await settle()
-    expect(h.runs.at(-1)).toMatchObject({ galleryIds: ['neurips2024-2'], label: 'method-overview' })
+    expect(h.saves.map(item => item.command)).toEqual([
+      { action: 'fetch-reference-figures', projectId: h.props.project.id, galleryIds: ['iclr2025-1'], label: 'agent-loop' },
+    ])
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
+    await finish(h.saves[0], { value: { message: 'saved', paths: ['figures/refs/agent-loop.png'] } })
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaved)
+    expect(within(detail).getByRole('button', { name: zh.gallerySave })).toHaveProperty('disabled', false)
+    expect(within(detail).queryByRole('alert')).toBeNull()
+  })
+
+  it('says why a save failed beside it, lets it be tried again, and starts afresh on another figure', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([
+      figure('neurips2024-2', { authors: ['Ada Lovelace', 'Alan Turing'] }),
+      figure('iclr2025-3', { venue: 'iclr', year: 2025 }),
+    ]))
+    fireEvent.click(view.getByRole('button', { name: /Figure neurips2024-2/ }))
+    const detail = view.getByRole('article', { name: 'Figure neurips2024-2' })
+    expect(within(detail).getByText('Ada Lovelace, Alan Turing')).toBeTruthy()
+    expect(within(detail).getByText('NeurIPS 2024 · 架构图')).toBeTruthy()
+    submitSave(detail)
+    await settle()
+    expect(h.saves[0]?.command).toMatchObject({ galleryIds: ['neurips2024-2'], label: 'method-overview' })
+    await finish(h.saves[0], { reason: new Error('the gallery host refused the download') })
+    expect(within(detail).getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'the gallery host refused the download' }))
+    expect(within(detail).queryByRole('status')).toBeNull()
+    // The panel's own search line stays clear: the failure belongs to the save.
+    expect(view.getAllByRole('alert')).toHaveLength(1)
+
+    // Trying again clears the old reason while the new attempt runs.
+    submitSave(detail)
+    expect(within(detail).queryByRole('alert')).toBeNull()
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
+
+    // Another figure starts afresh, and the save left running on the first one never reaches it.
+    fireEvent.click(view.getByRole('button', { name: /Figure iclr2025-3/ }))
+    const next = view.getByRole('article', { name: 'Figure iclr2025-3' })
+    expect(within(next).queryByRole('status')).toBeNull()
+    expect(within(next).getByRole('textbox', { name: zh.galleryLabel })).toHaveProperty('value', 'method-overview')
+    await settle()
+    await finish(h.saves[1], { value: { message: 'saved' } })
+    expect(within(next).queryByRole('status')).toBeNull()
+    expect(within(next).queryByRole('alert')).toBeNull()
     fireEvent.click(within(next).getByRole('button', { name: zh.close }))
     expect(view.queryByRole('article')).toBeNull()
   })
