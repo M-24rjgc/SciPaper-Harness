@@ -15,6 +15,10 @@ export function ResearchStatusChip(props: WorkbenchProps & SessionSeatProps): Re
   const modes = useModes(props)
   if (!project) return null
   return <button type="button" className={styles.chip} onClick={() => { props.showProgress() }} title={t('railGuideTitle')}>
+    {project.example === true && <>
+      <span className={styles.example}>{t('exampleTag')}</span>
+      <span className={styles.separator}>·</span>
+    </>}
     <span className={styles.stage}>{standingText(project, modes, t)}</span>
     {project.autonomy === 'automatic' && <>
       <span className={styles.separator}>·</span>

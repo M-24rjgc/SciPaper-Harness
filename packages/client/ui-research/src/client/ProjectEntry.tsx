@@ -12,9 +12,10 @@ import styles from './ProjectEntry.module.css'
 export function ResearchProjects(props: WorkbenchProps & { wide: boolean }): ReactNode {
   const { t } = props
   const opening = useAction()
-  // Most recently worked on first.
+  // The person's own researches first, then the examples; most recently worked on first within each.
   const snapshot = props.useResearch(s => s).snapshot
-  const projects = [...snapshot?.projects ?? []].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const projects = [...snapshot?.projects ?? []]
+    .sort((a, b) => Number(a.example === true) - Number(b.example === true) || b.updatedAt.localeCompare(a.updatedAt))
   const modes = useModes(props)
   if (!props.wide) return null
   const open = (project: ResearchProject): void => {
@@ -31,7 +32,10 @@ export function ResearchProjects(props: WorkbenchProps & { wide: boolean }): Rea
     <div className={styles.label}>{t('projects')}</div>
     {projects.length === 0 && <p className={styles.empty}>{t('heroNoHistory')}</p>}
     {projects.map(project => <button type="button" className={styles.project} key={project.id} onClick={() => { open(project) }}>
-      <strong>{project.title}</strong>
+      <span className={styles.titleRow}>
+        <strong>{project.title}</strong>
+        {project.example === true && <span className={styles.exampleTag}>{t('exampleTag')}</span>}
+      </span>
       <span className={styles.empty}>{standingText(project, modes, t)}</span>
     </button>)}
     <ActionError t={t} error={opening.error} />

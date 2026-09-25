@@ -62,6 +62,7 @@ kind: "package-plugin"
 | `ClaimSheet.tsx` | 一条论点，以及它脚下的每一份原文，覆盖整个界面，只在它所属的项目里查找 |
 | `RunPanel.tsx`、`MetricsGrid.tsx`、`StopRun.tsx` | 输入框上方已提交的实验及其指标，以及确认后停止一次运行 |
 | `Workbench.tsx` | 项目自身的文件：资料、稿件与示意图编辑器、运行、导出；保存从不覆盖二进制文件 |
+| `examples.ts` | 让示例研究里每段对话的输入框保持不可输入；标题栏状态标签、科研标签页和项目列表会标出示例 |
 | `Action.tsx`、`EmptyCell.tsx` | 单个控件自己的进度与失败提示；用来遮蔽输入框统计信息、默认权限设置与“打开配置文件”操作的空单元 |
 | `Board.tsx`、`BoardBlocks.tsx`、`LineChart.tsx`、`boardValues.ts` | 实验看板标签页：在跑的运行、机器、按实时记录解析的 agent 分区、所有运行，以及折线图 |
 | `Gallery.tsx` | 「配图灵感」标签页：筛选条件、顶会 Figure 1 网格，以及把一张图存为 `figures/refs/` 下的参考图 |

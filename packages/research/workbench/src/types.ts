@@ -220,6 +220,12 @@ export interface ResearchProject {
   workspaceId: WorkspaceId
   title: string
   root: string
+  /**
+   * True for an example research shipped for the tutorial (its root lies in
+   * `<data home>/demo`), which is read-only. Derived for every snapshot and
+   * brief, never stored; absent for the person's own researches.
+   */
+  example?: boolean | undefined
   /** The mode pack the project runs in; `general` adds nothing to the research tools. */
   mode: string
   /** The route through the mode, for packs that have routes. */

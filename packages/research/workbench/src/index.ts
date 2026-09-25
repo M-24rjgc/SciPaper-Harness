@@ -1,5 +1,6 @@
 /** Research project ledger service and typed desktop operations. The agent drives; this records. */
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, realpath, rm } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
@@ -30,7 +31,10 @@ import { FigureGallery } from './gallery.ts'
 import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
-import { assertUsableProjectRoot, atomicWrite, errorText, hashBytes, isBinaryFile, isInside, projectPath, readText, sameDirectory, truncateBytes, writeNew } from './files.ts'
+import {
+  assertUsableProjectRoot, atomicWrite, errorText, EXAMPLE_READ_ONLY, hashBytes, isBinaryFile, isExampleRoot, isInside,
+  projectPath, readText, sameDirectory, truncateBytes, writeNew,
+} from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
 import type {
   ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand,
@@ -284,6 +288,13 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   private async createAt(request: CreateProjectRequest, sessionId: string | undefined): Promise<ResearchProject> {
+    // An example opens as it is, bound to no session; no research, and no folder, is made among the examples.
+    if (isExampleRoot(request.root)) {
+      const found = existsSync(request.root) ? await realpath(request.root) : undefined
+      const example = found === undefined ? undefined : this.projects().find(project => sameDirectory(project.root, found))
+      if (example === undefined) throw new Error(EXAMPLE_READ_ONLY)
+      return this.record(example.id)
+    }
     await mkdir(request.root, { recursive: true })
     const root = await realpath(request.root)
     assertUsableProjectRoot(root)
@@ -426,6 +437,8 @@ export class ResearchWorkbench extends TypertRemoteService {
     const result = previous.catch(() => {}).then(async () => {
       this.lifetime.signal.throwIfAborted()
       const project = this.getProject(id)
+      // The last line of the example guard: whatever path reaches here, an example's record never changes.
+      if (isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
       const value = await work(project)
       project.revision++
       project.updatedAt = new Date().toISOString()
@@ -475,6 +488,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse> {
     const request = commandSchema.parse(raw) as ResearchCommand
     const project = this.record(request.projectId)
+    // An example can be read and checked; nothing is recorded into it, whoever asks.
+    const example = isExampleRoot(project.root)
     switch (request.action) {
       case 'search-evidence': return this.clipped(searchEvidence(this.getProject(project.id), request.query, this.config.maxSourceBytes))
       case 'read-artifact': {
@@ -493,7 +508,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'check': {
         const snapshot = this.getProject(project.id)
         const check = await runChecks(snapshot, this.config.maxSourceBytes, request.scope, this.modes.resolve(snapshot), this.gates(signal))
-        await this.mutate(project.id, (current) => { current.lastCheck = check })
+        if (!example) await this.mutate(project.id, (current) => { current.lastCheck = check })
         return { message: check.clean ? 'Clean' : 'Not done yet: fix the errors and check again', check }
       }
       case 'experiment-wait': return this.waitForRuns(project.id, request.runIds, request.timeoutSeconds, signal)
@@ -511,6 +526,7 @@ export class ResearchWorkbench extends TypertRemoteService {
         return { message: problem ?? `Board: ${spec.sections.length} section(s), ${spec.collectors.length} collector(s)`, content: JSON.stringify(spec) }
       }
       case 'board-update': {
+        if (example) throw new Error(EXAMPLE_READ_ONLY)
         const spec = await this.boards.update(project.root, request.board, request.replace ?? false)
         const missing = await missingScripts(project.root, spec)
         const waiting = unmatched(project, spec)
@@ -524,12 +540,15 @@ export class ResearchWorkbench extends TypertRemoteService {
         }
       }
       case 'board-refresh': {
+        if (example) throw new Error(EXAMPLE_READ_ONLY)
         const report = await this.boards.refresh(project, signal)
         const failed = report.collectors.filter(collector => !collector.ok).length + report.machines.filter(machine => machine.error).length
         return { message: failed ? `Board read with ${failed} problem(s); see each collector's and machine's error` : 'Board read', content: JSON.stringify(report) }
       }
-      case 'board-view': return { message: 'Experiment board', board: await this.boards.view(project, request.refresh ?? false, request.runs ?? []) }
+      // An example's board is shown as it was last read: a new read would write its cache into the example.
+      case 'board-view': return { message: 'Experiment board', board: await this.boards.view(project, !example && (request.refresh ?? false), request.runs ?? []) }
       default: {
+        if (example) throw new Error(EXAMPLE_READ_ONLY)
         const work = async (workSignal: AbortSignal): Promise<ResearchResponse> => {
           const prepared = await this.prepare(project.id, request, workSignal, actor)
           const value = typeof prepared === 'function' ? await this.mutate(project.id, prepared) : prepared
@@ -943,6 +962,8 @@ export class ResearchWorkbench extends TypertRemoteService {
 
   private async refreshRunning(): Promise<void> {
     for (const [id, stored] of this.domain.table('projects').entries()) {
+      // An example's runs are part of its story; they are never observed again.
+      if (isExampleRoot(stored.root)) continue
       const snapshot = structuredClone(stored)
       try {
         for (const run of snapshot.experiments.filter(r => this.observable(r))) await this.observe(id, snapshot, run, 'status', this.lifetime.signal)
@@ -1108,6 +1129,7 @@ export function publicProject(project: ResearchProject): ResearchProject {
   const result = structuredClone(project)
   for (const evidence of result.evidence) evidence.chunks = []
   for (const environment of result.environments) environment.details = truncateBytes(environment.details, 3000)
+  if (isExampleRoot(result.root)) result.example = true
   return result
 }
 

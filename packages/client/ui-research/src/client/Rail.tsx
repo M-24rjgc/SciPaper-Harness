@@ -48,7 +48,7 @@ function AutonomyField(props: RailProps): ReactNode {
       <select
         className={styles.select}
         value={project.autonomy}
-        disabled={change.pending}
+        disabled={change.pending || project.example === true}
         onChange={(event) => { choose(event.target.value as Autonomy) }}
       >
         <option value="checkpoints">{t('autonomyCheckpoints')}</option>
@@ -57,6 +57,12 @@ function AutonomyField(props: RailProps): ReactNode {
     </label>
     <ActionError t={t} error={change.error} />
   </section>
+}
+
+/** Who a decision is shown as coming from: in an example the person's answers were the example's author's, not the reader's. */
+function decisionAuthor(project: ResearchProject, by: 'user' | 'agent'): 'decisionByUser' | 'decisionByAgent' | 'exampleAuthor' {
+  if (by === 'agent') return 'decisionByAgent'
+  return project.example === true ? 'exampleAuthor' : 'decisionByUser'
 }
 
 /** The mode's phases as the last check left them, with what still stands in each one's way. */
@@ -111,7 +117,7 @@ function Decisions(props: RailProps): ReactNode {
     <div className={styles.blockHead}>{t('decisions')}</div>
     {project.decisions.length === 0 && <p className={styles.note}>{t('noDecisions')}</p>}
     {project.decisions.slice(-VISIBLE_DECISIONS).reverse().map(decision => <div key={decision.id} className={styles.decision}>
-      <span className={styles.caption}>{t(decision.by === 'user' ? 'decisionByUser' : 'decisionByAgent')} · {decision.question}</span>
+      <span className={styles.caption}>{t(decisionAuthor(project, decision.by))} · {decision.question}</span>
       <span className={styles.blockBody}>{decision.answer}</span>
       {decision.rationale !== '' && <span className={styles.note}>{decision.rationale}</span>}
     </div>)}
@@ -177,6 +183,7 @@ export function ResearchRail(props: WorkbenchProps & SessionSeatProps): ReactNod
   const status = { ...props, project, commandSession: props.sessionId }
   return <div className={styles.root}>
     <div className={styles.header}><span className={styles.title}>{project.title}</span></div>
+    {project.example === true && <p className={styles.exampleBanner}>{t('exampleBanner')}</p>}
     <ProjectStatus {...status} />
     <div className={styles.counts}>
       <CountRow

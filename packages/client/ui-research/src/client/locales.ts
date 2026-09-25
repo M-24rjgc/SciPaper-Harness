@@ -416,6 +416,11 @@ export const en = {
   decisions: 'Decisions',
   decisionByUser: 'You',
   decisionByAgent: 'Assistant',
+  // Example researches, shipped with the app and read-only
+  exampleTag: 'Example',
+  exampleBanner: 'Example research: a demonstration shipped with the app, view only.',
+  exampleAuthor: 'Example author',
+  exampleComposerBlocked: 'This is an example research and can only be viewed. Click New research to start your own.',
   noDecisions: 'Decisions appear here as they are made.',
   exportPaper: 'Export package',
 } as const
@@ -841,6 +846,11 @@ export const zh: Record<ResearchKey, string> = {
   decisions: '决策记录',
   decisionByUser: '你',
   decisionByAgent: '助手',
+  // 示例研究：随应用提供，只能查看
+  exampleTag: '示例',
+  exampleBanner: '示例研究：随应用提供的演示，只能查看。',
+  exampleAuthor: '示例作者',
+  exampleComposerBlocked: '这是示例研究，只能查看。点「新研究」开始你自己的研究。',
   noDecisions: '做出的决策会记录在这里。',
   exportPaper: '导出投稿包',
 }

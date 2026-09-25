@@ -62,6 +62,7 @@ Every surface reads one polled snapshot of projects, preferences and components,
 | `ClaimSheet.tsx` | One claim and every source under it, over the whole frame, looked up in its own project |
 | `RunPanel.tsx`, `MetricsGrid.tsx`, `StopRun.tsx` | Submitted experiments above the composer, with their metrics, and stopping one after a confirmation |
 | `Workbench.tsx` | The project's files: sources, manuscript and diagram editors, runs, export; saving never writes over a binary file |
+| `examples.ts` | Keeps the composer of every conversation in an example research inert; the header chip, the research tab and the project list mark examples |
 | `Action.tsx`, `EmptyCell.tsx` | One control's own progress and failure line; the empty cell that shadows the composer statistics, the default-permission setting and the open-config-file action |
 | `Board.tsx`, `BoardBlocks.tsx`, `LineChart.tsx`, `boardValues.ts` | The experiment board tab: runs in flight, machines, the agent's sections resolved against the live record, every run, and the line charts |
 | `Gallery.tsx` | The figure gallery tab: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/` |

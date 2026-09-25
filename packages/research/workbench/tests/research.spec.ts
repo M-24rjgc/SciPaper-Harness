@@ -4,7 +4,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { newProject, putClaim, searchEvidence, invalidate, validateLinks } from '../src/project.ts'
-import { assertUsableProjectRoot, errorText, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, hashBytes, protectedDirectories, sameDirectory, truncateBytes, writeNew } from '../src/files.ts'
+import { assertUsableProjectRoot, errorText, isBinaryFile, isExampleRoot, isInside, isMetadataPath, keepRevision, projectPath, hashBytes, protectedDirectories, sameDirectory, truncateBytes, writeNew } from '../src/files.ts'
 import { adoptExternalEdit, importEvidence, importTemplate, texExecutable, writeArtifact, exportPaper } from '../src/artifacts.ts'
 import { collectRunOutputs, observationDue, validateExperiment } from '../src/experiments.ts'
 import { migrateProject, researchDomain } from '../src/schema.ts'
@@ -92,6 +92,14 @@ describe('artifacts are recorded, never refused for being edited elsewhere', () 
     expect(await isBinaryFile(join(p.root, 'long.log'))).toBe(false)
     expect(await isBinaryFile(join(p.root, 'absent.txt'))).toBe(false)
     expect(await isBinaryFile(join(p.root, 'absent.woff2'))).toBe(true)
+  })
+
+  it('knows an example by its place under the data home\'s demo folder, and nothing else', () => {
+    const home = join(tmpdir(), 'research-home')
+    expect(isExampleRoot(join(home, 'demo', 'sparse'), home)).toBe(true)
+    expect(isExampleRoot(join(home, 'demo'), home)).toBe(true)
+    expect(isExampleRoot(join(home, 'demo-copy', 'sparse'), home)).toBe(false)
+    expect(isExampleRoot(join(tmpdir(), 'elsewhere', 'demo', 'sparse'), home)).toBe(false)
   })
 
   it('refuses the metadata directory however the path is spelled (B4)', async () => {

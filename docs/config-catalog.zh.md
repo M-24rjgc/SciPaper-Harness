@@ -1957,7 +1957,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/research/workbench/src/index.ts:42`](../packages/research/workbench/src/index.ts)
+来源：[`packages/research/workbench/src/index.ts:46`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

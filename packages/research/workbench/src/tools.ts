@@ -8,7 +8,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { isAbsolute, resolve } from 'node:path'
 import type { ResearchWorkbench } from './index.ts'
-import { isInside } from './files.ts'
+import { isExampleRoot, isInside } from './files.ts'
 import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
 import { autonomies, checkIds, commandSchema } from './schema.ts'
@@ -227,7 +227,12 @@ function modeGuide(project: ResearchProject, mode: ResolvedMode): string[] {
 /** Compact view of a project for the model: enough to act on, without source bodies. */
 export function projectBrief(project: ResearchProject, mode: ResolvedMode): JsonValue {
   const lastCompile = project.compilations.at(-1)
+  const example = isExampleRoot(project.root)
   const guide = [
+    ...example
+      ? ['This is an example research shipped with the app, and it is read-only: explain how it was made and change nothing. '
+        + 'For the person\'s own work, suggest 新研究 (New research).']
+      : [],
     ...modeGuide(project, mode),
     project.autonomy === 'checkpoints'
       ? 'Autonomy checkpoints: at key decisions (the mode or route when you chose it, the research question, before running experiments, before the final export, a material method change, results that contradict the hypothesis) ask with ask_user_question, then record-decision with the answer and decidedBy user.'
@@ -236,6 +241,7 @@ export function projectBrief(project: ResearchProject, mode: ResolvedMode): Json
   const current = project.lastCheck?.mode === mode.pack.id && project.lastCheck.route === mode.route ? project.lastCheck : undefined
   return JSON.parse(JSON.stringify({
     id: project.id, title: project.title, root: project.root, brief: project.brief,
+    ...example ? { example: true } : {},
     mode: mode.pack.id, route: mode.route ?? null, modeReason: project.modeReason ?? null, venue: project.venue ?? null,
     autonomy: project.autonomy, guide,
     phases: current?.phases ?? mode.phases.map(phase => ({ id: phase.id, done: false, missing: ['Not checked yet'] })),

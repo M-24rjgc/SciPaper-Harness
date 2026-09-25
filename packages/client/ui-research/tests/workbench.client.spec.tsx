@@ -632,6 +632,16 @@ describe('the project list in the sidebar', () => {
     await settle()
     expect(failing.getByRole('alert').textContent).toBe(failed('session list unavailable'))
     cleanup()
+    // An example, however recent, lists after the person's own researches, and says it is one.
+    const example = { ...newProject({ root: '/home/demo/x', title: 'Shipped example', brief: '' }, 'x' as WorkspaceId), example: true, updatedAt: '2026-09-30T00:00:00.000Z' }
+    const listed = render(<ResearchProjects {...harness([example, bound, unbound]).props} wide />)
+    expect(listed.getAllByRole('button').map(button => button.textContent)).toEqual([
+      expect.stringMatching(/^Unbound/) as unknown,
+      expect.stringMatching(/^Sparse attention/) as unknown,
+      expect.stringMatching(/^Shipped example/) as unknown,
+    ])
+    expect(listed.getByRole('button', { name: /Shipped example/ }).textContent).toContain(zh.exampleTag)
+    cleanup()
     expect(render(<ResearchProjects {...harness([]).props} wide />).getByText(zh.heroNoHistory)).toBeTruthy()
     cleanup()
     const loading = harness([])

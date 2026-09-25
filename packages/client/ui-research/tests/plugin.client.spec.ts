@@ -19,6 +19,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   CreateProjectRequest, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { ResearchBrand, ResearchMark, Workbench } from '../src/client/Workbench.tsx'
@@ -123,9 +124,10 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-async function bench() {
+async function bench(services: { conversation?: unknown } = {}) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
+  if (services.conversation !== undefined) ctx.provide('conversation', services.conversation as never)
   // The frame this plugin registers into: every seat it takes has to be
   // declared by somebody, and the declaration is what authorizes the entry.
   ctx.slots.register({
@@ -381,6 +383,21 @@ describe('the research plugin', () => {
       await stop(b)
     }
     delete page.__DSH_RESEARCH__
+  })
+
+  it('keeps the composer of an example\'s conversation inert while the conversation plugin runs, and lets go with the fiber', async () => {
+    const blocks = new Map<string, ReturnType<typeof createSnapshotStore<{ reason: string } | undefined>>>()
+    const storeFor = (id: string) => {
+      if (!blocks.has(id)) blocks.set(id, createSnapshotStore<{ reason: string } | undefined>(undefined))
+      return blocks.get(id)!
+    }
+    const conversation = { blocks: { storeFor, set: (id: string, block: { reason: string } | undefined) => { storeFor(id).set(block) } } }
+    const b = await bench({ conversation })
+    b.remote.snapshot.mockResolvedValue(ok({ ...LOADED, projects: [{ ...PROJECT, example: true, sessionId: 'session-a' }] }))
+    await b.face.refresh()
+    expect(storeFor('session-a').getSnapshot()).toEqual({ reason: en.exampleComposerBlocked })
+    await stop(b)
+    expect(storeFor('session-a').getSnapshot()).toBeUndefined()
   })
 
   it('keeps the record and the job list it reads, and nothing about any action\'s progress', async () => {

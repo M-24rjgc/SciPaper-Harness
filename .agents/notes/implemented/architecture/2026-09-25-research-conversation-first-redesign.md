@@ -88,6 +88,18 @@ Brand, button, business accent, success and link were one teal, so done, running
 - **Contrast.** Every state colour carries text at 4.6:1 or more on its own tint and 5:1 or more on the page in light, and 5.8:1 or more in dark. The dark send button carries its white icon at 3.8:1.
 - **Colour is never the only signal.** The OKLab check (`validate_palette.js`) passes for blue against teal (ΔE 18). Green against teal is 12.8, the most a green gets next to this teal. Green and clay are close under protanopia, and nearly equal under deuteranopia in the dark theme. Every verified mark therefore carries ✓ or words, every needs-you mark its words, and a running mark its label.
 
+### Step 5: examples say they are examples, and nothing writes into them
+
+The example researches (`<data home>/demo`, made by `research-demo.e2e.ts`) looked like the person's own work: they opened at start, their decisions read 你, and a conversation or a check could write into them.
+
+- **The flag.** `isExampleRoot(root)` (`files.ts`) is the generator's own rule, a root inside `<data home>/demo`. `publicProject` and `projectBrief` add `example: true`; nothing stores it, so no example file or record changes. The generator runs its host under an isolated data home and writes the examples under another one, so the rule never matches while it builds them.
+- **Host guard (defence in depth).** `execute` refuses every recording command on an example, from either actor, with `这是示例研究，只能查看 / This is an example research and is read-only`. The refusal comes before any slow work, so a refused compile never runs TeX in the example's folder. Reads work. A check runs and answers but is not stored. `board-update` and `board-refresh` are refused, and `board-view` never refreshes, so no board cache is written. `mutate` refuses an example's record whatever path reaches it, background observation skips examples' runs, and `create` returns an existing example unbound but makes no research or folder among the examples.
+- **In the browser.**
+  - The header chip starts with 示例 · in a dashed outline.
+  - The research tab opens with a banner, 示例研究：随应用提供的演示，只能查看。 Answers stored as the user's read 示例作者, because they were never the reader's. The autonomy select is inert.
+  - The sidebar lists examples after the person's own researches, each tagged 示例.
+  - `guardExampleComposers` (`examples.ts`) keeps the composer of every conversation inside an example inert through `conversation.blocks`, with 这是示例研究，只能查看。点「新研究」开始你自己的研究。. A session holds one block, which `ui-model-selection` also sets and clears, so the guard raises its block again whenever another plugin clears it.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -112,6 +124,8 @@ Brand, button, business accent, success and link were one teal, so done, running
 
 **Use the plan's green `#2e7d4f` (step 4).** It sits at ΔE 7 from the brand teal in light and at 5.6 in dark, so verified and brand would read as one colour; the leaf green keeps them apart.
 
+**Store an example flag in the record, or mark examples with `/permission read-only` (step 5).** A stored flag would mean editing every example record, which the generator owns. A permission preset would append events to the examples' session logs, and it would still let the host's own commands write. Deriving the flag from the folder needs neither.
+
 **Keep one error banner and clear it per action (step 3).** A banner above the panel tells nobody which button failed, and two actions in flight overwrite each other's message. A line beside each control needs no clearing rules.
 
 ## Consequences
@@ -126,4 +140,5 @@ Brand, button, business accent, success and link were one teal, so done, running
 - The inherited user guide (`docs/user/guide`) and upstream Agent Notes still quote the shell's old labels, such as **Choose workspace** and `Deep diving...`.
 - A person who wants a check, the pipeline or another mode now asks the assistant in the conversation. Until step 6 the rail's phases still read the last check whatever its scope.
 - Until step 9 the 新建项目目录… pill and the composer's folder button stay as the only direct ways to put a research in a chosen folder.
+- An example cannot be continued, even by the person who has it open; making a copy of one is left to the tutorial (`复制为我的研究`). Until step 9 startup can still land in an example, which now says it is one.
 - The shell's own success marks (a done todo, a diff's added lines, the connection indicator) now read the verified green in the research edition, which is their conventional meaning. Until step 11 the rail's phases are a filled neutral dot or a hollow one; the ring for the current phase arrives with the rail's rebuild.

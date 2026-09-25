@@ -255,6 +255,24 @@ describe('the research rail', () => {
     expect(next.getByText('because data')).toBeTruthy()
   })
 
+  it('marks an example, credits its answers to the example\'s author, and changes nothing', () => {
+    const shipped = project('spark-to-paper')
+    shipped.example = true
+    shipped.decisions.push(
+      { id: 'd0', question: 'Q0', answer: 'A0', by: 'user', rationale: '', at: '' },
+      { id: 'd1', question: 'Q1', answer: 'A1', by: 'agent', rationale: '', at: '' },
+    )
+    const { rail } = mount([shipped])
+    expect(rail.getByText(zh.exampleBanner)).toBeTruthy()
+    expect(rail.getByText(`${zh.exampleAuthor} · Q0`)).toBeTruthy()
+    expect(rail.getByText(`${zh.decisionByAgent} · Q1`)).toBeTruthy()
+    expect(rail.queryByText(`${zh.decisionByUser} · Q0`)).toBeNull()
+    expect((rail.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true)
+    cleanup()
+    // The person's own research carries no banner.
+    expect(mount([project('spark-to-paper')]).rail.queryByText(zh.exampleBanner)).toBeNull()
+  })
+
   it('counts sources, claims, files and runs, each opening its place in the workbench', () => {
     const routed = project('spark-to-paper')
     routed.evidence.push({ id: 'e' as EvidenceId, title: 't', kind: 'file', path: 'p', sha256: 's', revision: 1, importedAt: '', chunks: [], coverage: 'data', verified: true, stale: true })

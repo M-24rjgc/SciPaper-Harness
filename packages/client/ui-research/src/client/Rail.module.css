@@ -3,6 +3,7 @@
 .empty { margin: 0; font-size: 12px; line-height: 1.75; color: var(--dsw-alias-label-tertiary); }
 .header { display: flex; align-items: baseline; gap: 8px; padding-bottom: 2px; }
 .title { flex: 1; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.exampleBanner { margin: 0; padding: 7px 9px; border: 0.5px dashed var(--dsw-alias-border-l4); border-radius: 6px; font-size: 11.5px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
 .controls { display: flex; flex-direction: column; gap: 8px; }
 .field { display: flex; flex-direction: column; gap: 3px; }
 .fieldLabel { font-size: 11px; color: var(--dsw-alias-label-tertiary); }

@@ -28,6 +28,7 @@ import { ResearchNewProject } from './NewProject.tsx'
 import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { SkipHarnessNotice } from './Onboarding.tsx'
 import { EmptyCell } from './EmptyCell.tsx'
+import { guardExampleComposers } from './examples.ts'
 import { en, zh, type ResearchKey } from './locales.ts'
 
 /** This implementation's identity in the right-sidebar tab system. */
@@ -77,6 +78,13 @@ export function apply(ctx: Context): void {
   }
   readDirectories()
   ctx.effect(() => sessions.list.subscribe(readDirectories), 'research.session-directories')
+  // An example's conversations can be read, not continued; the composer says so where the conversation plugin runs.
+  ctx.inject(['conversation'], (scope: Context) => {
+    scope.effect(() => guardExampleComposers({
+      research: state, directories, blocks: scope.conversation.blocks,
+      reason: () => ctx.locale.bind('research')('exampleComposerBlocked'),
+    }), 'research.example-composers')
+  })
   const controller = new AbortController()
   let refreshing: Promise<void> | undefined
   const unwrap = <T>(result: RemoteResult<T>): T => { if (!result.ok) throw new Error(result.error.message); return result.value }

@@ -79,6 +79,13 @@ describe('the header names where this session\'s project stands', () => {
     expect(chip.container.textContent).toBe(`spark-to-paper · 引用 1/3·${zh.autonomyShortAutomatic}`)
   })
 
+  it('says first that an example is an example', () => {
+    const shipped = project('C:\\home\\demo\\sparse', 'spark-to-paper')
+    shipped.sessionId = SESSION
+    shipped.example = true
+    expect(render(<ResearchStatusChip {...propsFor([shipped], log())} />).container.textContent).toBe(`${zh.exampleTag}·spark-to-paper`)
+  })
+
   it('says the check is clean once every phase is done', () => {
     const mine = project('/research/mine', 'spark-to-paper', 'proposal')
     mine.sessionId = SESSION

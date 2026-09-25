@@ -4,6 +4,7 @@ import { createReadStream, existsSync } from 'node:fs'
 import { copyFile, mkdir, open, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
 /** Resolve a project path and reject traversal through existing symlinks. */
 export async function projectPath(root: string, path: string): Promise<string> {
@@ -150,6 +151,21 @@ export function assertUsableProjectRoot(root: string, platform: NodeJS.Platform 
 export function isMetadataPath(relativePath: string): boolean {
   const normalized = posix.normalize(relativePath.replaceAll('\\', '/')).replace(/^\.\//, '')
   return normalized.split('/')[0]?.toLowerCase() === '.research'
+}
+
+/** Why a command on an example research was refused; the words both the person and the agent read. */
+export const EXAMPLE_READ_ONLY = '这是示例研究，只能查看 / This is an example research and is read-only'
+
+/**
+ * Whether a project lives in the product's example folder, `<data home>/demo`,
+ * where the example researches shipped for the tutorial are kept. Examples are
+ * read-only: nothing is recorded into them, whoever asks.
+ * @param root - the project's absolute root.
+ * @param home - the product's data directory.
+ * @returns true for an example research.
+ */
+export function isExampleRoot(root: string, home: string = resolveDshHome()): boolean {
+  return isInside(join(home, 'demo'), root)
 }
 
 /** Whether an absolute path lies inside a root, compared after resolution and case-folded on Windows. */

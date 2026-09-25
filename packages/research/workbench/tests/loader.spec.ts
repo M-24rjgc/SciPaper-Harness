@@ -379,6 +379,62 @@ describe('the research service records; it never drives the agent', () => {
     expect(third.service.getProject(p.id).evidence.map(e => e.chunks)).toEqual([[], []])
   })
 
+  it('keeps an example research read-only, whoever asks, and still lets it be read and checked', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-example-'))
+    const { service } = await boot(new MemoryMediaPool())
+    // Made before the data home points here; from then on it lies in `<data home>/demo`, as the shipped examples do.
+    const example = await service.create({ title: 'Example', root: join(root, 'demo', 'shipped'), brief: '' })
+    const own = await service.create({ title: 'Own', root: join(root, 'own'), brief: '' })
+    await write(join(example.root, 'notes.md'), 'an example note')
+    await service.execute({ projectId: example.id, action: 'import', paths: ['notes.md'] } as never, signal, 'agent')
+    vi.stubEnv('DSH_HOME', root)
+    try {
+      const run = (request: Record<string, unknown>, actor: 'user' | 'agent' = 'agent') =>
+        service.execute({ projectId: example.id, ...request } as never, signal, actor)
+      const before = structuredClone(service.getProject(example.id))
+      const snapshot = await service.snapshot()
+      expect(snapshot.projects.find(p => p.id === example.id)?.example).toBe(true)
+      expect(snapshot.projects.find(p => p.id === own.id)).not.toHaveProperty('example')
+      for (const actor of ['user', 'agent'] as const) {
+        await expect(run({ action: 'record-decision', question: 'Q?', answer: 'A' }, actor)).rejects.toThrow('这是示例研究，只能查看 / This is an example research and is read-only')
+        await expect(run({ action: 'set-autonomy', autonomy: 'automatic' }, actor)).rejects.toThrow(/read-only/)
+      }
+      await expect(run({ action: 'board-update', board: { sections: [] } })).rejects.toThrow(/read-only/)
+      await expect(run({ action: 'board-refresh' })).rejects.toThrow(/read-only/)
+      // Reading still works; a board read asked to refresh shows the last one and writes nothing.
+      expect(JSON.parse((await run({ action: 'search-evidence', query: 'example' })).content ?? '[]')).toHaveLength(1)
+      expect((await run({ action: 'board-view', refresh: true })).board).toBeDefined()
+      expect(existsSync(join(example.root, '.research', 'board', 'snapshot.json'))).toBe(false)
+      // A check runs and answers, and is not stored.
+      expect((await run({ action: 'check' })).check).toBeDefined()
+      expect(service.getProject(example.id)).toEqual(before)
+      // The last guard: nothing that reaches the record changes it, and background observation passes examples by.
+      const internals = service as unknown as { mutate(id: string, work: () => void): Promise<void>; refreshRunning(): Promise<void> }
+      await expect(internals.mutate(example.id, () => {})).rejects.toThrow(/read-only/)
+      await internals.refreshRunning()
+      // Opening an example returns it unbound; nothing new is made among the examples, not even a folder.
+      expect((await service.create({ title: 'Again', root: example.root, brief: '' })).id).toBe(example.id)
+      await expect(service.create({ title: 'New', root: join(root, 'demo', 'mine'), brief: '' })).rejects.toThrow(/read-only/)
+      expect(existsSync(join(root, 'demo', 'mine'))).toBe(false)
+      // The agent's brief says so.
+      const { projectBrief } = await import('../src/tools.ts')
+      const modes = (service as unknown as { modes: { resolve(project: ResearchProject): Parameters<typeof projectBrief>[1] } }).modes
+      type Brief = { example?: boolean; guide: string[] }
+      const briefOf = (id: ResearchProject['id']): Brief => projectBrief(service.getProject(id), modes.resolve(service.getProject(id))) as Brief
+      const brief = briefOf(example.id)
+      expect(brief.example).toBe(true)
+      expect(brief.guide[0]).toMatch(/^This is an example research shipped with the app, and it is read-only/)
+      const ownBrief = briefOf(own.id)
+      expect(ownBrief).not.toHaveProperty('example')
+      expect(ownBrief.guide[0]).not.toMatch(/example/)
+      // The own research beside it records as before.
+      await service.execute({ projectId: own.id, action: 'record-decision', question: 'Q?', answer: 'A' } as never, signal, 'user')
+      expect(service.getProject(own.id).decisions).toHaveLength(1)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('routes, decides, checks and records files for the agent and the desktop alike', async () => {
     root = await mkdtemp(join(tmpdir(), 'research-ledger-'))
     const { service } = await boot(new MemoryMediaPool())

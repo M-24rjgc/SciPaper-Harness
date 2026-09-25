@@ -16,6 +16,8 @@
 | `route` | 该模式包的某条路线 | 在模式包内走的路径，例如从想法、提案或实测结果开始。 |
 | `autonomy` | `checkpoints`、`automatic` | agent 在关键决策处提问（`ask_user_question`，会暂停正在运行的目标），还是自行决定并记录理由。`automatic` 搭配 `research-auto` 权限预设：沙箱越权请求直接拒绝，而不是等待审批。 |
 
+根目录位于 `<数据目录>/demo` 中的项目是示例研究，随应用提供，用于新手教学（`src/files.ts` 中的 `isExampleRoot`）。快照和 agent 的项目简报会把它标为 `example: true`；这个标记是推导出来的，从不存储。示例对用户和 agent 都是只读的：可以读取和检查，但检查报告不会保存，任何会记录内容的命令都会被拒绝，并提示 `这是示例研究，只能查看 / This is an example research and is read-only`。看板显示最近一次读取的结果，其中的运行不再被观测，示例目录中也不会新建任何研究或文件夹。
+
 记录存放在 `research_workbench` 存储域中（单文档布局，版本 1）。旧形态的记录会在读取时迁移：阶段机字段被移除，已确认的阶段转为用户决策；原先内置的 `paper-first` 与 `from-results` 模式转为 spark-to-paper 模式包的 `proposal` 与 `data` 路线，`free` 或未设置的模式转为 `general`。模式、路线、阶段与检查的 id 都以字符串存储，因此即使记录所指的模式包已被移除，记录照样能打开，项目按 `general` 运行。抽取出的证据文本存放在快照旁的 `.research/chunks/<evidence>/<revision>.json`，而不在记录里，因此一次变更只重写台账，不会重写每份资料的全文。
 
 ## 模式包
