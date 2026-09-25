@@ -27,6 +27,8 @@ Gives the agent a research project ledger and the tools to work in it: import an
 
 Mount it with the `ui-research` client plugin and the research agent preset; the web-app bundle already does. The service registers no tools of its own: the preset mounts `@deepseek-ai/dsh-research-workbench/tools`, so only agents composed from it see the research tools.
 
+A project's autonomy is every one of its conversations' permission preset: the service injects `ctx.permissionPresets` and sets `workspace-write` for `checkpoints` and `research-auto` for `automatic` on each live session of the project, whenever the autonomy is set and as each session becomes live; examples and delegated children are left alone ([details](../../../docs/subsystems/research.md#autonomy-and-permission)). The permission row must configure both presets, as the web-app bundle does, or the service does not load.
+
 ### When to choose it
 
 Choose it when the agent should carry a paper from an idea or from existing results to a submission, recording where every source, file and number came from. It records and checks; the agent, its goals and the research skills drive the work, so a general coding session gains nothing from it.
@@ -74,7 +76,7 @@ One service owns every project record in the `research_workbench` storage domain
 
 | Source | What it holds |
 |---|---|
-| [`src/index.ts`](src/index.ts) | The service: project lifecycle, command dispatch, the per-project queue, run observation |
+| [`src/index.ts`](src/index.ts) | The service: project lifecycle, command dispatch, the per-project queue, run observation, and each conversation's permission preset |
 | [`src/checks.ts`](src/checks.ts) | `research_check`: every base check, a mode's gates through the runner the service supplies, and phase progress from the mode's requirements |
 | [`src/progress.ts`](src/progress.ts) | The project's progress, merged report by report from `research_check`, and `standing`: where the project stands for the person, the brief and the header |
 | [`src/modes.ts`](src/modes.ts) | Mode packs: manifest validation, the registry, routes and the mode a project resolves to |
@@ -97,7 +99,7 @@ One service owns every project record in the `research_workbench` storage domain
 | [`runtime/board_probe.py`](runtime/board_probe.py) | The standard-library probe that reports one machine's GPUs, processors, memory, disk and runs' progress lines |
 | [`src/gallery.ts`](src/gallery.ts) | The figure gallery: search with filters, keywords and optional title embeddings; figures fetched on demand into a cache |
 | [`runtime/figure-gallery/`](runtime/figure-gallery) | The index of about 3,500 top-venue Figure 1s from Top-Conf Figure Gallery, built by [`scripts/build_figure_gallery.py`](scripts/build_figure_gallery.py); no images |
-| [`src/tools.ts`](src/tools.ts) | The model tools and the approval hook |
+| [`src/tools.ts`](src/tools.ts) | The model tools and the approval hook, which asks for imports from outside the project except the files the person attached |
 | [`runtime/experiment_runner.py`](runtime/experiment_runner.py) | The standard-library supervisor every run executes under |
 
 </details>
@@ -135,7 +137,7 @@ Prefix-stable while the definitions and their visibility are unchanged.
 
 #### What the model sees
 
-Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode, route and the reason for them, whether the mode was chosen and by whom (`modeChosen`, `modeSetBy`) and whether the route is settled (`routingSettled`), the mode's `paperRoot`, autonomy, the goal a live conversation of the research holds (`activeGoal`, the reader's own first), each phase's state (done, current, pending or deferred) with what its last check found missing, when the project was last checked and whether files changed since, the skills each phase uses, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next phase and its hint, deferred phases, the mode's skills to load when a phase's work starts, a running goal not to duplicate, and when to ask. The phases are the same `standing` the research record shows the person. Outside a research, current returns `{project: null, hint}` instead of failing; `create` makes only the conversation's own folder a research and refuses any other root with a message telling the agent to ask the user to use 新研究 (New research) and 更改位置 (Change location). Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`.
+Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode, route and the reason for them, whether the mode was chosen and by whom (`modeChosen`, `modeSetBy`) and whether the route is settled (`routingSettled`), the mode's `paperRoot`, autonomy, the goal a live conversation of the research holds (`activeGoal`, the reader's own first), each phase's state (done, current, pending or deferred) with what its last check found missing, when the project was last checked and whether files changed since, the skills each phase uses, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next phase and its hint, deferred phases, the mode's skills to load when a phase's work starts, a running goal not to duplicate, and when to ask. The phases are the same `standing` the research record shows the person. Outside a research, current returns `{project: null, hint}` instead of failing; `create` makes only the conversation's own folder a research and refuses any other root with a message telling the agent to ask the user to use 新研究 (New research) and 更改位置 (Change location). Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`. An import of a file the user attached to the conversation runs without an approval request; an import from anywhere else outside the project asks the user first, and under `automatic` autonomy the request is declined, because its preset turns approval prompts off in every conversation of the research (the approval policy's runtime-context sentence tells the model which applies).
 
 #### Token effect
 

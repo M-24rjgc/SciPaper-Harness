@@ -178,11 +178,48 @@ export function isInside(root: string, path: string, platform: NodeJS.Platform =
 /**
  * Directories whose contents are credentials or keys. Nothing is imported from
  * them, whoever asks: an approval dialog is no place to notice that a path
- * leads into the harness's own credential store.
+ * leads into the harness's own credential store. The one exception is the
+ * attachment store's files directory inside the data home ({@link isAttachment}).
  * @param home - the product's data directory, holding its credential store.
+ * @returns the absolute directories.
  */
 export function protectedDirectories(home: string): string[] {
   return [home, ...['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker'].map(name => join(homedir(), name))]
+}
+
+/**
+ * Where the attachment store keeps the files a person attached to a
+ * conversation: `<data home>/attachments/v1/files`, the layout
+ * `@deepseek-ai/dsh-attachment-local` writes (`storedFilePath`).
+ * @param home - the product's data directory.
+ * @returns the absolute directory.
+ */
+export function attachedFilesDirectory(home: string): string {
+  return join(home, 'attachments', 'v1', 'files')
+}
+
+/** Whether a path lies inside a root and is not the root itself. */
+function below(root: string, path: string): boolean {
+  return isInside(root, path) && !sameDirectory(root, path)
+}
+
+/**
+ * Whether a path names something the person attached to a conversation: it lies
+ * below the attachment store's files directory, and still does once links are
+ * resolved. Attaching a file is the person's consent to import it; nothing else
+ * in the data home is.
+ * @param path - absolute path of a candidate source.
+ * @param home - the product's data directory.
+ * @returns true for an attached file or a folder below the store; false for the store itself, anything
+ * outside it, a path that does not exist, and a link that leads out of the store.
+ */
+export async function isAttachment(path: string, home: string = resolveDshHome()): Promise<boolean> {
+  const store = attachedFilesDirectory(home)
+  if (!below(store, path)) return false
+  let real: [string, string]
+  // A path that does not exist, or a store that was never created, holds no attachment.
+  try { real = await Promise.all([realpath(store), realpath(path)]) } catch { return false }
+  return below(...real)
 }
 
 /** The message of a thrown value, whatever was thrown. */

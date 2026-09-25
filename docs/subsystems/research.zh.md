@@ -14,7 +14,11 @@
 |---|---|---|
 | `mode` | 已安装的模式包 id；默认 `general` | 项目所在的模式包（见下文）。 |
 | `route` | 该模式包的某条路线 | 在模式包内走的路径，例如从想法、提案或实测结果开始。 |
-| `autonomy` | `checkpoints`、`automatic` | agent 在关键决策处提问（`ask_user_question`，会暂停正在运行的目标），还是自行决定并记录理由。`automatic` 搭配 `research-auto` 权限预设：沙箱越权请求直接拒绝，而不是等待审批。 |
+| `autonomy` | `checkpoints`、`automatic` | agent 在关键决策处提问（`ask_user_question`，会暂停正在运行的目标），还是自行决定并记录理由。它同时决定每段对话的权限预设（[见下文](#autonomy-and-permission)）。 |
+
+<a id="autonomy-and-permission"></a>
+
+自主程度以权限预设的形式生效（`src/schema.ts` 中的 `AUTONOMY_PRESETS`）：`checkpoints` 对应 `workspace-write`，越权请求会询问用户；`automatic` 对应 `research-auto`，越权请求直接拒绝。服务用 `ctx.permissionPresets.set` 把这个预设设到项目的每个在线会话上：绑定到项目的会话，以及工作目录位于项目之内、且不在其中嵌套的其他研究里的每个顶层会话。每次 `set-autonomy`（即使取值不变）、项目创建时、服务启动时都会这样做；每个会话上线时，也由服务自己的 `session/created` 监听器设置，这个监听器在权限服务为该会话固定默认值之后运行。委派出的子会话保持委派时确定的权限，示例的会话从不改动。在某段对话里用 `/permission` 手动输入的预设，在这段对话里一直有效，直到再次设置自主程度或这段对话被重新加载。权限配置行缺少这两个预设中的任何一个时，服务不会加载。
 
 模式由谁选定记在 `modeSetBy` 中。创建时指定了模式的项目记为 `user`；创建时没有指定模式的项目处于 `general`，`modeSetBy` 不设置，表示模式尚未选定。`set-mode` 按它的 `decidedBy`（缺省时为调用方）设置 `modeSetBy`，并追加一条 key 为 `mode` 的决策：问题是「模式与路线」，回答是以 id 写成的 `<mode>` 或 `<mode> · <route>`，理由即其 rationale。只有给出了理由，它才替换 `modeReason`；模式或路线改变时，`progress` 从头开始。`rename` 设置标题，清除 `untitled`（产品起的占位标题），并把同一标题给文件夹对应的 Workspace，除非已有别的 Workspace 用了这个标题。每次实验运行都把提交它的对话记为 `sessionId`；从桌面端提交的运行，以及在这个字段出现之前记录的运行，都没有它。
 
@@ -120,7 +124,8 @@ scope 与某个基础检查或门禁同名时指的是阶段，阶段 scope 会�
 服务只拒绝不安全或不真实的操作，从不拒绝进行中的工作：
 
 - 项目之外的路径，以及无论怎样拼写都指向 `.research` 的写入（按规范化、不区分大小写的路径判断）；
-- 从凭据与密钥目录导入；agent 从项目之外导入时需等待用户批准；
+- 从凭据与密钥目录导入，产品数据目录也在其中；例外是附件存储的 `<数据目录>/attachments/v1/files`，其中是用户附加到对话里的文件（其中指向外部的链接仍会被拒绝）；
+- agent 从项目之外其他任何位置导入时需等待用户批准，`automatic` 下会直接拒绝；
 - 对已记录的实验标识再次提交，以及猜测运行状态（无法确认的运行记为 `unknown`）；
 - 引文在其定位处并不存在的证据关联；
 - 除两个科研凭据（生图密钥与嵌入密钥）之外的提供方凭据；

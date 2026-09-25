@@ -451,7 +451,9 @@ export interface Config {
    * Shadow the shell cells that are developer surfaces in this product: the
    * turn, step, token-rate and cache-hit pills under the composer, General
    * settings' default permission (the research's autonomy decides it), and the
-   * button that opens the raw configuration file. The shipped Web bundle sets it.
+   * button that opens the raw configuration file draw nothing, and the
+   * research's autonomy chip takes the composer's access chip. The shipped Web
+   * bundle sets it.
    */
   hideDeveloperCells?: boolean
 }
@@ -1939,7 +1941,7 @@ Source: [`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guar
 
 ## `@deepseek-ai/dsh-research-workbench`
 
-Requires: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals`
+Requires: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals` · `sessions` · `permissionPresets`
 
 ```ts config-catalog
 /** Research workbench configuration. */
@@ -1955,7 +1957,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/research/workbench/src/index.ts:48`](../packages/research/workbench/src/index.ts)
+Source: [`packages/research/workbench/src/index.ts:50`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

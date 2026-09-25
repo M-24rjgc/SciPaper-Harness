@@ -81,11 +81,6 @@ export interface ResearchInjected {
    */
   openConversation(sessionId: string, workspaceId: string): Promise<void>
   /**
-   * Run a slash command in one session without posting a message — the same
-   * path the composer's own picker uses for `/permission`.
-   */
-  command(sessionId: string, line: string): Promise<void>
-  /**
    * Open a project file in the conversation's right sidebar, where PDFs,
    * images and text render natively. Throws when no conversation's sidebar is
    * mounted to show it.

@@ -1,14 +1,15 @@
 /**
  * The research agent's tools. The project is found from the session's working
  * directory; every action takes typed fields; results are compact. Reaching
- * outside the project goes through DSH's own approval card.
+ * outside the project goes through DSH's own approval card, except for the
+ * files the person attached to the conversation.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { isAbsolute, resolve } from 'node:path'
 import type { ResearchWorkbench } from './index.ts'
-import { errorText, isExampleRoot, isInside, sameDirectory } from './files.ts'
+import { errorText, isAttachment, isExampleRoot, isInside, sameDirectory } from './files.ts'
 import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
 import { autonomies, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
@@ -38,7 +39,7 @@ const FAMILIES: Family[] = [
       + 'literature-search {provider: crossref|openalex|arxiv, query}; literature-import {item}: re-fetches the record by its identifier and returns '
       + 'verified BibTeX to put in the bibliography. claim {claim}: link a claim to exact quoted evidence. refresh-evidence {evidenceId}.',
     fields: {
-      paths: list('import: files, relative to the project or absolute. Paths outside the project ask the user first.'),
+      paths: list('import: files, relative to the project or absolute. Files the user attached to the conversation import directly; other paths outside the project ask the user first.'),
       evidenceId: text('refresh-evidence'),
       query: text('search-evidence / literature-search'),
       provider: { type: 'string', enum: ['crossref', 'openalex', 'arxiv'], description: 'literature-search' },
@@ -360,7 +361,12 @@ async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): 
   try { project = await projectFor(service, args.projectId, exec) } catch { return undefined }
   if (args.action === 'import' || args.action === 'import-template') {
     const paths = Array.isArray(args.paths) ? args.paths.filter((path): path is string => typeof path === 'string') : []
-    const outside = paths.filter(path => !isInside(project.root, isAbsolute(path) ? path : resolve(project.root, path)))
+    const outside: string[] = []
+    for (const path of paths) {
+      const source = isAbsolute(path) ? path : resolve(project.root, path)
+      // Attaching a file to the conversation already was the person's consent.
+      if (!isInside(project.root, source) && !await isAttachment(source)) outside.push(path)
+    }
     if (outside.length) return `Copy files from outside the research project into it: ${outside.join(', ')}`
   }
   const environment = args.environment as { kind?: unknown; target?: unknown; python?: unknown } | undefined

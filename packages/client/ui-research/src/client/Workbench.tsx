@@ -140,7 +140,7 @@ function Overview(props: PanelProps): ReactNode {
       <h2>{project.title}</h2>
       <p>{project.brief}</p>
       <code className={styles.muted}>{project.root}</code>
-      <ProjectStatus {...props} commandSession={project.sessionId} />
+      <ProjectStatus {...props} />
     </section>
     <div className={styles.toolbar}><ActionButton t={t} label={t('exportPaper')} work={() => props.run({ action: 'export', projectId: project.id })} /></div>
   </>

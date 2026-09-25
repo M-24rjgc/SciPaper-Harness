@@ -29,6 +29,7 @@ import { ResearchNewProject } from './NewProject.tsx'
 import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { SkipHarnessNotice } from './Onboarding.tsx'
 import { EmptyCell } from './EmptyCell.tsx'
+import { AutonomyChip } from './AutonomyChip.tsx'
 import { guardExampleComposers } from './examples.ts'
 import { ResearchCheckCard, ResearchToolCard } from './ResearchToolView.tsx'
 import { en, zh, type ResearchKey } from './locales.ts'
@@ -151,12 +152,6 @@ export function apply(ctx: Context): void {
   const openProjectFile = (root: string, path: string): void => { ctx.sidebarRight.openResource(projectFileAddress(root, path)) }
   const injected = (): ResearchInjected => ({
     hooks: { research: state, focus, directories }, refresh,
-    command: async (sessionId, line) => {
-      const live = sessions.binding(sessionId as SessionId)?.session
-      if (live === undefined) throw new Error('This conversation is not ready yet')
-      const result = await live.command(line)
-      if (!result.ok) throw new Error(result.error.message)
-    },
     openFile: openProjectFile,
     openFiles: () => { ctx.sidebarRight.openTab(FILES_TAB_KIND) },
     showProgress: () => {
@@ -234,11 +229,13 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'research', order: 25, label: () => ctx.locale.bind('research')('settingsSection'), locale: 'research', inject: injected }, ResearchSettingsSection))
   // The harness's internal-testing notice is not this product's; shadowing it (lower priority renders) skips it. The API-key step stays.
   ctx.slots.inject('settings.onboarding', () => ctx.slots.register({ name: 'settings.onboarding', id: 'welcome-notice', priority: -1 }, SkipHarnessNotice))
-  // Shell cells that are developer surfaces here, each shadowed by an empty cell (the host half's `Config`).
+  // Shell cells that are developer surfaces here, each shadowed (the host half's `Config`): three by an empty
+  // cell, and the composer's access chip by the research's autonomy, which decides every conversation's preset.
   if (hideDeveloperCells) {
     ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({ name: 'conversation.composer.dock', id: 'stats', priority: -1 }, EmptyCell))
     ctx.slots.inject('settings.general.item', () => ctx.slots.register({ name: 'settings.general.item', id: 'permission', priority: -1 }, EmptyCell))
     ctx.slots.inject('settings.action', () => ctx.slots.register({ name: 'settings.action', id: 'open-document', priority: -1 }, EmptyCell))
+    ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1, locale: 'research', inject: injected }, AutonomyChip))
   }
   // The research record reports beside the conversation, read-only.
   ctx.inject(['sidebarRightTabs'], (scope: Context) => {

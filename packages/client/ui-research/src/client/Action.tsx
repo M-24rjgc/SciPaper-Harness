@@ -64,10 +64,14 @@ export function useAction(): Action {
   }
 }
 
-/** The failure line under a control; nothing while the action has not failed. */
-export function ActionError(props: { t: Translate; error: string }): ReactNode {
+/**
+ * The failure line under a control; nothing while the action has not failed.
+ * A control in a row of other controls passes its own `className` for a line
+ * that fits beside it.
+ */
+export function ActionError(props: { t: Translate; error: string; className?: string | undefined }): ReactNode {
   if (props.error === '') return null
-  return <p className={styles.error} role="alert">{props.t('actionFailed', { reason: props.error })}</p>
+  return <p className={props.className ?? styles.error} role="alert">{props.t('actionFailed', { reason: props.error })}</p>
 }
 
 /** What a button that runs one action says, and the work one press starts. */

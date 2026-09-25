@@ -88,7 +88,6 @@ function harness(projects: ResearchProject[], focus: ResearchFocus = { claim: nu
     openConversation: (id: string, workspaceId: string) => { calls.push(`open:${id}@${workspaceId}`); return Promise.resolve() },
     focusClaim: (claim: ClaimFocus | null) => { focused.push(claim) },
     install: (component: string) => { calls.push(`install:${component}`); return Promise.resolve() },
-    command: (session: string, line: string) => { calls.push(`command:${session}:${line}`); return Promise.resolve() },
     openFile: () => {},
     openFiles: () => {},
     expand: () => {},
@@ -193,7 +192,8 @@ describe('the workbench panel', () => {
     expect(ui.getByText('details')).toBeTruthy()
     // Without a conversation of its own the project offers none to open.
     expect(ui.queryByRole('button', { name: zh.openConversation })).toBeNull()
-    fireEvent.change(ui.getByLabelText(zh.autonomy), { target: { value: 'automatic' } })
+    // The autonomy is named here and changed in the composer.
+    expect(ui.getByText('检查点（在输入框下方更改）')).toBeTruthy()
     fireEvent.click(ui.getByRole('button', { name: zh.exportPaper }))
     expect(ui.getByRole('button', { name: zh.exportPaper })).toHaveProperty('disabled', true)
     expect(ui.getByRole('button', { name: zh.refresh })).toHaveProperty('disabled', false)
@@ -203,15 +203,12 @@ describe('the workbench panel', () => {
     await act(async () => { finishExport(); await Promise.resolve() })
     await settle()
     expect(ui.getByRole('button', { name: zh.exportPaper })).toHaveProperty('disabled', false)
-    expect(h.commands).toEqual([
-      { action: 'set-autonomy', projectId: project.id, autonomy: 'automatic' },
-      { action: 'export', projectId: project.id },
-    ])
+    expect(h.commands).toEqual([{ action: 'export', projectId: project.id }])
     fireEvent.change(ui.getByLabelText(zh.projects), { target: { value: other.id } })
     expect(ui.getByRole('heading', { name: 'Other' })).toBeTruthy()
   })
 
-  it('opens the project\'s own conversation, switches its access preset there, and says why a refresh failed', async () => {
+  it('opens the project\'s own conversation, and says why a refresh failed', async () => {
     const project = { ...fixture(), sessionId: 'session-p' }
     const h = harness([project])
     h.view.response = { message: 'Clean', check: { clean: true, scope: 'all', gatesRun: [], phases: [], checkedAt: '', findings: [] } }
@@ -219,10 +216,9 @@ describe('the workbench panel', () => {
     const ui = render(<Workbench {...refusing} />)
     expect(ui.getByText(new RegExp(`^${zh.checkClean} · `))).toBeTruthy()
     fireEvent.click(ui.getByRole('button', { name: zh.openConversation }))
-    fireEvent.change(ui.getByLabelText(zh.autonomy), { target: { value: 'automatic' } })
     fireEvent.click(ui.getByRole('button', { name: zh.refresh }))
     await settle()
-    expect(h.calls).toEqual(['open:session-p@w', 'command:session-p:/permission research-auto'])
+    expect(h.calls).toEqual(['open:session-p@w'])
     expect(ui.getByRole('alert').textContent).toBe(failed('offline'))
   })
 

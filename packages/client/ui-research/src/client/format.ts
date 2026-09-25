@@ -10,15 +10,27 @@
  * @module @deepseek-ai/dsh-client-ui-research/format
  */
 import type {
-  CreateProjectRequest, ExperimentRecord, LocalizedText, ModeSummary, ResearchProject, SourceLocator,
+  Autonomy, CreateProjectRequest, ExperimentRecord, LocalizedText, ModeSummary, ResearchProject, SourceLocator,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { ResearchKey } from './locales.ts'
 
 /** Run statuses that still occupy a supervisor, and may therefore still be moving. */
 const OPEN_RUN_STATUS: readonly string[] = ['queued', 'running', 'unknown']
+/** The short name of each autonomy. */
+const AUTONOMY_NAMES: Record<Autonomy, ResearchKey> = { checkpoints: 'autonomyShortCheckpoints', automatic: 'autonomyShortAutomatic' }
 
 /** Bound lookup over this package's dictionary, as the slot framework supplies it. */
 export type Translate = (key: ResearchKey, params?: Record<string, unknown>) => string
+
+/**
+ * An autonomy's short name, as the composer chip and the research tab show it.
+ * @param autonomy - the research's autonomy.
+ * @param t - bound dictionary lookup.
+ * @returns 检查点 or 全自动, in the reader's language.
+ */
+export function autonomyName(autonomy: Autonomy, t: Translate): string {
+  return t(AUTONOMY_NAMES[autonomy])
+}
 
 const MS_PER_SECOND = 1000
 const SECONDS_PER_MINUTE = 60

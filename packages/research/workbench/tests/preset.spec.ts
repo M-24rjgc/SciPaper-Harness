@@ -28,6 +28,8 @@ describe('the research preset', () => {
     expect(research.find(row => row.id === 'research-tools')?.name).toBe('@deepseek-ai/dsh-research-workbench/tools')
     const persona = research.find(row => row.id === 'persona') as unknown as { config: { prefix: string } }
     expect(persona.config.prefix).toMatch(/research collaborator/)
+    // What the host lets the agent import without asking: the files the user attached.
+    expect(persona.config.prefix).toContain('Files the user attached to the conversation can be imported directly.')
     expect(JSON.stringify(research.find(row => row.id === 'skill-filesystem'))).toMatch(/customSkillDirs/)
     expect(await readFile(join(PRESET, 'preset.yml'), 'utf8')).toMatch(/^name: /m)
   })

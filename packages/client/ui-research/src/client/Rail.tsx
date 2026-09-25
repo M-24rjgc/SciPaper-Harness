@@ -3,16 +3,16 @@
  * where the paper stands (the host's `standing`, derived from the checks the
  * assistant ran), what was decided, what the project holds, and its tools. It
  * reports; the assistant sets the mode and runs the checks, so nothing here
- * starts work. The only thing it changes is the autonomy, which is the
- * person's. Every caption is the mode pack's or this package's own copy, never
- * text written for the model.
+ * starts work, and the autonomy is changed in the composer. Every caption is
+ * the mode pack's or this package's own copy, never text written for the
+ * model.
  */
 import type { ReactNode } from 'react'
-import type { Autonomy, PhaseState, ResearchProject, ResearchStanding, StandingIssues } from '@deepseek-ai/dsh-research-workbench/types'
+import type { PhaseState, ResearchProject, ResearchStanding, StandingIssues } from '@deepseek-ai/dsh-research-workbench/types'
 import { useModes, useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { ResearchHeroMark } from './Hero.tsx'
-import { checkedText, findingCounts, modePhases, packText } from './format.ts'
+import { autonomyName, checkedText, findingCounts, modePhases, packText } from './format.ts'
 import type { ResearchKey } from './locales.ts'
 import styles from './Rail.module.css'
 
@@ -30,43 +30,22 @@ const PHASE_STATE_KEYS: Record<PhaseState, ResearchKey> = {
 const PHASE_MARKS: Record<Exclude<PhaseState, 'done'>, string | undefined> = {
   current: styles.markCurrent, pending: styles.markPending, deferred: styles.markDeferred,
 }
-/** The access preset automatic autonomy runs under, and the one checkpoints return to. */
-const AUTONOMY_PRESET: Record<Autonomy, string> = { automatic: 'research-auto', checkpoints: 'workspace-write' }
-
-/** A project's status block, and the session its commands run in (none from outside a conversation). */
-type RailProps = WorkbenchProps & { project: ResearchProject; commandSession: string | undefined }
+/** A project's status block. */
+type RailProps = WorkbenchProps & { project: ResearchProject }
 
 /** Chip title of the research tab. */
 export function ResearchRailTitle(props: { t: WorkbenchProps['t'] }): ReactNode {
   return <span className={styles.chip}><ResearchHeroMark size={14} />{props.t('railTitle')}</span>
 }
 
-/** The project's autonomy, the one setting a person changes here. */
-function AutonomyField(props: RailProps): ReactNode {
-  const { project, t, commandSession } = props
-  const change = useAction()
-  const choose = (autonomy: Autonomy): void => {
-    change.start(async () => {
-      await props.run({ action: 'set-autonomy', projectId: project.id, autonomy })
-      // The access preset follows the autonomy, and stays visible (and overridable) in the composer's own picker.
-      if (commandSession !== undefined) await props.command(commandSession, `/permission ${AUTONOMY_PRESET[autonomy]}`)
-    })
-  }
-  return <section className={styles.controls}>
-    <label className={styles.field}>
-      <span className={styles.fieldLabel}>{t('autonomy')}</span>
-      <select
-        className={styles.select}
-        value={project.autonomy}
-        disabled={change.pending || project.example === true}
-        onChange={(event) => { choose(event.target.value as Autonomy) }}
-      >
-        <option value="checkpoints">{t('autonomyCheckpoints')}</option>
-        <option value="automatic">{t('autonomyAutomatic')}</option>
-      </select>
-    </label>
-    <ActionError t={t} error={change.error} />
-  </section>
+/** The research's autonomy, read-only here: the person changes it with the composer's chip, and an example keeps its own. */
+function AutonomyLine(props: RailProps): ReactNode {
+  const { project, t } = props
+  const name = autonomyName(project.autonomy, t)
+  return <p className={styles.autonomy}>
+    <span className={styles.fieldLabel}>{t('autonomy')}</span>
+    <span>{project.example === true ? name : t('railAutonomy', { name })}</span>
+  </p>
 }
 
 /** Who a decision is shown as coming from: in an example the person's answers were the example's author's, not the reader's. */
@@ -207,7 +186,7 @@ function Tools(props: RailProps): ReactNode {
  */
 export function ProjectStatus(props: RailProps): ReactNode {
   return <>
-    <AutonomyField {...props} />
+    <AutonomyLine {...props} />
     <Phases {...props} />
     <Issues {...props} />
     <Decisions {...props} />
@@ -226,7 +205,7 @@ export function ResearchRail(props: WorkbenchProps & SessionSeatProps): ReactNod
   const openRuns = project.experiments.filter(run => OPEN_RUN_STATUS.includes(run.status)).length
   // Runs are part of the record only on a route with an experiments phase, or once one exists.
   const runsExpected = project.experiments.length > 0 || modePhases(modes, project).includes(EXPERIMENTS_PHASE)
-  const status = { ...props, project, commandSession: props.sessionId }
+  const status = { ...props, project }
   return <div className={styles.root}>
     <div className={styles.header}><span className={styles.title}>{project.title}</span></div>
     {project.example === true && <p className={styles.exampleBanner}>{t('exampleBanner')}</p>}

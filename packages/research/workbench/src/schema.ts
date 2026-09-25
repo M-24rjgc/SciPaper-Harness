@@ -1,7 +1,7 @@
 /** Validation for durable records and incoming research commands. */
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
-import type { CheckId, ProjectId, ResearchProject, ResearchPreferences, ResearchTask } from './types.ts'
+import type { Autonomy, CheckId, ProjectId, ResearchProject, ResearchPreferences, ResearchTask } from './types.ts'
 
 const id = z.string().min(1)
 const integer = z.number().int().nonnegative()
@@ -15,6 +15,13 @@ export const locatorSchema = z.object({
 export const evidenceLinkSchema = z.object({ evidenceId: id, revision: integer, locator: locatorSchema, quote: z.string() })
 export const artifactKinds = ['manuscript', 'diagram', 'figure', 'code', 'bibliography', 'supplement', 'image'] as const
 export const autonomies = ['checkpoints', 'automatic'] as const
+/**
+ * The permission preset each autonomy selects for every conversation of a
+ * research: under checkpoints an escalation asks the person, under automatic
+ * it is declined. What each preset allows is the permission row's
+ * configuration; the research service refuses to load without both presets.
+ */
+export const AUTONOMY_PRESETS: Readonly<Record<Autonomy, string>> = { checkpoints: 'workspace-write', automatic: 'research-auto' }
 /** The base checks; mode packs add gates under their own ids. */
 export const checkIds = ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'review', 'stale', 'claims', 'structure', 'prose'] as const satisfies readonly CheckId[]
 /** The figure gallery's prominence filters: best papers and honorable mentions, then Oral and Spotlight papers. */

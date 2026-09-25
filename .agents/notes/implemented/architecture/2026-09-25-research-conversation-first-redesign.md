@@ -138,6 +138,28 @@ The research tools' calls fell back to the generic tool row, which showed the wi
 - **A card per check.** `ResearchCheckCard` reads `研究检查 · {scope} · 通过 | 未通过 · n 个错误 · n 个提醒`. A check that found no error and still did not pass says why: `n 项要求未满足` for a phase scope, `n 个阶段未完成` for scope all. It lists the first three groups of findings by check, errors first, each with the first file it names, and keeps every finding and the unfinished phases' own lines behind 详细信息. A file opens in the right sidebar only when the report carries `gatesRun`, which marks a host that drops missing files; the examples' reports predate it and show their files as text. Only a clean report gets the green ✓ (`state-success`); one that did not pass takes the warn dot and 未通过 in `state-warn`. A result that is not a report falls back to the row.
 - **Tests.** `tool-call-values.client.spec.ts` feeds the example generator's calls and reports in the host's old and new formats, and checks against the Host's own tool definitions (`registerResearchTools`) that every registered research tool has a card and every declared action a phrase. `research-tool-view.client.spec.tsx` renders the cards; `plugin.client.spec.ts` checks the ten registrations.
 
+### Step 8: autonomy is every conversation's permission, and attached files are the person's consent (host and persona)
+
+Autonomy was a line in the brief and a rail select that sent `/permission` to the rail's own conversation. Other conversations of the research, including ones a goal drove, kept whatever preset they had. Under 全自动 even a PDF the person had just attached was declined: the attachment store lives inside the product home, and the import refused that whole folder tree.
+
+- **The host applies autonomy.** `AUTONOMY_PRESETS` (`schema.ts`) maps `checkpoints` to `workspace-write` (an escalation asks) and `automatic` to `research-auto` (an escalation is declined). The service injects `permissionPresets` and `sessions` and sets the mapped preset with `ctx.permissionPresets.set` on every live session of a research. That is the session bound to it, else each session whose working directory's innermost research it is, the client's `sessionProject` rule; one `innermost` helper now serves `projectAt`, `activeGoals` and this lookup. It applies on every `set-autonomy` from either actor, even one that keeps the value. It also applies after a project is created, since the bound session went live before the record existed, when the service starts, and in its own `session/created` listener for each session that becomes live.
+- **After the default pin.** The permission service registers its `session/created` listener, which pins the settings default, in its constructor. The research service injects it, so it starts later, and Cordis dispatches listeners in registration order. The order matters when the person's default differs: run first, the research preset would find nothing to change and the pin would then write the default.
+- **Left alone.** Sessions of an example get no permission event. Delegated children (`origin: subagent`) keep the approval their delegation pinned to `never`. Sessions outside every research are not touched. A failure to set one session's preset is logged, not thrown, because a throw in `session/created` refuses the session. The service does not load unless the permission row configures both presets; the web-app bundle does.
+- **What the model sees.** `set` appends `permission/preset` (log-only), `approval/policy`, and `sandbox/mode` only when the sandbox changes. The approval sentence of each request's runtime context is folded from that log. No switch notice is injected, unlike the `/permission` command. No shared replay scenario holds a research, so no golden changes. The example generator already set `research-auto` on its automatic project and now finds it set.
+- **Attached files.** `isAttachment` (`files.ts`) accepts a path below `<data home>/attachments/v1/files`, the layout of `@deepseek-ai/dsh-attachment-local`'s `storedFilePath`, that still lies there once links are resolved. `assertImportable` lets such a path through. It still refuses the rest of the product home (credentials, `file-objects`, the files folder itself, a `..` escape, a link out of the store) and the key directories. The approval hook asks for no such path; other paths outside the project still ask under checkpoints and are declined under automatic. The `research_evidence` `paths` description says so.
+- **The persona** gains the last bullet of plan section 4.8: files the user attached can be imported directly, and for other paths outside the research folder the agent asks the user to attach them. No golden quotes the research persona; `preset.spec.ts` pins the bullet.
+- **Tests.** `loader.spec.ts` covers creation, a nested research, a bound session, sessions that open later, a subagent, sessions outside every research, a failing session, both actors' `set-autonomy`, examples, a restart and the load refusal. `research.spec.ts` imports an attached file and folder and refuses the rest of the home. `tools.spec.ts` covers the approval hook. The research Web e2e shows that a conversation nobody opened becomes `research-auto` as it goes live, and that a change reaches it and the bound conversation.
+
+### Step 8: autonomy is changed in the composer (ui-research)
+
+- **The chip.** `AutonomyChip.tsx` takes the composer's access seat (`conversation.input.permission`, priority −1). In a research conversation it reads `检查点 ▾` or `全自动 ▾`, and its menu (the ui-primitives `Menu`) offers 检查点 — 关键决策先问我 and 全自动 — 不打断我，越权操作直接拒绝 under 自主程度，用于这项研究的每段对话. A choice sends `set-autonomy` through the plugin's `run`, and the host applies the preset to every conversation of the research; the browser sends no `/permission`. While the command runs the chip names the choice and holds itself; a failure shows beside it.
+- **A preset typed by hand.** The chip reads the conversation's `permissions` projection. While it differs from the autonomy's preset (checkpoints → `workspace-write`, automatic → `research-auto`), the chip reads `本对话：<preset>` in the warn colour, naming the two autonomy presets by the autonomy and the others 仅可查看, 完全权限, 自动审查 and 自定义; any other preset shows by its key. Choosing an autonomy then sends `set-autonomy` even when it is the one recorded, so the host applies it again; without a difference, choosing the autonomy in force sends nothing.
+- **Examples.** The chip is the static text 示例 · 只读.
+- **Outside a research the chip draws nothing.** The renderer draws a single cell's lowest-priority entry, and an entry leaves its cell only by crashing, so the shell's chip cannot show through. `/permission` still opens the shell's picker there.
+- **Gated with the developer cells.** The chip registers only under `hideDeveloperCells`, so the inherited Web scenarios, which turn the flag off, keep the access chip and their goldens.
+- **The rail.** The autonomy select, its `/permission` line and the injected `command` are gone. The rail and the project's file panel show 自主程度 and `检查点（在输入框下方更改）`; an example shows the name alone.
+- **Tests.** `autonomy-chip.client.spec.tsx` covers the chip and `plugin.client.spec.ts` its registration under the flag. The research Web e2e changes the autonomy from the chip, waits for the conversation's `research-auto`, types `/permission read-only`, sees `This conversation: Read only`, and brings it back by choosing Automatic.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -190,6 +212,24 @@ The research tools' calls fell back to the generic tool row, which showed the wi
 
 **Copy the Host's `CHECK_LABELS` into the client (step 7).** A second copy would drift; the standing already carries the label of every check with findings.
 
+**A Config field for the autonomy-to-preset mapping (step 8).** The composer chip shows the same mapping to tell a hand-typed preset apart, and a client row's config never reaches the browser, so a configurable host mapping would be a second copy the chip could disagree with. What each preset allows stays configurable in the permission row.
+
+**Keep applying the preset from the browser (step 8).** The browser reaches only a conversation it has open, so a conversation a goal drives, or one nobody opened, would run under a stale preset.
+
+**Switch through the `/permission` path, `ctx.approval.setPolicy` with its notice (step 8).** It needs a live agent and would add a user-visible notice to every conversation on each change. The runtime-context sentence already states the current policy, and the plan names `permissionPresets.set`.
+
+**Apply only in `session/created` (step 8).** A new research's bound session goes live before the record exists, so it would keep the default until its next load.
+
+**Allow the attachment folder by its lexical path, or the whole `attachments` tree (step 8).** A link inside the store could lead anywhere in the home, and `file-objects` and the image objects are not what the person attached by name. Resolving links and accepting only `files/**` keeps the refusal of the rest.
+
+**Fall back to the shell's chip outside a research (step 8).** The slot model has no entry that declines. Drawing `PermissionSelect` from ui-research would import another plugin's component, and rewriting it would copy its catalog read and risk confirmations.
+
+**Register the chip without the flag (step 8).** Inherited scenarios whose sessions are outside a research would lose the access chip that their goldens record.
+
+**Name presets from the permission catalog (step 8).** It would add the `remote.permissionPresets` read and its invalidation to ui-research. The catalog's names are the host's, which the shell's chip also replaces with its own dictionary for built-in presets.
+
+**Keep sending `/permission` from the browser (step 8).** It reaches only the conversation on screen.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -215,3 +255,11 @@ The research tools' calls fell back to the generic tool row, which showed the wi
 - A goal in a conversation that is not loaded is not reported in `activeGoal`, so an agent can create a second one beside it.
 - Inherited Web scenarios compose the same `system-prompt` row, so their prompt goldens lost the identity opener with the research edition's.
 - A clean check scoped to a base check (for example `figures` in the general mode) shows the check's id, because the snapshot carries a check's label only while it has findings.
+- A preset typed with `/permission` holds in its conversation until the autonomy is set again or the conversation is loaded again.
+- The research service does not load in a composition whose permission row lacks `workspace-write` or `research-auto`.
+- The attachment store is shared by all conversations, so a path attached in another conversation is importable too. The agent learns attachment paths only from its own conversation's messages.
+- The example generator's own `permissionPresets.set(..., 'research-auto')` is now redundant and stays.
+- In the shipped edition a conversation outside every research has no access control in the composer; `/permission` remains.
+- A composition that mounts ui-research without `hideDeveloperCells` keeps the shell's access chip and has no autonomy control, although the rail still points to the composer.
+- A hand-typed preset lasts until the next autonomy choice in that research.
+- When the conversation's projection arrives after the record, the chip briefly reads `本对话：…`.

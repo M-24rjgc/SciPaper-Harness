@@ -2864,7 +2864,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "paths": {
       "type": "array",
-      "description": "import: files, relative to the project or absolute. Paths outside the project ask the user first.",
+      "description": "import: files, relative to the project or absolute. Files the user attached to the conversation import directly; other paths outside the project ask the user first.",
       "items": {
         "type": "string"
       }

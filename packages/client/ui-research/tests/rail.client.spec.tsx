@@ -3,15 +3,13 @@
 /**
  * The research rail. It reports how the project stands by the host's standing, what
  * was decided and what the project holds, and offers the project's tools. The
- * assistant sets the mode and runs the checks, so the one thing a person
- * changes here is the autonomy; that control keeps its own pending and failure
- * state, and every command it emits is handed back to the validator the
- * service parses commands with.
+ * assistant sets the mode and runs the checks, and the person changes the
+ * autonomy in the composer, so the rail changes nothing: it names the autonomy
+ * and where to change it.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
-import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
 import type { EvidenceId, ExperimentRecord, ResearchCommand, ResearchProject, RunStatus } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ProjectStatus, ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
@@ -27,7 +25,6 @@ const ROOT = 'C:\\research\\sparse'
 
 interface Log {
   commands: ResearchCommand[]
-  lines: [string, string][]
   opened: [string, string][]
   expanded: [string, string | undefined][]
   /** How many times the research folder's file tab was asked for. */
@@ -36,8 +33,6 @@ interface Log {
 
 /** How the host answers; it accepts everything unless a test says otherwise. */
 interface Host {
-  run?: () => Promise<unknown>
-  command?: () => Promise<unknown>
   openFile?: () => void
   openFiles?: () => void
 }
@@ -61,7 +56,7 @@ function run(id: string, status: RunStatus): ExperimentRecord {
 }
 
 function seat(projects: ResearchProject[], host: Host): { props: WorkbenchProps & SessionSeatProps; log: Log } {
-  const log: Log = { commands: [], lines: [], opened: [], expanded: [], files: 0 }
+  const log: Log = { commands: [], opened: [], expanded: [], files: 0 }
   const view = { snapshot: { projects, preferences: {}, components: [], modes: MODES }, tasks: [], response: null }
   const props = {
     sessionId: SESSION,
@@ -70,11 +65,7 @@ function seat(projects: ResearchProject[], host: Host): { props: WorkbenchProps 
     useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
     run: (command: ResearchCommand) => {
       log.commands.push(command)
-      return host.run ? host.run() : Promise.resolve({ message: '' })
-    },
-    command: (sessionId: string, line: string) => {
-      log.lines.push([sessionId, line])
-      return host.command ? host.command() : Promise.resolve()
+      return Promise.resolve({ message: '' })
     },
     openFile: (root: string, path: string) => { log.opened.push([root, path]); host.openFile?.() },
     openFiles: () => { log.files += 1; host.openFiles?.() },
@@ -92,13 +83,6 @@ function mount(projects: ResearchProject[], host: Host = {}): { rail: ReturnType
 /** Let the host's answers land. */
 const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }
 
-/** A host answer that waits until the test lets it through. */
-function held(): { answer: () => Promise<unknown>; release: () => void } {
-  let release = (): void => {}
-  const pending = new Promise<unknown>((resolve) => { release = () => { resolve({ message: '' }) } })
-  return { answer: () => pending, release: () => { release() } }
-}
-
 describe('the research rail', () => {
   it('names itself, and says so when the folder is not a research project yet', () => {
     expect(render(<ResearchRailTitle t={t as WorkbenchProps['t']} />).container.textContent).toBe(zh.railTitle)
@@ -108,64 +92,19 @@ describe('the research rail', () => {
     expect(mount([stranger]).rail.getByText(zh.railNoProject)).toBeTruthy()
   })
 
-  it('offers the autonomy as its one setting, and changes it together with the conversation\'s access preset', async () => {
-    const general = project()
-    const { rail, log } = mount([general])
-    // The mode is the assistant's to set: the autonomy is the only choice on the rail.
-    const [autonomy, ...others] = rail.getAllByRole('combobox') as HTMLSelectElement[]
-    expect(others).toEqual([])
-    expect(autonomy!.value).toBe('checkpoints')
-    expect([...autonomy!.options].map(option => option.textContent)).toEqual([zh.autonomyCheckpoints, zh.autonomyAutomatic])
-
-    fireEvent.change(autonomy!, { target: { value: 'automatic' } })
-    await settle()
-    fireEvent.change(autonomy!, { target: { value: 'checkpoints' } })
-    await settle()
-    expect(log.commands).toEqual([
-      { action: 'set-autonomy', projectId: general.id, autonomy: 'automatic' },
-      { action: 'set-autonomy', projectId: general.id, autonomy: 'checkpoints' },
-    ])
-    for (const command of log.commands) expect(commandSchema.parse(command)).toEqual(command)
-    expect(log.lines).toEqual([[SESSION, '/permission research-auto'], [SESSION, '/permission workspace-write']])
-    expect(rail.queryByRole('alert')).toBeNull()
-  })
-
-  it('holds the autonomy while a change is being saved', async () => {
-    const saving = held()
-    const { rail } = mount([project()], { run: saving.answer })
-    const autonomy = rail.getByRole('combobox') as HTMLSelectElement
-    fireEvent.change(autonomy, { target: { value: 'automatic' } })
-    expect(autonomy.disabled).toBe(true)
-    saving.release()
-    await settle()
-    expect(autonomy.disabled).toBe(false)
-  })
-
-  it('says why an autonomy change failed, and leaves the access preset alone when the change was refused', async () => {
-    const refused = mount([project()], { run: () => Promise.reject(new Error('refused')) })
-    fireEvent.change(refused.rail.getByRole('combobox'), { target: { value: 'automatic' } })
-    await settle()
-    expect(refused.rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'refused' }))
-    expect(refused.log.lines).toEqual([])
-    expect((refused.rail.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false)
+  it('names the autonomy and says it is changed under the message box, and changes nothing itself', () => {
+    const { rail, log } = mount([project()])
+    // The mode is the assistant's and the autonomy the composer's: the rail offers no choice at all.
+    expect(rail.queryByRole('combobox')).toBeNull()
+    expect(rail.getByText(zh.autonomy)).toBeTruthy()
+    expect(rail.getByText('检查点（在输入框下方更改）')).toBeTruthy()
+    expect(log.commands).toEqual([])
     cleanup()
-
-    // The autonomy was recorded, but the conversation kept its old access preset.
-    const stuck = mount([project()], { command: () => Promise.reject(new Error('no such preset')) })
-    fireEvent.change(stuck.rail.getByRole('combobox'), { target: { value: 'automatic' } })
-    await settle()
-    expect(stuck.log.commands.map(command => command.action)).toEqual(['set-autonomy'])
-    expect(stuck.rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'no such preset' }))
-  })
-
-  it('changes the autonomy from outside a conversation without touching any access preset', async () => {
-    const general = project()
-    const { props, log } = seat([general], {})
-    const status = render(<ProjectStatus {...props} project={general} commandSession={undefined} />)
-    fireEvent.change(status.getByRole('combobox'), { target: { value: 'automatic' } })
-    await settle()
-    expect(log.commands).toEqual([{ action: 'set-autonomy', projectId: general.id, autonomy: 'automatic' }])
-    expect(log.lines).toEqual([])
+    const automatic = project()
+    automatic.autonomy = 'automatic'
+    const { props } = seat([automatic], {})
+    // From outside a conversation (the project's file panel) it reads the same.
+    expect(render(<ProjectStatus {...props} project={automatic} />).getByText('全自动（在输入框下方更改）')).toBeTruthy()
   })
 
   it('marks each phase done, current, not started or deferred, with the current phase\'s hint and the checkpoint note', () => {
@@ -296,7 +235,7 @@ describe('the research rail', () => {
     expect(next.getByText('because data')).toBeTruthy()
   })
 
-  it('marks an example, credits its answers to the example\'s author, and changes nothing', () => {
+  it('marks an example and credits its answers to the example\'s author', () => {
     const shipped = project('spark-to-paper')
     shipped.example = true
     shipped.decisions.push(
@@ -308,7 +247,9 @@ describe('the research rail', () => {
     expect(rail.getByText(`${zh.exampleAuthor} · Q0`)).toBeTruthy()
     expect(rail.getByText(`${zh.decisionByAgent} · Q1`)).toBeTruthy()
     expect(rail.queryByText(`${zh.decisionByUser} · Q0`)).toBeNull()
-    expect((rail.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true)
+    // An example's autonomy is its own: named, with nowhere to change it.
+    expect(rail.getByText(zh.autonomyShortCheckpoints)).toBeTruthy()
+    expect(rail.queryByText(/在输入框下方更改/)).toBeNull()
     cleanup()
     // The person's own research carries no banner.
     expect(mount([project('spark-to-paper')]).rail.queryByText(zh.exampleBanner)).toBeNull()

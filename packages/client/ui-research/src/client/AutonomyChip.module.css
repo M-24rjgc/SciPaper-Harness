@@ -1,0 +1,17 @@
+/* The composer's chips share one measure: 28px tall, 13/20 medium secondary text, a rounded hover fill (the shell's access chip). */
+.root { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.trigger { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 240px; height: 28px; padding: 0 4px 0 8px; border: none; border-radius: 24px; outline: none; background: transparent; color: var(--dsw-alias-label-secondary); font-family: inherit; font-size: 13px; line-height: 20px; font-weight: 500; cursor: pointer; }
+.trigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.trigger:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }
+.trigger:disabled { color: var(--dsw-alias-label-dimmed); cursor: default; }
+.label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A preset typed by hand is the person's to notice. */
+.handSet { color: var(--dsw-alias-state-warn-primary); }
+.chevron { display: inline-flex; flex: 0 0 auto; color: var(--dsw-alias-label-caption); transition: transform 120ms ease; }
+.chevronOpen { transform: rotate(180deg); }
+.example { display: inline-flex; align-items: center; height: 28px; padding: 0 8px; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; font-weight: 500; white-space: nowrap; cursor: default; }
+/* The menu row keeps its one-line cell; the name and the promise stack inside it. */
+.option { display: flex; flex-direction: column; gap: 1px; white-space: normal; }
+.optionName { font-size: 14px; line-height: 20px; color: var(--dsw-alias-label-primary); }
+.optionDetail { font-size: 12px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
+.error { margin: 0; max-width: 260px; font-size: 12px; line-height: 16px; color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }

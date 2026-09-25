@@ -8,6 +8,7 @@ import { afterAll, beforeAll, expect, it, beforeEach, onTestFailed } from 'vites
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { ArtifactId, ExperimentId, ProjectId, ResearchCommand, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-research-workbench'
+import type {} from '@deepseek-ai/dsh-permission-presets'
 import { launchWebScaffold, seedSession, watchConsole, type WebScaffold } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot, writeComposerDraft, ZH_BROWSER_LOCALE } from './support.ts'
 
@@ -137,14 +138,38 @@ it('creates a project from the welcome screen, records evidence and opens a clai
 it('reports the mode and checks the assistant records, and changes only the autonomy', async () => {
   // Back from the project's files to its conversation, where the research tab sits beside the chat.
   await page.getByRole('button', { name: 'Research conversation', exact: true }).first().click()
-  const autonomy = page.locator('select').filter({ has: page.locator('option[value="automatic"]') }).first()
-  await autonomy.waitFor({ timeout: 15000 })
-  // The tab chooses no mode and runs no check or pipeline: those are the assistant's.
+  // The autonomy is changed in the composer, in the seat of the shell's access chip; the tab only names it.
+  const chip = (name: string) => page.getByRole('button', { name, exact: true }).filter({ visible: true }).first()
+  await chip('Autonomy, current: Checkpoints').waitFor({ timeout: 15000 })
+  expect(await page.getByRole('button', { name: /^Access mode/ }).count()).toBe(0)
+  await page.getByText('Checkpoints (change it under the message box)', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  // The tab chooses no mode or autonomy and runs no check or pipeline: those are the assistant's and the composer's.
   expect(await page.locator('select').filter({ has: page.locator('option[value="spark-to-paper/proposal"]') }).count()).toBe(0)
+  expect(await page.locator('select').filter({ has: page.locator('option[value="automatic"]') }).count()).toBe(0)
   expect(await page.getByRole('button', { name: 'Run check', exact: true }).count()).toBe(0)
   expect(await page.getByRole('button', { name: 'Run the pipeline', exact: true }).count()).toBe(0)
-  await autonomy.selectOption('automatic')
+  await chip('Autonomy, current: Checkpoints').click()
+  await page.getByRole('menuitem', { name: /^Automatic/ }).click()
   await expect.poll(() => scaffold.ctx.research.getProject(projectId).autonomy).toBe('automatic')
+  // The host applies the autonomy's preset to the conversation, so the chip names the autonomy alone.
+  const sessionId = scaffold.ctx.research.getProject(projectId).sessionId
+  const preset = (): string | undefined => {
+    const live = sessionId === undefined ? undefined : scaffold.ctx.agents.get(sessionId as never)
+    return live === undefined ? undefined : scaffold.ctx.permissionPresets.current(live.session)
+  }
+  await expect.poll(preset).toBe('research-auto')
+  await chip('Autonomy, current: Automatic').waitFor({ timeout: 15000 })
+  // A preset typed by hand is this conversation's own until the next autonomy choice applies the autonomy again.
+  const input = page.locator('[data-composer-input][contenteditable="true"]').first()
+  await writeComposerDraft(page, input, '/permission read-only')
+  await input.press('Enter')
+  await chip('Autonomy: Automatic; this conversation: Read only').waitFor({ timeout: 15000 })
+  await page.getByText('This conversation: Read only', { exact: true }).filter({ visible: true }).first().waitFor()
+  await saveFailureShot(page, 'research-autonomy-hand-set')
+  await chip('Autonomy: Automatic; this conversation: Read only').click()
+  await page.getByRole('menuitem', { name: /^Automatic/ }).click()
+  await chip('Autonomy, current: Automatic').waitFor({ timeout: 15000 })
+  expect(preset()).toBe('research-auto')
   // The assistant sets the mode and checks; the tab reports both, from the progress research_check records.
   await command({ action: 'set-mode', projectId, mode: 'spark-to-paper', route: 'proposal' })
   // Choosing the mode records the decision, in the name of whoever chose it.
@@ -164,6 +189,26 @@ it('reports the mode and checks the assistant records, and changes only the auto
   await page.getByText('The measured sample', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await command({ action: 'record-decision', projectId, question: 'Run the experiments here?', answer: 'Later, on the lab server', key: 'experiments-deferred' })
   await page.getByText('Deferred', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+})
+
+it('gives every conversation of the research the permission preset its autonomy selects', async () => {
+  const presets = scaffold.ctx.permissionPresets
+  const live = (id: string | undefined) => {
+    const agent = id === undefined ? undefined : scaffold.ctx.agents.get(id as never)
+    if (!agent) throw new Error(`session ${String(id)} is not live`)
+    return agent.session
+  }
+  await command({ action: 'set-autonomy', projectId, autonomy: 'automatic' })
+  // A conversation nobody has opened takes the preset as it becomes live, after the permission service pinned its default.
+  const { workspaceId } = scaffold.ctx.research.getProject(projectId)
+  const second = await scaffold.ctx.sessionController.create({ workspaceId })
+  expect(presets.current(live(second.sessionId))).toBe('research-auto')
+  // A change of autonomy reaches every live conversation of the research.
+  await command({ action: 'set-autonomy', projectId, autonomy: 'checkpoints' })
+  expect(presets.current(live(second.sessionId))).toBe('workspace-write')
+  expect(presets.current(live(scaffold.ctx.research.getProject(projectId).sessionId))).toBe('workspace-write')
+  await command({ action: 'set-autonomy', projectId, autonomy: 'automatic' })
+  expect(presets.current(live(second.sessionId))).toBe('research-auto')
 })
 
 it.skipIf(!python)('executes a real local CPU task, collects metrics and exports the project', async () => {

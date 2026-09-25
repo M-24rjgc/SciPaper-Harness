@@ -14,7 +14,11 @@ A `ResearchProject` binds one canonical Workspace directory. It carries the evid
 |---|---|---|
 | `mode` | an installed mode pack id; `general` by default | Which mode pack the project runs in (see below). |
 | `route` | one of the pack's routes | The path through the pack, such as starting from an idea, a proposal or measured results. |
-| `autonomy` | `checkpoints`, `automatic` | Whether the agent asks at key decisions (`ask_user_question`, which pauses a running goal) or decides and records its rationale. `automatic` pairs with the `research-auto` permission preset, which rejects sandbox escalations instead of waiting for approval. |
+| `autonomy` | `checkpoints`, `automatic` | Whether the agent asks at key decisions (`ask_user_question`, which pauses a running goal) or decides and records its rationale. It also selects every conversation's permission preset ([below](#autonomy-and-permission)). |
+
+<a id="autonomy-and-permission"></a>
+
+Autonomy is applied as a permission preset (`AUTONOMY_PRESETS`, `src/schema.ts`): `checkpoints` selects `workspace-write`, under which an escalation asks the person, and `automatic` selects `research-auto`, under which it is declined. The service sets the preset with `ctx.permissionPresets.set` on every live session of the project: the session bound to it, and each top-level session whose working directory lies in it and in no research nested inside it. It does so on every `set-autonomy`, even one that keeps the value, when a project is created, when the service starts, and for each session as it becomes live, in its own `session/created` listener, which runs after the permission service has pinned the session's default. A delegated child keeps the permission its delegation fixed, and a session of an example is never touched. A preset typed with `/permission` holds in its conversation until the autonomy is set again or the conversation is loaded again. The service does not load unless the permission row configures both presets.
 
 Who chose the mode is `modeSetBy`. A project created with a named mode records `user`; one created without a mode is in `general` with `modeSetBy` unset, which means the mode is not chosen yet. `set-mode` sets `modeSetBy` from its `decidedBy` (the caller when absent) and appends a decision with key `mode`: the question 模式与路线, the answer `<mode>` or `<mode> · <route>` in ids, and the reason as its rationale. It replaces `modeReason` only when it is given a reason, and a changed mode or route starts `progress` afresh. `rename` sets the title, clears `untitled` (a placeholder title the product chose), and gives the folder's Workspace the same title unless another Workspace already has it. Each experiment run records the conversation that submitted it as `sessionId`; runs from the desktop, and runs recorded before this field existed, have none.
 
@@ -120,7 +124,8 @@ A phase that declares `deferrable: <key>` is deferred while it is not done and t
 The service refuses only what would be unsafe or untrue, never work in progress:
 
 - paths outside the project, and writes into `.research` however the path is spelled (checked on the normalized, case-folded path);
-- imports from credential and key directories; the agent's imports from outside the project wait for the user's approval;
+- imports from credential and key directories, the product home among them, except the attachment store's `<data home>/attachments/v1/files`, which holds the files the person attached to a conversation (a link inside it that leads out of it is refused);
+- the agent's imports from anywhere else outside the project wait for the user's approval, which `automatic` declines;
 - a second launch for an experiment identity already recorded, and guessed run states (an unconfirmed run is `unknown`);
 - evidence links whose quote does not appear at its locator;
 - provider credentials other than the two research credentials (the image and the embedding key);

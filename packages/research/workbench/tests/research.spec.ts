@@ -4,7 +4,10 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { newProject, putClaim, searchEvidence, invalidate, validateLinks } from '../src/project.ts'
-import { assertUsableProjectRoot, errorText, isBinaryFile, isExampleRoot, isInside, isMetadataPath, keepRevision, projectPath, hashBytes, protectedDirectories, sameDirectory, truncateBytes, writeNew } from '../src/files.ts'
+import {
+  assertUsableProjectRoot, attachedFilesDirectory, errorText, isAttachment, isBinaryFile, isExampleRoot, isInside, isMetadataPath,
+  keepRevision, projectPath, hashBytes, protectedDirectories, sameDirectory, truncateBytes, writeNew,
+} from '../src/files.ts'
 import { adoptExternalEdit, importEvidence, importTemplate, texExecutable, writeArtifact, exportPaper } from '../src/artifacts.ts'
 import { collectRunOutputs, observationDue, validateExperiment } from '../src/experiments.ts'
 import { migrateProject, researchDomain } from '../src/schema.ts'
@@ -182,6 +185,41 @@ describe('imports stay inside the project unless the user chose otherwise, and n
     await expect(importEvidence(p, join(home, '.credentials.yaml'), components, signal, 10000)).rejects.toThrow(/credential or key directory/)
     await expect(importTemplate(p, [home], 10000)).rejects.toThrow(/credential or key directory/)
     expect(protectedDirectories(home)).toEqual(expect.arrayContaining([home, join(homedir(), '.ssh')]))
+  })
+
+  it('imports what the person attached to the conversation from the attachment store, and nothing else in the product home', async () => {
+    const home = await temporary('research-home-')
+    process.env.DSH_HOME = home
+    await writeFile(join(home, '.credentials.yaml'), 'DEEPSEEK_API_KEY: secret')
+    const p = await project()
+    // The store keeps each attached file as files/<sha[0:2]>/<sha>/<name>.
+    const store = attachedFilesDirectory(home)
+    expect(store).toBe(join(home, 'attachments', 'v1', 'files'))
+    const folder = join(store, 'ab', 'ab12cd')
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'notes.md'), 'attached notes')
+    await writeFile(join(folder, 'venue.cls'), 'class')
+    const evidence = await importEvidence(p, join(folder, 'notes.md'), components, signal, 10000)
+    expect(evidence).toMatchObject({ title: 'notes.md', originalPath: join(folder, 'notes.md') })
+    expect(await readFile(join(p.root, evidence.path), 'utf8')).toBe('attached notes')
+    expect((await importTemplate(p, [folder], 10000)).sort()).toEqual(['template/notes.md', 'template/venue.cls'])
+    // The rest of the product home stays refused: its credentials, the store's own folder, the store's other
+    // folders, a path that leaves the store by `..`, and a link inside the store that leads out of it.
+    await mkdir(join(home, 'attachments', 'v1', 'file-objects'), { recursive: true })
+    await writeFile(join(home, 'attachments', 'v1', 'file-objects', 'blob.md'), 'object')
+    await symlink(home, join(store, 'cd'), 'junction')
+    for (const refused of [
+      join(home, '.credentials.yaml'), join(home, 'attachments', 'v1', 'file-objects', 'blob.md'),
+      join(folder, '..', '..', '..', '..', '..', '.credentials.yaml'), join(store, 'cd', '.credentials.yaml'),
+    ]) {
+      await expect(importEvidence(p, refused, components, signal, 10000)).rejects.toThrow(/credential or key directory/)
+    }
+    await expect(importTemplate(p, [store], 10000)).rejects.toThrow(/credential or key directory/)
+    expect(await isAttachment(join(folder, 'notes.md'), home)).toBe(true)
+    expect(await isAttachment(store, home)).toBe(false)
+    expect(await isAttachment(join(store, 'cd', '.credentials.yaml'), home)).toBe(false)
+    expect(await isAttachment(join(store, 'ef', 'missing.md'), home)).toBe(false)
+    expect(await isAttachment(join(p.root, 'notes.md'), home)).toBe(false)
   })
 
   it('copies only template file types, skips hidden entries and bounds size and count (B3)', async () => {

@@ -7,7 +7,7 @@ import { zipSync, strToU8 } from 'fflate'
 import { z } from 'zod'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { ComponentManager, runtimeAsset } from './components.ts'
-import { atomicWrite, errorText, hashFile, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
+import { atomicWrite, errorText, hashFile, isAttachment, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
 import { bibliographyFiles, findMainManuscript, flattenPaper, graphicReferences, listProjectFiles, paperDigest } from './latex.ts'
 import { checked, runProcess } from './process.ts'
 import { invalidate, validateLinks } from './project.ts'
@@ -27,20 +27,24 @@ const TEX_SUPPORT = /\.(?:cls|sty|bst|bbx|cbx|clo|cfg|def)$/i
 const NON_SOURCE_DIRECTORIES = new Set(['.research', 'exports', 'node_modules', '.git', '.venv', 'venv', '__pycache__'])
 
 /**
- * Refuse sources inside credential and key directories, whoever asks. Paths
- * outside the project are otherwise legitimate: the user picked them in the
- * desktop, or approved the agent's request through DSH's approval card.
+ * Refuse sources inside credential and key directories, whoever asks, except
+ * the files the person attached to the conversation, which the attachment
+ * store keeps inside the product home. Paths outside the project are otherwise
+ * legitimate: the person attached them, picked them in the desktop, or
+ * approved the agent's request through DSH's approval card.
  */
-function assertImportable(source: string): void {
-  if (protectedDirectories(resolveDshHome()).some(directory => isInside(directory, source))) {
+async function assertImportable(source: string): Promise<void> {
+  const home = resolveDshHome()
+  if (await isAttachment(source, home)) return
+  if (protectedDirectories(home).some(directory => isInside(directory, source))) {
     throw new Error(`Refusing to import from a credential or key directory: ${source}`)
   }
 }
 
 /** Resolve an import source: relative paths are the project's, absolute paths are taken as given. */
-function importSource(project: ResearchProject, raw: string): string {
+async function importSource(project: ResearchProject, raw: string): Promise<string> {
   const source = resolve(isAbsolute(raw) ? raw : join(project.root, raw))
-  assertImportable(source)
+  await assertImportable(source)
   if (isInside(project.root, source) && isMetadataPath(relative(project.root, source))) {
     throw new Error('Import from the project files, not the platform metadata directory')
   }
@@ -56,7 +60,7 @@ export async function importEvidence(
   limit: number,
   previous?: EvidenceRecord,
 ): Promise<EvidenceRecord> {
-  const source = importSource(project, rawSource)
+  const source = await importSource(project, rawSource)
   const info = await stat(source)
   if (!info.isFile() || info.size > limit) throw new Error(`Source must be a file smaller than ${limit} bytes`)
   const extension = extname(source).toLowerCase()
@@ -125,7 +129,7 @@ export async function importTemplate(project: ResearchProject, paths: string[], 
     }
   }
   for (const raw of paths) {
-    const source = importSource(project, raw)
+    const source = await importSource(project, raw)
     const info = await stat(source)
     if (info.isDirectory()) await walk(source, '')
     else if (info.isFile()) await accept(source, basename(source))

@@ -2856,7 +2856,7 @@ Sources and citations. import {paths}: snapshot files (PDF, DOCX, CSV, JSON, tex
     },
     "paths": {
       "type": "array",
-      "description": "import: files, relative to the project or absolute. Paths outside the project ask the user first.",
+      "description": "import: files, relative to the project or absolute. Files the user attached to the conversation import directly; other paths outside the project ask the user first.",
       "items": {
         "type": "string"
       }

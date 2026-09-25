@@ -16,8 +16,10 @@ import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
+import type { Session } from '@deepseek-ai/dsh-session'
+import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ComponentManager, runtimeAsset } from './components.ts'
-import { autonomies, commandSchema, locatorSchema, MODE_DECISION_KEY, preferencesSchema, researchDomain } from './schema.ts'
+import { AUTONOMY_PRESETS, autonomies, commandSchema, locatorSchema, MODE_DECISION_KEY, preferencesSchema, researchDomain } from './schema.ts'
 import { invalidate, newProject, putClaim, runView, searchEvidence } from './project.ts'
 import { compilePaper, compileTarget, exportPaper, extractText, importEvidence, importTemplate, renderPages, writeArtifact } from './artifacts.ts'
 import { runChecks, type GateRunner } from './checks.ts'
@@ -108,6 +110,19 @@ function runAt(project: ResearchProject, id: string): number {
   return project.experiments.findIndex(run => run.id === id)
 }
 
+/** The innermost project whose root contains a directory. */
+function innermost(projects: readonly ResearchProject[], directory: string): ResearchProject | undefined {
+  return projects.filter(project => isInside(project.root, directory)).sort((a, b) => b.root.length - a.root.length)[0]
+}
+
+/** The research a live session belongs to: the one bound to it, else the innermost one containing its working directory. */
+function researchOf(session: Session, projects: readonly ResearchProject[]): ResearchProject | undefined {
+  const bound = projects.find(project => project.sessionId === session.id)
+  if (bound !== undefined) return bound
+  const { cwd } = session.header
+  return cwd === undefined ? undefined : innermost(projects, cwd)
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context { research: ResearchWorkbench }
 
@@ -124,7 +139,7 @@ declare module '@deepseek-ai/cordis' {
 
 /** One durable owner for each project's evidence, files, decisions and execution records. */
 export class ResearchWorkbench extends TypertRemoteService {
-  static inject = ['storageDomain', 'workspaceRegistry', 'sessionController', 'credentials', 'tools', 'llm', 'agents', 'goals']
+  static inject = ['storageDomain', 'workspaceRegistry', 'sessionController', 'credentials', 'tools', 'llm', 'agents', 'goals', 'sessions', 'permissionPresets']
   static Config: s<Config> = s.object({
     componentRoot: s.string(),
     maxSourceBytes: s.number().min(1024).required(),
@@ -215,6 +230,10 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   protected async [Service.init](): Promise<void> {
+    const missing = Object.values(AUTONOMY_PRESETS).filter(name => !this.ctx.permissionPresets.names.includes(name))
+    if (missing.length) {
+      throw new Error(`research: autonomy selects the permission presets ${missing.join(', ')}, which the permission row does not configure`)
+    }
     this.modes = await ModeRegistry.load([runtimeAsset('modes')], this.ctx.logger)
     this.domain = await this.ctx.storageDomain.open(researchDomain)
     const cut = [...this.domain.table('tasks').entries()].filter(([, task]) => task.status === 'running')
@@ -222,6 +241,11 @@ export class ResearchWorkbench extends TypertRemoteService {
       ...task, status: 'interrupted', message: 'The application restarted; independent experiments can be reconnected from the experiment panel',
     })))
     await this.loadEvidenceText()
+    // The permission service pins a new session's default in its own listener, registered when it was constructed,
+    // before this service (which injects it) started; this listener therefore runs after that pin.
+    this.ctx.on('session/created', (session) => { this.align(session, researchOf(session, this.projects())) })
+    const projects = this.projects()
+    for (const session of this.ctx.sessions.list()) this.align(session, researchOf(session, projects))
     // Tools are the research preset's to mount (./tools), so agents composed from other presets never see them.
     this.refreshResourceRoutes = registerResearchRoutes(this.ctx, this)
     let polling = false
@@ -342,6 +366,8 @@ export class ResearchWorkbench extends TypertRemoteService {
     project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
     await this.domain.table('projects').put(project.id, project)
     this.announceMode(project.id)
+    // The bound session went live before the record existed, and so did any conversation already open in the folder.
+    this.alignConversations(project.id)
     return structuredClone(project)
   }
 
@@ -451,9 +477,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   async projectAt(directory: string): Promise<ResearchProject | undefined> {
     let canonical: string
     try { canonical = await realpath(directory) } catch { return undefined }
-    return this.projects()
-      .filter(project => isInside(project.root, canonical))
-      .sort((a, b) => b.root.length - a.root.length)[0]
+    return innermost(this.projects(), canonical)
   }
 
   /**
@@ -466,13 +490,10 @@ export class ResearchWorkbench extends TypertRemoteService {
    */
   activeGoals(project: ResearchProject): ResearchGoal[] {
     const projects = this.projects()
-    const innermost = (cwd: string): ProjectId | undefined => projects
-      .filter(candidate => isInside(candidate.root, cwd))
-      .sort((a, b) => b.root.length - a.root.length)[0]?.id
     const goals: ResearchGoal[] = []
     for (const agent of this.ctx.agents.list()) {
       const { cwd, origin } = agent.session.header
-      if (cwd === undefined || origin === 'subagent' || innermost(cwd) !== project.id) continue
+      if (cwd === undefined || origin === 'subagent' || innermost(projects, cwd)?.id !== project.id) continue
       let goal: GoalView | undefined
       // A goal log that no longer replays, or an agent unloaded since the listing, holds no goal to continue.
       try { goal = this.ctx.goals.get(agent) } catch { continue }
@@ -481,6 +502,29 @@ export class ResearchWorkbench extends TypertRemoteService {
       goals.push({ sessionId: agent.session.id, objective, phase, roundsStarted, updatedAt })
     }
     return goals.sort((a, b) => GOAL_PHASE_ORDER[a.phase] - GOAL_PHASE_ORDER[b.phase] || b.updatedAt - a.updatedAt)
+  }
+
+  /**
+   * Give a live session the permission preset its research's autonomy selects.
+   * A session outside every research, a session of an example and a delegated
+   * child, whose permission its delegation fixed, are left as they are. A
+   * failure is logged, not thrown: a throw while a session is published would
+   * refuse the session.
+   */
+  private align(session: Session, project: ResearchProject | undefined): void {
+    if (project === undefined || isExampleRoot(project.root) || session.header.origin === 'subagent') return
+    try { this.ctx.permissionPresets.set(session, AUTONOMY_PRESETS[project.autonomy]) } catch (error) {
+      this.ctx.logger.warn('research autonomy for session %s: %s', session.id, errorText(error))
+    }
+  }
+
+  /** Give every live conversation of a project the permission preset of its autonomy. */
+  private alignConversations(id: ProjectId): void {
+    const projects = this.projects()
+    for (const session of this.ctx.sessions.list()) {
+      const project = researchOf(session, projects)
+      if (project?.id === id) this.align(session, project)
+    }
   }
 
   /** Serialize one complete graph transition and publish it only after durable storage. */
@@ -613,6 +657,7 @@ export class ResearchWorkbench extends TypertRemoteService {
           const prepared = await this.prepare(project.id, request, workSignal, actor, sessionId)
           const value = typeof prepared === 'function' ? await this.mutate(project.id, prepared) : prepared
           if (request.action === 'set-mode') this.announceMode(project.id)
+          if (request.action === 'set-autonomy') this.alignConversations(project.id)
           return this.clipped({ ...value, project: publicProject(this.record(project.id)) })
         }
         return LONG_ACTIONS.has(request.action) && actor === 'user' ? this.begin(request.action, project.id, work) : work(signal)

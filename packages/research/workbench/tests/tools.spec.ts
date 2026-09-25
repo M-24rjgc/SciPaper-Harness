@@ -1,7 +1,10 @@
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import { attachedFilesDirectory } from '../src/files.ts'
 import { projectBrief, registerResearchTools } from '../src/tools.ts'
 import { newProject } from '../src/project.ts'
 import { ModeRegistry, type ModePack, type ResolvedMode } from '../src/modes.ts'
@@ -227,6 +230,26 @@ describe('reaching outside the project asks the user through DSH approval', () =
     expect(await decide(h, 'research_evidence', { action: 'import', paths: ['../x'] }, null)).toEqual({ kind: 'allow' })
     const bare = { ...h.exec(root, 'research_evidence') } as unknown as ToolExecution
     expect(await h.hook()(bare, async () => ({ kind: 'allow' }))).toEqual({ kind: 'allow' })
+  })
+
+  it('imports the files the person attached without asking, and still asks for anything else outside the project', async () => {
+    const h = harness()
+    const home = await mkdtemp(join(tmpdir(), 'research-attachments-'))
+    vi.stubEnv('DSH_HOME', home)
+    try {
+      const attached = join(attachedFilesDirectory(home), 'ab', 'ab12cd', 'paper.pdf')
+      await mkdir(join(attached, '..'), { recursive: true })
+      await writeFile(attached, '%PDF')
+      expect(await decide(h, 'research_evidence', { action: 'import', paths: [attached] })).toEqual({ kind: 'allow' })
+      expect(await decide(h, 'research_artifact', { action: 'import-template', paths: [join(attached, '..')] })).toEqual({ kind: 'allow' })
+      // Elsewhere in the product home, or anywhere else outside the project, the person is asked (and automatic declines).
+      const credentials = join(home, '.credentials.yaml')
+      const mixed = await decide(h, 'research_evidence', { action: 'import', paths: [attached, credentials, other] })
+      expect((mixed as { reason: string }).reason).toBe(`Copy files from outside the research project into it: ${credentials}, ${other}`)
+    } finally {
+      vi.unstubAllEnvs()
+      await rm(home, { recursive: true, force: true })
+    }
   })
 })
 

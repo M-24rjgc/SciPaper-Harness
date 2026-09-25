@@ -33,6 +33,7 @@ import { ResearchNewProject } from '../src/client/NewProject.tsx'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
 import { SkipHarnessNotice } from '../src/client/Onboarding.tsx'
 import { EmptyCell } from '../src/client/EmptyCell.tsx'
+import { AutonomyChip } from '../src/client/AutonomyChip.tsx'
 import { ResearchCheckCard, ResearchToolCard } from '../src/client/ResearchToolView.tsx'
 import { RESEARCH_TOOLS } from '../src/client/toolCallValues.ts'
 import type { ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
@@ -147,6 +148,7 @@ async function bench(services: { conversation?: unknown } = {}) {
       'conversation.input.dock': { kind: 'list', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
       'conversation.composer.dock': { kind: 'list', scope: 'session' },
+      'conversation.input.permission': { kind: 'single', scope: 'session' },
       'shell.overlay': { kind: 'list', scope: 'root' },
       'settings.section': { kind: 'list', scope: 'root' },
       'settings.onboarding': { kind: 'list', scope: 'root' },
@@ -186,12 +188,7 @@ async function bench(services: { conversation?: unknown } = {}) {
     getSnapshot: () => ({ byId: listed }),
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
   }
-  const commandResult: { current: RemoteResult<{ matched: boolean }> } = { current: ok({ matched: true }) }
-  const face = { command: vi.fn((_line: string) => Promise.resolve(commandResult.current)) }
-  const sessions = {
-    list,
-    binding: vi.fn((id: string) => id === 'session-a' ? { session: face } : undefined),
-  }
+  const sessions = { list }
   const publishSessions = (next: Record<string, { cwd?: string }>): void => { listed = next; for (const listener of listeners) listener() }
   const uiWorkspace = { openSession: vi.fn(), openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()) }
   const sidebarRight = { openTab: vi.fn(), openResource: vi.fn() }
@@ -229,7 +226,7 @@ async function bench(services: { conversation?: unknown } = {}) {
   await injected.refresh()
   return {
     ctx, dictionaries, directoryPicker, face: injected, fiber, layout, remote, seat, tabs,
-    sessionFace: face, commandResult, publishSessions, sidebarRight, uiWorkspace,
+    publishSessions, sidebarRight, uiWorkspace,
   }
 }
 
@@ -364,33 +361,46 @@ describe('the research plugin', () => {
   /** What each developer cell's outlet renders: the lowest-priority entry registered under that id. */
   const winners = (ctx: Context): unknown[] => DEVELOPER_CELLS.map(([name]) => ctx.slots.entriesOfSlot(name)
     .map(entry => [entry.options.id, entry.component]))
+  /** The composer's access seat, a single cell: the shell's access chip registers it without an id. */
+  const ACCESS_SEAT = 'conversation.input.permission'
+  const accessWinner = (ctx: Context): StoredEntry | undefined => ctx.slots.entriesOfSlot(ACCESS_SEAT)[0]
+  const registerShipped = (ctx: Context): void => {
+    for (const [name, id] of DEVELOPER_CELLS) ctx.slots.register({ name, id } as never, Shipped)
+    ctx.slots.register({ name: ACCESS_SEAT } as never, Shipped)
+  }
 
   /** The global the host half puts into the served page. */
   const page = globalThis as { __DSH_RESEARCH__?: unknown }
 
-  it('draws nothing in place of the shell\'s developer cells when the page says so, and gives them back with the fiber', async () => {
+  it('draws nothing in place of the shell\'s developer cells and the autonomy in place of the access chip when the page says so, and gives them back with the fiber', async () => {
     page.__DSH_RESEARCH__ = { hideDeveloperCells: true }
     try {
       const b = await bench()
-      for (const [name, id] of DEVELOPER_CELLS) b.ctx.slots.register({ name, id } as never, Shipped)
+      registerShipped(b.ctx)
 
       expect(winners(b.ctx)).toEqual([[['stats', EmptyCell]], [['permission', EmptyCell]], [['open-document', EmptyCell]]])
       expect(render(createElement(EmptyCell)).container.innerHTML).toBe('')
+      // The research's autonomy takes the access chip's seat, with the same face every research seat gets.
+      const chip = accessWinner(b.ctx)!
+      expect(chip).toMatchObject({ locale: 'research', component: AutonomyChip, options: { priority: -1 } })
+      expect(Object.keys((chip.inject as unknown as () => ResearchInjected)())).toEqual(Object.keys(b.face))
 
       await stop(b)
       expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
+      expect(accessWinner(b.ctx)?.component).toBe(Shipped)
     } finally {
       delete page.__DSH_RESEARCH__
     }
   })
 
-  it('leaves the shell\'s developer cells alone on a page without the setting', async () => {
+  it('leaves the shell\'s developer cells and access chip alone on a page without the setting', async () => {
     for (const global of [undefined, {}, { hideDeveloperCells: 'yes' }]) {
       if (global === undefined) delete page.__DSH_RESEARCH__
       else page.__DSH_RESEARCH__ = global
       const b = await bench()
-      for (const [name, id] of DEVELOPER_CELLS) b.ctx.slots.register({ name, id } as never, Shipped)
+      registerShipped(b.ctx)
       expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
+      expect(accessWinner(b.ctx)?.component).toBe(Shipped)
       await stop(b)
     }
     delete page.__DSH_RESEARCH__
@@ -707,15 +717,6 @@ describe('the research plugin', () => {
 })
 
 describe('the face a research seat acts through', () => {
-  it('runs a slash command in a live session and hands back what the host refused', async () => {
-    const b = await bench()
-    await b.face.command('session-a', '/permission research-auto')
-    expect(b.sessionFace.command).toHaveBeenCalledWith('/permission research-auto')
-    b.commandResult.current = bad('no such preset')
-    await expect(b.face.command('session-a', '/permission nope')).rejects.toThrow('no such preset')
-    await expect(b.face.command('session-missing', '/permission workspace-write')).rejects.toThrow(/not ready/)
-  })
-
   it('opens project files in the right sidebar, and lets a refusal reach the caller', async () => {
     const b = await bench()
     b.face.openFile('C:\\research\\sparse', 'paper\\main.pdf')

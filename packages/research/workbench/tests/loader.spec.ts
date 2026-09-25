@@ -11,6 +11,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, parse } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
@@ -134,8 +135,10 @@ afterEach(async () => {
 
 /** A registered folder as the research service sees it. */
 interface FakeWorkspace { id: WorkspaceId; title: string; setTitle(title: string): Promise<void> }
-/** A live agent as the research service reads it: its session's id and header. */
-interface FakeAgent { session: { id: string; header: { cwd?: string; origin?: 'subagent' } } }
+/** A live session as the research service reads it: its id and header. */
+interface FakeSession { id: string; header: { cwd?: string; origin?: 'subagent' } }
+/** A live agent as the research service reads it: its session. */
+interface FakeAgent { session: FakeSession }
 
 interface Harness {
   service: InstanceType<typeof ResearchWorkbench>
@@ -148,11 +151,27 @@ interface Harness {
   /** The live agents, and the goal (or the error) the goal service answers for each session. */
   agents: FakeAgent[]
   goals: Map<string, GoalView | Error>
+  /** The permission preset last applied to each session, by session id. */
+  applied: Map<string, string>
+  /** Publish a session, as the session store does: it becomes live and `session/created` is emitted. */
+  open: (session: FakeSession) => void
 }
 
-async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } = {}): Promise<Harness> {
+interface BootOptions {
+  componentRoot?: boolean
+  /** Sessions already live when the service starts. */
+  live?: FakeSession[]
+  /** The presets the permission row configures. */
+  presets?: string[]
+}
+
+async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<Harness> {
   ctx = new Context()
   ctx.baseUrl = pathToFileURL(root ?? '').href + '/'
+  const messages: typeof logs = []
+  logs = messages
+  // The default exporter keeps errors and information only; warnings are kept here too.
+  ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { messages.push(message) } })
   const registry = new Map<string, unknown>()
   const prompts: unknown[] = []
   const sessions: string[] = []
@@ -160,6 +179,9 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
   const workspaces = new Map<WorkspaceId, FakeWorkspace>()
   const agents: FakeAgent[] = []
   const goals = new Map<string, GoalView | Error>()
+  const live: FakeSession[] = [...options.live ?? []]
+  const applied = new Map<string, string>()
+  let open = (_session: FakeSession): void => {}
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
@@ -185,8 +207,25 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
           return goal
         },
       } as unknown as Context['goals'])
+      open = (session) => {
+        live.push(session)
+        c.emit('session/created', session as unknown as Session)
+      }
+      c.provide('sessions', { list: () => [...live] } as unknown as Context['sessions'])
+      c.provide('permissionPresets', {
+        names: options.presets ?? ['read-only', 'workspace-write', 'research-auto'],
+        set: (session: FakeSession, name: string) => {
+          if (session.id === 'unreadable') throw new Error('permission: permissions session projection is not registered')
+          applied.set(session.id, name)
+        },
+      } as unknown as Context['permissionPresets'])
       c.provide('sessionController', {
-        create: async () => { const id = `session-${sessions.length + 1}`; sessions.push(id); return { sessionId: id as SessionId } },
+        create: async ({ workspaceId }: { workspaceId: WorkspaceId }) => {
+          const id = `session-${sessions.length + 1}`
+          sessions.push(id)
+          open({ id, header: { cwd: workspaceId.slice('workspace:'.length) } })
+          return { sessionId: id as SessionId }
+        },
         selectModel: async () => {},
         prompt: async (request: unknown) => { prompts.push(request) },
       } as unknown as Context['sessionController'])
@@ -209,12 +248,23 @@ async function boot(pool: MemoryMediaPool, options: { componentRoot?: boolean } 
   ].join('\n'))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configuration).href } })
   await ctx.loader.await()
-  return { service: ctx.research, registry, prompts, sessions, credentials, workspaces, agents, goals }
+  return {
+    service: ctx.research, registry, prompts, sessions, credentials, workspaces, agents, goals, applied,
+    open: (session) => { open(session) },
+  }
 }
 
 async function write(path: string, content: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, content)
+}
+
+/** Every message the current context logged, whatever its level. */
+let logs: { type: string; args: unknown[] }[] = []
+
+/** Whether the current context logged a message of this type whose arguments, joined, contain the text. */
+function logged(type: 'warn' | 'error', text: string): boolean {
+  return logs.some(message => message.type === type && message.args.map(String).join(' ').includes(text))
 }
 
 describe('the research service records; it never drives the agent', () => {
@@ -622,6 +672,63 @@ describe('the research service records; it never drives the agent', () => {
       { sessionId: 'paused', objective: 'paused', phase: 'paused', roundsStarted: 2, updatedAt: 5 },
     ])
     expect(service.activeGoals(service.getProject(nested.id)).map(item => item.sessionId)).toEqual(['inner'])
+  })
+
+  it('gives every conversation of a research the permission preset of its autonomy, as it changes and as each one opens', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-autonomy-'))
+    const pool = new MemoryMediaPool()
+    const { service, applied, open } = await boot(pool)
+    // Its conversation went live before the record existed, and follows the record once it does.
+    const p = await service.create({ title: 'Automatic', root: join(root, 'p'), brief: '', autonomy: 'automatic' })
+    expect(applied.get(p.sessionId!)).toBe('research-auto')
+    // Nested inside p: its conversation opened under p, and takes its own research's preset once that is recorded.
+    const nested = await service.create({ title: 'Nested', root: join(root, 'p', 'nested'), brief: '' })
+    expect(applied.get(nested.sessionId!)).toBe('workspace-write')
+    // A conversation bound to a research follows it wherever its folder is.
+    open({ id: 'legacy', header: { cwd: join(root, 'elsewhere') } })
+    expect(applied.has('legacy')).toBe(false)
+    await service.createProject({ title: 'Bound', root: join(root, 'bound'), brief: '', autonomy: 'automatic' }, 'legacy')
+    expect(applied.get('legacy')).toBe('research-auto')
+    // Each conversation that opens later takes the preset of the innermost research around it. A delegated child
+    // keeps what its delegation fixed, a conversation outside every research is left alone, and a session whose
+    // permission cannot be set still opens.
+    open({ id: 'second', header: { cwd: join(p.root, 'paper') } })
+    open({ id: 'inner', header: { cwd: join(nested.root, 'notes') } })
+    open({ id: 'child', header: { cwd: p.root, origin: 'subagent' } })
+    open({ id: 'outside', header: { cwd: join(root, 'outside') } })
+    open({ id: 'folderless', header: {} })
+    open({ id: 'unreadable', header: { cwd: p.root } })
+    expect(Object.fromEntries(applied)).toEqual({
+      [p.sessionId!]: 'research-auto', [nested.sessionId!]: 'workspace-write', legacy: 'research-auto', second: 'research-auto', inner: 'workspace-write',
+    })
+    expect(logged('warn', 'research autonomy for session %s: %s unreadable permission: permissions session projection is not registered')).toBe(true)
+    // A change of autonomy, by the person or the agent, reaches every live conversation of that research and no other.
+    await service.execute({ projectId: nested.id, action: 'set-autonomy', autonomy: 'automatic' } as never, signal, 'agent')
+    await service.execute({ projectId: p.id, action: 'set-autonomy', autonomy: 'checkpoints' } as never, signal, 'user')
+    expect(Object.fromEntries(applied)).toEqual({
+      [p.sessionId!]: 'workspace-write', [nested.sessionId!]: 'research-auto', legacy: 'research-auto', second: 'workspace-write', inner: 'research-auto',
+    })
+
+    // An example is never touched: not as its conversations open, not when the service starts beside them.
+    const example = await service.create({ title: 'Example', root: join(root, 'demo', 'shipped'), brief: '', autonomy: 'automatic' })
+    vi.stubEnv('DSH_HOME', root)
+    try {
+      applied.clear()
+      open({ id: 'demo-reader', header: { cwd: example.root } })
+      expect(applied.size).toBe(0)
+      // Conversations already live when the service starts are aligned then.
+      await ctx!.fiber.dispose(); ctx = undefined
+      const restarted = await boot(pool, { live: [{ id: 'resumed', header: { cwd: p.root } }, { id: 'demo-resumed', header: { cwd: example.root } }] })
+      expect(Object.fromEntries(restarted.applied)).toEqual({ resumed: 'workspace-write' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+
+    // A permission row without the presets autonomy selects cannot honour it, so the service does not start.
+    await ctx!.fiber.dispose(); ctx = undefined
+    await boot(pool, { presets: ['workspace-write'] })
+    expect(ctx!.get('research')).toBeUndefined()
+    expect(logged('error', 'research: autonomy selects the permission presets research-auto, which the permission row does not configure')).toBe(true)
   })
 
   it('keeps one record of progress that only research_check writes, and derives where each project stands', async () => {
