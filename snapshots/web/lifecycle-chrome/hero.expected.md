@@ -24,7 +24,6 @@
   - img
   - text: Settings
 - text: What shall we work on today?
-- button "New project folder…"
 - button "Choose research":
   - img
   - text: workspace
@@ -38,7 +37,6 @@
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
-- button "New project folder…"
 - button "Select model, current DeepSeek-V4-Flash":
   - text: DeepSeek-V4-Flash
   - img

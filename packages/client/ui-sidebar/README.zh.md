@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-dsh Web 客户端的侧边栏让用户识别当前构建、启动新会话、将导航折叠为 56px 轨道、浏览 Workspace 与 Session，以及打开 Settings。它会将 Settings 入口固定在底部，并在隐藏空闲滚动条时避免浏览器行发生位移。New Session 优先使用显式选择的 Workspace，其次使用当前 Session 所属的 Workspace，再其次使用最近活跃的 Workspace；如果都不存在，则打开空白的 New Session 页面。部署可以替换品牌标记或名称，同时保留导航控件和轨道几何。
+dsh Web 客户端的侧边栏让用户识别当前构建、启动新会话、将导航折叠为 56px 轨道、浏览 Workspace 与 Session，以及打开 Settings。它会将 Settings 入口固定在底部，并在隐藏空闲滚动条时避免浏览器行发生位移。New Session 运行 ui-workspace 共享的新会话操作。部署可以替换品牌标记或名称，同时保留导航控件和轨道几何，也可以让品牌行只作为纯标识，而不是第二个 New Session 按钮。
 
 ## 目录
 
@@ -29,7 +29,15 @@ dsh Web 客户端的侧边栏让用户识别当前构建、启动新会话、将
 
 ### 品牌与 New Session
 
-展开的品牌行把 `sidebar.brand.mark` 与 `sidebar.brand.name` 渲染为两个独立的 single slot；收起轨道则渲染同一个 mark slot。没有占位者时，外壳使用鱼形标记和本地化的本地构建标签。完整构建会在标签下方显示代码徽标；该徽标使用 `DSH_CLIENT_VERSION`、可选的 7 位 `DSH_CLIENT_COMMIT_HASH` 与 `DSH_CLIENT_GIT_DIRTY=true` 组装成 `version[-commit][-dirty]`；缺少版本元数据时不显示徽标。New Session 优先使用作用域操作明确指定的 Workspace，否则使用当前 Session 所属 Workspace，再否则使用最近活跃 Workspace；一个 Workspace 都没有时则清空选择，进入空白 New Session 页面。
+展开的品牌行把 `sidebar.brand.mark` 与 `sidebar.brand.name` 渲染为两个独立的 single slot；收起轨道则渲染同一个 mark slot。没有占位者时，外壳使用鱼形标记和本地化的本地构建标签。完整构建会在标签下方显示代码徽标；该徽标使用 `DSH_CLIENT_VERSION`、可选的 7 位 `DSH_CLIENT_COMMIT_HASH` 与 `DSH_CLIENT_GIT_DIRTY=true` 组装成 `version[-commit][-dirty]`；缺少版本元数据时不显示徽标。带标签的 New Session 按钮，以及默认情况下展开的品牌行，都运行 ui-workspace 的共享操作：优先使用作用域操作明确指定的 Workspace，否则使用当前 Session 所属 Workspace，再否则使用最近活跃 Workspace；一个 Workspace 都没有时则进入空白 New Session 页面。在 ui-workspace 的 `entry: policy` 下，不带作用域的操作改为运行已注册的[入口策略](../ui-workspace/README.zh.md#startup-and-new-session)。设置 `brandAction: none` 时，展开的品牌行只是纯标识：不是按钮，也没有 New Session 快捷方式；辅助技术会把其名称读作文本，标记仍是装饰性的。
+
+### 配置
+
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `brandAction` | `new-session` | 展开的品牌行的行为：`new-session`（第二个 New Session 按钮）或 `none`（纯标识） |
+
+客户端行的 `config` 只会到达 Host 端。对于 `brandAction: none`，Host 端会把 `__DSH_SIDEBAR__` 全局变量放进每个下发的页面，浏览器端在 apply 时读取它；没有该全局变量时浏览器端使用 `new-session`，因此默认行下发的页面保持不变。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-ui-sidebar)是该字段及其 JSDoc 的完整来源。
 
 ### 全局面板入口
 

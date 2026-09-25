@@ -68,7 +68,6 @@
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: 全自动 · Automatic"': 全自动 · Automatic
-- button "New project folder…"
 - button "6% of context used"
 - button "Send message" [disabled]
 - button "2 turns 2 steps · {{throughput}} tok/s":

@@ -631,7 +631,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'main.conversation\' (client-ui-conversation), so it exists while that entry is mounted',
     occupants: [
-      'client-ui-research ResearchProjectEntry id \'research-create\'',
+      'client-ui-research ResearchEntryLine id \'research-entry\'',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.hero.welcome\', () => ctx.slots.register(\n      { name: \'conversation.hero.welcome\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
@@ -663,6 +663,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'main.conversation\' (client-ui-conversation), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-research ResearchFolderMenu',
       'client-ui-workspace WorkspacePicker',
     ],
     replaceRisk: 'shadows-shipped-ui',
@@ -797,6 +798,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-conversation QueueDock id \'queue\'',
       'client-ui-conversation TodoDock id \'todo\'',
       'client-ui-goal GoalDock id \'goal\'',
+      'client-ui-research ResearchTryChips id \'research-try\'',
       'client-ui-research ResearchRuns id \'research-runs\'',
     ],
     replaceRisk: 'none',
@@ -851,9 +853,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     hookContext: '',
     slotInject: '',
     declaredBy: 'an entry in \'conversation.composer.bar\' (client-ui-conversation), so it exists while that entry is mounted',
-    occupants: [
-      'client-ui-research ResearchNewProject id \'research-new-project\'',
-    ],
+    occupants: [],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.input.left\', () => ctx.slots.register(\n      { name: \'conversation.input.left\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
     source: 'packages/client/ui-conversation/src/client/contract/slots.ts:175',

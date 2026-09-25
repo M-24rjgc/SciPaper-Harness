@@ -16,6 +16,12 @@ import { Context } from '@deepseek-ai/cordis'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { StoredEntry } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { UiWorkspaceEntryPolicy } from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type {
   CreateProjectRequest, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
@@ -28,15 +34,18 @@ import { ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
 import { ResearchClaimSheet } from '../src/client/ClaimSheet.tsx'
 import { ResearchRuns } from '../src/client/RunPanel.tsx'
 import { ResearchStatusChip } from '../src/client/Header.tsx'
-import { ResearchProjectEntry, ResearchProjects } from '../src/client/ProjectEntry.tsx'
-import { ResearchNewProject } from '../src/client/NewProject.tsx'
+import { ResearchProjects } from '../src/client/ProjectEntry.tsx'
+import { ResearchEntryLine, ResearchTryChips } from '../src/client/EntryScreen.tsx'
+import { ResearchFolderMenu } from '../src/client/FolderMenu.tsx'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
 import { SkipHarnessNotice } from '../src/client/Onboarding.tsx'
 import { EmptyCell } from '../src/client/EmptyCell.tsx'
 import { AutonomyChip } from '../src/client/AutonomyChip.tsx'
 import { ResearchCheckCard, ResearchToolCard } from '../src/client/ResearchToolView.tsx'
 import { RESEARCH_TOOLS } from '../src/client/toolCallValues.ts'
-import type { ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
+import type {
+  ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchView, WorkbenchProps,
+} from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 
 /** This implementation's identity in the right-sidebar tab system (private to the plugin). */
@@ -127,7 +136,19 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 
-async function bench(services: { conversation?: unknown } = {}) {
+/** What a bench starts with besides the defaults: the lists as the page finds them, and the host's file-manager answer. */
+interface BenchServices {
+  conversation?: unknown
+  sessions?: Record<string, Partial<SessionSummary>>
+  current?: string
+  /** Workspace id, path and listed sessions. */
+  workspaces?: [string, string, string[]][]
+  snapshot?: ResearchSnapshot
+  /** The host's answer to whether it can show a folder in the file manager; yes by default. */
+  canReveal?: Promise<RemoteResult<boolean>>
+}
+
+async function bench(services: BenchServices = {}) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
   if (services.conversation !== undefined) ctx.provide('conversation', services.conversation as never)
@@ -145,6 +166,7 @@ async function bench(services: { conversation?: unknown } = {}) {
       'conversation.hero.welcome': { kind: 'list', scope: 'root' },
       'conversation.hero.footer': { kind: 'list', scope: 'root' },
       'conversation.hero.brand.mark': { kind: 'single', scope: 'root' },
+      'conversation.hero.workspace': { kind: 'single', scope: 'root' },
       'conversation.input.dock': { kind: 'list', scope: 'session' },
       'conversation.input.left': { kind: 'list', scope: 'session' },
       'conversation.composer.dock': { kind: 'list', scope: 'session' },
@@ -161,7 +183,7 @@ async function bench(services: { conversation?: unknown } = {}) {
   } as never, () => null)
 
   const remote = {
-    snapshot: vi.fn((): Answer<ResearchSnapshot> => Promise.resolve(ok(BLANK))),
+    snapshot: vi.fn((): Answer<ResearchSnapshot> => Promise.resolve(ok(services.snapshot ?? BLANK))),
     tasks: vi.fn((): Answer<ResearchTask[]> => Promise.resolve(ok([]))),
     create: vi.fn((_request: CreateProjectRequest): Answer<ResearchProject> => Promise.resolve(ok(PROJECT))),
     command: vi.fn((_request: ResearchCommand, _signal: AbortSignal): Answer<ResearchResponse> => Promise.resolve(ok(OUTCOME))),
@@ -172,6 +194,11 @@ async function bench(services: { conversation?: unknown } = {}) {
   const directoryPicker = {
     pick: vi.fn((): Answer<string | null> => Promise.resolve(ok('/picked/project'))),
   }
+  const remoteSession = {
+    canOpenWorkspacePath: vi.fn((): Answer<boolean> => services.canReveal ?? Promise.resolve(ok(true))),
+    openWorkspacePath: vi.fn((_request: { path: string; action?: string }, _signal?: AbortSignal): Answer<{ opened: true }> =>
+      Promise.resolve(ok({ opened: true }))),
+  }
   const dictionaries = new Map<string, unknown>()
   const locale = {
     register: vi.fn((namespace: string, dicts: unknown) => {
@@ -181,16 +208,44 @@ async function bench(services: { conversation?: unknown } = {}) {
     // The English dictionary answers, so a thunked label proves the key resolved.
     bind: vi.fn(() => (key: string) => (en as Record<string, string>)[key] ?? key),
   }
-  const layout = { selectPanel: vi.fn(), setInitialRightbarWidth: vi.fn() }
-  const listeners = new Set<() => void>()
-  let listed: Record<string, { cwd?: string }> = { 'session-a': { cwd: 'C:\\research\\sparse' }, 'session-b': {} }
-  const list = {
-    getSnapshot: () => ({ byId: listed }),
-    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+  let navigation = new AbortController()
+  const layout = {
+    selectPanel: vi.fn(), setInitialRightbarWidth: vi.fn(),
+    beginNavigation: vi.fn(() => {
+      navigation.abort()
+      navigation = new AbortController()
+      return navigation.signal
+    }),
   }
+  const rows = (entries: Record<string, Partial<SessionSummary>>): SessionListState => ({
+    ids: Object.keys(entries) as SessionId[],
+    byId: Object.fromEntries(Object.entries(entries).map(([id, row]) => [id, {
+      id, displayTitle: id, running: false, blank: false, updatedAt: 0, ...row,
+    }])) as Record<SessionId, SessionSummary>,
+    current: services.current as SessionId | undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+  })
+  const list = createSnapshotStore<SessionListState>(rows(services.sessions ?? { 'session-a': { cwd: 'C:\\research\\sparse' }, 'session-b': {} }))
   const sessions = { list }
-  const publishSessions = (next: Record<string, { cwd?: string }>): void => { listed = next; for (const listener of listeners) listener() }
-  const uiWorkspace = { openSession: vi.fn(), openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()) }
+  const publishSessions = (next: Record<string, Partial<SessionSummary>>): void => {
+    const { ids, byId } = rows(next)
+    list.update((state) => { state.ids = ids; state.byId = byId })
+  }
+  const select = (id: string | undefined): void => { list.update((state) => { state.current = id as SessionId | undefined }) }
+  const workspaceList = createSnapshotStore<WorkspaceSnapshot>({
+    items: (services.workspaces ?? []).map(([workspaceId, path, ids]) => ({
+      workspaceId: workspaceId as WorkspaceId, path, title: path, sessionIds: ids as SessionId[], createdAt: '', updatedAt: '',
+    })),
+    archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+  })
+  const policies: UiWorkspaceEntryPolicy[] = []
+  const uiWorkspace = {
+    openSession: vi.fn((id: string) => { select(id) }),
+    openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()),
+    setEntryPolicy: vi.fn((policy: UiWorkspaceEntryPolicy) => {
+      policies.push(policy)
+      return () => { policies.splice(policies.indexOf(policy), 1) }
+    }),
+  }
   const sidebarRight = { openTab: vi.fn(), openResource: vi.fn() }
   const tabs: TabType[] = []
   const sidebarRightTabs = {
@@ -200,12 +255,14 @@ async function bench(services: { conversation?: unknown } = {}) {
     }),
   }
 
-  ctx.provide('remote', { research: remote, directoryPicker } as never)
+  ctx.provide('remote', { research: remote, directoryPicker, session: remoteSession } as never)
   ctx.provide('remote.research', remote as never)
   ctx.provide('remote.directoryPicker', directoryPicker as never)
+  ctx.provide('remote.session', remoteSession as never)
   ctx.provide('locale', locale as never)
   ctx.provide('layout', layout as never)
   ctx.provide('sessions', sessions as never)
+  ctx.provide('workspaces', { list: workspaceList } as never)
   ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('sidebarRight', sidebarRight as never)
   ctx.provide('sidebarRightTabs', sidebarRightTabs as never)
@@ -222,11 +279,13 @@ async function bench(services: { conversation?: unknown } = {}) {
   }
   // Every seat is handed the same face; the plugin's own closure is behind it.
   const injected = (seat('main').inject as unknown as () => ResearchInjected)()
+  // The entry screen's seats share their own face.
+  const entry = (seat('conversation.hero.welcome', 'research-entry').inject as unknown as () => ResearchEntryInjected)()
   // apply() starts one read of its own; joining it leaves the store settled.
   await injected.refresh()
   return {
-    ctx, dictionaries, directoryPicker, face: injected, fiber, layout, remote, seat, tabs,
-    publishSessions, sidebarRight, uiWorkspace,
+    ctx, dictionaries, directoryPicker, entry, face: injected, fiber, layout, remote, remoteSession, seat, tabs, policies,
+    publishSessions, select, list, workspaceList, sidebarRight, uiWorkspace,
   }
 }
 
@@ -278,7 +337,8 @@ describe('the research plugin', () => {
 
   it('injects exactly the services it reads', () => {
     expect(inject).toEqual([
-      'remote', 'remote.research', 'remote.directoryPicker', 'slots', 'locale', 'layout', 'sessions', 'sidebarRight', 'uiWorkspace',
+      'remote', 'remote.research', 'remote.directoryPicker', 'remote.session', 'slots', 'locale', 'layout', 'sessions', 'workspaces',
+      'sidebarRight', 'uiWorkspace',
     ])
   })
 
@@ -292,13 +352,15 @@ describe('the research plugin', () => {
     expect(b.seat('conversation.session.header.actions', 'research-status'))
       .toMatchObject({ locale: 'research', component: ResearchStatusChip, options: { order: 5 } })
     expect(b.seat('conversation.hero.brand.mark')).toMatchObject({ component: ResearchHeroMark })
-    expect(b.seat('conversation.hero.welcome', 'research-create'))
-      .toMatchObject({ locale: 'research', component: ResearchProjectEntry, options: { order: 10 } })
+    expect(b.seat('conversation.hero.welcome', 'research-entry'))
+      .toMatchObject({ locale: 'research', component: ResearchEntryLine, options: { order: 10 } })
+    expect(b.seat('conversation.input.dock', 'research-try'))
+      .toMatchObject({ locale: 'research', component: ResearchTryChips, options: { order: 7 } })
     expect(b.seat('sidebar.projects', 'research-projects')).toMatchObject({ locale: 'research', component: ResearchProjects })
-    expect(b.seat('conversation.input.left', 'research-new-project'))
-      .toMatchObject({ locale: 'research', component: ResearchNewProject, options: { order: 5 } })
     expect(b.seat('conversation.input.dock', 'research-runs'))
       .toMatchObject({ locale: 'research', component: ResearchRuns, options: { order: 6 } })
+    // The entry screen's seats share one face of their own.
+    expect(Object.keys((b.seat('conversation.input.dock', 'research-try').inject as unknown as () => ResearchEntryInjected)())).toEqual(Object.keys(b.entry))
     expect(b.seat('shell.overlay', 'research-claim'))
       .toMatchObject({ locale: 'research', component: ResearchClaimSheet, options: { order: 20 } })
     expect(b.seat('sidebar.right.pane.tab', TAB_ID)).toMatchObject({ locale: 'research', component: ResearchRail })
@@ -311,12 +373,15 @@ describe('the research plugin', () => {
       expect(entry).toMatchObject({ locale: 'research', component: entry.options.key === 'research_check' ? ResearchCheckCard : ResearchToolCard })
     }
 
-    // The entry screen carries no cards, intro or promises, the input dock no second research entry,
+    // The entry screen carries no cards, intro, promises or folder button, the composer no folder button,
     // and the header no file, board or gallery buttons.
-    expect(b.ctx.slots.entries('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-create'])
+    expect(b.ctx.slots.entries('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-entry'])
     expect(b.ctx.slots.entries('conversation.hero.footer')).toHaveLength(0)
-    expect(b.ctx.slots.entries('conversation.input.dock').map(entry => entry.options.id)).toEqual(['research-runs'])
+    expect(b.ctx.slots.entries('conversation.input.dock').map(entry => entry.options.id).sort()).toEqual(['research-runs', 'research-try'])
+    expect(b.ctx.slots.entries('conversation.input.left')).toHaveLength(0)
     expect(b.ctx.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
+    // Without the edition's setting the shell's folder picker keeps its seat.
+    expect(b.ctx.slots.entries('conversation.hero.workspace')).toHaveLength(0)
 
     // The settings row names itself through the dictionary, at read time.
     const settings = b.seat('settings.section', 'research')
@@ -341,7 +406,7 @@ describe('the research plugin', () => {
 
     for (const name of [
       'main', 'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions', 'sidebar.projects',
-      'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock', 'conversation.input.left',
+      'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock',
       'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
       'tool.call.toolview',
     ]) {
@@ -349,6 +414,7 @@ describe('the research plugin', () => {
     }
     expect(b.tabs).toEqual([])
     expect(b.dictionaries.size).toBe(0)
+    expect(b.policies).toEqual([])
   })
 
   // The composer's turn/step/token/cache pills, General settings' default access preset, and the open-config-file button.
@@ -364,9 +430,13 @@ describe('the research plugin', () => {
   /** The composer's access seat, a single cell: the shell's access chip registers it without an id. */
   const ACCESS_SEAT = 'conversation.input.permission'
   const accessWinner = (ctx: Context): StoredEntry | undefined => ctx.slots.entriesOfSlot(ACCESS_SEAT)[0]
+  /** The blank conversation's folder seat, a single cell the shell's Workspace picker takes. */
+  const FOLDER_SEAT = 'conversation.hero.workspace'
+  const folderWinner = (ctx: Context): StoredEntry | undefined => ctx.slots.entriesOfSlot(FOLDER_SEAT)[0]
   const registerShipped = (ctx: Context): void => {
     for (const [name, id] of DEVELOPER_CELLS) ctx.slots.register({ name, id } as never, Shipped)
     ctx.slots.register({ name: ACCESS_SEAT } as never, Shipped)
+    ctx.slots.register({ name: FOLDER_SEAT } as never, Shipped)
   }
 
   /** The global the host half puts into the served page. */
@@ -384,10 +454,15 @@ describe('the research plugin', () => {
       const chip = accessWinner(b.ctx)!
       expect(chip).toMatchObject({ locale: 'research', component: AutonomyChip, options: { priority: -1 } })
       expect(Object.keys((chip.inject as unknown as () => ResearchInjected)())).toEqual(Object.keys(b.face))
+      // The research's folder menu takes the blank conversation's Workspace picker, with the entry screen's face.
+      const folder = folderWinner(b.ctx)!
+      expect(folder).toMatchObject({ locale: 'research', component: ResearchFolderMenu, options: { priority: -1 } })
+      expect(Object.keys((folder.inject as unknown as () => ResearchEntryInjected)())).toEqual(Object.keys(b.entry))
 
       await stop(b)
       expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
       expect(accessWinner(b.ctx)?.component).toBe(Shipped)
+      expect(folderWinner(b.ctx)?.component).toBe(Shipped)
     } finally {
       delete page.__DSH_RESEARCH__
     }
@@ -401,6 +476,7 @@ describe('the research plugin', () => {
       registerShipped(b.ctx)
       expect(winners(b.ctx)).toEqual([[['stats', Shipped]], [['permission', Shipped]], [['open-document', Shipped]]])
       expect(accessWinner(b.ctx)?.component).toBe(Shipped)
+      expect(folderWinner(b.ctx)?.component).toBe(Shipped)
       await stop(b)
     }
     delete page.__DSH_RESEARCH__
@@ -485,8 +561,8 @@ describe('the research plugin', () => {
     await expect(b.face.run(CHECK)).rejects.toThrow('no such project')
     b.remote.configure.mockResolvedValueOnce(bad('invalid preferences'))
     await expect(b.face.configure({}, { image: '', embedding: '' })).rejects.toThrow('invalid preferences')
-    b.directoryPicker.pick.mockResolvedValueOnce(bad('no native picker'))
-    await expect(b.face.pickDirectory()).rejects.toThrow('no native picker')
+    b.directoryPicker.pick.mockResolvedValueOnce(bad('the chooser crashed'))
+    await expect(b.face.pickDirectory()).rejects.toThrow('the chooser crashed')
   })
 
   it('starts the read that follows an action after a read already in flight', async () => {
@@ -514,8 +590,13 @@ describe('the research plugin', () => {
     expect(await b.face.create(NEW_PROJECT)).toBe(PROJECT)
     expect(b.remote.create).toHaveBeenCalledWith(NEW_PROJECT)
 
-    expect(await b.face.pickDirectory()).toBe('/picked/project')
+    // The chooser's answer: a folder, a dismissal, or no chooser on this host.
+    expect(await b.face.pickDirectory()).toEqual({ kind: 'picked', path: '/picked/project' })
     expect(b.directoryPicker.pick).toHaveBeenCalledOnce()
+    b.directoryPicker.pick.mockResolvedValueOnce(ok(null))
+    expect(await b.face.pickDirectory()).toEqual({ kind: 'cancelled' })
+    b.directoryPicker.pick.mockResolvedValueOnce({ ok: false, error: { code: 'directory-picker/unavailable', message: 'browse' } } as never)
+    expect(await b.face.pickDirectory()).toEqual({ kind: 'unavailable' })
 
     expect(await b.face.run(CHECK)).toBe(OUTCOME)
     expect(b.remote.command.mock.calls[0]![0]).toBe(CHECK)
@@ -738,5 +819,137 @@ describe('the face a research seat acts through', () => {
     expect(b.face.hooks.directories.getSnapshot()).toEqual({ 'session-a': 'C:\\research\\sparse' })
     b.publishSessions({ 'session-c': { cwd: '/research/other' } })
     expect(b.face.hooks.directories.getSnapshot()).toEqual({ 'session-c': '/research/other' })
+  })
+})
+
+describe('where startup and 新研究 go', () => {
+  const own = newProject({ title: '块稀疏注意力', root: '/research/sparse', brief: '' }, 'w-sparse' as WorkspaceId)
+  const example: ResearchProject = { ...newProject({ title: '示例', root: '/demo/example', brief: '' }, 'w-example' as WorkspaceId), example: true }
+  const draft: ResearchProject = { ...newProject({ title: '新研究', root: '/home/SciPaper/2026-09-26-1', brief: '' }, 'w-draft' as WorkspaceId), draft: true, untitled: true }
+  const snapshotOf = (projects: ResearchProject[]): ResearchSnapshot => ({ projects, preferences: {}, components: [], modes: [] })
+
+  it('registers its landing and 新研究 with ui-workspace for as long as the plugin runs', async () => {
+    const b = await bench({
+      sessions: { 's-sparse': { cwd: '/research/sparse' } }, workspaces: [['w-sparse', '/research/sparse', ['s-sparse']]], snapshot: snapshotOf([own]),
+    })
+    expect(b.policies).toHaveLength(1)
+    await b.policies[0]!.land()
+    expect(b.uiWorkspace.openSession).toHaveBeenCalledWith('s-sparse')
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'New research created', project: draft, sessionId: 's-draft' }))
+    const opening = b.policies[0]!.startNew()
+    b.publishSessions({ 's-sparse': { cwd: '/research/sparse' }, 's-draft': { cwd: draft.root, blank: true } })
+    await opening
+    expect(b.remote.command).toHaveBeenLastCalledWith({ action: 'start-new' }, expect.any(AbortSignal))
+    expect(b.uiWorkspace.openSession).toHaveBeenLastCalledWith('s-draft')
+    await stop(b)
+    expect(b.policies).toEqual([])
+  })
+
+  it('lands in a research\'s folder when none of its conversations has started', async () => {
+    const b = await bench({ workspaces: [['w-sparse', '/research/sparse', []]], snapshot: snapshotOf([own]) })
+    await b.policies[0]!.land()
+    expect(b.uiWorkspace.openWorkspace).toHaveBeenCalledWith('w-sparse')
+  })
+
+  it('never keeps an example restored from the last visit selected, and leaves one the person opens later', async () => {
+    const b = await bench({
+      current: 's-example', sessions: { 's-example': { cwd: '/demo/example' }, 's-sparse': { cwd: '/research/sparse' } },
+      workspaces: [['w-sparse', '/research/sparse', ['s-sparse']], ['w-example', '/demo/example', ['s-example']]], snapshot: snapshotOf([own, example]),
+    })
+    await idle()
+    expect(b.uiWorkspace.openSession).toHaveBeenCalledWith('s-sparse')
+    b.uiWorkspace.openSession.mockClear()
+    b.select('s-example')
+    await b.face.refresh()
+    await idle()
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalled()
+  })
+
+  it('leaves a selection the move lost alone while the draft moves, and carries the draft with the menu\'s own pick', async () => {
+    const b = await bench({
+      current: 's-draft', sessions: { 's-draft': { cwd: draft.root, blank: true } }, workspaces: [['w-draft', draft.root, ['s-draft']]], snapshot: snapshotOf([draft]),
+    })
+    const moved: ResearchProject = { ...draft, workspaceId: 'w-moved' as WorkspaceId, root: '/picked' }
+    const answer = deferred<RemoteResult<ResearchResponse>>()
+    b.remote.command.mockImplementationOnce(() => answer.promise)
+    const carry = vi.fn(() => { b.select('s-moved') })
+    const moving = b.entry.move({ projectId: draft.id, root: '/picked' }, carry)
+    // The host archives the draft's conversation before it answers, and ui-workspace clears the selection and asks to land.
+    b.select(undefined)
+    await b.policies[0]!.land()
+    expect(b.remote.command).toHaveBeenCalledTimes(1)
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalled()
+    answer.settle(ok({ message: 'Research moved', outcome: 'moved', project: moved, sessionId: 's-moved' }))
+    await idle()
+    b.publishSessions({ 's-moved': { cwd: '/picked', blank: true } })
+    b.workspaceList.set({
+      ...b.workspaceList.getSnapshot(),
+      items: [{ workspaceId: 'w-moved' as WorkspaceId, path: '/picked', title: 'picked', sessionIds: ['s-moved' as SessionId], createdAt: '', updatedAt: '' }],
+    })
+    expect(await moving).toMatchObject({ outcome: 'moved' })
+    expect(carry).toHaveBeenCalledWith('w-moved')
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalled()
+  })
+
+  it('opens another research with the draft and then discards the draft, through the same face', async () => {
+    const b = await bench({
+      current: 's-draft', sessions: { 's-draft': { cwd: draft.root, blank: true }, 's-other': { cwd: '/research/sparse', blank: true } },
+      workspaces: [['w-draft', draft.root, ['s-draft']], ['w-sparse', '/research/sparse', ['s-other']]], snapshot: snapshotOf([draft, own]),
+    })
+    await b.entry.adopt(draft.id, 'w-sparse' as WorkspaceId, () => { b.select('s-other') })
+    expect(b.remote.command).toHaveBeenLastCalledWith({ action: 'discard-draft', projectId: draft.id }, expect.any(AbortSignal))
+  })
+
+  it('opens nothing late: not after a newer navigation, and not once the plugin is gone', async () => {
+    const b = await bench({ current: 's-talk', sessions: { 's-talk': { cwd: '/elsewhere' } } })
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'New research created', sessionId: 's-draft' }))
+    const superseded = b.policies[0]!.startNew()
+    await idle()
+    b.layout.beginNavigation()
+    b.publishSessions({ 's-talk': { cwd: '/elsewhere' }, 's-draft': { cwd: draft.root, blank: true } })
+    await superseded
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'New research created', sessionId: 's-late' }))
+    const policy = b.policies[0]!
+    const late = policy.startNew()
+    await idle()
+    await stop(b)
+    await expect(late).rejects.toThrow(en.entryNotListed)
+    b.publishSessions({ 's-late': {} })
+    expect(b.uiWorkspace.openSession).not.toHaveBeenCalled()
+  })
+})
+
+describe('the face the entry screen acts through', () => {
+  it('shows a folder in the file manager where the host can, and says so on the entry line when it cannot', async () => {
+    const b = await bench()
+    expect(b.entry.hooks.canReveal.getSnapshot()).toBe(true)
+    b.entry.reveal('/research/sparse')
+    await idle()
+    expect(b.remoteSession.openWorkspacePath).toHaveBeenCalledWith({ path: '/research/sparse', action: 'reveal' }, expect.any(AbortSignal))
+    b.remoteSession.openWorkspacePath.mockResolvedValueOnce(bad('no desktop on this host'))
+    b.entry.reveal('/research/sparse')
+    await idle()
+    expect(b.entry.hooks.entry.getSnapshot().notice).toMatchObject({ kind: 'failed', action: 'reveal', reason: 'no desktop on this host' })
+    b.entry.showProgress()
+    expect(b.sidebarRight.openTab).toHaveBeenCalledWith('research')
+  })
+
+  it('reads a chooser that failed as dismissed, saying why on the entry line', async () => {
+    const b = await bench()
+    expect(await b.entry.chooseFolder()).toEqual({ kind: 'picked', path: '/picked/project' })
+    b.directoryPicker.pick.mockResolvedValueOnce(bad('the chooser crashed'))
+    expect(await b.entry.chooseFolder()).toEqual({ kind: 'cancelled' })
+    expect(b.entry.hooks.entry.getSnapshot().notice).toMatchObject({ kind: 'failed', action: 'move', reason: 'the chooser crashed' })
+  })
+
+  it('offers no file manager when the host says no, cannot say, or answers after the plugin is gone', async () => {
+    const refused = await bench({ canReveal: Promise.resolve(bad('no desktop')) })
+    const failed = await bench({ canReveal: Promise.reject(new Error('the carrier is down')) })
+    const answer = deferred<RemoteResult<boolean>>()
+    const late = await bench({ canReveal: answer.promise })
+    await stop(late)
+    answer.settle(ok(true))
+    await idle()
+    for (const b of [refused, failed, late]) expect(b.entry.hooks.canReveal.getSnapshot()).toBe(false)
   })
 })

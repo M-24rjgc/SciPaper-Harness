@@ -19,7 +19,7 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
-import type { ResearchView, WorkbenchProps } from '../src/client/contract.ts'
+import type { FolderPick, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 
 /** What the page asked the plugin to do, in the order it asked, and the answers still held back. */
@@ -94,8 +94,12 @@ function snapshotOf(parts: {
   preferences?: ResearchPreferences
   components?: ComponentStatus[]
   projects?: ResearchProject[]
+  researchHome?: string
 }): ResearchSnapshot {
-  return { preferences: parts.preferences ?? {}, components: parts.components ?? [], projects: parts.projects ?? [], modes: [] }
+  return {
+    preferences: parts.preferences ?? {}, components: parts.components ?? [], projects: parts.projects ?? [], modes: [],
+    ...(parts.researchHome === undefined ? {} : { researchHome: parts.researchHome }),
+  }
 }
 
 function viewOf(snapshot: ResearchSnapshot | null): ResearchView {
@@ -122,8 +126,8 @@ function failure(reason: string): string {
   return zh.actionFailed.replace('{reason}', reason)
 }
 
-/** Props whose injected face records every request and answers as `answer` says. */
-function propsFor(view: ResearchView, recorded: Recorded, answer: Answer = 'accept'): WorkbenchProps {
+/** Props whose injected face records every request and answers as `answer` says; the chooser answers `picks` in turn. */
+function propsFor(view: ResearchView, recorded: Recorded, answer: Answer = 'accept', picks: FolderPick[] = []): WorkbenchProps {
   const reply = (reason: string): Promise<void> => {
     if (answer === 'refuse') return Promise.reject(new Error(reason))
     if (answer === 'hold') return new Promise<void>((resolve) => { recorded.held.push(resolve) })
@@ -143,6 +147,7 @@ function propsFor(view: ResearchView, recorded: Recorded, answer: Answer = 'acce
       recorded.saves.push({ preferences, keys })
       return reply('the credential store is unreachable')
     },
+    pickDirectory: () => Promise.resolve(picks.shift() ?? { kind: 'cancelled' }),
   } as unknown as WorkbenchProps
 }
 
@@ -356,6 +361,69 @@ describe('research settings is the one place research is configured', () => {
     // The roles it does not bind still read as their defaults.
     expect(page.getByText(zh.roleVisionFollow)).toBeTruthy()
     expect(page.getByText(zh.roleEmbeddingOff)).toBeTruthy()
+  })
+})
+
+describe('where new researches are kept', () => {
+  const HOME = 'C:\\Users\\me\\SciPaper'
+  const CHOSEN = 'D:\\Research'
+
+  it('shows the folder in effect as the default, and saves a folder the chooser picked with every other setting kept', async () => {
+    const recorded = blank()
+    const preferences: ResearchPreferences = { python: 'C:/Python312/python.exe' }
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences, researchHome: HOME })), recorded, 'accept', [{ kind: 'picked', path: CHOSEN }])} />)
+    expect(page.getByText(zh.researchHomeTitle)).toBeTruthy()
+    expect(page.getByText(HOME)).toBeTruthy()
+    expect(page.getByText(zh.researchHomeDefault)).toBeTruthy()
+    expect(page.queryByRole('button', { name: zh.researchHomeReset })).toBeNull()
+    fireEvent.click(page.getByRole('button', { name: zh.researchHomeChange }))
+    await settle()
+    expect(recorded.saves).toEqual([{ preferences: { python: 'C:/Python312/python.exe', researchHome: CHOSEN }, keys: { image: '', embedding: '' } }])
+    expect(preferencesSchema.parse(recorded.saves[0]!.preferences)).toEqual(recorded.saves[0]!.preferences)
+  })
+
+  it('goes back to the default, and keeps a chosen folder when the model roles are saved', async () => {
+    const recorded = blank()
+    const preferences: ResearchPreferences = { researchHome: CHOSEN, uv: 'C:/tools/uv.exe' }
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences, researchHome: CHOSEN })), recorded)} />)
+    expect(page.queryByText(zh.researchHomeDefault)).toBeNull()
+    fireEvent.click(page.getByRole('button', { name: zh.save }))
+    await settle()
+    fireEvent.click(page.getByRole('button', { name: zh.researchHomeReset }))
+    await settle()
+    expect(recorded.saves.map(save => save.preferences)).toEqual([{ uv: 'C:/tools/uv.exe', researchHome: CHOSEN }, { uv: 'C:/tools/uv.exe' }])
+  })
+
+  it('saves nothing when the chooser is dismissed, and takes a typed path where the host has no chooser', async () => {
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ researchHome: HOME })), recorded, 'accept', [{ kind: 'cancelled' }, { kind: 'unavailable' }, { kind: 'unavailable' }])} />)
+    const change = page.getByRole('button', { name: zh.researchHomeChange })
+    fireEvent.click(change)
+    await settle()
+    expect(page.queryByLabelText(zh.folderTypeLabel)).toBeNull()
+    fireEvent.click(change)
+    await settle()
+    const field = input(page.getByLabelText(zh.folderTypeLabel))
+    expect(field.value).toBe(HOME)
+    expect(page.getByText(zh.folderTypeHint)).toBeTruthy()
+    // Leaving it changes nothing; asking again brings the field back.
+    fireEvent.click(page.getByRole('button', { name: zh.cancel }))
+    expect(page.queryByLabelText(zh.folderTypeLabel)).toBeNull()
+    fireEvent.click(change)
+    await settle()
+    fireEvent.change(page.getByLabelText(zh.folderTypeLabel), { target: { value: '  E:\\Papers  ' } })
+    fireEvent.submit(page.getByLabelText(zh.folderTypeLabel).closest('form')!)
+    await settle()
+    expect(page.queryByLabelText(zh.folderTypeLabel)).toBeNull()
+    expect(recorded.saves.map(save => save.preferences)).toEqual([{ researchHome: 'E:\\Papers' }])
+  })
+
+  it('says why a change was refused', async () => {
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ researchHome: HOME })), recorded, 'refuse', [{ kind: 'picked', path: CHOSEN }])} />)
+    fireEvent.click(page.getByRole('button', { name: zh.researchHomeChange }))
+    await settle()
+    expect(page.getByRole('alert').textContent).toBe(failure('the credential store is unreachable'))
   })
 })
 

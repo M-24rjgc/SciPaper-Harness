@@ -7,7 +7,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
-import { apply as hostApply } from '../src/index.ts'
+import { apply as hostApply, Config as HostConfig } from '../src/index.ts'
 
 const owners = new Set<Fiber>()
 afterEach(async () => {
@@ -128,6 +128,55 @@ describe('ui-sidebar apply', () => {
     } finally {
       await panel.dispose()
       await sidebar.dispose()
+    }
+  })
+
+  it('has the host half put `brandAction: none` into every served page, and take it back', async () => {
+    const host = new Context()
+    host.provide('webServer', {} as never)
+    const served = async (config?: unknown): Promise<unknown[]> => {
+      const fiber = config === undefined
+        ? host.plugin({ apply: hostApply })
+        : host.plugin({ apply: hostApply, Config: HostConfig }, config)
+      await fiber.await()
+      const rows: unknown[] = []
+      host.emit('webserver/index-inject', rows as never)
+      await fiber.dispose()
+      const after: unknown[] = []
+      host.emit('webserver/index-inject', after as never)
+      expect(after).toEqual([])
+      return rows
+    }
+    expect(await served({ brandAction: 'none' })).toEqual([
+      { kind: 'global', name: '__DSH_SIDEBAR__', value: { brandAction: 'none' } },
+    ])
+    // The default leaves every served page as it was.
+    expect(await served({ brandAction: 'new-session' })).toEqual([])
+    expect(await served({})).toEqual([])
+    expect(await served()).toEqual([])
+    expect(() => HostConfig({ brandAction: 'home' } as never)).toThrow()
+  })
+
+  it('hands the shell a plain brand row only on a page that says `brandAction: none`', async () => {
+    const page = globalThis as { __DSH_SIDEBAR__?: unknown }
+    try {
+      for (const [global, plain] of [
+        [{ brandAction: 'none' }, true], [{ brandAction: 'new-session' }, false], [{}, false], [undefined, false],
+      ] as const) {
+        if (global === undefined) delete page.__DSH_SIDEBAR__
+        else page.__DSH_SIDEBAR__ = global
+        const b = await bench()
+        const fiber = b.ctx.plugin({ inject: [...inject], apply })
+        await fiber.await()
+        const injected = (b.slots.entries('sidebar')[0]!.inject as () => SidebarRootInjected)()
+        expect(Object.keys(injected)).toEqual(plain
+          ? ['startSession', 'toggleSidebar', 'selectPanel', 'brandAction', 'hooks']
+          : ['startSession', 'toggleSidebar', 'selectPanel', 'hooks'])
+        expect(injected.brandAction).toBe(plain ? 'none' : undefined)
+        await fiber.dispose()
+      }
+    } finally {
+      delete page.__DSH_SIDEBAR__
     }
   })
 

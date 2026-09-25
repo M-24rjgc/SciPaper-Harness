@@ -160,6 +160,44 @@ Autonomy was a line in the brief and a rail select that sent `/permission` to th
 - **The rail.** The autonomy select, its `/permission` line and the injected `command` are gone. The rail and the project's file panel show 自主程度 and `检查点（在输入框下方更改）`; an example shows the name alone.
 - **Tests.** `autonomy-chip.client.spec.tsx` covers the chip and `plugin.client.spec.ts` its registration under the flag. The research Web e2e changes the autonomy from the chip, waits for the conversation's `research-auto`, types `/permission read-only`, sees `This conversation: Read only`, and brings it back by choosing Automatic.
 
+### Step 9: startup and 新研究 go to the research's entry policy; the brand row is identity (shell)
+
+Two shell packages each gain one configuration field (S1, S2). Both default to the upstream behaviour, and the Web bundle's patch sets the research edition's values.
+
+- **S1, `ui-workspace` `entry`.** `Config.entry` is `recent` (the default, the upstream rule) or `policy`. `UiWorkspace.setEntryPolicy({ land, startNew })` registers one policy and returns its disposer; a second registration throws, and a stale disposer leaves a newer policy registered. Under `policy`:
+  - `land()` replaces the recent Workspace's connection once the Session and Workspace lists are ready with nothing selected. It also runs after `clearArchivedCurrent` clears an archived selection, after the current Session leaves the list, and when a policy registers while nothing is selected. It does not start while another policy call runs or while the fallback connects, and does not run again after a call settled with nothing selected, so a policy that selects nothing cannot loop.
+  - The unscoped `startSession()` (the sidebar's 新研究) runs `startNew()`; `startSession(workspaceId)` still reuses or creates that Workspace's blank Session.
+  - A startup in which no policy registers within 5 s of both lists being ready (`ENTRY_POLICY_WAIT_MS`) uses the `recent` rule. A policy that registers later still takes the unscoped action and every later lost selection.
+  - A throw or rejection from either call is logged as `entry policy land failed:` or `entry policy startNew failed:` and never rejects into the caller. A selection restored from the previous visit is kept, as under `recent`. Under `recent` a registered policy is kept and never called, so the inherited scenarios are unaffected by the policy ui-research registers.
+  - The policy opens only listed Sessions (`sessions.open` refuses an unlisted id). Neither call carries a cancellation signal.
+- **S2, `ui-sidebar` `brandAction`.** `new-session` (the default) keeps the expanded brand row as a second New Session button. `none` renders the same mark and name in a plain `div` (`.brandPlain`, default cursor) that is not `aria-hidden`, so the name reads as text while the mark stays decorative.
+- **Delivery to the browser.** A client row's `config` reaches only the Host half, which was an empty `apply` in both packages. Each Host half now validates its `Config` and, for the non-default value only, pushes a `webserver/index-inject` global (`__DSH_WORKSPACE__ = { entry: 'policy' }`, `__DSH_SIDEBAR__ = { brandAction: 'none' }`), as `client-connection` and ui-research's `__DSH_RESEARCH__` do. The browser half reads the global when it applies and treats its absence as the default, so a default row serves a byte-identical page and the jsdom assembled lane runs the defaults.
+- **The Web bundle** sets `entry: policy` on `ui-workspace` and `brandAction: none` on `ui-sidebar`; `independence.spec.ts` pins both. The Web e2e scaffold's `enableInheritedRows` puts both back to their defaults for the inherited scenarios, beside `hideDeveloperCells: false`.
+- **One inherited JSDoc line.** `ui-layout`'s `setInitialRightbarWidth`, a fork addition, gains its `@param`; `gen-cordis-inspect-catalog` refused to run without it.
+- **Tests.** `workspaces-service.client.spec.ts` covers `land()` at startup, after an archive and after the current Session leaves the list; `startNew()` for the unscoped action and the scoped action unchanged; the 5 s fallback and its end; a policy registering during the wait and after a fallback; no `land()` while a call runs; logged failures; one policy at a time and a stale disposer; and `recent` ignoring a registered policy. `apply.client.spec.ts` in both packages covers the Host half's global and the browser half's reading of it, and `sidebar-root.client.spec.tsx` the plain brand row. Every existing spec of both packages, and the startup and sidebar Web e2e files, pass unchanged.
+
+### Step 9: 新研究 opens one untouched draft research (host)
+
+- **The research home.** New researches go to `<research home>/<yyyy-mm-dd>-<n>`: the `researchHome` preference (设置 › 科研 › 研究存放位置), else the service's `researchHome` Config field, else `<profile home>/SciPaper` (`resolveResearchHome`, `src/drafts.ts`), outside Documents, which OneDrive often syncs, and ASCII for TeX. `configure` refuses a relative path and one among the examples, and the snapshot carries the home in effect as `researchHome`. The Web e2e scaffold pins the Config field inside its temporary folder, so no scenario writes the developer's profile.
+- **The draft.** `start-new`, the desktop's command through `execute`, answers `{project, sessionId}`: the untouched draft, or a new research at the next free `n` with its record (`untitled`, titled 新研究, general with `modeSetBy` unset), its folder's Workspace named after the folder, and one blank conversation. It runs on the same one-at-a-time chain as project creation, so two clicks make one draft. It never reuses or makes a draft among the examples, inside another research, or in a system folder.
+- **Untouched.** A research is the draft (`draft: true`, derived in snapshots and in these commands' answers, never stored) while its record holds nothing but the placeholder title and the autonomy (`blankRecord`), every conversation of it is blank in `ctx.sessionController.list` (no turn started), its folder holds only the empty scaffold folders, and it is not an example. A research found holding a started conversation is remembered, because a conversation never becomes blank again.
+- **Relocate.** `relocate {projectId, root, confirmNonEmpty?}` answers `example`, `existing` (that research and its bound conversation), `nested` (the draft's own folder included), `needs-confirm`, or `moved`: the research is created at the folder with the draft's autonomy and a blank conversation, and the draft is discarded.
+- **Discard.** `discard-draft` and a move archive the draft's blank conversations, delete its folder's Workspace registration and its record, then remove each scaffold folder that is still empty, and the root when the draft created it, which the record's `createdRoot` says. A folder that holds anything stays; one that cannot be removed is logged.
+- **The agent.** `execute` refuses the three commands to the agent. `research_project` gains no action, and its `create` still only adopts the conversation's own folder.
+
+### Step 9: startup, 新研究 and the entry screen go to the research (ui-research)
+
+- **The entry policy.** `entry.ts` registers `land` and `startNew` with `uiWorkspace.setEntryPolicy` for the plugin's life. `land()` reads the record again and opens the person's own research used last (not an example, not the untouched draft, its folder still in the Workspace list) on its newest conversation that has started: listed, top-level, not archived, not blank, not a visual-review reviewer. When no conversation of it has started, it opens the folder's blank one. A research counts as used when a conversation of it or its record last changed. With no research of the person's own it calls `startNew()`; when the record cannot be read it says why and creates nothing. `startNew()` sends `start-new` and opens the draft's conversation. When that conversation is already on screen, the entry line says 这里就是一项新的研究，直接说说你的问题。 for four seconds.
+- **Late opens.** Neither call carries a signal, so every open starts a `layout.beginNavigation()`. It opens only while that navigation is current, the selection is still the one it started from (or none), and the plugin runs. It opens only a session the list carries, waiting up to five seconds; otherwise the entry line says why.
+- **Startup never keeps an example.** Once both lists are ready and the record has arrived, a selection restored from the last visit that lies in an example gives way to `land()`. This runs once per registration; an example the person opens later stays.
+- **The draft's moves.** 更改位置… sends `relocate` with the folder seat's `onPick` captured when the item was chosen. `moved`: the flow waits until both lists carry the new folder's conversation, then calls that `onPick`, which moves the composer's draft and attachments there, and waits for the selection to arrive. The host archives the draft's conversation before it answers, so ui-workspace clears the selection and calls `land()` meanwhile; while a move runs, `land()` does nothing, and a move that ends with nothing selected lands. `existing` offers 打开它 and `nested` offers 打开「X」: the draft is carried into that research's blank conversation, then `discard-draft` removes the draft. `needs-confirm` offers 就用这里, which repeats `relocate` with `confirmNonEmpty`. `nested` inside the draft's own folder and `example` offer another folder. A failure shows on the entry line.
+- **The folder menu.** `FolderMenu.tsx` takes `conversation.hero.workspace` at priority −1. The shell's `WorkspaceChip` stays the chip and names the Workspace: the draft's folder, and after `rename` the research's title. The menu reads 保存在 <path>; 更改位置… on the untouched draft only; 在资源管理器中打开 when `session.canOpenWorkspacePath()` answered yes; and 换到另一项研究 › with the person's other researches, newest first, which carries the draft through `onPick` and leaves the draft in place. A chosen folder's outcome appears in a second menu at the chip. Where the host has no chooser (`directory-picker/unavailable`, the browse picker), a dialog takes a typed absolute path. The menu registers under `hideDeveloperCells`, with the developer cells, so the inherited Web scenarios keep the shell's picker.
+- **The entry line and 试试.** `EntryScreen.tsx` fills `conversation.hero.welcome`: nothing for the draft or a folder outside every research; `新对话 · {mode} · {phase} n/m · 研究记录` for a blank conversation of a research, where 研究记录 opens the research tab; `示例研究 · 只能查看` for an example; and any notice raised on that screen. Above the composer (`conversation.input.dock`), while the draft's conversation is blank and nothing is typed, 试试：「…」「…」 adds `heroOpeningMaterials` or `heroOpeningIdea` to the draft and sends nothing.
+- **Removed.** The 新建项目目录… pill (`research-create`), the composer's folder button (`research-new-project`), `NewProject.tsx`, their dialog styles, and their keys. `ResearchProjects` stays until step 10; the Workbench keeps its own creation form until step 11.
+- **Settings.** 设置 › 科研 opens with 研究存放位置: the folder in effect (`snapshot.researchHome`), 默认位置 while the preference is unset, 更改… (the host's chooser, or a typed path) and 恢复默认, each saved through `configure`.
+- **Faces.** `pickDirectory` answers a `FolderPick` (`picked`, `cancelled`, `unavailable`), and the entry seats share a `ResearchEntryInjected` face. The plugin also injects `remote.session` and `workspaces`.
+- **Tests and goldens.** `entry.client.spec.ts`, `entry-screen.client.spec.tsx` and `folder-menu.client.spec.tsx` cover the flows and seats; `plugin.client.spec.ts` the registration, the startup example rule, the move guard and the late-open guards. The research Web e2e lands on a draft under the scaffold's pinned research home, moves it with its composer text to a typed folder, renames it, reuses the draft for 新研究 and shows its notice, asks about a folder that holds files, and carries a typed question into an existing research, discarding the draft. The composer's folder button is gone from 76 inherited ARIA goldens, and the entry pill from the two `lifecycle-chrome` entry-screen goldens, on those lines only.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -230,6 +268,38 @@ Autonomy was a line in the brief and a rail select that sent `/permission` to th
 
 **Keep sending `/permission` from the browser (step 8).** It reaches only the conversation on screen.
 
+**Always publish the page global, as ui-research does (step 9).** A default row would add a script to every served page, and both packages' inert-Host-entry specs would change. Publishing only a non-default value keeps the default page identical.
+
+**An `initialSession: none` switch plus a research-side startup (step 9).** It closes the race only at startup. `clearArchivedCurrent` and the removal of the current Session would still leave nothing selected, and 新研究 would still inherit the current folder.
+
+**Run `land()` on every notification while nothing is selected (step 9).** A policy that selects nothing (a failed `start-new`, a research home that cannot be written) would call the Host on every list change. Only transitions trigger it: the startup, a lost selection, a registration.
+
+**Replace an earlier policy on a second registration, or keep a stack (step 9).** Two plugins registering policies is a composition error; the throw names it at load.
+
+**A Config field for the 5 s wait (step 9).** The wait guards against a missing plugin; it is not a tuning choice.
+
+**Make the brand row a button that does nothing, or hide it (step 9).** A button without an action is a dead control (D13); hiding the row would take the product's identity out of the sidebar.
+
+**Count `set-autonomy` as a change (`revision === 1`) (step 9).** The autonomy chip sits in the draft's composer, so choosing 全自动 before typing would turn the draft into a research of its own: 更改位置 would disappear and the next 新研究 would make a second folder. The record's content decides instead, and `relocate` carries the autonomy.
+
+**The preference alone for the research home (step 9).** Startup under the entry policy calls `start-new` before a test can configure anything, so every Web e2e would create folders in the developer's `%USERPROFILE%\SciPaper`. A Config field is what a composition can pin.
+
+**Remove the root whenever it is empty (step 9).** A folder the person made before choosing it is not one the draft made; `createdRoot` records which.
+
+**Read blankness from session events or `inspect` (step 9).** Events reach only this process's live sessions, and `inspect` copies a live session's whole log. The list's `blank` bit is what the shell uses to reuse a blank conversation.
+
+**Leave the old conversation unarchived (step 9).** A session log cannot be deleted, and a cold session whose list metadata misses the cache reads as not blank, so it would reappear among folderless conversations. Archiving is the one removal the registry offers.
+
+**Render the chip in ui-research (step 9).** The shell draws `WorkspaceChip` itself and hands the seat only the menu; a second chip would need a new hero slot, which the plan dropped.
+
+**An in-app folder browser for 更改位置 (step 9).** The shell's browse flow fills `conversation.hero.workspace.directoryFlow`, which only the Workspace picker declares; rendering it from the research menu would break slot ownership. A typed path covers the hosts without a chooser.
+
+**Show the folder outcomes on the entry line (step 9).** 打开它 must call the folder seat's own `onPick`, which the entry line does not receive; the menu at the chip has it.
+
+**Discard the draft on 换到另一项研究 (step 9).** The draft is the one reusable 新研究; keeping it costs nothing, and the next 新研究 opens it again.
+
+**Let `land()` create a draft when the record cannot be read (step 9).** A draft beside researches the snapshot missed would duplicate one; saying why leaves the choice to the person.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -263,3 +333,18 @@ Autonomy was a line in the brief and a rail select that sent `/permission` to th
 - A composition that mounts ui-research without `hideDeveloperCells` keeps the shell's access chip and has no autonomy control, although the rail still points to the composer.
 - A hand-typed preset lasts until the next autonomy choice in that research.
 - When the conversation's projection arrives after the record, the chip briefly reads `本对话：…`.
+- Without a registered policy (ui-research not loaded), startup waits 5 s and then connects the recent Workspace, and 新研究 keeps the upstream rule.
+- Research Web scenarios that compose the shipped rows run under `entry: policy` and `brandAction: none`: their sidebar has one 新研究 button.
+- After a policy call settles with nothing selected, nothing is selected until the person acts or the selection is lost again.
+- `docs/config-catalog.md` lists both packages' configuration.
+- `existing` and `nested` change nothing; opening that research and discarding the draft with `discard-draft` is the client's.
+- A draft whose conversation was archived gets a new blank conversation from `start-new`; the record keeps its bound one.
+- When sessions cannot be listed, snapshots and command answers mark no draft, and `start-new` fails rather than make a second draft.
+- While a draft exists, each snapshot lists the sessions once.
+- Any file in the draft's folder, an OS file such as `.DS_Store` included, makes it a research of its own.
+- A research home changed in the settings applies to the next draft; an existing draft stays where it is until it is moved.
+- A research home inside a research refuses 新研究 until the settings change.
+- Where the host has no folder chooser (a remote browser, an SSH launch), 更改位置… and 研究存放位置 take a typed absolute path.
+- If a moved research's conversation does not appear in the lists within five seconds, the typed draft stays with the archived draft conversation, and the entry line says why.
+- After 换到另一项研究 the untouched draft stays in the list until the next 新研究 reopens it or a move discards it.
+- The chip names the folder's Workspace, so a research whose rename could not retitle its Workspace shows the folder name there.

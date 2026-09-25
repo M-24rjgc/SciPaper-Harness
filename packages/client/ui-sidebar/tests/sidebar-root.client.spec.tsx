@@ -106,6 +106,55 @@ describe('SidebarRoot shell', () => {
     expect(b.toggleSidebar).toHaveBeenCalledOnce()
   })
 
+  it('renders the brand as plain, readable identity when the page sets brandAction none', () => {
+    const startSession = vi.fn()
+    const { container } = render(<SidebarRoot
+      collapsed={false} width={300} brandAction="none"
+      useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction}
+      usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])}
+      useResource={useResource} useWorkspaces={neverHook}
+      startSession={startSession} toggleSidebar={vi.fn()} t={t}
+      renderSlot={((key: string, _owner: unknown, options?: { fallback?: ReactNode }) => {
+        if (key === 'sidebar.brand.name') return <span>Research brand</span>
+        return options?.fallback ?? null
+      }) as SidebarRootComponentProps['renderSlot']}
+    />)
+
+    // Only the labelled capsule starts a session; the brand is no button and is not hidden.
+    const starters = screen.getAllByRole('button', { name: 'New research' })
+    expect(starters).toHaveLength(1)
+    const name = screen.getByText('Research brand')
+    expect(name.closest('button')).toBeNull()
+    expect(name.closest('[aria-hidden="true"]')).toBeNull()
+    fireEvent.click(name)
+    expect(startSession).not.toHaveBeenCalled()
+    // The mark stays decorative.
+    expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+    fireEvent.click(starters[0]!)
+    expect(startSession).toHaveBeenCalledOnce()
+  })
+
+  it('hands the projects seat the same clamped expand request as the region', () => {
+    for (const collapsed of [false, true]) {
+      const toggleSidebar = vi.fn()
+      let projects: SidebarSectionOwnerProps | undefined
+      render(<SidebarRoot
+        collapsed={collapsed} width={300}
+        useSessions={neverHook} useSessionPendingInteraction={useSessionPendingInteraction}
+        usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])}
+        useResource={useResource} useWorkspaces={neverHook}
+        startSession={vi.fn()} toggleSidebar={toggleSidebar} t={t}
+        renderSlot={((key: string, owner: SidebarSectionOwnerProps, options?: { fallback?: ReactNode }) => {
+          if (key === 'sidebar.projects') projects = owner
+          return options?.fallback ?? null
+        }) as SidebarRootComponentProps['renderSlot']}
+      />)
+      projects?.expandSidebar()
+      expect(toggleSidebar).toHaveBeenCalledTimes(collapsed ? 1 : 0)
+      cleanup()
+    }
+  })
+
   it('renders generic brand fallbacks when no package fills the slots', () => {
     vi.stubEnv('DSH_CLIENT_COMMIT_HASH', '0123456')
     vi.stubEnv('DSH_CLIENT_GIT_DIRTY', 'true')

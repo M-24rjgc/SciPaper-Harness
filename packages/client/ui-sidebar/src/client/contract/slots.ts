@@ -117,9 +117,16 @@ export type SidebarRootInjected = {
   /**
    * Start a New Session: with a workspace, reuse-or-create its blank session
    * and open it; without one, inherit the current Session Workspace, then the
-   * recent Workspace, or clear into the New Session pure view when none exist.
+   * recent Workspace, or clear into the New Session pure view when none exist
+   * (ui-workspace's entry policy decides instead under its `entry: policy`).
    */
   startSession: (workspaceId?: WorkspaceId) => void
+  /**
+   * `none` when the page configures the expanded brand row as plain identity
+   * (the host row's `brandAction`); absent, the brand row is a second New
+   * Session button.
+   */
+  brandAction?: 'none'
   /** Toggle the sidebar column through the layout service. */
   toggleSidebar: () => void
   /** Select the global panel addressed by a sidebar row. */

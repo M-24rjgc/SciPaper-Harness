@@ -29,7 +29,6 @@
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
-- button "New project folder…"
 - button "Select model, current streaming-fence-highlight-test/streaming-fence":
   - text: streaming-fence-highlight-test/streaming-fence
   - img

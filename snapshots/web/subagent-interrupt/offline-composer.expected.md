@@ -38,6 +38,5 @@
 - button "Add files or run commands" [disabled]:
   - img
 - 'button "Access mode, current: 全自动 · Automatic" [disabled]': 全自动 · Automatic
-- button "New project folder…"
 - button "Stop generating"
 - button "Send message" [disabled]

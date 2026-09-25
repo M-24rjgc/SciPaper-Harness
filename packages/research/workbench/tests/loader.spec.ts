@@ -7,8 +7,8 @@ import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import * as DomainPlugin from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, parse } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Session } from '@deepseek-ai/dsh-session'
@@ -17,6 +17,7 @@ import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
 import type { ResearchProject } from '../src/types.ts'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { draftFolderName } from '../src/drafts.ts'
 
 /** Every child process the service starts, answered by a scripted stand-in. */
 const processes = vi.hoisted(() => ({
@@ -106,6 +107,19 @@ vi.mock('../src/process.ts', async (original) => {
   }
 })
 
+/** Makes removing a discarded draft's empty folders fail, as a folder another program holds open does. */
+const draftFolders = vi.hoisted(() => ({ removeFails: false }))
+vi.mock('../src/drafts.ts', async (original) => {
+  const actual = await original<typeof import('../src/drafts.ts')>()
+  return {
+    ...actual,
+    removeEmptyScaffold: async (root: string, createdRoot: boolean) => {
+      if (draftFolders.removeFails) throw new Error('EBUSY: resource busy or locked')
+      await actual.removeEmptyScaffold(root, createdRoot)
+    },
+  }
+})
+
 const { default: ResearchWorkbench, EMBEDDING_CREDENTIAL, IMAGE_CREDENTIAL } = await import('../src/index.ts')
 const AgentTools = await import('../src/agent-tools.ts')
 const { default: SkillRegistry } = await import('@deepseek-ai/dsh-skill')
@@ -119,6 +133,7 @@ beforeEach(() => {
   processes.missingSty = false; processes.passesBeforeFailure = undefined; processes.noLog = false
   processes.latexFailures.length = 0; processes.bibtexOutputs.length = 0
   processes.ssh = undefined; processes.extracted = undefined
+  draftFolders.removeFails = false
 })
 
 /** Hold every process of one kind until the returned release is called. */
@@ -155,6 +170,12 @@ interface Harness {
   applied: Map<string, string>
   /** Publish a session, as the session store does: it becomes live and `session/created` is emitted. */
   open: (session: FakeSession) => void
+  /** Sessions whose first turn has started, so the session list reads them as not blank. */
+  turns: Set<string>
+  /** Sessions archived through the Workspace registry, in order. */
+  archived: string[]
+  /** Set to make the session list fail, as a persistence read can. */
+  listing: { failure?: Error | undefined }
 }
 
 interface BootOptions {
@@ -163,6 +184,8 @@ interface BootOptions {
   live?: FakeSession[]
   /** The presets the permission row configures. */
   presets?: string[]
+  /** The service's configured research home. */
+  researchHome?: string
 }
 
 async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<Harness> {
@@ -181,6 +204,9 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   const goals = new Map<string, GoalView | Error>()
   const live: FakeSession[] = [...options.live ?? []]
   const applied = new Map<string, string>()
+  const turns = new Set<string>()
+  const archived: string[] = []
+  const listing: Harness['listing'] = {}
   let open = (_session: FakeSession): void => {}
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
@@ -198,6 +224,9 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
         get: (id: WorkspaceId) => workspaces.get(id),
         list: () => [...workspaces.values()],
+        delete: async (id: WorkspaceId) => workspaces.delete(id),
+        archiveSession: async (id: string) => { archived.push(id) },
+        get archivedSessionIds() { return [...archived] },
       } as unknown as Context['workspaceRegistry'])
       c.provide('agents', { list: () => agents } as unknown as Context['agents'])
       c.provide('goals', {
@@ -228,6 +257,15 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
         selectModel: async () => {},
         prompt: async (request: unknown) => { prompts.push(request) },
+        list: async () => {
+          if (listing.failure) throw listing.failure
+          return {
+            items: live.map(session => ({
+              sessionId: session.id, updatedAt: 0, running: false, blank: !turns.has(session.id),
+              ...(session.header.cwd === undefined ? {} : { cwd: session.header.cwd }),
+            })),
+          }
+        },
       } as unknown as Context['sessionController'])
       c.provide('credentials', {
         set: async (ref: string, value: string) => { credentials.set(ref, value) },
@@ -245,12 +283,13 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
     '- name: research-tools',
     '- name: research', '  config:', '    maxSourceBytes: 100000', '    pollIntervalMs: 500', '    maxReviewPages: 4',
     ...options.componentRoot === false ? [] : [`    componentRoot: ${JSON.stringify(join(root ?? '', 'components'))}`],
+    ...options.researchHome === undefined ? [] : [`    researchHome: ${JSON.stringify(options.researchHome)}`],
   ].join('\n'))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configuration).href } })
   await ctx.loader.await()
   return {
     service: ctx.research, registry, prompts, sessions, credentials, workspaces, agents, goals, applied,
-    open: (session) => { open(session) },
+    open: (session) => { open(session) }, turns, archived, listing,
   }
 }
 
@@ -1410,6 +1449,225 @@ describe('the research service records; it never drives the agent', () => {
     expect((await run({ action: 'experiment-cancel', runId: '55555555-5555-4555-8555-555555555555' })).message).toBe('cancelled')
     await run({ action: 'environment', environment: { name: 'spare', kind: 'existing', target: 'local', python: 'C:/py/python.exe', requirements: [], isDefault: false } })
     expect(service.getProject(p.id).environments.map(e => e.isDefault)).toEqual([true, false])
+  })
+})
+
+describe('新研究 opens one untouched draft research, which can move and be discarded', () => {
+  const PERSON_ONLY = /the person's commands/
+  const NOT_A_DRAFT = '这项研究已经开始，不能再更改位置或丢弃 / This research has started, so it can no longer be moved or discarded'
+  const today = (n: number): string => draftFolderName(new Date(), n)
+  const command = (service: Harness['service'], request: Record<string, unknown>, actor: 'user' | 'agent' = 'user') =>
+    service.execute(request as never, signal, actor)
+  const startNew = (service: Harness['service']) => command(service, { action: 'start-new' })
+
+  it('creates the draft in the research home and reuses it until something is done in it', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-')))
+    const home = join(root, 'SciPaper')
+    const { service, workspaces, turns, archived } = await boot(new MemoryMediaPool())
+    await service.configure({ researchHome: home })
+    const first = await startNew(service)
+    expect(first.project).toMatchObject({
+      title: '新研究', untitled: true, draft: true, createdRoot: true, mode: 'general', autonomy: 'checkpoints', root: join(home, today(1)),
+    })
+    expect(first.project).not.toHaveProperty('modeSetBy')
+    expect(first.sessionId).toBe(first.project?.sessionId)
+    // Its folder's Workspace is named after the folder, and the empty scaffold is on disk.
+    expect(workspaces.get(first.project!.workspaceId)?.title).toBeUndefined()
+    for (const directory of ['paper', 'figures', 'code', 'data', '.research', 'exports']) expect(existsSync(join(first.project!.root, directory))).toBe(true)
+    // Two clicks at once, and every click after, open the same draft.
+    const [again, twin] = await Promise.all([startNew(service), startNew(service)])
+    expect([again.project?.id, twin.project?.id, again.sessionId]).toEqual([first.project?.id, first.project?.id, first.sessionId])
+    const snapshot = await service.snapshot()
+    expect(snapshot.researchHome).toBe(home)
+    expect(snapshot.projects.find(project => project.id === first.project?.id)).toMatchObject({ draft: true })
+    // The autonomy is the person's setting for its conversations, not work in it: the research stays the draft.
+    const autonomy = await command(service, { action: 'set-autonomy', projectId: first.project!.id, autonomy: 'automatic' })
+    expect(autonomy.project).toMatchObject({ draft: true, autonomy: 'automatic' })
+    expect((await startNew(service)).project?.id).toBe(first.project?.id)
+    // The agent never opens a draft.
+    await expect(command(service, { action: 'start-new' }, 'agent')).rejects.toThrow(PERSON_ONLY)
+
+    // A turn started in its conversation: it is a research of its own now, and stays one.
+    turns.add(first.sessionId!)
+    const second = await startNew(service)
+    expect(second.project).toMatchObject({ root: join(home, today(2)), draft: true })
+    turns.delete(first.sessionId!)
+    expect((await service.snapshot()).projects.find(project => project.id === first.project?.id)).not.toHaveProperty('draft')
+
+    // A file in its folder, or a record change, makes a research of its own too.
+    await writeFile(join(second.project!.root, 'notes.md'), 'an idea')
+    const third = await startNew(service)
+    expect(third.project?.root).toBe(join(home, today(3)))
+    await command(service, { action: 'record-decision', projectId: third.project!.id, question: 'Q?', answer: 'A' })
+    // Creation times are milliseconds; the next draft is created strictly later than the second.
+    await new Promise(resolve => setTimeout(resolve, 5))
+    const fourth = await startNew(service)
+    expect(fourth.project?.root).toBe(join(home, today(4)))
+    // With the file gone, the second is untouched again; the newest draft is the one reopened.
+    await rm(join(second.project!.root, 'notes.md'))
+    expect((await startNew(service)).project?.id).toBe(fourth.project?.id)
+
+    // A draft whose conversation was removed from the list opens a new blank one; a folder removed by hand comes back.
+    archived.push(fourth.sessionId!)
+    await rm(fourth.project!.root, { recursive: true })
+    const reopened = await startNew(service)
+    expect(reopened.project?.id).toBe(fourth.project?.id)
+    expect(reopened.sessionId).not.toBe(fourth.sessionId)
+    expect(existsSync(join(fourth.project!.root, 'paper'))).toBe(true)
+    expect(service.getProject(fourth.project!.id).sessionId).toBe(fourth.sessionId)
+  })
+
+  it('takes the research home from the settings, then the configuration, then SciPaper in the profile', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-home-')))
+    const pool = new MemoryMediaPool()
+    const unset = await boot(pool)
+    // Only read: nothing is created in the profile.
+    expect((await unset.service.snapshot()).researchHome).toBe(join(homedir(), 'SciPaper'))
+    await expect(unset.service.configure({ researchHome: 'relative/place' })).rejects.toThrow(/absolute path/)
+    await ctx!.fiber.dispose(); ctx = undefined
+    const configured = await boot(pool, { researchHome: join(root, 'configured') })
+    expect(configured.service.researchHome()).toBe(join(root, 'configured'))
+    await configured.service.configure({ researchHome: join(root, 'chosen') })
+    expect(configured.service.researchHome()).toBe(join(root, 'chosen'))
+    expect((await configured.service.snapshot()).preferences.researchHome).toBe(join(root, 'chosen'))
+    await ctx!.fiber.dispose(); ctx = undefined
+    await boot(pool, { researchHome: 'relative/place' })
+    expect(ctx!.get('research')).toBeUndefined()
+    expect(logged('error', 'research: researchHome must be an absolute path, not relative/place')).toBe(true)
+  })
+
+  it('never makes a draft among the examples, inside another research or in a system folder', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-refused-')))
+    const { service } = await boot(new MemoryMediaPool())
+    const outer = await service.create({ title: 'Outer', root: join(root, 'outer'), brief: '' })
+    await service.configure({ researchHome: outer.root })
+    await expect(startNew(service)).rejects.toThrow('研究存放位置在研究「Outer」里面，请在设置里换一个位置 / The research location lies inside the research "Outer"; choose another one in Settings')
+    await service.configure({ researchHome: process.platform === 'win32' ? 'C:\\Windows' : '/usr' })
+    await expect(startNew(service)).rejects.toThrow(/outside system locations/)
+    await service.configure({ researchHome: join(root, 'demo', 'mine') })
+    vi.stubEnv('DSH_HOME', root)
+    try {
+      await expect(startNew(service)).rejects.toThrow(/read-only/)
+      await expect(service.configure({ researchHome: join(root, 'demo') })).rejects.toThrow(/read-only/)
+      expect(existsSync(join(root, 'demo'))).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('moves the draft to the folder the person chose, or says what the folder is', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-move-')))
+    const { service, workspaces, archived, applied } = await boot(new MemoryMediaPool())
+    await service.configure({ researchHome: join(root, 'SciPaper') })
+    const draft = (await startNew(service)).project!
+    await command(service, { action: 'set-autonomy', projectId: draft.id, autonomy: 'automatic' })
+    const relocate = (target: string, extra: Record<string, unknown> = {}, actor: 'user' | 'agent' = 'user') =>
+      command(service, { action: 'relocate', projectId: draft.id, root: target, ...extra }, actor)
+    await expect(relocate(join(root, 'x'), {}, 'agent')).rejects.toThrow(PERSON_ONLY)
+    await expect(relocate('relative/folder')).rejects.toThrow(/absolute folder/)
+    await expect(relocate(parse(root).root)).rejects.toThrow(/filesystem root/)
+    expect(await relocate(draft.root)).toMatchObject({ outcome: 'moved', project: { id: draft.id, draft: true }, sessionId: draft.sessionId })
+
+    const other = await service.create({ title: 'Other', root: join(root, 'other'), brief: '' })
+    const existing = await relocate(other.root)
+    expect(existing).toMatchObject({ outcome: 'existing', project: { id: other.id }, sessionId: other.sessionId })
+    expect(existing.project).not.toHaveProperty('draft')
+    expect(await relocate(join(other.root, 'paper', 'deeper'))).toMatchObject({ outcome: 'nested', project: { id: other.id } })
+    // The draft cannot move into its own folder.
+    expect(await relocate(join(draft.root, 'paper'))).toMatchObject({ outcome: 'nested', project: { id: draft.id, draft: true } })
+    await write(join(root, 'busy', 'results.csv'), 'a,b')
+    expect(await relocate(join(root, 'busy'))).toEqual({ message: expect.stringMatching(/holds files/) as unknown, outcome: 'needs-confirm' })
+    vi.stubEnv('DSH_HOME', root)
+    try {
+      expect(await relocate(join(root, 'demo', 'shipped'))).toMatchObject({ outcome: 'example' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    // Nothing was made by any of these.
+    expect(service.projects().map(project => project.title).sort()).toEqual(['Other', '新研究'])
+
+    // Into a folder that does not exist yet: the research is created there with the draft's autonomy, and the draft is gone.
+    const moved = await relocate(join(root, 'chosen', 'study'))
+    expect(moved).toMatchObject({
+      outcome: 'moved', project: { root: join(root, 'chosen', 'study'), title: '新研究', untitled: true, draft: true, createdRoot: true, autonomy: 'automatic' },
+    })
+    expect(moved.sessionId).toBe(moved.project?.sessionId)
+    expect(applied.get(moved.sessionId!)).toBe('research-auto')
+    expect(() => service.getProject(draft.id)).toThrow(/not found/)
+    expect(workspaces.has(draft.workspaceId)).toBe(false)
+    expect(archived).toEqual([draft.sessionId])
+    expect(existsSync(draft.root)).toBe(false)
+    expect(existsSync(join(root, 'SciPaper'))).toBe(true)
+    // It is the draft now: 新研究 opens it.
+    expect((await startNew(service)).project?.id).toBe(moved.project?.id)
+
+    // Beside files the person confirmed: a research of its own, and the folder it left is removed up to the one it made.
+    const beside = await command(service, { action: 'relocate', projectId: moved.project!.id, root: join(root, 'busy'), confirmNonEmpty: true })
+    expect(beside).toMatchObject({ outcome: 'moved', project: { root: join(root, 'busy'), untitled: true } })
+    expect(beside.project).not.toHaveProperty('draft')
+    expect(beside.project).not.toHaveProperty('createdRoot')
+    expect(existsSync(join(root, 'busy', 'results.csv'))).toBe(true)
+    expect(existsSync(join(root, 'chosen', 'study'))).toBe(false)
+    expect(existsSync(join(root, 'chosen'))).toBe(true)
+    // A research with files of its own neither moves nor goes; neither does one that does not exist.
+    await expect(command(service, { action: 'relocate', projectId: beside.project!.id, root: join(root, 'y') })).rejects.toThrow(NOT_A_DRAFT)
+    await expect(command(service, { action: 'discard-draft', projectId: beside.project!.id })).rejects.toThrow(NOT_A_DRAFT)
+    await expect(command(service, { action: 'relocate', projectId: 'missing', root: join(root, 'y') })).rejects.toThrow(/not found/)
+  })
+
+  it('discards an untouched draft and never a folder that holds anything', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-discard-')))
+    const { service, workspaces, archived, turns, open } = await boot(new MemoryMediaPool())
+    await service.configure({ researchHome: join(root, 'SciPaper') })
+    const draft = (await startNew(service)).project!
+    // Another blank conversation in its folder goes with it.
+    open({ id: 'second-blank', header: { cwd: draft.root } })
+    await expect(command(service, { action: 'discard-draft', projectId: draft.id }, 'agent')).rejects.toThrow(PERSON_ONLY)
+    expect(await command(service, { action: 'discard-draft', projectId: draft.id })).toEqual({ message: 'The untouched new research was removed' })
+    expect(service.projects()).toEqual([])
+    expect(workspaces.has(draft.workspaceId)).toBe(false)
+    expect(archived).toEqual([draft.sessionId, 'second-blank'])
+    expect(existsSync(draft.root)).toBe(false)
+
+    // A draft in a folder that was there before keeps that folder, emptied of the scaffold.
+    await mkdir(join(root, 'kept'))
+    const chosen = (await command(service, { action: 'relocate', projectId: (await startNew(service)).project!.id, root: join(root, 'kept') })).project!
+    expect(chosen).not.toHaveProperty('createdRoot')
+    await command(service, { action: 'discard-draft', projectId: chosen.id })
+    expect(existsSync(join(root, 'kept'))).toBe(true)
+    expect(await readdir(join(root, 'kept'))).toEqual([])
+
+    // A folder that cannot be removed is left, and said so; the record is gone all the same.
+    const locked = (await startNew(service)).project!
+    draftFolders.removeFails = true
+    await command(service, { action: 'discard-draft', projectId: locked.id })
+    expect(logged('warn', `research draft folder %s: %s ${locked.root} EBUSY: resource busy or locked`)).toBe(true)
+    expect(service.projects()).toEqual([])
+    draftFolders.removeFails = false
+
+    // A draft someone began talking in is not discarded, and nothing of it is touched.
+    const begun = (await startNew(service)).project!
+    turns.add(begun.sessionId!)
+    const archivedBefore = [...archived]
+    await expect(command(service, { action: 'discard-draft', projectId: begun.id })).rejects.toThrow(NOT_A_DRAFT)
+    expect(archived).toEqual(archivedBefore)
+    expect(existsSync(join(begun.root, 'paper'))).toBe(true)
+  })
+
+  it('shows no draft rather than failing when sessions cannot be listed', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-listing-')))
+    const { service, listing } = await boot(new MemoryMediaPool())
+    await service.configure({ researchHome: join(root, 'SciPaper') })
+    const draft = (await startNew(service)).project!
+    listing.failure = new Error('persistence unavailable')
+    expect((await service.snapshot()).projects[0]).not.toHaveProperty('draft')
+    expect(logged('warn', 'research drafts: %s persistence unavailable')).toBe(true)
+    // A change already stored is answered; only its draft flag is missing.
+    expect((await command(service, { action: 'set-autonomy', projectId: draft.id, autonomy: 'automatic' })).project).not.toHaveProperty('draft')
+    // Opening a draft cannot know which one is untouched, so it fails rather than make a second.
+    await expect(startNew(service)).rejects.toThrow('persistence unavailable')
+    listing.failure = undefined
+    expect((await startNew(service)).project?.id).toBe(draft.id)
   })
 })
 

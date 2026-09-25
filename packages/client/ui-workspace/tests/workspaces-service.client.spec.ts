@@ -13,6 +13,7 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import { DirectoryBrowseError, UiWorkspaceService } from '../src/client/navigation.ts'
+import type { UiWorkspaceEntry, UiWorkspaceEntryPolicy } from '../src/client/navigation.ts'
 
 const sid = (id: string): SessionId => SessionId(id)
 const wid = (id: string): WorkspaceId => id as WorkspaceId
@@ -201,6 +202,8 @@ class FakeDirectoryPicker {
 interface BenchOptions {
   readonly workspaces?: WorkspaceSnapshot
   readonly sessions?: SessionListState
+  /** The page's entry rule; omitted, the service gets none and uses its default. */
+  readonly entry?: UiWorkspaceEntry
 }
 
 function bench(options: BenchOptions = {}) {
@@ -222,6 +225,7 @@ function bench(options: BenchOptions = {}) {
     directoryPicker.remote,
     workspaces,
     sessions as unknown as ISessions,
+    options.entry,
   )
   return { ctx, directoryPicker, sessions, uiWorkspace, workspaces, layout, selectPanel }
 }
@@ -229,6 +233,19 @@ function bench(options: BenchOptions = {}) {
 async function flush(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
+}
+
+/** Let an entry-policy call's rejection log and settle run. */
+async function settle(): Promise<void> {
+  for (let tick = 0; tick < 5; tick += 1) await Promise.resolve()
+}
+
+/** An entry policy whose calls are recorded and scripted per case. */
+function recordingPolicy() {
+  return {
+    land: vi.fn<UiWorkspaceEntryPolicy['land']>(() => undefined),
+    startNew: vi.fn<UiWorkspaceEntryPolicy['startNew']>(() => undefined),
+  }
 }
 
 describe('UiWorkspaceService', () => {
@@ -608,5 +625,258 @@ describe('UiWorkspaceService', () => {
     await expect(b.uiWorkspace.createDirectory('/home/u', 'new')).rejects.toMatchObject({
       rpcError: { code: 'directory-picker/exists' },
     })
+  })
+})
+
+describe('UiWorkspaceService under entry: policy', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('lands through the policy once both lists are ready, instead of connecting the recent Workspace', async () => {
+    const b = bench({ entry: 'policy' })
+    const policy = recordingPolicy()
+    b.uiWorkspace.setEntryPolicy(policy)
+    b.workspaces.list.set(workspaceState([workspace('recent')]))
+    expect(policy.land).not.toHaveBeenCalled()
+    b.sessions.list.set(sessionState())
+    expect(policy.land).toHaveBeenCalledOnce()
+
+    // A settled land() that selected nothing is not repeated by later notifications.
+    await settle()
+    b.workspaces.list.update(state => ({ ...state, items: [...state.items] }))
+    expect(policy.land).toHaveBeenCalledOnce()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    expect(b.sessions.open).not.toHaveBeenCalled()
+  })
+
+  it('keeps a selection restored at startup and starts no fallback over it', () => {
+    vi.useFakeTimers()
+    const b = bench({
+      entry: 'policy',
+      sessions: sessionState([summary('restored')], sid('restored')),
+      workspaces: workspaceState([workspace('recent')]),
+    })
+    vi.advanceTimersByTime(5000)
+    const policy = recordingPolicy()
+    b.uiWorkspace.setEntryPolicy(policy)
+    expect(policy.land).not.toHaveBeenCalled()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('restored'))
+  })
+
+  it('lands again after the current Session is archived and after it leaves the list', async () => {
+    const current = summary('current')
+    const b = bench({
+      entry: 'policy',
+      sessions: sessionState([current, summary('other')], current.id),
+      workspaces: workspaceState([workspace('one', [current.id, sid('other')])]),
+    })
+    const policy = recordingPolicy()
+    policy.land.mockImplementation(() => { b.uiWorkspace.openSession(sid('other')) })
+    b.uiWorkspace.setEntryPolicy(policy)
+    expect(policy.land).not.toHaveBeenCalled()
+
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [current.id] }))
+    expect(b.sessions.clear).toHaveBeenCalledOnce()
+    expect(policy.land).toHaveBeenCalledOnce()
+    expect(b.sessions.list.getSnapshot().current).toBe(sid('other'))
+    await settle()
+
+    // The list masks a selection whose Session it no longer carries.
+    policy.land.mockImplementation(() => undefined)
+    b.sessions.list.set(sessionState([current]))
+    expect(policy.land).toHaveBeenCalledTimes(2)
+    expect(b.sessions.create).not.toHaveBeenCalled()
+  })
+
+  it('runs startNew() for the unscoped New Session and keeps a scoped one on its Workspace', async () => {
+    const current = summary('current', { cwd: '/w/alpha' })
+    const b = bench({
+      entry: 'policy',
+      sessions: sessionState([current], current.id),
+      workspaces: workspaceState([workspace('alpha', [current.id])]),
+    })
+    const policy = recordingPolicy()
+    b.uiWorkspace.setEntryPolicy(policy)
+    b.uiWorkspace.startSession()
+    expect(policy.startNew).toHaveBeenCalledOnce()
+    expect(b.sessions.create).not.toHaveBeenCalled()
+
+    b.sessions.create.mockResolvedValue(sid('alpha-blank'))
+    b.uiWorkspace.startSession(wid('alpha'))
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('alpha-blank'))
+    })
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('alpha') })
+    expect(policy.startNew).toHaveBeenCalledOnce()
+  })
+
+  it('uses the recent Workspace for a startup in which no policy registers within 5 s', async () => {
+    vi.useFakeTimers()
+    const b = bench({ entry: 'policy' })
+    b.sessions.create.mockResolvedValue(sid('initial'))
+    b.workspaces.list.set(workspaceState([workspace('recent')]))
+    b.sessions.list.set(sessionState())
+    vi.advanceTimersByTime(4999)
+    // A notification during the wait neither connects nor restarts the wait.
+    b.workspaces.list.update(state => ({ ...state, items: [...state.items] }))
+    expect(b.sessions.create).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('recent') })
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
+    })
+
+    // A policy that registers afterwards finds a selection, and owns the unscoped action.
+    const policy = recordingPolicy()
+    b.uiWorkspace.setEntryPolicy(policy)
+    expect(policy.land).not.toHaveBeenCalled()
+    b.uiWorkspace.startSession()
+    expect(policy.startNew).toHaveBeenCalledOnce()
+  })
+
+  it('lands for a policy that registers during the wait, or after a fallback with nothing to open', () => {
+    vi.useFakeTimers()
+    const waiting = bench({ entry: 'policy', workspaces: workspaceState([workspace('recent')]), sessions: sessionState() })
+    vi.advanceTimersByTime(3000)
+    const early = recordingPolicy()
+    waiting.uiWorkspace.setEntryPolicy(early)
+    expect(early.land).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(5000)
+    expect(waiting.sessions.create).not.toHaveBeenCalled()
+
+    const empty = bench({ entry: 'policy', workspaces: workspaceState(), sessions: sessionState() })
+    vi.advanceTimersByTime(5000)
+    const late = recordingPolicy()
+    empty.uiWorkspace.setEntryPolicy(late)
+    expect(late.land).toHaveBeenCalledOnce()
+    expect(empty.sessions.clear).not.toHaveBeenCalled()
+  })
+
+  it('ends the wait when the person selects a Session first, or when navigation is disposed', async () => {
+    vi.useFakeTimers()
+    const chosen = bench({ entry: 'policy', workspaces: workspaceState([workspace('recent')]), sessions: sessionState() })
+    chosen.sessions.open(sid('picked'))
+    vi.advanceTimersByTime(5000)
+    expect(chosen.sessions.create).not.toHaveBeenCalled()
+
+    const disposed = bench({ entry: 'policy', workspaces: workspaceState([workspace('recent')]), sessions: sessionState() })
+    await disposed.ctx.fiber.dispose()
+    vi.advanceTimersByTime(5000)
+    expect(disposed.sessions.create).not.toHaveBeenCalled()
+  })
+
+  it('starts no land() while a policy call runs, nor while the fallback is connecting', async () => {
+    const current = summary('current')
+    const b = bench({
+      entry: 'policy',
+      sessions: sessionState([current], current.id),
+      workspaces: workspaceState([workspace('one', [current.id])]),
+    })
+    const running = Promise.withResolvers<undefined>()
+    const policy = recordingPolicy()
+    policy.startNew.mockReturnValue(running.promise)
+    b.uiWorkspace.setEntryPolicy(policy)
+    b.uiWorkspace.startSession()
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [current.id] }))
+    expect(b.sessions.clear).toHaveBeenCalledOnce()
+    expect(policy.land).not.toHaveBeenCalled()
+    running.resolve(undefined)
+    await settle()
+    b.workspaces.list.update(state => ({ ...state, items: [...state.items] }))
+    expect(policy.land).not.toHaveBeenCalled()
+
+    vi.useFakeTimers()
+    const f = bench({ entry: 'policy', workspaces: workspaceState([workspace('recent')]), sessions: sessionState() })
+    const created = Promise.withResolvers<SessionId>()
+    f.sessions.create.mockReturnValue(created.promise)
+    vi.advanceTimersByTime(5000)
+    expect(f.sessions.create).toHaveBeenCalledOnce()
+    const late = recordingPolicy()
+    f.uiWorkspace.setEntryPolicy(late)
+    expect(late.land).not.toHaveBeenCalled()
+    created.resolve(sid('recent-blank'))
+    await vi.waitFor(() => {
+      expect(f.sessions.open).toHaveBeenCalledWith(sid('recent-blank'))
+    })
+    expect(late.land).not.toHaveBeenCalled()
+  })
+
+  it('logs a failing land() or startNew() and lands again after the next lost selection', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const b = bench({
+      entry: 'policy',
+      workspaces: workspaceState([workspace('one', [sid('a')])]),
+      sessions: sessionState([summary('a')]),
+    })
+    const policy = recordingPolicy()
+    policy.land.mockRejectedValueOnce(new Error('no research'))
+    policy.startNew.mockImplementationOnce(() => { throw new Error('host refused') })
+    b.uiWorkspace.setEntryPolicy(policy)
+    b.uiWorkspace.startSession()
+    await settle()
+    expect(warning).toHaveBeenCalledWith('entry policy land failed:', expect.objectContaining({ message: 'no research' }))
+    expect(warning).toHaveBeenCalledWith('entry policy startNew failed:', expect.objectContaining({ message: 'host refused' }))
+
+    // Neither failure still counts as a running call.
+    b.sessions.open(sid('a'))
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [sid('a')] }))
+    expect(policy.land).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes one policy at a time, and a disposed one hands New Session back to the recent rule', async () => {
+    const current = summary('current', { cwd: '/w/home' })
+    const b = bench({
+      entry: 'policy',
+      sessions: sessionState([current], current.id),
+      workspaces: workspaceState([workspace('home', [current.id])]),
+    })
+    const policy = recordingPolicy()
+    const dispose = b.uiWorkspace.setEntryPolicy(policy)
+    expect(() => b.uiWorkspace.setEntryPolicy(recordingPolicy()))
+      .toThrow('uiWorkspace.setEntryPolicy: an entry policy is already registered')
+    dispose()
+    b.sessions.create.mockResolvedValue(sid('home-blank'))
+    b.uiWorkspace.startSession()
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenLastCalledWith(sid('home-blank'))
+    })
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('home') })
+
+    // Without a policy a lost selection stays empty, as under `recent`.
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [sid('home-blank')] }))
+    expect(b.sessions.clear).toHaveBeenCalledOnce()
+    expect(policy.land).not.toHaveBeenCalled()
+
+    // A policy registered while nothing is selected lands; a stale disposer leaves it registered.
+    const next = recordingPolicy()
+    const disposeNext = b.uiWorkspace.setEntryPolicy(next)
+    expect(next.land).toHaveBeenCalledOnce()
+    dispose()
+    b.uiWorkspace.startSession()
+    expect(next.startNew).toHaveBeenCalledOnce()
+    disposeNext()
+    expect(policy.startNew).not.toHaveBeenCalled()
+  })
+
+  it('never calls a registered policy under entry: recent', async () => {
+    const b = bench({ entry: 'recent' })
+    const policy = recordingPolicy()
+    b.uiWorkspace.setEntryPolicy(policy)
+    b.sessions.create.mockResolvedValue(sid('initial'))
+    b.workspaces.list.set(workspaceState([workspace('recent', [sid('initial')])]))
+    b.sessions.list.set(sessionState([summary('initial', { cwd: '/w/recent' })]))
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenCalledWith(sid('initial'))
+    })
+    b.uiWorkspace.startSession()
+    await vi.waitFor(() => {
+      expect(b.sessions.open).toHaveBeenCalledTimes(2)
+    })
+    b.workspaces.list.update(state => ({ ...state, archivedSessionIds: [sid('initial')] }))
+    expect(b.sessions.clear).toHaveBeenCalledOnce()
+    expect(policy.land).not.toHaveBeenCalled()
+    expect(policy.startNew).not.toHaveBeenCalled()
   })
 })

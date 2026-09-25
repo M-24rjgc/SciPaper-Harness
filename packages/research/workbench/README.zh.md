@@ -29,6 +29,8 @@ kind: "package-reference"
 
 项目的自主程度就是它每段对话的权限预设：服务注入 `ctx.permissionPresets`，在每次设置自主程度时、以及每个会话上线时，为项目的每个在线会话设置预设，`checkpoints` 对应 `workspace-write`，`automatic` 对应 `research-auto`；示例和委派出的子会话不受影响（[详情](../../../docs/subsystems/research.zh.md#autonomy-and-permission)）。权限配置行必须同时配置这两个预设（web-app bundle 已经如此），否则服务不会加载。
 
+「新研究」是桌面端的 `start-new` 命令：它打开唯一一份未动过的草稿研究，没有时在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一份，连同文件夹的 Workspace 和一段空白对话。`relocate` 把草稿移到用户选择的文件夹，`discard-draft` 删除草稿以及它建立的空文件夹。研究存放位置取用户的 `researchHome` 偏好，没有时取配置的 `researchHome`，再没有时取 `<用户目录>/SciPaper`。agent 不能发送这几个命令（[详情](../../../docs/subsystems/research.zh.md#new-research-draft)）。
+
 ### 何时选用
 
 当 agent 需要把一篇论文从想法或已有结果一路推进到投稿，并为每份资料、每个文件、每个数字保留来源时，选用它。它负责记录与检查；工作由 agent、目标（goal）与科研技能推进，因此普通的编码会话用不上它。
@@ -50,6 +52,7 @@ kind: "package-reference"
 | `pollIntervalMs` | 必填 | 观测运行中实验的间隔 |
 | `maxReviewPages` | 必填 | 一次查看最多渲染的 PDF 页数 |
 | `componentRoot` | 产品主目录下的 `research/components` | 托管的 Python、uv、TeX 与 draw.io 所在目录 |
+| `researchHome` | `<用户目录>/SciPaper` | 用户在设置中选定位置之前，新研究所在的绝对路径文件夹；测试组合把它指向临时文件夹 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-research-workbench)是全部受支持字段的完整来源。
 
@@ -76,7 +79,8 @@ kind: "package-reference"
 
 | 源码 | 内容 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 服务本体：项目生命周期、命令分派、项目队列、运行观测，以及每段对话的权限预设 |
+| [`src/index.ts`](src/index.ts) | 服务本体：项目生命周期、新研究草稿、命令分派、项目队列、运行观测，以及每段对话的权限预设 |
+| [`src/drafts.ts`](src/drafts.ts) | 新研究：研究存放位置、草稿文件夹的命名、未动过的草稿包含什么，以及删除它的空文件夹 |
 | [`src/checks.ts`](src/checks.ts) | `research_check`：每一项基础检查、通过服务提供的执行器运行的模式门禁，以及按模式要求得出的阶段进度 |
 | [`src/progress.ts`](src/progress.ts) | 项目的进展（由 `research_check` 的报告逐份并入），以及 `standing`：给人、项目简报和对话标题栏看的项目现状 |
 | [`src/modes.ts`](src/modes.ts) | 模式包：清单校验、注册表、路线，以及项目最终落到的模式 |

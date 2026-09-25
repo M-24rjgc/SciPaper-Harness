@@ -351,7 +351,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'startSession(workspaceId?: WorkspaceId): void',
-        description: 'Start a New Session flow and navigate to its Session.',
+        description: 'Start a New Session flow and navigate to its Session. Under `entry: \'policy\'` with a registered policy, the unscoped action runs its `startNew()`.',
         parameters: [{ name: 'workspaceId', description: 'explicit target; absent inherits the current or most recent Workspace.' }],
       },
       {
@@ -915,10 +915,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ThemeTokens',
     declaration: 'export type ThemeTokens = Record<string, string>;',
-  },
-  {
-    name: 'Translate',
-    declaration: 'export type Translate<K extends string = string> = (key: K, params?: Record<string, unknown>) => string;',
   },
   {
     name: 'TranslateNS',

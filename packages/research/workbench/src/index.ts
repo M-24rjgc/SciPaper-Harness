@@ -10,13 +10,13 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { SessionRequestId, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
-import type { Session } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ComponentManager, runtimeAsset } from './components.ts'
 import { AUTONOMY_PRESETS, autonomies, commandSchema, locatorSchema, MODE_DECISION_KEY, preferencesSchema, researchDomain } from './schema.ts'
@@ -40,6 +40,9 @@ import {
   projectPath, readText, sameDirectory, truncateBytes, writeNew,
 } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
+import {
+  blankRecord, canonicalPath, DRAFT_TITLE, holdsFiles, nextDraftRoot, onlyScaffold, removeEmptyScaffold, resolveResearchHome, SCAFFOLD,
+} from './drafts.ts'
 import type {
   ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand, ResearchGoal,
   ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchStanding, ResearchTask, VisualReview,
@@ -56,6 +59,11 @@ export interface Config {
   pollIntervalMs: number
   /** Most PDF pages rendered for one inspection. */
   maxReviewPages: number
+  /**
+   * Absolute folder new researches are created in while the person has not
+   * chosen one in the settings (the `researchHome` preference); `<profile home>/SciPaper` when unset.
+   */
+  researchHome?: string
 }
 
 /** The only credential the image provider may use; it cannot name any other stored secret. */
@@ -74,8 +82,12 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
   | 'board-get' | 'board-update' | 'board-refresh' | 'board-view'
+/** The person's commands that open, move or remove the untouched draft research; the agent never sends them. */
+type DraftCommand = Extract<ResearchCommand, { action: 'start-new' | 'relocate' | 'discard-draft' }>
+/** Commands on one existing project. */
+type ProjectCommand = Exclude<ResearchCommand, DraftCommand>
 /** Commands that record something in the project. */
-type RecordingCommand = Exclude<ResearchCommand, { action: ReadOnlyAction }>
+type RecordingCommand = Exclude<ProjectCommand, { action: ReadOnlyAction }>
 /** Commands whose whole effect is a record change. */
 type ShortCommand = Extract<ResearchCommand, {
   action: 'set-mode' | 'set-autonomy' | 'rename' | 'record-decision' | 'claim' | 'save-artifact' | 'register-artifact' | 'experiment-dismiss' | 'complete-visual-review'
@@ -86,6 +98,10 @@ const MODE_QUESTION = '模式与路线'
 const GOAL_PHASE_ORDER: Record<ResearchGoal['phase'], number> = { active: 0, blocked: 1, paused: 2 }
 /** A record change prepared outside the project's lock and applied inside it. */
 type Commit = (project: ResearchProject) => ResearchResponse | Promise<ResearchResponse>
+/** Why the agent is refused a draft command. */
+const PERSON_ONLY = 'start-new, relocate and discard-draft are the person\'s commands (新研究 and 更改位置); the agent never sends them'
+/** Why relocate or discard-draft is refused: the research is not the untouched draft (any more). */
+const NOT_A_DRAFT = '这项研究已经开始，不能再更改位置或丢弃 / This research has started, so it can no longer be moved or discarded'
 
 const evidenceTextSchema = z.array(z.object({ text: z.string(), locator: locatorSchema }))
 
@@ -113,6 +129,16 @@ function runAt(project: ResearchProject, id: string): number {
 /** The innermost project whose root contains a directory. */
 function innermost(projects: readonly ResearchProject[], directory: string): ResearchProject | undefined {
   return projects.filter(project => isInside(project.root, directory)).sort((a, b) => b.root.length - a.root.length)[0]
+}
+
+/** A research's listed conversations: the one bound to it and each whose working directory's innermost research it is. */
+function conversationsOf(
+  project: ResearchProject,
+  projects: readonly ResearchProject[],
+  sessions: readonly SessionSummary[],
+): SessionSummary[] {
+  const inside = (cwd: string | undefined): boolean => cwd !== undefined && innermost(projects, cwd)?.id === project.id
+  return sessions.filter(session => session.sessionId === project.sessionId || inside(session.cwd))
 }
 
 /** The research a live session belongs to: the one bound to it, else the innermost one containing its working directory. */
@@ -145,14 +171,21 @@ export class ResearchWorkbench extends TypertRemoteService {
     maxSourceBytes: s.number().min(1024).required(),
     pollIntervalMs: s.number().min(500).required(),
     maxReviewPages: s.number().step(1).min(1).required(),
+    researchHome: s.string(),
   })
   private domain!: Domain<typeof researchDomain>
   private readonly tails = new Map<ProjectId, Promise<unknown>>()
   private readonly operations = new Set<Promise<unknown>>()
   /** Runs whose launch is under way outside their project's lock. */
   private readonly launching = new Set<string>()
-  /** The latest project creation; each one waits for the one before it. */
+  /** The latest project creation, draft opening, move or removal; each one waits for the one before it. */
   private creations: Promise<unknown> = Promise.resolve()
+  /**
+   * Projects known to hold a conversation whose turn has started. A
+   * conversation never becomes blank again, so such a project is never
+   * the untouched draft again and its sessions need not be listed.
+   */
+  private readonly started = new Set<ProjectId>()
   /**
    * Extracted evidence text by `project/evidence/revision`. Records are stored
    * without it, so a mutation rewrites kilobytes of ledger rather than the text
@@ -177,6 +210,9 @@ export class ResearchWorkbench extends TypertRemoteService {
   /** Bind the research API and its private tooling directory. */
   constructor(ctx: Context, readonly config: Config) {
     super(ctx, 'research')
+    if (config.researchHome !== undefined && !isAbsolute(config.researchHome)) {
+      throw new Error(`research: researchHome must be an absolute path, not ${config.researchHome}`)
+    }
     const root = config.componentRoot ?? join(resolveDshHome(), 'research', 'components')
     this.components = new ComponentManager(root, () => this.domain.global.get())
     this.gallery = new FigureGallery(runtimeAsset('figure-gallery/index.json.gz'), join(dirname(root), 'cache', 'figure-gallery'))
@@ -267,18 +303,31 @@ export class ResearchWorkbench extends TypertRemoteService {
 
   /**
    * Read detached project snapshots and non-secret component settings.
-   * @returns every project without source bodies and with where it stands, the preferences and the component status.
+   * @returns every project without source bodies, with where it stands and whether it is the untouched draft,
+   * the preferences, the research home in effect and the component status.
    */
   @Remote
   async snapshot(): Promise<ResearchSnapshot> {
+    const projects = this.projects()
+    const drafts = await this.draftsForView(projects, projects)
     const withStanding = async (project: ResearchProject): Promise<ResearchProject> =>
-      ({ ...publicProject(project), standing: await this.standing(project) })
+      ({ ...publicProject(project, drafts.has(project.id)), standing: await this.standing(project) })
     return {
-      projects: await Promise.all(this.projects().map(withStanding)),
+      projects: await Promise.all(projects.map(withStanding)),
       preferences: structuredClone(this.domain.global.get()),
       components: await this.components.status(),
       modes: this.modes.summaries(),
+      researchHome: this.researchHome(),
     }
+  }
+
+  /**
+   * Where new researches are created now: the person's `researchHome`
+   * preference, else the configured `researchHome`, else `<profile home>/SciPaper`.
+   * @returns the absolute research home.
+   */
+  researchHome(): string {
+    return resolveResearchHome(this.domain.global.get().researchHome, this.config.researchHome)
   }
 
   /**
@@ -331,12 +380,22 @@ export class ResearchWorkbench extends TypertRemoteService {
     // Only a named mode is a choice: without one the project opens in general with the mode not chosen yet.
     const named = request.mode === undefined ? request : { ...request, ...chosen }
     // One creation at a time: two requests for the same folder would otherwise both find no project and record two.
-    const creation = this.creations.catch(() => {}).then(() => this.createAt(named, sessionId))
-    this.creations = creation
-    return creation
+    return this.serialize(() => this.createAt(named, sessionId))
   }
 
-  private async createAt(request: CreateProjectRequest, sessionId: string | undefined): Promise<ResearchProject> {
+  /** Run one creation, draft opening, move or removal after the one before it has settled. */
+  private serialize<T>(work: () => Promise<T>): Promise<T> {
+    const turn = this.creations.catch(() => {}).then(work)
+    this.creations = turn
+    return turn
+  }
+
+  /**
+   * Create the project at a folder, or return the one recorded there. A draft
+   * takes the placeholder title (`untitled`), its folder's name as its
+   * Workspace title, and records whether its folder was created with it.
+   */
+  private async createAt(request: CreateProjectRequest, sessionId: string | undefined, draft = false): Promise<ResearchProject> {
     // An example opens as it is, bound to no session; no research, and no folder, is made among the examples.
     if (isExampleRoot(request.root)) {
       const found = existsSync(request.root) ? await realpath(request.root) : undefined
@@ -344,7 +403,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       if (example === undefined) throw new Error(EXAMPLE_READ_ONLY)
       return this.record(example.id)
     }
-    await mkdir(request.root, { recursive: true })
+    const made = await mkdir(request.root, { recursive: true })
     const root = await realpath(request.root)
     assertUsableProjectRoot(root)
     const existing = this.projects().find(project => sameDirectory(project.root, root))
@@ -358,9 +417,13 @@ export class ResearchWorkbench extends TypertRemoteService {
     }
     // create() reuses a workspace already registered for this directory, so a
     // retry after a failed launch never produces a duplicate sidebar entry.
-    const workspace = await this.ctx.workspaceRegistry.create(root, request.title)
+    const workspace = await this.ctx.workspaceRegistry.create(root, draft ? undefined : request.title)
     const project = newProject({ ...request, root }, workspace.id)
-    for (const directory of ['paper', 'figures', 'code', 'data', '.research', 'exports']) {
+    if (draft) {
+      project.untitled = true
+      if (made !== undefined) project.createdRoot = true
+    }
+    for (const directory of SCAFFOLD) {
       await mkdir(await projectPath(root, directory), { recursive: true })
     }
     project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
@@ -397,13 +460,16 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /**
-   * Save model roles and explicitly bound tool locations, never model secrets.
+   * Save model roles, explicitly bound tool locations and the research home, never model secrets.
+   * A research home among the examples is refused.
    * @param preferences - the complete preference record.
    * @returns the preferences as stored.
    */
   @Remote
   async configure(preferences: ResearchPreferences): Promise<ResearchPreferences> {
     const parsed = preferencesSchema.parse(preferences)
+    // Nothing is made among the examples, so new researches cannot go there either.
+    if (parsed.researchHome !== undefined && isExampleRoot(parsed.researchHome)) throw new Error(EXAMPLE_READ_ONLY)
     await this.domain.global.set(parsed)
     return parsed
   }
@@ -527,11 +593,21 @@ export class ResearchWorkbench extends TypertRemoteService {
     }
   }
 
+  /** Run work in a project's one-at-a-time queue, after every change queued before it. */
+  private queued<T>(id: ProjectId, work: () => Promise<T>): Promise<T> {
+    const previous = this.tails.get(id) ?? Promise.resolve()
+    const result = previous.catch(() => {}).then(() => {
+      this.lifetime.signal.throwIfAborted()
+      return work()
+    })
+    this.tails.set(id, result)
+    void result.finally(() => { if (this.tails.get(id) === result) this.tails.delete(id) }).catch(() => {})
+    return result
+  }
+
   /** Serialize one complete graph transition and publish it only after durable storage. */
   private mutate<T>(id: ProjectId, work: (project: ResearchProject) => T | Promise<T>): Promise<T> {
-    const previous = this.tails.get(id) ?? Promise.resolve()
-    const result = previous.catch(() => {}).then(async () => {
-      this.lifetime.signal.throwIfAborted()
+    return this.queued(id, async () => {
       const project = this.getProject(id)
       // The last line of the example guard: whatever path reaches here, an example's record never changes.
       if (isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
@@ -541,9 +617,6 @@ export class ResearchWorkbench extends TypertRemoteService {
       await this.domain.table('projects').put(id, await this.withoutText(project))
       return value
     })
-    this.tails.set(id, result)
-    void result.finally(() => { if (this.tails.get(id) === result) this.tails.delete(id) }).catch(() => {})
-    return result
   }
 
   private async begin(
@@ -576,6 +649,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   /**
    * Dispatch a validated tool or desktop command. The desktop receives a job
    * for long operations; the agent waits for the result inside its tool call.
+   * `start-new`, `relocate` and `discard-draft` are the desktop's alone.
    * @param raw - the command as received.
    * @param signal - cancellation of the call.
    * @param actor - who acts: the desktop user or the agent.
@@ -584,6 +658,10 @@ export class ResearchWorkbench extends TypertRemoteService {
    */
   async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse> {
     const request = commandSchema.parse(raw) as ResearchCommand
+    if (request.action === 'start-new' || request.action === 'relocate' || request.action === 'discard-draft') {
+      if (actor !== 'user') throw new Error(PERSON_ONLY)
+      return this.draftCommand(request)
+    }
     const project = this.record(request.projectId)
     // An example can be read and checked; nothing is recorded into it, whoever asks.
     const example = isExampleRoot(project.root)
@@ -658,11 +736,162 @@ export class ResearchWorkbench extends TypertRemoteService {
           const value = typeof prepared === 'function' ? await this.mutate(project.id, prepared) : prepared
           if (request.action === 'set-mode') this.announceMode(project.id)
           if (request.action === 'set-autonomy') this.alignConversations(project.id)
-          return this.clipped({ ...value, project: publicProject(this.record(project.id)) })
+          return this.clipped({ ...value, project: await this.presented(this.record(project.id)) })
         }
         return LONG_ACTIONS.has(request.action) && actor === 'user' ? this.begin(request.action, project.id, work) : work(signal)
       }
     }
+  }
+
+  /** Open, move or remove the untouched draft; each waits for every creation before it, so two never make two drafts. */
+  private draftCommand(request: DraftCommand): Promise<ResearchResponse> {
+    switch (request.action) {
+      case 'start-new': return this.serialize(() => this.startNew())
+      case 'relocate': return this.serialize(() => this.relocate(request))
+      case 'discard-draft': return this.serialize(async () => {
+        await this.discard(request.projectId)
+        return { message: 'The untouched new research was removed' }
+      })
+    }
+  }
+
+  /**
+   * The untouched drafts among some projects, each with its listed
+   * conversations. A draft's record holds nothing but its autonomy
+   * (`blankRecord`), it is not an example, its folder holds only the empty
+   * scaffold, and every conversation of it is blank: bound to it or working
+   * in its folder, with no turn started. Sessions are listed only when a
+   * project passes the other tests.
+   * @param candidates - the projects to test.
+   * @param all - every project, which decides the research a conversation's folder belongs to.
+   * @returns the drafts' ids, each with its conversations.
+   */
+  private async drafts(
+    candidates: readonly ResearchProject[],
+    all: readonly ResearchProject[] = candidates,
+  ): Promise<Map<ProjectId, SessionSummary[]>> {
+    const unstarted: ResearchProject[] = []
+    for (const project of candidates) {
+      const recordBlank = blankRecord(project) && !isExampleRoot(project.root) && !this.started.has(project.id)
+      if (recordBlank && await onlyScaffold(project.root)) unstarted.push(project)
+    }
+    const drafts = new Map<ProjectId, SessionSummary[]>()
+    if (unstarted.length === 0) return drafts
+    const { items } = await this.ctx.sessionController.list({}, this.lifetime.signal)
+    for (const project of unstarted) {
+      const conversations = conversationsOf(project, all, items)
+      if (conversations.every(conversation => conversation.blank)) drafts.set(project.id, conversations)
+      else this.started.add(project.id)
+    }
+    return drafts
+  }
+
+  /**
+   * The untouched drafts for a view of the projects. When sessions cannot be
+   * listed, no project reads as a draft, rather than the snapshot failing, or
+   * a command whose change is already stored.
+   */
+  private async draftsForView(
+    candidates: readonly ResearchProject[],
+    all: readonly ResearchProject[],
+  ): Promise<ReadonlyMap<ProjectId, unknown>> {
+    try { return await this.drafts(candidates, all) } catch (error) {
+      this.ctx.logger.warn('research drafts: %s', errorText(error))
+      return new Map()
+    }
+  }
+
+  /** A project for the desktop, with its derived draft flag; only a blank record costs a look at the other projects. */
+  private async presented(project: ResearchProject): Promise<ResearchProject> {
+    const draft = blankRecord(project) && (await this.draftsForView([project], this.projects())).has(project.id)
+    return publicProject(project, draft)
+  }
+
+  /** The draft's bound conversation, or a new blank one in its folder when the bound one was removed from the list. */
+  private async blankConversation(project: ResearchProject): Promise<string> {
+    const bound = project.sessionId
+    if (bound !== undefined && !this.ctx.workspaceRegistry.archivedSessionIds.includes(bound as SessionId)) return bound
+    return (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
+  }
+
+  /**
+   * start-new: reopen the untouched draft (the newest, should there be more),
+   * or create `<research home>/<yyyy-mm-dd>-<n>` with the next free `n`, its
+   * record (`untitled`, titled 新研究, general with no mode chosen), its
+   * folder's Workspace and one blank conversation. Nothing is reused or made
+   * among the examples, and no draft is made inside another research.
+   */
+  private async startNew(): Promise<ResearchResponse> {
+    const projects = this.projects()
+    const drafts = await this.drafts(projects)
+    const reused = projects.filter(project => drafts.has(project.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+    if (reused !== undefined) {
+      // A draft folder removed by hand comes back with its empty folders.
+      for (const directory of SCAFFOLD) await mkdir(join(reused.root, directory), { recursive: true })
+      return { message: 'The untouched new research', project: publicProject(reused, true), sessionId: await this.blankConversation(reused) }
+    }
+    const home = this.researchHome()
+    if (isExampleRoot(home)) throw new Error(EXAMPLE_READ_ONLY)
+    const root = nextDraftRoot(await canonicalPath(home), new Date(), path => projects.some(project => sameDirectory(project.root, path)))
+    const around = innermost(projects, root)
+    if (around !== undefined) {
+      throw new Error(`研究存放位置在研究「${around.title}」里面，请在设置里换一个位置 / The research location lies inside the research "${around.title}"; choose another one in Settings`)
+    }
+    assertUsableProjectRoot(root)
+    const created = await this.createAt({ title: DRAFT_TITLE, root, brief: '' }, undefined, true)
+    return { message: 'New research created', project: publicProject(created, true), sessionId: created.sessionId }
+  }
+
+  /**
+   * relocate: move the untouched draft to the folder the person chose. A
+   * folder among the examples, one that already is a research, one inside a
+   * research (the draft's own included) and one that holds files (until
+   * confirmed) are reported instead. Otherwise the research is created
+   * there, with the draft's autonomy, and the draft is discarded.
+   */
+  private async relocate(request: Extract<DraftCommand, { action: 'relocate' }>): Promise<ResearchResponse> {
+    const draft = this.record(request.projectId)
+    if (!(await this.drafts([draft], this.projects())).has(draft.id)) throw new Error(NOT_A_DRAFT)
+    if (!isAbsolute(request.root)) throw new Error('Choose an absolute folder')
+    const root = await canonicalPath(request.root)
+    if (isExampleRoot(root)) return { message: 'The folder is among the examples, which are read-only', outcome: 'example' }
+    if (sameDirectory(root, draft.root)) {
+      return { message: 'The research is already in this folder', outcome: 'moved', project: publicProject(draft, true), sessionId: await this.blankConversation(draft) }
+    }
+    const projects = this.projects()
+    const existing = projects.find(project => sameDirectory(project.root, root))
+    if (existing !== undefined) {
+      return { message: 'The folder already is a research', outcome: 'existing', project: await this.presented(existing), sessionId: existing.sessionId }
+    }
+    const around = innermost(projects, root)
+    if (around !== undefined) return { message: 'The folder lies inside a research', outcome: 'nested', project: await this.presented(around) }
+    assertUsableProjectRoot(root)
+    if (request.confirmNonEmpty !== true && await holdsFiles(root)) {
+      return { message: 'The folder holds files; repeat with confirmNonEmpty to create the research beside them', outcome: 'needs-confirm' }
+    }
+    const moved = await this.createAt({ title: DRAFT_TITLE, root, brief: '', autonomy: draft.autonomy }, undefined, true)
+    await this.discard(draft.id)
+    return { message: 'Research moved', outcome: 'moved', project: await this.presented(moved), sessionId: moved.sessionId }
+  }
+
+  /**
+   * Remove an untouched draft inside its project's queue: archive its blank
+   * conversations, delete its folder's Workspace registration and its
+   * record, then remove the empty folders it made. A folder that holds
+   * anything stays; failing to remove an empty one is logged, not thrown.
+   */
+  private discard(id: ProjectId): Promise<void> {
+    return this.queued(id, async () => {
+      const project = this.record(id)
+      const conversations = (await this.drafts([project], this.projects())).get(id)
+      if (conversations === undefined) throw new Error(NOT_A_DRAFT)
+      for (const conversation of conversations) await this.ctx.workspaceRegistry.archiveSession(conversation.sessionId)
+      await this.ctx.workspaceRegistry.delete(project.workspaceId)
+      await this.domain.table('projects').delete(id)
+      try { await removeEmptyScaffold(project.root, project.createdRoot === true) } catch (error) {
+        this.ctx.logger.warn('research draft folder %s: %s', project.root, errorText(error))
+      }
+    })
   }
 
   /**
@@ -1264,12 +1493,19 @@ export class ResearchWorkbench extends TypertRemoteService {
 const IMAGE_FILE = /\.(png|jpe?g|webp)$/i
 const MEDIA_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
 
-/** Keep large source bodies out of routine desktop snapshots. */
-export function publicProject(project: ResearchProject): ResearchProject {
+/**
+ * A project as the desktop reads it: without large source bodies, and with
+ * the derived `example` and `draft` flags.
+ * @param project - the stored record.
+ * @param draft - whether the service found it to be the untouched draft.
+ * @returns a detached copy.
+ */
+export function publicProject(project: ResearchProject, draft = false): ResearchProject {
   const result = structuredClone(project)
   for (const evidence of result.evidence) evidence.chunks = []
   for (const environment of result.environments) environment.details = truncateBytes(environment.details, 3000)
   if (isExampleRoot(result.root)) result.example = true
+  if (draft) result.draft = true
   return result
 }
 

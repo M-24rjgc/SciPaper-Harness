@@ -453,15 +453,57 @@ export interface Config {
    * Shadow the shell cells that are developer surfaces in this product: the
    * turn, step, token-rate and cache-hit pills under the composer, General
    * settings' default permission (the research's autonomy decides it), and the
-   * button that opens the raw configuration file draw nothing, and the
-   * research's autonomy chip takes the composer's access chip. The shipped Web
-   * bundle sets it.
+   * button that opens the raw configuration file draw nothing, the research's
+   * autonomy chip takes the composer's access chip, and the research's folder
+   * menu takes the entry screen's Workspace picker. The shipped Web bundle
+   * sets it.
    */
   hideDeveloperCells?: boolean
 }
 ```
 
 来源：[`packages/client/ui-research/src/index.ts:10`](../packages/client/ui-research/src/index.ts)
+
+<a id="deepseek-aidsh-client-ui-sidebar"></a>
+
+## `@deepseek-ai/dsh-client-ui-sidebar`
+
+```ts config-catalog
+/** Sidebar configuration, read by the browser half from the served page. */
+export interface Config {
+  /**
+   * What the expanded brand row does. `new-session` (the default) makes it a
+   * second New Session button beside the labelled one; `none` renders it as
+   * plain identity, not a button.
+   */
+  brandAction?: 'new-session' | 'none'
+}
+```
+
+来源：[`packages/client/ui-sidebar/src/index.ts:11`](../packages/client/ui-sidebar/src/index.ts)
+
+<a id="deepseek-aidsh-client-ui-workspace"></a>
+
+## `@deepseek-ai/dsh-client-ui-workspace`
+
+```ts config-catalog
+/** Workspace UI configuration, read by the browser half from the served page. */
+export interface Config {
+  /**
+   * What selects a Session when nothing is selected, and what the unscoped
+   * New Session action opens. `recent` (the default) connects the most
+   * recently active Workspace at startup and starts New Session in the
+   * current, then the most recent Workspace. `policy` asks the entry policy a
+   * plugin registers through `uiWorkspace.setEntryPolicy`: its `land()` at
+   * startup and whenever the selection is lost, its `startNew()` for the
+   * unscoped action. A startup in which no policy registers within 5 s of the
+   * Session and Workspace lists being ready uses `recent`.
+   */
+  entry?: 'recent' | 'policy'
+}
+```
+
+来源：[`packages/client/ui-workspace/src/index.ts:12`](../packages/client/ui-workspace/src/index.ts)
 
 <a id="deepseek-aidsh-compaction-basic"></a>
 
@@ -1956,10 +1998,15 @@ export interface Config {
   pollIntervalMs: number
   /** Most PDF pages rendered for one inspection. */
   maxReviewPages: number
+  /**
+   * Absolute folder new researches are created in while the person has not
+   * chosen one in the settings (the `researchHome` preference); `<profile home>/SciPaper` when unset.
+   */
+  researchHome?: string
 }
 ```
 
-来源：[`packages/research/workbench/src/index.ts:50`](../packages/research/workbench/src/index.ts)
+来源：[`packages/research/workbench/src/index.ts:53`](../packages/research/workbench/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 
@@ -3672,7 +3719,6 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory`（[`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-plugins`（[`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-unarchive-sessions`（[`packages/client/ui-settings-unarchive-sessions/src/index.ts`](../packages/client/ui-settings-unarchive-sessions/src/index.ts)）
-- `@deepseek-ai/dsh-client-ui-sidebar`（[`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-sidebar-documentpreview`（[`packages/client/ui-sidebar-documentpreview/src/index.ts`](../packages/client/ui-sidebar-documentpreview/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-sidebar-files`（[`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-sidebar-right`（[`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts)）
@@ -3684,7 +3730,6 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-trajectory`（[`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-user-questions`（[`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-workflow-run`（[`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts)）
-- `@deepseek-ai/dsh-client-ui-workspace`（[`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts)）
 - `@deepseek-ai/dsh-command-compact` — 需要 `commands` · `compact`（[`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts)）
 - `@deepseek-ai/dsh-command-feedback` — 需要 `commands`（[`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts)）
 - `@deepseek-ai/dsh-command-goal` — 需要 `commands` · `goals`（[`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts)）

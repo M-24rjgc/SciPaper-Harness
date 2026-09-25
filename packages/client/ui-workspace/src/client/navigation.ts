@@ -12,6 +12,35 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
+/**
+ * What decides the startup selection, a selection that is lost, and the
+ * unscoped New Session action: `recent` connects the most recently active
+ * Workspace, `policy` asks the registered {@link UiWorkspaceEntryPolicy}.
+ */
+export type UiWorkspaceEntry = 'recent' | 'policy'
+
+/**
+ * A deployment's entry rule under `entry: 'policy'`, registered through
+ * {@link UiWorkspace.setEntryPolicy}. ui-workspace calls it only once both the
+ * Session and the Workspace lists are ready, and logs a throw or rejection.
+ * A call opens only Sessions the lists already carry: `openSession` refuses
+ * an unlisted id.
+ */
+export interface UiWorkspaceEntryPolicy {
+  /**
+   * Select something while nothing is selected: at startup, after the current
+   * Session is archived or leaves the list, and when this policy registers.
+   * Not called while a policy call is still running, nor again after one
+   * settled without a selection.
+   */
+  land(): void | Promise<void>
+  /** Run the unscoped New Session action (`startSession()` without a Workspace). */
+  startNew(): void | Promise<void>
+}
+
+/** How long startup waits for an entry policy, once both lists are ready, before it uses `recent`. */
+const ENTRY_POLICY_WAIT_MS = 5000
+
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
   /**
@@ -39,10 +68,18 @@ export interface UiWorkspace {
    */
   connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>
   /**
-   * Start a New Session flow and navigate to its Session.
+   * Start a New Session flow and navigate to its Session. Under `entry:
+   * 'policy'` with a registered policy, the unscoped action runs its `startNew()`.
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
    */
   startSession(workspaceId?: WorkspaceId): void
+  /**
+   * Register the entry policy that `entry: 'policy'` consults; under `entry:
+   * 'recent'` it is kept and never called. Throws while another is registered.
+   * @param policy - the startup, lost-selection and unscoped New Session rule.
+   * @returns disposer that unregisters it; later navigation uses `recent` until another registers.
+   */
+  setEntryPolicy(policy: UiWorkspaceEntryPolicy): () => void
   /**
    * Archive a Session and clear it when it is the current selection.
    * @param sessionId - Session to archive.
@@ -95,18 +132,26 @@ export class DirectoryBrowseError extends Error {
 class UiWorkspaceService extends Service implements UiWorkspace {
   private readonly connecting = new Map<WorkspaceId, Promise<SessionId>>()
   private readonly lifetime = new AbortController()
+  /** The registered entry policy; consulted only under `entry: 'policy'`. */
+  private policy: UiWorkspaceEntryPolicy | undefined
+  /** Entry-policy calls not yet settled; `land()` never starts while one runs. */
+  private policyCalls = 0
+  /** Navigation checks rerun when a policy registers; `watchNavigation` holds one for its lifetime. */
+  private readonly policyListeners = new Set<() => void>()
 
   /**
    * @param ctx - Client root Context.
    * @param directoryPicker - the directory-picking Remote namespace.
    * @param workspaces - pure Workspace Controller.
    * @param sessions - pure Session Controller.
+   * @param entry - the page's entry rule (the Host row's `entry` config); `recent` when the page names none.
    */
   constructor(
     ctx: Context,
     private readonly directoryPicker: ClientRemote['directoryPicker'],
     private readonly workspaces: IWorkspaces,
     private readonly sessions: ISessions,
+    private readonly entry: UiWorkspaceEntry = 'recent',
   ) {
     super(ctx, 'uiWorkspace')
     ctx.effect(() => this.watchNavigation(), 'ui-workspace: Workspace navigation policy')
@@ -157,6 +202,12 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   }
 
   startSession(workspaceId?: WorkspaceId): void {
+    // Under `entry: 'policy'` the unscoped action is the policy's; a
+    // Workspace-scoped one still reuses or creates that Workspace's blank Session.
+    if (this.entry === 'policy' && workspaceId === undefined && this.policy !== undefined) {
+      this.callPolicy(this.policy, 'startNew')
+      return
+    }
     const workspace = this.workspaces.list.getSnapshot()
     const sessions = this.sessions.list.getSnapshot()
     const current = sessions.current
@@ -175,6 +226,17 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     void this.openWorkspace(target).catch(
       (reason: unknown) => { console.warn('new session failed:', reason) },
     )
+  }
+
+  setEntryPolicy(policy: UiWorkspaceEntryPolicy): () => void {
+    if (this.policy !== undefined) {
+      throw new Error('uiWorkspace.setEntryPolicy: an entry policy is already registered')
+    }
+    this.policy = policy
+    if (this.entry === 'policy') for (const listener of this.policyListeners) listener()
+    return () => {
+      if (this.policy === policy) this.policy = undefined
+    }
   }
 
   async archiveSession(sessionId: SessionId): Promise<void> {
@@ -205,10 +267,52 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   private watchNavigation(): () => void {
     let initial: 'waiting' | 'connecting' | 'done' = 'waiting'
+    // Under `entry: 'policy'` the startup is `undecided` until a selection, a
+    // policy's `land()`, or the fallback (which hands it to the `recent` rule
+    // below) decides it; `seen` and `consulted` are the selection and policy
+    // the previous check saw.
+    let startup: 'undecided' | 'decided' | 'recent' = this.entry === 'policy' ? 'undecided' : 'recent'
+    let seen: SessionId | undefined
+    let consulted: UiWorkspaceEntryPolicy | undefined
+    let fallback: ReturnType<typeof setTimeout> | undefined
+    const decide = (): void => {
+      startup = 'decided'
+      clearTimeout(fallback)
+    }
+    // `land()` while nothing is selected: at startup, after a lost selection,
+    // and when a policy registers. Without a policy the undecided startup
+    // starts its fallback timer.
+    const reconcilePolicy = (): void => {
+      const workspace = this.workspaces.list.getSnapshot()
+      const sessions = this.sessions.list.getSnapshot()
+      if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
+      const lost = sessions.current === undefined && seen !== undefined
+      const registered = this.policy !== consulted
+      seen = sessions.current
+      consulted = this.policy
+      if (sessions.current !== undefined) {
+        if (startup === 'undecided') decide()
+        return
+      }
+      if (this.policy === undefined) {
+        if (startup === 'undecided' && fallback === undefined) {
+          fallback = setTimeout(() => {
+            startup = 'recent'
+            reconcile()
+          }, ENTRY_POLICY_WAIT_MS)
+        }
+        return
+      }
+      if ((startup === 'undecided' || lost || registered) && this.policyCalls === 0 && initial !== 'connecting') {
+        decide()
+        this.callPolicy(this.policy, 'land')
+      }
+    }
     const reconcile = (): void => {
       if (this.lifetime.signal.aborted) return
       if (this.clearArchivedCurrent()) return
-      if (initial !== 'waiting') return
+      if (this.entry === 'policy') reconcilePolicy()
+      if (startup !== 'recent' || initial !== 'waiting') return
       const workspace = this.workspaces.list.getSnapshot()
       const sessions = this.sessions.list.getSnapshot()
       if (workspace.phase !== 'ready' || sessions.phase !== 'ready') return
@@ -239,12 +343,28 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     }
     const disposeWorkspaces = this.workspaces.list.subscribe(reconcile)
     const disposeSessions = this.sessions.list.subscribe(reconcile)
+    this.policyListeners.add(reconcile)
     reconcile()
     return () => {
       this.lifetime.abort()
+      clearTimeout(fallback)
+      this.policyListeners.delete(reconcile)
       disposeSessions()
       disposeWorkspaces()
     }
+  }
+
+  /**
+   * Run one entry-policy call. A throw or a rejection is logged under the
+   * call's name and never reaches the navigation that asked for it.
+   * @param policy - the registered policy.
+   * @param call - which of its rules to run.
+   */
+  private callPolicy(policy: UiWorkspaceEntryPolicy, call: 'land' | 'startNew'): void {
+    this.policyCalls += 1
+    void new Promise<void>((resolve) => { resolve(policy[call]()) })
+      .catch((reason: unknown) => { console.warn(`entry policy ${call} failed:`, reason) })
+      .finally(() => { this.policyCalls -= 1 })
   }
 
   /** @returns true when an archived current selection was cleared. */

@@ -3645,6 +3645,9 @@ importers:
       '@deepseek-ai/dsh-api-session-controller':
         specifier: workspace:^
         version: link:../../api/session-controller
+      '@deepseek-ai/dsh-api-workspace-controller':
+        specifier: workspace:^
+        version: link:../../api/workspace-controller
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:^
         version: link:../locale
@@ -4050,6 +4053,10 @@ importers:
         version: 18.3.1(react@18.3.1)
 
   packages/client/ui-sidebar:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -4084,6 +4091,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-workspace':
         specifier: workspace:^
         version: link:../ui-workspace
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: workspace:^
+        version: link:../../host/webserver
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -4825,6 +4835,10 @@ importers:
         version: 18.3.1
 
   packages/client/ui-workspace:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:^
@@ -4871,6 +4885,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:^
         version: link:../ui-slots
+      '@deepseek-ai/dsh-host-webserver':
+        specifier: workspace:^
+        version: link:../../host/webserver
       '@deepseek-ai/dsh-schedule':
         specifier: workspace:^
         version: link:../../schedule/schedule

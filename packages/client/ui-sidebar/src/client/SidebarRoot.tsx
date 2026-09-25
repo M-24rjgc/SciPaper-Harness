@@ -89,6 +89,7 @@ export function SidebarRoot({
   collapsed,
   width,
   startSession,
+  brandAction,
   toggleSidebar,
   selectPanel,
   usePanels,
@@ -162,6 +163,25 @@ export function SidebarRoot({
   }, [pointerInside])
 
   const buildVersion = localBuildVersion()
+  const brandMark = (
+    <span className={css.brandMark}>
+      {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
+    </span>
+  )
+  const brandName = (
+    <span className={css.brandName}>
+      {renderSlot('sidebar.brand.name', {}, {
+        fallback: buildVersion === undefined
+          ? <span className={css.fallbackBrandName}>{t('brand.localBuild')}</span>
+          : (
+            <span className={css.localBuildBrand}>
+              <span className={css.localBuildTitle}>{t('brand.localBuild')}</span>
+              <span className={css.buildVersion}>{buildVersion}</span>
+            </span>
+          ),
+      })}
+    </span>
+  )
 
   return (
     <div
@@ -178,32 +198,22 @@ export function SidebarRoot({
       onPointerLeave={() => { armLinger() }}
     >
       <div className={css.logoRow}>
-        {/* Expanded, the brand doubles as a New Session shortcut; the
-            collapsed rail's logo is the expand toggle below instead. */}
-        {wide && (
+        {/* Expanded, the brand doubles as a New Session shortcut unless the
+            page makes it plain identity (`brandAction: none`), whose name then
+            reads as text; the collapsed rail's logo is the expand toggle below. */}
+        {wide && brandAction === 'none' && (
+          <div className={clsx(css.brand, css.wide, css.brandPlain)}>
+            <span className={css.brandIdentity}>{brandMark}{brandName}</span>
+          </div>
+        )}
+        {wide && brandAction !== 'none' && (
           <button
             type="button"
             className={clsx(css.brand, css.wide)}
             aria-label={t('session.new.label')}
             onClick={() => { startSession() }}
           >
-            <span className={css.brandIdentity} aria-hidden="true">
-              <span className={css.brandMark}>
-                {renderSlot('sidebar.brand.mark', { size: 24 }, { fallback: <FishLogo size={24} /> })}
-              </span>
-              <span className={css.brandName}>
-                {renderSlot('sidebar.brand.name', {}, {
-                  fallback: buildVersion === undefined
-                    ? <span className={css.fallbackBrandName}>{t('brand.localBuild')}</span>
-                    : (
-                      <span className={css.localBuildBrand}>
-                        <span className={css.localBuildTitle}>{t('brand.localBuild')}</span>
-                        <span className={css.buildVersion}>{buildVersion}</span>
-                      </span>
-                    ),
-                })}
-              </span>
-            </span>
+            <span className={css.brandIdentity} aria-hidden="true">{brandMark}{brandName}</span>
           </button>
         )}
         {/* Rail resting state is the whale mark; hovering swaps in the panel

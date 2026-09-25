@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包让用户浏览分组或扁平的 Session 列表、为新 Session 选择 Workspace，并通过添加、重命名、重排序、搜索、fork、归档和删除 Workspace 来管理 Workspace 与 Session。待处理交互显示为警告点，活动定时任务显示为闹钟标识，subagent 来源的 Session 则保持隐藏。规范化后仍有差异的文件夹路径会保留为独立 Workspace。添加 Workspace 需要组合目录选择器；没有目录选择器时，添加操作不可用。
+本包让用户浏览分组或扁平的 Session 列表、为新 Session 选择 Workspace，并通过添加、重命名、重排序、搜索、fork、归档和删除 Workspace 来管理 Workspace 与 Session。待处理交互显示为警告点，活动定时任务显示为闹钟标识，subagent 来源的 Session 则保持隐藏。规范化后仍有差异的文件夹路径会保留为独立 Workspace。添加 Workspace 需要组合目录选择器；没有目录选择器时，添加操作不可用。部署可以把启动时的选择和不带作用域的新会话交给另一插件注册的入口策略（entry policy）。
 
 ## 目录
 
@@ -48,6 +48,29 @@ Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**
 分组与平铺 Session 行以及搜索结果会在 `SessionSummary.projectionValues.schedule` 为非空数组时显示一枚轮廓闹钟。标识位于标题之后；普通行的更新时间仍位于标识之后，搜索结果则没有更新时间。它不是按钮，没有独立 pointer 行为或 Tab stop，点击所在区域仍会打开整行。本地化 tooltip 与文本相同的读屏标签均为**有活动定时任务**。
 
 对于 cold Session，该值有意采用尽力而为语义。身份匹配且可用的 projection-cache 行可以在不打开 Session 的情况下预热闹钟；cache 缺失或陈旧可能造成短暂漏显或残留。标识只表示当前列表值包含尚未 dispatch 或 delete 的 Schedule 记录，不表示 Schedule 运行时当前 live 或能够唤醒该 Session。
+
+<a id="startup-and-new-session"></a>
+### 启动与新会话
+
+Session 列表和 Workspace 列表都就绪且没有选中项时，默认的 `entry: recent` 会连接最近活跃的 Workspace，并打开其可复用的空白 Session。不带作用域的新会话操作依次以当前 Session 所属的 Workspace、最近活跃的 Workspace 为目标，两者都没有时清空选择，进入空白新会话页面。带 Workspace 作用域的新会话始终复用或创建该 Workspace 的空白 Session。上次访问时恢复的选择在两种规则下都会保留。
+
+在 `entry: policy` 下，另一插件通过 `ctx.uiWorkspace.setEntryPolicy(policy)` 注册 `{ land, startNew }`；该调用返回释放函数，已有策略注册时会抛错。
+
+- 启动时由 `land()` 取代最近 Workspace 连接。当前 Session 被归档或离开列表后，以及没有选中项时有策略注册，也会运行 `land()`。策略调用仍在进行时不会运行；某次调用结束后仍无选中项时也不会再次运行。
+- 不带作用域的新会话运行 `startNew()`；带 Workspace 作用域的新会话保持不变。
+- 抛错或 rejection 会以 `entry policy land failed:` 或 `entry policy startNew failed:` 记录到日志。
+- 如果两个列表都就绪后 5 秒内没有策略注册，这次启动使用最近 Workspace 规则。之后才注册的策略仍会接管不带作用域的操作以及此后每一次失去选中项的情况。
+- 策略只打开列表中已有的 Session；`openSession` 会拒绝未列出的 id。
+
+在 `entry: recent` 下，已注册的策略会被保留，但从不调用。
+
+### 配置
+
+| 字段 | 默认值 | 含义 |
+|---|---|---|
+| `entry` | `recent` | 启动与不带作用域新会话的规则：`recent` 或 `policy` |
+
+客户端行的 `config` 只会到达 Host 端。对于 `entry: policy`，Host 端会把 `__DSH_WORKSPACE__` 全局变量放进每个下发的页面，浏览器端在 apply 时读取它；没有该全局变量时浏览器端使用 `recent`，因此默认行下发的页面保持不变。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-ui-workspace)是该字段及其 JSDoc 的完整来源。
 
 -----
 
@@ -103,12 +126,13 @@ Workspace 与 Session 悬浮卡片会复制对应行被截断的值：激活 Wor
 <a id="known-limitations-and-deferred-work"></a>
 
 
-这些限制定义搜索深度、归档界面与选取载体；它们是当前包约束。
+这些限制定义搜索深度、归档界面、选取载体与入口策略调用；它们是当前包约束。
 
 - **没有模糊内容搜索或事件深链接**：内容后端采用字面 token/短语匹配，选择结果会打开 Session，而不是匹配的事件。
 - **没有 Session 删除，取消归档位于设置中**：会话可以归档但绝不会被删除；已归档会话的查看与恢复由「已归档会话」设置页（[ui-settings-unarchive-sessions](../ui-settings-unarchive-sessions/README.zh.md)）负责，删除 Workspace 注册记录不会删除 Session。
 - **待处理的用户交互不会聚合到折叠的分组上**：折叠分组内正在等待的行不会点亮分组头指示，只有展开该分组后才可见。
 - **原生文件夹选择依赖本地 Host 载体**：在 `-native` 组合下，进程内部署或远程浏览器部署无法打开本地操作系统对话框；可远程的选取是 `-browse` 组合的应用内流程。
+- **入口策略调用不带取消信号**：`land()` 和 `startNew()` 不接收 signal，因此较晚才打开 Session 的策略需要自行防范更新的导航，例如使用 `ctx.layout.beginNavigation()`。
 
 <a id="dev-note"></a>
 ### 开发备注
@@ -120,4 +144,4 @@ Workspace 与 Session 悬浮卡片会复制对应行被截断的值：激活 Wor
 
 </details>
 
-**运行时不变式：** 不发布伴生入口。这是一个纯消费方插件，只向两个由宿主声明的 slot 注册展示组件，并注册自身的 locale dictionaries；inject face 由无状态 RPC 包装层和一次 create-and-open 调用组成；本插件不发出 Cordis 事件，也不持有跨插件可变状态。
+**运行时不变式：** 不发布伴生入口。这是一个纯消费方插件，只向两个由宿主声明的 slot 注册展示组件，并注册自身的 locale dictionaries；inject face 由无状态 RPC 包装层和一次 create-and-open 调用组成；本插件不发出 Cordis 事件。它持有的唯一注册项是入口策略，只由它自己的导航读取，因此不存在可能与之分歧的独立观察。

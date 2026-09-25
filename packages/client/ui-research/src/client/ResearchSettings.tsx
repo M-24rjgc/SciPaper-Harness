@@ -3,7 +3,7 @@
  * belongs. The workbench surfaces carry no settings at all; when a change is
  * needed mid-research the conversation sends the person here and back.
  */
-import { type FormEvent, type ReactNode } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ComponentStatus, ResearchPreferences } from '@deepseek-ai/dsh-research-workbench/types'
 import type { ResearchKey } from './locales.ts'
@@ -115,6 +115,67 @@ function Component(props: WorkbenchProps & { component: ComponentStatus }): Reac
   </div>
 }
 
+/** A settings save that stores no provider key. */
+const NO_KEYS = { image: '', embedding: '' } as const
+
+/** The preferences with the research home set to a folder, or taken out so the default applies. */
+function withResearchHome(preferences: ResearchPreferences, researchHome: string | undefined): ResearchPreferences {
+  const next = { ...preferences }
+  delete next.researchHome
+  return researchHome === undefined ? next : { ...next, researchHome }
+}
+
+/**
+ * 研究存放位置 (Where new researches are kept): the folder in effect, another
+ * one through the host's chooser (a typed path where the host has none), and
+ * the way back to the default. Existing researches stay where they are.
+ */
+function ResearchHome(props: WorkbenchProps & { preferences: ResearchPreferences; home: string | undefined }): ReactNode {
+  const { t, preferences } = props
+  const saving = useAction()
+  const [typing, setTyping] = useState(false)
+  const save = (researchHome: string | undefined): void => {
+    setTyping(false)
+    saving.start(() => props.configure(withResearchHome(preferences, researchHome), NO_KEYS))
+  }
+  const choose = (): void => {
+    saving.start(async () => {
+      const picked = await props.pickDirectory()
+      if (picked.kind === 'picked') await props.configure(withResearchHome(preferences, picked.path), NO_KEYS)
+      else if (picked.kind === 'unavailable') setTyping(true)
+    })
+  }
+  const submit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    save(text(new FormData(event.currentTarget), 'researchHome'))
+  }
+  return <section className={styles.group}>
+    <h3 className={styles.groupTitle}>{t('researchHomeTitle')}</h3>
+    <p className={styles.groupHint}>{t('researchHomeHint')}</p>
+    <div className={styles.home}>
+      <span className={styles.homePath}>{props.home}</span>
+      {preferences.researchHome === undefined && <Tag tone="neutral">{t('researchHomeDefault')}</Tag>}
+    </div>
+    <div className={styles.homeActions}>
+      <button type="button" className={styles.install} disabled={saving.pending} onClick={choose}>{t('researchHomeChange')}</button>
+      {preferences.researchHome !== undefined && <button type="button" className={styles.install} disabled={saving.pending}
+        onClick={() => { save(undefined) }}>{t('researchHomeReset')}</button>}
+    </div>
+    {typing && <form className={styles.homeForm} onSubmit={submit}>
+      <label className={styles.field}>
+        <span className={styles.fieldLabel}>{t('folderTypeLabel')}</span>
+        <input className={styles.input} name="researchHome" required autoFocus spellCheck={false} defaultValue={props.home} />
+      </label>
+      <p className={styles.groupHint}>{t('folderTypeHint')}</p>
+      <div className={styles.homeActions}>
+        <button type="submit" className={styles.save}>{t('save')}</button>
+        <button type="button" className={styles.install} onClick={() => { setTyping(false) }}>{t('cancel')}</button>
+      </div>
+    </form>}
+    <ActionError t={t} error={saving.error} />
+  </section>
+}
+
 /** The research section of the settings panel; nothing here lives on the main surface. */
 export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   const { t } = props
@@ -145,6 +206,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       ...(text(form, 'pythonPath') ? { python: text(form, 'pythonPath') } : {}),
       ...(text(form, 'uvPath') ? { uv: text(form, 'uvPath') } : {}),
       ...(text(form, 'texPath') ? { texBin: text(form, 'texPath') } : {}),
+      // The research home has its own group below; this form keeps it as it is.
+      ...(preferences.researchHome === undefined ? {} : { researchHome: preferences.researchHome }),
     }
     const keys = { image: text(form, 'imageKey'), embedding: text(form, 'embeddingKey') }
     saving.start(() => props.configure(next, keys))
@@ -163,6 +226,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   }
   return <div className={styles.root}>
     <p className={styles.subtitle}>{t('settingsSubtitle')}</p>
+
+    <ResearchHome {...props} preferences={preferences} home={view.snapshot?.researchHome} />
 
     <form key={JSON.stringify(preferences)} className={styles.group} onSubmit={save}>
       <h3 className={styles.groupTitle}>{t('modelRoles')}</h3>

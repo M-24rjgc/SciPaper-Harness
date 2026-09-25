@@ -1,9 +1,10 @@
 /** Browser presentation inputs; the owning plugin supplies all remote callbacks. */
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {
-  BoardSnapshot, CreateProjectRequest, GalleryPage, ModeSummary, ResearchCommand, ResearchPreferences, ResearchProject, ResearchResponse,
-  ResearchSnapshot, ResearchTask,
+  BoardSnapshot, CreateProjectRequest, GalleryPage, ModeSummary, ProjectId, ResearchCommand, ResearchPreferences, ResearchProject,
+  ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 
 /** A figure gallery search, as the panel sends it. */
@@ -44,6 +45,76 @@ export interface ResearchFocus {
 
 /** Working directory of every listed session, as the sessions service reports it. */
 export type SessionDirectories = Readonly<Record<string, string>>
+
+/**
+ * What the host's folder picker answered: a folder, a dismissed chooser, or
+ * no chooser at all on this host (a browse composition or a remote browser),
+ * in which case the caller asks for a typed path.
+ */
+export type FolderPick =
+  | { kind: 'picked'; path: string }
+  | { kind: 'cancelled' }
+  | { kind: 'unavailable' }
+
+/**
+ * One short line on the entry screen, shown only while the session it was
+ * raised on (or no session, `undefined`) is on screen.
+ */
+export type EntryNotice =
+  /** 新研究 was clicked while its draft was already on screen. */
+  | { kind: 'here'; sessionId: string | undefined }
+  /** A landing, 新研究, a move or a reveal failed; `reason` is in the reader's language or the host's own words. */
+  | { kind: 'failed'; action: 'land' | 'new' | 'move' | 'reveal'; reason: string; sessionId: string | undefined }
+
+/** The entry screen's shared state: the notice, if any. */
+export interface EntryView {
+  notice: EntryNotice | null
+}
+
+/** A folder to move the untouched draft research to. */
+export interface MoveRequest {
+  projectId: ProjectId
+  root: string
+  /** Create the research beside the files the folder already holds. */
+  confirmNonEmpty?: boolean | undefined
+}
+
+/**
+ * Carry the composer's draft and attachments into a research folder's blank
+ * conversation: the hero folder seat's own `onPick`, captured while the
+ * draft's conversation was on screen.
+ */
+export type CarryDraft = (workspaceId: WorkspaceId) => void
+
+/**
+ * What the entry screen's research seats act through: the folder menu, the
+ * entry line and the 试试 (Try) sentences.
+ */
+export interface ResearchEntryInjected {
+  hooks: {
+    research: ObservableSnapshot<ResearchView>
+    directories: ObservableSnapshot<SessionDirectories>
+    entry: ObservableSnapshot<EntryView>
+    /** Whether the host can show a folder in the desktop's file manager. */
+    canReveal: ObservableSnapshot<boolean>
+  }
+  /** Ask the host's folder chooser for a folder; a failure shows on the entry line and answers `cancelled`. */
+  chooseFolder(): Promise<FolderPick>
+  /**
+   * 更改位置 (Change location): move the untouched draft; a move carries the composer's draft with `carry`.
+   * @returns the host's answer, or undefined when the move failed (the entry line says why).
+   */
+  move(request: MoveRequest, carry: CarryDraft): Promise<ResearchResponse | undefined>
+  /** Carry the composer's draft into another research's blank conversation, then discard the untouched draft. */
+  adopt(draftId: ProjectId, workspaceId: WorkspaceId, carry: CarryDraft): Promise<void>
+  /** Show a folder in the desktop's file manager; a failure shows on the entry line. */
+  reveal(path: string): void
+  /** Open the research tab beside the conversation; only the person's click calls it. */
+  showProgress(): void
+}
+
+/** Composed props of every entry-screen research seat: the dictionary plus the injected face. */
+export type EntryProps = PropsLocale<'research'> & InjectFace<ResearchEntryInjected>
 
 /** Remote operations and cross-scope selection the plugin injects into every research seat. */
 export interface ResearchInjected {
@@ -90,8 +161,8 @@ export interface ResearchInjected {
   openFiles(): void
   /** Raise the claim sheet over the whole frame, or close it with `null`. */
   focusClaim(claim: ClaimFocus | null): void
-  /** Ask the host for a project directory; `null` when the person dismissed the picker. */
-  pickDirectory(): Promise<string | null>
+  /** Ask the host's folder chooser for a folder. */
+  pickDirectory(): Promise<FolderPick>
   /** Open the research tab beside the conversation; only the person's click calls it. */
   showProgress(): void
   expand(projectId?: string, panel?: ResearchFocus['panel'], artifactId?: string): void

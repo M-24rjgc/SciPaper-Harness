@@ -401,8 +401,10 @@ export interface LaunchOptions {
   /**
    * Re-enable the inherited Web rows the research edition ships disabled
    * ({@link RESEARCH_EDITION_DISABLED_ROWS}) and the shell cells ui-research
-   * shadows (`hideDeveloperCells`), so the inherited scenarios and their
-   * goldens keep exercising those plugins in the assembled browser.
+   * shadows (`hideDeveloperCells`), and put ui-workspace's `entry` and
+   * ui-sidebar's `brandAction` back to their defaults, so the inherited
+   * scenarios and their goldens keep exercising those plugins in the
+   * assembled browser.
    * Defaults to true. Every research scenario passes false and runs the rows
    * as shipped (`research-workbench`, `research-demo`, and the shipped-defaults
    * test of `shipped-composition`).
@@ -564,6 +566,10 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         ...RESEARCH_EDITION_DISABLED_ROWS.map(id => ({ id, disabled: false })),
         // The shell cells ui-research shadows in the shipped edition draw again.
         { id: 'ui-research', config: { hideDeveloperCells: false } },
+        // Startup connects the recent Workspace, New Session inherits the
+        // current one, and the brand row starts a New Session, as upstream.
+        { id: 'ui-workspace', config: { entry: 'recent' } },
+        { id: 'ui-sidebar', config: { brandAction: 'new-session' } },
       ],
     { id: 'session-log-deepseek', config: { enabled: false } },
     // The historical Messages fixture retains its recorded route during replay;
@@ -595,6 +601,17 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // to an absolute temp root (removed with the workspace at close) so tests
     // never write the user's harness home.
     { id: 'storage-json', config: { root: join(workspaceCwd, '.dsh-storages') } },
+    // New researches (新研究) are created in the research home, `<profile
+    // home>/SciPaper` unless configured; pin it inside the owned temp world so a
+    // scenario never writes the developer's profile. A patch replaces the row's
+    // complete config, so the composed one is restated.
+    {
+      id: 'research-workbench',
+      config: {
+        ...composedRows.find(row => row.id === 'research-workbench')?.config as Record<string, unknown> | undefined,
+        researchHome: join(workspaceCwd, 'SciPaper'),
+      },
+    },
     // Skill discovery is model-visible input. Pin every host-level root inside
     // the owned temp world so ~/.dsh, ~/.agents, and a bundled-root env setting
     // cannot change replay requests or conversation goldens. Project roots stay

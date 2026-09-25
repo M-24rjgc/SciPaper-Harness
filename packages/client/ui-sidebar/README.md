@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The dsh web client sidebar lets users recognize the active build, start a new session, collapse navigation to a 56px rail, browse Workspaces and Sessions, and open Settings. It preserves a bottom-pinned Settings entry and hides idle scrollbars without moving browser rows. New Session uses an explicitly selected Workspace, then the current Session's Workspace, then the most recently active Workspace; if none exists, it opens a blank New Session page. Deployments can replace the brand mark or name while retaining the navigation controls and rail geometry.
+The dsh web client sidebar lets users recognize the active build, start a new session, collapse navigation to a 56px rail, browse Workspaces and Sessions, and open Settings. It preserves a bottom-pinned Settings entry and hides idle scrollbars without moving browser rows. New Session runs ui-workspace's shared New Session action. Deployments can replace the brand mark or name while retaining the navigation controls and rail geometry, and can make the brand row plain identity instead of a second New Session button.
 
 ## Table of Contents
 
@@ -29,7 +29,15 @@ The sidebar is the navigation shell: users see the brand, start new sessions, co
 
 ### Brand and New Session
 
-The expanded brand row renders `sidebar.brand.mark` and `sidebar.brand.name` as independent single slots; the collapsed rail renders the same mark slot. Without occupants, the shell uses the fish mark and a localized local-build label. A complete build stacks a code badge below the label as `version[-commit][-dirty]`, using `DSH_CLIENT_VERSION`, the optional 7-character `DSH_CLIENT_COMMIT_HASH`, and `DSH_CLIENT_GIT_DIRTY=true`; missing version metadata omits the badge. New Session targets the explicit Workspace used by a scoped action, otherwise the current Session's Workspace, otherwise the most recently active Workspace; when none exists it clears into the blank New Session page.
+The expanded brand row renders `sidebar.brand.mark` and `sidebar.brand.name` as independent single slots; the collapsed rail renders the same mark slot. Without occupants, the shell uses the fish mark and a localized local-build label. A complete build stacks a code badge below the label as `version[-commit][-dirty]`, using `DSH_CLIENT_VERSION`, the optional 7-character `DSH_CLIENT_COMMIT_HASH`, and `DSH_CLIENT_GIT_DIRTY=true`; missing version metadata omits the badge. The labelled New Session button and, by default, the expanded brand row run ui-workspace's shared action: the explicit Workspace of a scoped action, otherwise the current Session's Workspace, otherwise the most recently active Workspace, and the blank New Session page when none exists. Under ui-workspace's `entry: policy` the unscoped action runs the registered [entry policy](../ui-workspace/README.md#startup-and-new-session) instead. With `brandAction: none` the expanded brand row is plain identity: no button and no New Session shortcut, and its name reads as text to assistive technology while the mark stays decorative.
+
+### Configuration
+
+| Field | Default | Meaning |
+|---|---|---|
+| `brandAction` | `new-session` | What the expanded brand row does: `new-session` (a second New Session button) or `none` (plain identity) |
+
+A client row's `config` reaches only the Host half. For `brandAction: none` it puts the `__DSH_SIDEBAR__` global into every served page, which the browser half reads when it applies; without the global the browser half uses `new-session`, so a default row serves the page unchanged. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-ui-sidebar) is the exhaustive source for the field and its JSDoc.
 
 ### Global panel entries
 

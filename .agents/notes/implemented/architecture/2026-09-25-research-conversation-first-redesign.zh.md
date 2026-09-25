@@ -160,6 +160,44 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - **侧栏。** 自主度下拉框、它的 `/permission` 命令和注入的 `command` 都已移除。侧栏和项目文件面板显示「自主程度」和 `检查点（在输入框下方更改）`；示例只显示名字。
 - **测试。** `autonomy-chip.client.spec.tsx` 覆盖按钮，`plugin.client.spec.ts` 覆盖它在开关下的注册。研究 Web e2e 用按钮修改自主度，等对话换成 `research-auto`，输入 `/permission read-only` 后看到 `This conversation: Read only`，再选一次 Automatic 恢复一致。
 
+### 第 9 步：启动与「新研究」交给研究的入口策略；品牌行只是标识（外壳）
+
+两个外壳包各增加一个配置字段（S1、S2）。两者默认都是上游行为，由 Web bundle 的 patch 设置科研版的取值。
+
+- **S1，`ui-workspace` 的 `entry`。** `Config.entry` 取 `recent`（默认，即上游规则）或 `policy`。`UiWorkspace.setEntryPolicy({ land, startNew })` 注册一个策略并返回其释放函数；第二次注册会抛错，过期的释放函数不会移除更新的策略。在 `policy` 下：
+  - Session 列表和 Workspace 列表都就绪且没有选中项时，运行 `land()`，取代最近 Workspace 的连接。`clearArchivedCurrent` 清除已归档的选中项之后、当前 Session 离开列表之后，以及没有选中项时有策略注册，也会运行 `land()`。另一个策略调用仍在进行或回退正在连接时不会开始；某次调用结束后仍无选中项时也不会再次运行，因此什么也不选的策略不会循环。
+  - 不带作用域的 `startSession()`（侧边栏的「新研究」）运行 `startNew()`；`startSession(workspaceId)` 仍复用或创建该 Workspace 的空白 Session。
+  - 如果两个列表都就绪后 5 秒内（`ENTRY_POLICY_WAIT_MS`）没有策略注册，这次启动使用 `recent` 规则。之后才注册的策略仍会接管不带作用域的操作以及此后每一次失去选中项。
+  - 两个调用的抛错或 rejection 以 `entry policy land failed:` 或 `entry policy startNew failed:` 记录到日志，不会 reject 到调用方。上次访问时恢复的选择会保留，与 `recent` 相同。在 `recent` 下，已注册的策略被保留但从不调用，因此 ui-research 注册的策略不影响继承场景。
+  - 策略只打开列表中已有的 Session（`sessions.open` 拒绝未列出的 id）；两个调用都不带取消信号。
+- **S2，`ui-sidebar` 的 `brandAction`。** `new-session`（默认）让展开的品牌行保持为第二个 New Session 按钮。`none` 把同样的标记和名称放进普通的 `div`（`.brandPlain`，默认光标），且不设 `aria-hidden`，因此名称读作文本，标记仍是装饰性的。
+- **送达浏览器。** 客户端行的 `config` 只到达 Host 端，而两个包的 Host 端此前都是空的 `apply`。现在每个 Host 端校验自己的 `Config`，并且只在取值不是默认值时推送一条 `webserver/index-inject` 全局变量（`__DSH_WORKSPACE__ = { entry: 'policy' }`、`__DSH_SIDEBAR__ = { brandAction: 'none' }`），与 `client-connection` 和 ui-research 的 `__DSH_RESEARCH__` 做法相同。浏览器端在 apply 时读取该全局变量，缺失即视为默认值，因此默认行下发的页面逐字节不变，jsdom 装配通道运行默认值。
+- **Web bundle** 在 `ui-workspace` 上设置 `entry: policy`，在 `ui-sidebar` 上设置 `brandAction: none`，由 `independence.spec.ts` 固定。Web e2e 脚手架的 `enableInheritedRows` 在继承场景中把两者恢复为默认值，与 `hideDeveloperCells: false` 并列。
+- **一行继承的 JSDoc。** `ui-layout` 的 `setInitialRightbarWidth` 是本 fork 新增的方法，补上了 `@param`；缺少它时 `gen-cordis-inspect-catalog` 拒绝运行。
+- **测试。** `workspaces-service.client.spec.ts` 覆盖：启动时、归档之后以及当前 Session 离开列表之后的 `land()`；不带作用域操作的 `startNew()` 与保持不变的带作用域操作；5 秒回退及其结束；等待期间与回退之后注册的策略；调用进行中不运行 `land()`；失败写入日志；一次只接受一个策略与过期的释放函数；`recent` 忽略已注册的策略。两个包的 `apply.client.spec.ts` 覆盖 Host 端的全局变量和浏览器端对它的读取，`sidebar-root.client.spec.tsx` 覆盖纯标识的品牌行。两个包原有的全部 spec，以及启动与侧边栏相关的 Web e2e 文件，不作改动即通过。
+
+### 第 9 步：「新研究」打开唯一一份未动过的草稿研究（宿主端）
+
+- **研究存放位置。** 新研究放在 `<研究存放位置>/<yyyy-mm-dd>-<n>`：取 `researchHome` 偏好（设置 › 科研 › 研究存放位置），没有时取服务的 `researchHome` 配置字段，再没有时取 `<用户目录>/SciPaper`（`src/drafts.ts` 中的 `resolveResearchHome`）。它不在常被 OneDrive 同步的「文档」里，路径是纯 ASCII，方便 TeX。`configure` 拒绝相对路径和位于示例之中的路径，快照以 `researchHome` 报告当前生效的位置。Web e2e 脚手架把这个配置字段固定到它自己的临时文件夹里，因此任何场景都不会写入开发者的用户目录。
+- **草稿。** `start-new` 是经由 `execute` 的桌面端命令，答复 `{project, sessionId}`：未动过的草稿；没有时在下一个空闲的 `n` 新建一项研究，包括记录（`untitled`，标题「新研究」，general 模式且 `modeSetBy` 不设置）、以文件夹名命名的 Workspace 和一段空白对话。它与项目创建走同一条逐一执行的链，因此连点两次只会得到一份草稿。它从不在示例之中、另一项研究之内或系统文件夹里复用或新建草稿。
+- **未动过。** 一项研究在以下条件都成立时就是草稿（`draft: true`，在快照和这几个命令的答复中推导得出，从不存储）：记录里除了占位标题和自主程度之外什么都没有（`blankRecord`），它的每段对话在 `ctx.sessionController.list` 中都是空白的（没有开始过轮次），它的文件夹里只有空的初始文件夹，并且它不是示例。发现含有已开始对话的研究会被记住，因为对话不会重新变回空白。
+- **更改位置。** `relocate {projectId, root, confirmNonEmpty?}` 答复 `example`、`existing`（那项研究及其绑定的对话）、`nested`（包括草稿自己的文件夹）、`needs-confirm`，或 `moved`：在该文件夹新建研究，沿用草稿的自主程度并带一段空白对话，然后丢弃草稿。
+- **丢弃。** `discard-draft` 和一次移动都会归档草稿的空白对话，删除它文件夹的 Workspace 注册和它的记录，然后删除仍为空的各个初始文件夹；根目录由草稿创建时（记录中的 `createdRoot` 说明这一点）也删除根目录。里面有任何内容的文件夹都会保留，无法删除的文件夹会记入日志。
+- **agent。** `execute` 拒绝 agent 调用这三个命令。`research_project` 没有新增操作，它的 `create` 仍然只把对话自己的文件夹设为研究。
+
+### 第 9 步：启动、「新研究」和入口页交给研究（ui-research）
+
+- **入口策略。** `entry.ts` 在插件运行期间通过 `uiWorkspace.setEntryPolicy` 注册 `land` 和 `startNew`。`land()` 先重新读取记录，再打开用户自己最近用过的研究（不是示例，不是未动过的草稿，文件夹仍在 Workspace 列表中）里已开始的最新对话：在列表中、顶层、未归档、非空白、不是视觉检查的审阅对话。没有已开始的对话时，打开它文件夹的空白对话。研究的「最近用过」按它的对话或记录最后一次变化计算。用户没有自己的研究时调用 `startNew()`；读不到记录时说明原因，不新建任何东西。`startNew()` 发送 `start-new` 并打开草稿的对话；那段对话已在屏幕上时，入口行显示「这里就是一项新的研究，直接说说你的问题。」四秒。
+- **迟到的打开。** 两个调用都不带取消信号，所以每次打开都先调用 `layout.beginNavigation()`。只有该导航仍是最新的、选中项仍是开始时那一个（或没有）、插件仍在运行时才打开。只打开列表里已有的会话，最多等五秒，否则入口行说明原因。
+- **启动时绝不停在示例里。** 两个列表都就绪、记录也到了之后，若上次访问恢复的选中项在示例里，就让位给 `land()`。每次注册只做一次；用户之后自己打开的示例保持不动。
+- **草稿的移动。** 「更改位置…」发送 `relocate`，并带上选择该项时捕获的文件夹位置的 `onPick`。`moved`：等两个列表都收录新文件夹的对话后调用这个 `onPick`，把输入框里的草稿和附件移过去，再等选中项到达。宿主在答复前会归档草稿的对话，于是 ui-workspace 在此期间会清空选中项并调用 `land()`；移动进行中 `land()` 什么也不做，移动结束时若没有选中项再落地。`existing` 提供「打开它」，`nested` 提供「打开「X」」：草稿被带进那项研究的空白对话，然后用 `discard-draft` 删除草稿。`needs-confirm` 提供「就用这里」，即带 `confirmNonEmpty` 再发一次 `relocate`；草稿自己文件夹里的 `nested` 和 `example` 提供另选文件夹。失败显示在入口行。
+- **文件夹菜单。** `FolderMenu.tsx` 以优先级 −1 占据 `conversation.hero.workspace`。按钮本身仍是外壳的 `WorkspaceChip`，显示 Workspace 的名字：即草稿的文件夹名，`rename` 之后是研究标题。菜单依次是「保存在 <路径>」、只对未动过的草稿显示的「更改位置…」、在 `session.canOpenWorkspacePath()` 答复可以时显示的「在资源管理器中打开」，以及列出用户其他研究（最新的在前）的「换到另一项研究 ›」，它通过 `onPick` 带上草稿，草稿本身留在原处。所选文件夹的情况显示在按钮处的第二个菜单里。宿主没有文件夹选择窗口时（`directory-picker/unavailable`，即 browse 选择器），用对话框输入绝对路径。菜单与开发者单元格一样在 `hideDeveloperCells` 下注册，因此继承的 Web 场景仍用外壳的选择器。
+- **入口行与「试试」。** `EntryScreen.tsx` 填入 `conversation.hero.welcome`：草稿或不在任何研究里的文件夹什么都不显示；研究的空白对话显示 `新对话 · {模式} · {阶段} n/m · 研究记录`，「研究记录」打开研究标签页；示例显示 `示例研究 · 只能查看`；以及在该界面上出现的提示。输入框上方（`conversation.input.dock`），在草稿的对话仍为空白且没有输入时，「试试：「…」「…」」把 `heroOpeningMaterials` 或 `heroOpeningIdea` 加进草稿，什么也不发送。
+- **删除。** 「新建项目目录…」按钮（`research-create`）、输入框的文件夹按钮（`research-new-project`）、`NewProject.tsx`、它们对话框的样式以及相关的键。`ResearchProjects` 保留到第 10 步；Workbench 自己的新建表单保留到第 11 步。
+- **设置。** 设置 › 科研 最上面是「研究存放位置」：当前生效的文件夹（`snapshot.researchHome`），未设置偏好时标「默认位置」，另有「更改…」（宿主的文件夹选择窗口，或输入路径）和「恢复默认」，都通过 `configure` 保存。
+- **注入面。** `pickDirectory` 答复 `FolderPick`（`picked`、`cancelled`、`unavailable`）；入口页的各个位置共用 `ResearchEntryInjected`。插件另注入 `remote.session` 与 `workspaces`。
+- **测试与基准。** `entry.client.spec.ts`、`entry-screen.client.spec.tsx`、`folder-menu.client.spec.tsx` 覆盖流程和各个位置；`plugin.client.spec.ts` 覆盖注册、启动时的示例规则、移动期间的保护和迟到打开的保护。研究 Web e2e 启动即落在脚手架固定的研究存放位置里的草稿上，把它连同输入框文字移到输入的文件夹并重命名，「新研究」复用草稿并显示提示，对已有文件的文件夹先询问，再把输入的问题带进已有的研究并丢弃草稿。76 个继承的 ARIA 基准去掉了输入框的文件夹按钮，两个 `lifecycle-chrome` 入口页基准还去掉了入口按钮，只改这些行。
+
 ## 考虑过的其他方案
 
 **直接移除这些行，而不是禁用。** 遥测和 `/feedback` 行属于 base 组合包，headless、ACP 和 SDK profile 都共用它，在那里移除会一并改变这些 profile。Web 的行本可以从 insert 列表中删掉，但禁用的行把这个选择原地写明，部署方也只需一行就能重新打开；这与 Web patch 禁用而不是删掉 agent 层各行的理由相同。
@@ -230,6 +268,38 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 
 **浏览器继续发送 `/permission`（第 8 步）。** 它只到达屏幕上的那段对话。
 
+**像 ui-research 一样始终发布页面全局变量（第 9 步）。** 默认行会给每个下发的页面多加一段脚本，两个包「Host 入口保持惰性」的 spec 也要改。只发布非默认值，默认页面保持不变。
+
+**用 `initialSession: none` 开关加研究侧的启动逻辑（第 9 步）。** 它只在启动时消除竞态。`clearArchivedCurrent` 和当前 Session 被移除之后仍然没有选中项，「新研究」也仍会继承当前文件夹。
+
+**只要没有选中项，每次通知都运行 `land()`（第 9 步）。** 什么也不选的策略（`start-new` 失败、研究存放位置不可写）会在每次列表变化时调用 Host。触发条件只有状态转变：启动、失去选中项、注册。
+
+**第二次注册时替换先前的策略，或维护一个栈（第 9 步）。** 两个插件都注册策略是组合错误；抛错会在加载时指出它。
+
+**为 5 秒等待设一个 Config 字段（第 9 步）。** 这段等待防范的是插件缺失，不是调优选择。
+
+**把品牌行做成什么也不做的按钮，或隐藏它（第 9 步）。** 没有动作的按钮是死控件（D13）；隐藏这一行会让侧边栏失去产品标识。
+
+**把 `set-autonomy` 算作改动（`revision === 1`）（第 9 步）。** 自主程度选择器就在草稿的输入框里，打字之前选「全自动」就会让草稿变成一项独立的研究：「更改位置」会消失，下一次「新研究」会再建一个文件夹。改为由记录内容判断，`relocate` 沿用自主程度。
+
+**研究存放位置只用偏好（第 9 步）。** 在入口策略下，启动时会先于任何测试的配置调用 `start-new`，于是每个 Web e2e 都会在开发者的 `%USERPROFILE%\SciPaper` 里建文件夹。配置字段才是组合能够固定的东西。
+
+**根目录一空就删除（第 9 步）。** 用户在选择之前自己建的文件夹不是草稿建的；`createdRoot` 记录是哪一种。
+
+**用会话事件或 `inspect` 判断是否空白（第 9 步）。** 事件只覆盖本进程中在线的会话，`inspect` 会复制在线会话的整份日志。会话列表的 `blank` 位正是外壳复用空白对话时所用的依据。
+
+**不归档旧对话（第 9 步）。** 会话日志无法删除；列表元数据未命中缓存的冷会话会读成非空白，于是它会重新出现在没有文件夹的对话中。归档是注册表提供的唯一移除方式。
+
+**在 ui-research 里画这个按钮（第 9 步）。** 外壳自己画 `WorkspaceChip`，只把菜单交给这个位置；第二个按钮需要新的 hero 插槽，方案已放弃这一做法。
+
+**为「更改位置」做应用内文件夹浏览器（第 9 步）。** 外壳的 browse 流程填的是 `conversation.hero.workspace.directoryFlow`，只有 Workspace 选择器声明了它；从研究菜单渲染它会破坏插槽归属。输入路径覆盖了没有文件夹选择窗口的宿主。
+
+**把文件夹的情况显示在入口行（第 9 步）。** 「打开它」要调用文件夹位置自己的 `onPick`，入口行拿不到；按钮处的菜单拿得到。
+
+**「换到另一项研究」时丢弃草稿（第 9 步）。** 草稿就是那一份可复用的「新研究」；留着它没有代价，下一次「新研究」会再打开它。
+
+**读不到记录时让 `land()` 新建草稿（第 9 步）。** 在快照漏掉的研究旁边再建一份草稿会造成重复；说明原因，才能把选择留给用户。
+
 ## 影响
 
 - 只有当用户配置了 DeepSeek 模型，或存入 DeepSeek 密钥时，Web 与 Desktop 组合才会连接 DeepSeek 服务；存入密钥也会启用 `web_search` 背后的 DeepSeek 网页搜索服务。它们运行的任何部分都不会创建 `.anonymous-user-id`。插件设置页已禁用，GUI 中没有网页搜索的开关。
@@ -263,3 +333,18 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - 挂载 ui-research 却不设 `hideDeveloperCells` 的组合保留外壳的访问模式按钮，没有自主度控件，尽管侧栏仍指向输入框。
 - 手动输入的预设一直有效，直到这项研究下一次选择自主度。
 - 对话的投影晚于研究记录到达时，按钮会短暂显示 `本对话：…`。
+- 没有注册策略时（ui-research 未加载），启动等待 5 秒后连接最近的 Workspace，「新研究」保持上游规则。
+- 组合出厂行的研究 Web 场景在 `entry: policy` 和 `brandAction: none` 下运行：侧边栏只有一个「新研究」按钮。
+- 某次策略调用结束后仍无选中项时，在用户操作或再次失去选中项之前不会选中任何内容。
+- `docs/config-catalog.md` 列出两个包的配置。
+- `existing` 和 `nested` 不改动任何东西；打开那项研究并用 `discard-draft` 丢弃草稿由客户端负责。
+- 对话被归档的草稿，会由 `start-new` 得到一段新的空白对话；记录仍保留原来绑定的那段。
+- 读不到会话列表时，快照和命令答复都不标记草稿，`start-new` 直接失败，而不会再建一份草稿。
+- 草稿存在期间，每次快照都会列一次会话。
+- 草稿文件夹里出现任何文件（包括 `.DS_Store` 这类系统文件），它就成为一项独立的研究。
+- 在设置中更改的研究存放位置对下一份草稿生效；已有的草稿在被移动之前留在原处。
+- 研究存放位置位于某项研究之内时，「新研究」会被拒绝，直到设置更改为止。
+- 宿主没有文件夹选择窗口时（远程浏览器、经 SSH 启动），「更改位置…」和「研究存放位置」要输入绝对路径。
+- 移动后的研究对话若五秒内没有出现在列表里，输入的草稿留在已归档的草稿对话里，入口行说明原因。
+- 「换到另一项研究」之后，未动过的草稿仍在列表里，直到下一次「新研究」重新打开它或一次移动丢弃它。
+- 按钮显示文件夹对应 Workspace 的名字，因此重命名未能改写 Workspace 标题的研究，按钮上显示文件夹名。

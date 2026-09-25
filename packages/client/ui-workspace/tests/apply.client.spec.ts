@@ -7,7 +7,7 @@ import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from '../src/client/WorkspacePicker.tsx'
-import { apply as hostApply } from '../src/index.ts'
+import { apply as hostApply, Config as HostConfig } from '../src/index.ts'
 
 async function bench() {
   const ctx = new Context()
@@ -189,6 +189,54 @@ describe('ui-workspace apply', () => {
     const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
     await expect(browser.searchSessions('needle', new AbortController().signal))
       .rejects.toThrow('index unavailable')
+  })
+
+  it('has the host half put `entry: policy` into every served page, and take it back', async () => {
+    const host = new Context()
+    host.provide('webServer', {} as never)
+    const served = async (config?: unknown): Promise<unknown[]> => {
+      const fiber = config === undefined
+        ? host.plugin({ apply: hostApply })
+        : host.plugin({ apply: hostApply, Config: HostConfig }, config)
+      await fiber.await()
+      const rows: unknown[] = []
+      host.emit('webserver/index-inject', rows as never)
+      await fiber.dispose()
+      const after: unknown[] = []
+      host.emit('webserver/index-inject', after as never)
+      expect(after).toEqual([])
+      return rows
+    }
+    expect(await served({ entry: 'policy' })).toEqual([
+      { kind: 'global', name: '__DSH_WORKSPACE__', value: { entry: 'policy' } },
+    ])
+    // The default leaves every served page as it was.
+    expect(await served({ entry: 'recent' })).toEqual([])
+    expect(await served({})).toEqual([])
+    expect(await served()).toEqual([])
+    expect(() => HostConfig({ entry: 'newest' } as never)).toThrow()
+  })
+
+  it('hands the unscoped New Session to the entry policy only on a page that says `entry: policy`', async () => {
+    const page = globalThis as { __DSH_WORKSPACE__?: unknown }
+    try {
+      for (const [global, expected] of [
+        [{ entry: 'policy' }, 1], [{ entry: 'recent' }, 0], [{}, 0], [undefined, 0],
+      ] as const) {
+        if (global === undefined) delete page.__DSH_WORKSPACE__
+        else page.__DSH_WORKSPACE__ = global
+        const b = await bench()
+        declare(b.slots, 'sidebar.workspaces')
+        await b.ctx.plugin({ inject: [...inject], apply }).await()
+        const policy = { land: vi.fn(), startNew: vi.fn() }
+        b.ctx.uiWorkspace.setEntryPolicy(policy)
+        const browser = (b.slots.entries('sidebar.workspaces')[0]!.inject as () => WorkspaceBrowserInjected)()
+        browser.startSession()
+        expect(policy.startNew).toHaveBeenCalledTimes(expected)
+      }
+    } finally {
+      delete page.__DSH_WORKSPACE__
+    }
   })
 
   it('unregisters every entry on teardown', async () => {

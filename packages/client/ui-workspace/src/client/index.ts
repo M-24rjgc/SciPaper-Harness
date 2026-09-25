@@ -30,7 +30,7 @@ import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
-export type { UiWorkspace } from './navigation.ts'
+export type { UiWorkspace, UiWorkspaceEntry, UiWorkspaceEntryPolicy } from './navigation.ts'
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
   WorkspaceBrowserInjected, WorkspaceBrowserProps, WorkspacePickerInjected, WorkspacePickerProps,
@@ -53,6 +53,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'workspace'
 
 /**
+ * The page global the host half (`../index.ts`) puts into every served page
+ * when its row configures `entry: policy`; absent otherwise.
+ */
+interface WorkspacePageGlobal {
+  __DSH_WORKSPACE__?: { entry?: unknown }
+}
+
+/**
  * Required services (cordis fiber inject). The target slots are declared by
  * the ui-sidebar / ui-conversation applies, whose activation order relative
  * to this one is NOT constrained: dsh.client.inject edges are informational
@@ -73,8 +81,9 @@ export const inject = [
 export function apply(ctx: Context): void {
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
+  const entry = (globalThis as WorkspacePageGlobal).__DSH_WORKSPACE__?.entry === 'policy' ? 'policy' : 'recent'
   const uiWorkspace = new UiWorkspaceService(
-    ctx, ctx.remote.directoryPicker, workspaces, sessions)
+    ctx, ctx.remote.directoryPicker, workspaces, sessions, entry)
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
 
@@ -101,7 +110,8 @@ export function apply(ctx: Context): void {
   }
   const browserInjected = (): WorkspaceBrowserInjected => ({
     // Explicit group actions keep their target; unscoped New Session inherits
-    // the current Session Workspace before the recent-Workspace fallback.
+    // the current Session Workspace before the recent-Workspace fallback, or
+    // runs the entry policy's `startNew()` under `entry: policy`.
     startSession: (workspaceId) => { uiWorkspace.startSession(workspaceId) },
     open: openSession,
     searchSessions,

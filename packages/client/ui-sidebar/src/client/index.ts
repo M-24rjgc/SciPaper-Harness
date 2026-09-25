@@ -34,6 +34,14 @@ interface WorkspaceNavigation {
   startSession(workspaceId?: Parameters<SidebarRootInjected['startSession']>[0]): void
 }
 
+/**
+ * The page global the host half (`../index.ts`) puts into every served page
+ * when its row configures `brandAction: none`; absent otherwise.
+ */
+interface SidebarPageGlobal {
+  __DSH_SIDEBAR__?: { brandAction?: unknown }
+}
+
 /** Services required by the sidebar plugin. */
 export const inject = ['slots', 'layout', 'uiWorkspace', 'locale']
 
@@ -42,6 +50,7 @@ export const inject = ['slots', 'layout', 'uiWorkspace', 'locale']
  */
 export function apply(ctx: ClientContext): void {
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
+  const plainBrand = (globalThis as SidebarPageGlobal).__DSH_SIDEBAR__?.brandAction === 'none'
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar: dictionaries')
   const panels = createSnapshotStore<readonly SidebarPanelMetadata[]>([])
   const syncPanels = (): void => {
@@ -62,10 +71,12 @@ export function apply(ctx: ClientContext): void {
 
   const injectProps = (): SidebarRootInjected => ({
     // The shell's New Session button rides the Workspace UI's shared action
-    // (current Session Workspace, then recent Workspace).
+    // (current Session Workspace, then recent Workspace, or its entry policy).
     startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
     selectPanel: (id) => { ctx.layout.selectPanel(id) },
+    // Only a page that configures the brand row as plain identity carries the member.
+    ...(plainBrand ? { brandAction: 'none' as const } : {}),
     hooks: { panels },
   })
   ctx.slots.inject('sidebar', () => ctx.slots.register({

@@ -29,6 +29,8 @@ Mount it with the `ui-research` client plugin and the research agent preset; the
 
 A project's autonomy is every one of its conversations' permission preset: the service injects `ctx.permissionPresets` and sets `workspace-write` for `checkpoints` and `research-auto` for `automatic` on each live session of the project, whenever the autonomy is set and as each session becomes live; examples and delegated children are left alone ([details](../../../docs/subsystems/research.md#autonomy-and-permission)). The permission row must configure both presets, as the web-app bundle does, or the service does not load.
 
+新研究 (New research) is the desktop's `start-new` command: it opens the one untouched draft research, or creates one at `<research home>/<yyyy-mm-dd>-<n>` with its folder's Workspace and a blank conversation. `relocate` moves the draft to a folder the person chose, and `discard-draft` removes it with the empty folders it made. The research home is the person's `researchHome` preference, else the configured `researchHome`, else `<profile home>/SciPaper`. The agent cannot send these commands ([details](../../../docs/subsystems/research.md#new-research-draft)).
+
 ### When to choose it
 
 Choose it when the agent should carry a paper from an idea or from existing results to a submission, recording where every source, file and number came from. It records and checks; the agent, its goals and the research skills drive the work, so a general coding session gains nothing from it.
@@ -50,6 +52,7 @@ Choose it when the agent should carry a paper from an idea or from existing resu
 | `pollIntervalMs` | required | How often running experiments are observed |
 | `maxReviewPages` | required | Most PDF pages rendered for one inspection |
 | `componentRoot` | the product home's `research/components` | Directory for managed Python, uv, TeX and draw.io |
+| `researchHome` | `<profile home>/SciPaper` | Absolute folder new researches are created in until the person chooses one in the settings; test compositions point it at a temporary folder |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-research-workbench) is the exhaustive source for every accepted field.
 
@@ -76,7 +79,8 @@ One service owns every project record in the `research_workbench` storage domain
 
 | Source | What it holds |
 |---|---|
-| [`src/index.ts`](src/index.ts) | The service: project lifecycle, command dispatch, the per-project queue, run observation, and each conversation's permission preset |
+| [`src/index.ts`](src/index.ts) | The service: project lifecycle, the new-research draft, command dispatch, the per-project queue, run observation, and each conversation's permission preset |
+| [`src/drafts.ts`](src/drafts.ts) | New researches: the research home, the draft folder's name, what an untouched draft holds, and removing its empty folders |
 | [`src/checks.ts`](src/checks.ts) | `research_check`: every base check, a mode's gates through the runner the service supplies, and phase progress from the mode's requirements |
 | [`src/progress.ts`](src/progress.ts) | The project's progress, merged report by report from `research_check`, and `standing`: where the project stands for the person, the brief and the header |
 | [`src/modes.ts`](src/modes.ts) | Mode packs: manifest validation, the registry, routes and the mode a project resolves to |

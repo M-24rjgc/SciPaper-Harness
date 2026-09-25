@@ -1,0 +1,16 @@
+/* The entry line sits in the headline's column, 24px in as the headline is. */
+.root { display: flex; flex-direction: column; gap: 4px; padding: 0 24px; }
+.line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
+.separator { color: var(--dsw-alias-label-caption); }
+.record { padding: 0; border: 0; background: transparent; font: inherit; color: var(--dsw-alias-label-secondary); text-decoration: underline; text-decoration-color: var(--dsw-alias-border-l4); text-underline-offset: 3px; cursor: pointer; }
+.record:hover { color: var(--dsw-alias-label-primary); }
+.record:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 4px; }
+.notice { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
+.failed { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+
+/* Try: one quiet row above the composer card, starting under the folder chip's icon. */
+.try { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; padding: 0 16px 0 28px; }
+.tryLabel { font-size: 12px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
+.tryChip { max-width: 100%; padding: 3px 9px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; text-align: left; cursor: pointer; }
+.tryChip:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.tryChip:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }

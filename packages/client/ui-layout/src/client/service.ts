@@ -39,7 +39,10 @@ export interface ILayout {
   beginNavigation(): AbortSignal
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
-  /** Suggest a first-open width without overriding a user's later resize. */
+  /**
+   * Suggest a first-open width without overriding a user's later resize.
+   * @param px - suggested right-panel width in CSS pixels.
+   */
   setInitialRightbarWidth(px: number): void
   /**
    * Report the right panel's presentation without changing its expanded state.

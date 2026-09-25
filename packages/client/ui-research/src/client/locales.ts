@@ -5,7 +5,6 @@ export const en = {
   selectDataSources: 'Data sources (select one or more)',
   advancedSettings: 'Image service and tool paths',
   heroNoHistory: 'Your research projects will appear here.',
-  pickDirectory: 'Choose folder',
   name: 'SciPaper Harness',
   subtitle: 'Evidence you can trace, runs you can repeat, claims you can defend',
   openResearch: 'Open the research workbench',
@@ -18,9 +17,9 @@ export const en = {
   experiments: 'Experiment board',
   settings: 'Tools & models',
 
-  // Example sentences for a blank research; the entry screen's suggestion chips add them to the draft
-  heroOpeningMaterials: '“Import these 6 PDFs and results.csv, and sort out what each one actually shows”',
-  heroOpeningIdea: '“Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?”',
+  // Example sentences for a new research; the entry screen's Try chips add them to the draft
+  heroOpeningMaterials: 'Import these 6 PDFs and results.csv, and sort out what each one actually shows',
+  heroOpeningIdea: 'Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?',
 
   // The decision that is the user's
 
@@ -250,10 +249,37 @@ export const en = {
   noTasks: 'No operation has run yet.',
   operationStarted: 'Operation started',
 
-  // Starting a project from the composer, before any conversation exists
-  newProjectDirectory: 'New project folder…',
-  newProjectBusy: 'Setting up…',
-  newProjectHint: 'Choose the folder this research will live in. Papers, figures, code and run records are written there, and nothing outside it is touched.',
+  // The entry screen: the line under the headline, the Try sentences, and the menu under the folder chip
+  entryNewConversation: 'New conversation',
+  entryRecord: 'Research record',
+  entryExample: 'Example research · view only',
+  entryHere: 'This already is a new research; just describe your question.',
+  entryLandFailed: 'Could not open a research: {reason}',
+  entryNewFailed: 'Could not start new research: {reason}',
+  entryMoveFailed: 'Could not change the location: {reason}',
+  entryRevealFailed: 'Could not show the folder: {reason}',
+  entryRecordUnavailable: 'the research record could not be read',
+  entryNotListed: 'the conversation did not appear in time; try again',
+  entryTry: 'Try:',
+  entryTryChip: '“{sentence}”',
+  entryTryHint: 'Adds this sentence to the message box; nothing is sent',
+  folderSavedAt: 'Saved in {path}',
+  folderMove: 'Change location…',
+  folderReveal: 'Show in file manager',
+  folderSwitch: 'Move to another research',
+  folderExisting: 'This folder already is the research “{title}”.',
+  folderOpenIt: 'Open it',
+  folderNested: 'This folder is inside the research “{title}”. Choose a folder outside it, or open “{title}” directly.',
+  folderNestedOwn: "This folder is inside this research's own folder. Choose a folder outside it.",
+  folderOpenTitle: 'Open “{title}”',
+  folderNonEmpty: 'This folder already holds files. The paper, figures and other subfolders are added here; the existing files stay as they are.',
+  folderUseHere: 'Use this folder',
+  folderExample: 'Examples are view only, so no research can be created among them. Choose another folder.',
+  folderChooseAgain: 'Choose another folder…',
+  folderTypeTitle: 'Change location',
+  folderTypeLabel: 'Folder path',
+  folderTypeHint: 'No folder chooser can open on this host. Type an absolute path, for example C:\\Research\\my-paper.',
+  folderTypeSubmit: 'Move here',
 
   // Research context rail: the tools row
   researchFiles: 'Research files',
@@ -382,7 +408,7 @@ export const en = {
   boardStatusBlocked: 'Blocked',
 
   // Settings
-  settingsSubtitle: 'Model roles, local components, experiment environments',
+  settingsSubtitle: 'Where researches are kept, model roles, local components, experiment environments',
   roleVision: 'Vision model',
   roleVisionBody: 'Checks whether the typeset page and the figures read',
   roleVisionFollow: "Follows the conversation's model",
@@ -402,6 +428,11 @@ export const en = {
   newEnvironment: 'New environment',
   environmentDefault: 'Default',
   settingsFooter: 'Environments are saved per project. Close settings to return to your research.',
+  researchHomeTitle: 'Where new researches are kept',
+  researchHomeHint: 'Each new research gets its own folder here, named by the date and a number, such as 2026-09-26-1. Researches that already exist stay where they are.',
+  researchHomeDefault: 'Default location',
+  researchHomeChange: 'Change…',
+  researchHomeReset: 'Use the default',
   // Modes, autonomy, phases, checks and decisions. Mode and phase names come from the mode packs, in both languages.
   packLocale: 'en',
   autonomy: 'Autonomy',
@@ -546,7 +577,6 @@ export const zh: Record<ResearchKey, string> = {
   selectDataSources: '数据材料（可多选）',
   advancedSettings: '生图服务与工具路径',
   heroNoHistory: '开始研究后，可从这里继续。',
-  pickDirectory: '选择文件夹',
   name: '科研工作台',
   subtitle: '证据可追溯、实验可复现、结论可辩护',
   openResearch: '打开科研工作台',
@@ -559,9 +589,9 @@ export const zh: Record<ResearchKey, string> = {
   experiments: '实验看板',
   settings: '工具与模型',
 
-  // 空白研究的示例说法；入口页的提示标签会把它们加进输入框
-  heroOpeningMaterials: '“把这 6 篇 PDF 和 results.csv 导进来，理一下各自证明了什么”',
-  heroOpeningIdea: '“块稀疏注意力能在 1/4 FLOPs 下保住长上下文准确率吗”',
+  // 新研究的示例说法；入口页的「试试」标签会把它们加进输入框
+  heroOpeningMaterials: '把这 6 篇 PDF 和 results.csv 导进来，理一下各自证明了什么',
+  heroOpeningIdea: '块稀疏注意力能在 1/4 FLOPs 下保住长上下文准确率吗',
 
   // 由你来做的决策
 
@@ -791,10 +821,37 @@ export const zh: Record<ResearchKey, string> = {
   noTasks: '暂无操作记录。',
   operationStarted: '操作已开始',
 
-  // 在对话开始之前，从输入框新建项目
-  newProjectDirectory: '新建项目目录…',
-  newProjectBusy: '正在建立…',
-  newProjectHint: '选一个目录，这项研究就住在里面。论文、图表、代码和运行记录都写在那儿，目录之外的东西不会被动。',
+  // 入口页：标题下的一行、「试试」示例说法，以及文件夹按钮的菜单
+  entryNewConversation: '新对话',
+  entryRecord: '研究记录',
+  entryExample: '示例研究 · 只能查看',
+  entryHere: '这里就是一项新的研究，直接说说你的问题。',
+  entryLandFailed: '没能打开研究：{reason}',
+  entryNewFailed: '没能新建研究：{reason}',
+  entryMoveFailed: '没能更改位置：{reason}',
+  entryRevealFailed: '没能在资源管理器中打开：{reason}',
+  entryRecordUnavailable: '暂时读不到研究记录',
+  entryNotListed: '对话没有及时出现在列表里，请再试一次',
+  entryTry: '试试：',
+  entryTryChip: '「{sentence}」',
+  entryTryHint: '把这句话放进输入框，不会发送',
+  folderSavedAt: '保存在 {path}',
+  folderMove: '更改位置…',
+  folderReveal: '在资源管理器中打开',
+  folderSwitch: '换到另一项研究',
+  folderExisting: '这个文件夹已经是研究「{title}」。',
+  folderOpenIt: '打开它',
+  folderNested: '这个文件夹在研究「{title}」里面，请选它外面的文件夹，或直接打开「{title}」。',
+  folderNestedOwn: '这个文件夹在这项研究自己的文件夹里面，请选它外面的文件夹。',
+  folderOpenTitle: '打开「{title}」',
+  folderNonEmpty: '这里已有文件。会在这里新建 paper、figures 等子文件夹，原有文件不会被改动。',
+  folderUseHere: '就用这里',
+  folderExample: '示例研究只能查看，不能在示例的文件夹里新建研究。请换一个文件夹。',
+  folderChooseAgain: '另选文件夹…',
+  folderTypeTitle: '更改位置',
+  folderTypeLabel: '文件夹路径',
+  folderTypeHint: '这里打不开系统的文件夹选择窗口，请输入一个绝对路径，例如 C:\\Research\\my-paper。',
+  folderTypeSubmit: '移到这里',
 
   // 研究进展侧栏：工具行
   researchFiles: '研究文件',
@@ -923,7 +980,7 @@ export const zh: Record<ResearchKey, string> = {
   boardStatusBlocked: '受阻',
 
   // 设置
-  settingsSubtitle: '模型分工、本地组件、实验环境',
+  settingsSubtitle: '研究存放位置、模型分工、本地组件、实验环境',
   roleVision: '视觉模型',
   roleVisionBody: '检查排版和图是否可读',
   roleVisionFollow: '跟随对话所用的模型',
@@ -943,6 +1000,11 @@ export const zh: Record<ResearchKey, string> = {
   newEnvironment: '新建环境',
   environmentDefault: '默认',
   settingsFooter: '实验环境按项目保存。关闭设置后，即可回到当前研究。',
+  researchHomeTitle: '研究存放位置',
+  researchHomeHint: '每项新研究都会在这里建一个以日期和序号命名的文件夹，例如 2026-09-26-1。已有的研究留在原处。',
+  researchHomeDefault: '默认位置',
+  researchHomeChange: '更改…',
+  researchHomeReset: '恢复默认',
   // Modes, autonomy, phases, checks and decisions. Mode and phase names come from the mode packs, in both languages.
   packLocale: 'zh',
   autonomy: '自主程度',

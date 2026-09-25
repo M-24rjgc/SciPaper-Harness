@@ -352,11 +352,27 @@ export interface ResearchProject {
   untitled?: boolean | undefined
   root: string
   /**
+   * True when creating the research also created its root folder, so
+   * discarding it as an untouched draft may remove that folder once it is
+   * empty. Absent when the folder existed before, and on researches created
+   * before drafts existed.
+   */
+  createdRoot?: boolean | undefined
+  /**
    * True for an example research shipped for the tutorial (its root lies in
    * `<data home>/demo`), which is read-only. Derived for every snapshot and
    * brief, never stored; absent for the person's own researches.
    */
   example?: boolean | undefined
+  /**
+   * True for the untouched draft research that 新研究 (New research) opens:
+   * it still carries the placeholder title (`untitled`), its record holds
+   * nothing but its autonomy, every conversation of it is blank (no turn
+   * started), and its folder holds only the empty folders it was created
+   * with. Derived for every snapshot and for the results of `start-new` and
+   * `relocate`, never stored; absent otherwise.
+   */
+  draft?: boolean | undefined
   /** The mode pack the project runs in; `general` adds nothing to the research tools. */
   mode: string
   /** The route through the mode, for packs that have routes. */
@@ -419,6 +435,13 @@ export interface ResearchPreferences {
   python?: string | undefined
   uv?: string | undefined
   texBin?: string | undefined
+  /**
+   * The absolute folder new researches are created in, as
+   * `<researchHome>/<yyyy-mm-dd>-<n>`; the person's choice in the settings.
+   * When absent, the service's configured `researchHome` or
+   * `<profile home>/SciPaper` applies.
+   */
+  researchHome?: string | undefined
 }
 export interface ComponentStatus {
   id: 'python' | 'uv' | 'latex' | 'drawio'
@@ -439,6 +462,12 @@ export interface ResearchSnapshot {
   components: ComponentStatus[]
   /** The installed modes, in display order. */
   modes: ModeSummary[]
+  /**
+   * The folder new researches are created in now: the `researchHome`
+   * preference, else the configured one, else `<profile home>/SciPaper`.
+   * Every snapshot the service returns carries it.
+   */
+  researchHome?: string | undefined
 }
 export interface LiteratureItem {
   id: string
@@ -686,6 +715,23 @@ export interface ResearchResponse {
   board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
+  /**
+   * start-new, and relocate when it answers `moved` or `existing`: the
+   * conversation to open. For `moved` and start-new it is the research's
+   * blank conversation; for `existing` it is the research's bound
+   * conversation, absent when it has none.
+   */
+  sessionId?: string | undefined
+  /**
+   * relocate: what the chosen folder turned out to be. `moved`: the research
+   * was created there and the untouched draft discarded; `existing`: the
+   * folder already is the research in `project`; `needs-confirm`: the folder
+   * holds files, so nothing happened until the command is repeated with
+   * `confirmNonEmpty`; `nested`: the folder lies inside the research in
+   * `project`, which may be the draft itself; `example`: the folder lies
+   * among the examples.
+   */
+  outcome?: 'moved' | 'existing' | 'needs-confirm' | 'nested' | 'example' | undefined
 }
 export interface CreateProjectRequest {
   title: string
@@ -814,6 +860,24 @@ export type ResearchCommand =
   | { action: 'build-graph'; projectId: ProjectId; papers: string; domain: string }
   /** Name the clusters (cluster_meta.json or `names`) and assemble the project graph. */
   | { action: 'name-patterns'; projectId: ProjectId; names?: string | undefined }
+  /**
+   * The person's 新研究 (New research): the one untouched draft research, or a
+   * new one at `<research home>/<yyyy-mm-dd>-<n>` (the next free `n`) with a
+   * blank conversation. Answers with the research and the conversation to
+   * open. The desktop's command only; the agent is refused.
+   */
+  | { action: 'start-new' }
+  /**
+   * Move an untouched draft to the folder the person chose (更改位置, Change
+   * location); the answer's `outcome` says what happened. The desktop's command only.
+   */
+  | { action: 'relocate'; projectId: ProjectId; root: string; confirmNonEmpty?: boolean | undefined }
+  /**
+   * Remove an untouched draft: its record, its folder's Workspace
+   * registration, its blank conversations (archived) and the empty folders
+   * it made. The desktop's command only.
+   */
+  | { action: 'discard-draft'; projectId: ProjectId }
 
 export interface ResearchTask {
   id: string

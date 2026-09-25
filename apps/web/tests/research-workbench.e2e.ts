@@ -1,12 +1,15 @@
 /** The research edition through the shipped browser and durable host: the agent drives, the ledger records. */
-import { readFile, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterAll, beforeAll, expect, it, beforeEach, onTestFailed } from 'vitest'
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import type { ArtifactId, ExperimentId, ProjectId, ResearchCommand, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
+import type {
+  ArtifactId, ExperimentId, ProjectId, ResearchCommand, ResearchProject, ResearchResponse,
+} from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-research-workbench'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { launchWebScaffold, seedSession, watchConsole, type WebScaffold } from './scaffold.ts'
@@ -62,6 +65,27 @@ afterAll(async () => {
 
 beforeEach(() => { onTestFailed(() => saveFailureShot(page, 'research-workbench-flow')) })
 
+/** A line break the folder menu puts after each path separator, so a long path wraps. */
+const WRAP = String.fromCodePoint(0x200b)
+
+/** The research the host records now, the untouched draft marked. */
+async function projects(): Promise<ResearchProject[]> {
+  return (await scaffold.ctx.research.snapshot()).projects
+}
+
+/**
+ * 更改位置 (Change location) from the entry screen's folder menu. The scaffold
+ * composes the browse directory picker, which has no native chooser, so the
+ * menu asks for the folder as a typed path.
+ */
+async function changeLocation(on: Page, folder: string): Promise<void> {
+  await on.getByRole('button', { name: 'Choose research', exact: true }).first().click()
+  await on.getByRole('menuitem', { name: 'Change location…', exact: true }).click()
+  const dialog = on.getByRole('dialog', { name: 'Change location', exact: true })
+  await dialog.getByLabel('Folder path', { exact: true }).fill(folder)
+  await dialog.getByRole('button', { name: 'Move here', exact: true }).click()
+}
+
 async function command(request: ResearchCommand): Promise<ResearchResponse> {
   const response = await scaffold.ctx.research.command(request, new AbortController().signal)
   if (!response.jobId) return response
@@ -74,33 +98,59 @@ async function command(request: ResearchCommand): Promise<ResearchResponse> {
   return task.result
 }
 
-it('creates a project from the welcome screen, records evidence and opens a claim with its sources', async () => {
-  // The shell's entry copy is the research product's; with no research yet the composer says where to start one.
+it('lands on a new research, moves it to a chosen folder, records evidence and opens a claim with its sources', async () => {
+  // With no research of the person's own, startup opens the one untouched draft, in the research home the scaffold pins.
   await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
-  await page.getByRole('button', { name: 'Choose research', exact: true }).first().waitFor()
-  await page.locator('[data-composer-input][data-placeholder="Start new research or open one on the left first"]').first().waitFor()
-  // The entry screen offers no cards and no promise row.
+  await expect.poll(async () => (await projects()).length, { timeout: 15000 }).toBe(1)
+  const draft = (await projects())[0]!
+  expect(draft).toMatchObject({ draft: true, untitled: true, title: '新研究', mode: 'general', autonomy: 'checkpoints' })
+  expect(draft.modeSetBy).toBeUndefined()
+  expect(dirname(draft.root)).toBe(join(scaffold.workspaceCwd, 'SciPaper'))
+  expect(basename(draft.root)).toMatch(/^\d{4}-\d{2}-\d{2}-1$/)
+  // The folder chip names the draft's folder; two example sentences sit above the composer, which invites the question.
+  const chip = page.getByRole('button', { name: 'Choose research', exact: true }).first()
+  await chip.filter({ hasText: basename(draft.root) }).waitFor({ timeout: 15000 })
+  await page.getByText('Try:', { exact: true }).first().waitFor({ timeout: 15000 })
+  await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
+    .first().waitFor()
+  // The entry screen offers no cards, no promise row and no folder buttons of its own.
   expect(await page.getByText('I already have material', { exact: true }).count()).toBe(0)
   expect(await page.getByText('Every conclusion points back to the page it came from', { exact: true }).count()).toBe(0)
+  expect(await page.getByRole('button', { name: 'New project folder…' }).count()).toBe(0)
   await saveFailureShot(page, 'research-welcome')
   const viewport = page.viewportSize()!
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.locator('html').evaluate(element => element.scrollWidth)).toBeLessThanOrEqual(390)
   await saveFailureShot(page, 'research-welcome-mobile')
   await page.setViewportSize(viewport)
-  await page.getByRole('button', { name: 'New project folder…', exact: true }).first().click()
-  const dialog = page.getByRole('dialog', { name: 'New project', exact: true })
-  await dialog.getByLabel('Project title', { exact: true }).fill('Evidence study')
-  await dialog.getByLabel('Project directory', { exact: true }).fill(join(scaffold.workspaceCwd, '研究 project'))
-  await dialog.getByRole('button', { name: 'Create project', exact: true }).click()
-  await expect.poll(async () => (await scaffold.ctx.research.snapshot()).projects.length).toBe(1)
-  const project = (await scaffold.ctx.research.snapshot()).projects[0]!
+  // The chip's menu says where the draft is saved; the draft moves to a folder the person names.
+  await chip.click()
+  const menu = page.getByRole('menu').first()
+  await expect.poll(async () => (await menu.innerText()).replaceAll(WRAP, '')).toContain(`Saved in ${draft.root}`)
+  await page.keyboard.press('Escape')
+  // A Try sentence only fills the composer; the person still writes and sends.
+  const materials = 'Import these 6 PDFs and results.csv, and sort out what each one actually shows'
+  const composer = page.locator('[data-composer-input][contenteditable="true"]').first()
+  await page.getByRole('button', { name: `“${materials}”`, exact: true }).click({ timeout: 15000 })
+  await expect.poll(() => composer.innerText()).toBe(materials)
+  const chosen = join(scaffold.workspaceCwd, '研究 project')
+  await changeLocation(page, chosen)
+  await expect.poll(async () => (await projects()).map(item => item.root), { timeout: 15000 }).toEqual([chosen])
+  const project = (await projects())[0]!
   projectId = project.id
-  // Nothing starts on its own: creating a project asks the model nothing, and it opens in the general mode.
-  // The dialog names the mode its select holds, so the record keeps it as the person's choice.
-  expect(project.mode).toBe('general')
-  expect(project.modeSetBy).toBe('user')
-  expect(project.autonomy).toBe('checkpoints')
+  // Moving discards the draft, its conversation and the folder it made; the new folder takes its place under the chip.
+  expect(project).toMatchObject({ draft: true, untitled: true, mode: 'general' })
+  expect(existsSync(draft.root)).toBe(false)
+  await chip.filter({ hasText: '研究 project' }).waitFor({ timeout: 15000 })
+  // What was typed moved with it into the new folder's conversation.
+  expect(scaffold.ctx.research.getProject(projectId).sessionId).not.toBe(draft.sessionId)
+  await expect.poll(() => composer.innerText()).toBe(materials)
+  // Nothing starts on its own: the mode is not chosen until the assistant or the person chooses it.
+  expect(project.modeSetBy).toBeUndefined()
+  await command({ action: 'rename', projectId, title: 'Evidence study' })
+  // Naming the research ends its placeholder title.
+  expect(scaffold.ctx.research.getProject(projectId).title).toBe('Evidence study')
+  expect(scaffold.ctx.research.getProject(projectId).untitled).toBeUndefined()
   const sourcePath = join(scaffold.workspaceCwd, 'source.csv')
   await writeFile(sourcePath, 'measurement,value\nsample,42\n')
   await command({ action: 'import', projectId, paths: [sourcePath] })
@@ -244,24 +294,53 @@ it.skipIf(!texBin)('compiles a real PDF and keeps visual review configuration ex
   expect(consoleState.pageErrors).toEqual([])
 })
 
-it('offers a new project from a blank conversation and keeps the composer draft when cancelled', async () => {
-  await page.getByRole('button', { name: 'New research', exact: true }).last().click()
+it('reuses one draft for New research, and carries its typed question into a research chosen by its folder', async () => {
+  const newResearch = page.getByRole('button', { name: 'New research', exact: true }).last()
+  await newResearch.click()
   await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
-  const createProject = page.getByRole('button', { name: 'New project folder…', exact: true }).first()
-  await createProject.waitFor()
+  await expect.poll(async () => (await projects()).filter(item => item.draft === true).length, { timeout: 15000 }).toBe(1)
+  const draft = (await projects()).find(item => item.draft === true)!
+  expect(dirname(draft.root)).toBe(join(scaffold.workspaceCwd, 'SciPaper'))
+  const chip = page.getByRole('button', { name: 'Choose research', exact: true }).first()
+  await chip.filter({ hasText: basename(draft.root) }).waitFor({ timeout: 15000 })
+  // 新研究 again opens the same draft, and the entry line says so; no second folder is made.
+  await newResearch.click()
+  await page.getByText('This already is a new research; just describe your question.', { exact: true }).first().waitFor({ timeout: 15000 })
+  expect(await projects()).toHaveLength(2)
   // The edition ships no preset chooser: no preset chip beside the composer.
   expect(await page.getByTitle('Agent preset for the session you are about to start').count()).toBe(0)
   await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
     .first().waitFor()
+  // A Try sentence goes into the composer and nothing is sent; with the draft no longer empty the sentences leave.
+  const idea = 'Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?'
+  await page.getByRole('button', { name: `“${idea}”`, exact: true }).click()
   const input = page.locator('[data-composer-input][contenteditable="true"]').first()
-  await writeComposerDraft(page, input, 'Compare the available measurements')
-  await createProject.click()
-  const dialog = page.getByRole('dialog', { name: 'New project', exact: true })
-  // Inside a project folder the form starts empty; outside one it carries the draft (unit-tested in ui-research).
-  await dialog.getByLabel('Project title', { exact: true }).waitFor()
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
-  expect(await input.innerText()).toBe('Compare the available measurements')
-  expect((await scaffold.ctx.research.snapshot()).projects).toHaveLength(1)
+  await expect.poll(() => input.innerText()).toBe(idea)
+  await expect.poll(() => page.getByText('Try:', { exact: true }).count()).toBe(0)
+  // A folder that holds files is asked about first; leaving it keeps the draft where it is.
+  const crowded = join(scaffold.workspaceCwd, 'notes folder')
+  await mkdir(crowded, { recursive: true })
+  await writeFile(join(crowded, 'notes.txt'), 'kept as it is\n')
+  await changeLocation(page, crowded)
+  const question = page.getByRole('menu').filter({ hasText: 'This folder already holds files.' })
+  await question.waitFor({ timeout: 15000 })
+  await question.getByRole('menuitem', { name: 'Cancel', exact: true }).click()
+  expect((await projects()).find(item => item.draft === true)?.root).toBe(draft.root)
+  // The first research's folder already is a research: opening it carries the question there and discards the draft.
+  await changeLocation(page, join(scaffold.workspaceCwd, '研究 project'))
+  const existing = page.getByRole('menu').filter({ hasText: 'This folder already is the research “Evidence study”.' })
+  await existing.waitFor({ timeout: 15000 })
+  await existing.getByRole('menuitem', { name: 'Open it', exact: true }).click()
+  await expect.poll(async () => (await projects()).map(item => item.id), { timeout: 15000 }).toEqual([projectId])
+  expect(existsSync(draft.root)).toBe(false)
+  await chip.filter({ hasText: 'Evidence study' }).waitFor({ timeout: 15000 })
+  await expect.poll(() => page.locator('[data-composer-input][contenteditable="true"]').first().innerText()).toBe(idea)
+  // The entry line names a new conversation of the research, and opens its record beside it.
+  const record = page.getByRole('button', { name: 'Research record', exact: true })
+  await record.waitFor({ timeout: 15000 })
+  await record.click()
+  await page.getByText('Decisions', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await saveFailureShot(page, 'research-second-conversation')
 })
 
 it('shows a settled reply with no feedback buttons or view tabs', async () => {
@@ -294,10 +373,15 @@ it('speaks Chinese on the entry screen of a new research', async () => {
   const zhPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE, timezoneId: 'Asia/Shanghai' })
   try {
     await zhPage.goto(scaffold.authenticatedUrl)
+    // A new window lands on the research used last, on its conversation that has started.
+    await zhPage.getByTitle('研究进展', { exact: true }).first().waitFor({ timeout: 30000 })
     await zhPage.getByRole('button', { name: '新研究', exact: true }).last().click({ timeout: 30000 })
     await zhPage.getByText('今天想推进什么？', { exact: true }).first().waitFor({ timeout: 15000 })
     await zhPage.locator('[data-composer-input][data-placeholder="说说你的研究问题，或把论文、数据拖进来（/ 调用指令，@ 引用文件或对话）"]')
       .first().waitFor({ timeout: 15000 })
+    await zhPage.getByText('试试：', { exact: true }).first().waitFor({ timeout: 15000 })
+    await zhPage.getByRole('button', { name: '选择研究', exact: true }).first().click()
+    await zhPage.getByRole('menuitem', { name: '更改位置…', exact: true }).waitFor()
     await saveFailureShot(zhPage, 'research-welcome-zh')
   } finally {
     await zhPage.close()

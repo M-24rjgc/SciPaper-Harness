@@ -125,6 +125,11 @@
   cursor: pointer;
 }
 
+/* The same group as plain identity (`brandAction: none`): nothing to press. */
+.brandPlain {
+  cursor: default;
+}
+
 /* Mark and name are independent slots; the shell owns their shared baseline,
    spacing, and height so either occupant can vary in width. */
 .brandIdentity {

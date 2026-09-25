@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package lets users browse grouped or flat Session lists, choose a Workspace for a new Session, and manage Workspaces and Sessions through add, rename, reorder, search, fork, archive, and Workspace deletion. Pending interactions appear as warning dots, active scheduled tasks as alarm markers, and subagent-origin Sessions remain hidden. Canonically distinct folder paths remain separate Workspaces. Adding a Workspace requires a composed directory picker; without one, the add action is unavailable.
+This package lets users browse grouped or flat Session lists, choose a Workspace for a new Session, and manage Workspaces and Sessions through add, rename, reorder, search, fork, archive, and Workspace deletion. Pending interactions appear as warning dots, active scheduled tasks as alarm markers, and subagent-origin Sessions remain hidden. Canonically distinct folder paths remain separate Workspaces. Adding a Workspace requires a composed directory picker; without one, the add action is unavailable. A deployment can hand the startup selection and the unscoped New Session to an entry policy another plugin registers.
 
 ## Table of Contents
 
@@ -48,6 +48,29 @@ Session rows render the runtime's live `pendingInteraction` classification: appr
 Grouped and flat Session rows, plus search results, show an outline alarm when `SessionSummary.projectionValues.schedule` is a non-empty array. The marker sits after the title; an ordinary row keeps its update time after the marker, while a search result has no update time. It is not a button, has no independent pointer action or tab stop, and clicking its area still opens the row. The localized tooltip and matching screen-reader label say **Has active scheduled task**.
 
 The value is intentionally best effort for cold Sessions. An identity-matching usable projection-cache row can prewarm the alarm without opening the Session; a missing or stale cache may briefly omit or retain it. The marker means only that the current list value contains an undispatched or undeleted Schedule record. It does not report whether a Schedule runtime is live or able to wake the Session.
+
+<a id="startup-and-new-session"></a>
+### Startup and New Session
+
+Once the Session and Workspace lists are ready with nothing selected, the default `entry: recent` connects the most recently active Workspace and opens its reusable blank Session. The unscoped New Session action targets the current Session's Workspace, then the most recent one, and clears into the blank New Session page when there is none. A Workspace-scoped New Session always reuses or creates that Workspace's blank Session. A selection restored from the previous visit is kept under either rule.
+
+Under `entry: policy` another plugin registers `{ land, startNew }` through `ctx.uiWorkspace.setEntryPolicy(policy)`, which returns the disposer and throws while another policy is registered.
+
+- `land()` replaces the recent connection at startup. It also runs after the current Session is archived or leaves the list, and when a policy registers while nothing is selected. It does not run while a policy call is still in flight, nor again after one settled with nothing selected.
+- The unscoped New Session runs `startNew()`; the Workspace-scoped one is unchanged.
+- A throw or rejection is logged as `entry policy land failed:` or `entry policy startNew failed:`.
+- A startup in which no policy registers within 5 s of both lists being ready uses the recent rule. A policy that registers later still takes the unscoped action and every later lost selection.
+- A policy opens only Sessions the list already carries; `openSession` refuses an unlisted id.
+
+Under `entry: recent` a registered policy is kept and never called.
+
+### Configuration
+
+| Field | Default | Meaning |
+|---|---|---|
+| `entry` | `recent` | The startup and unscoped New Session rule: `recent` or `policy` |
+
+A client row's `config` reaches only the Host half. For `entry: policy` it puts the `__DSH_WORKSPACE__` global into every served page, which the browser half reads when it applies; without the global the browser half uses `recent`, so a default row serves the page unchanged. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-ui-workspace) is the exhaustive source for the field and its JSDoc.
 
 -----
 
@@ -103,12 +126,13 @@ None; this package neither assembles nor sends a provider request.
 <a id="known-limitations-and-deferred-work"></a>
 
 
-These limits define the search depth, the archive surface, and the picking carrier; they are current package constraints.
+These limits define the search depth, the archive surface, the picking carrier, and entry-policy calls; they are current package constraints.
 
 - **No fuzzy content search or event deep links** — the content backend uses literal token/phrase matching, and selecting a result opens the Session rather than the matching event.
 - **No Session deletion, and unarchive lives in Settings** — sessions can be archived but never deleted; the archived-sessions Settings page ([ui-settings-unarchive-sessions](../ui-settings-unarchive-sessions/README.md)) owns viewing and restoring them, and Workspace registration deletion does not delete Sessions.
 - **Pending user interaction is not aggregated into collapsed groups** — a waiting row inside a collapsed group lights no group-header indicator and becomes visible only after that group is expanded.
 - **Native folder selection depends on the local Host carrier** — under the `-native` composition, in-process or remote browser deployments cannot open a local operating-system dialog; remote-capable picking is the `-browse` composition's in-app flow.
+- **Entry-policy calls carry no cancellation** — `land()` and `startNew()` receive no signal, so a policy that opens a Session late guards against a newer navigation itself, for example with `ctx.layout.beginNavigation()`.
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -120,4 +144,4 @@ None.
 
 </details>
 
-**Runtime invariant:** No companion is published. This is a pure-consumer plugin that registers presentational components into two host-declared slots and registers its locale dictionaries; its inject face consists of stateless RPC wrappers plus a create-and-open call. It emits no Cordis events and owns no cross-plugin mutable state.
+**Runtime invariant:** No companion is published. This is a pure-consumer plugin that registers presentational components into two host-declared slots and registers its locale dictionaries; its inject face consists of stateless RPC wrappers plus a create-and-open call. It emits no Cordis events. The one registration it holds, the entry policy, is read only by its own navigation, so no independent observation can diverge from it.

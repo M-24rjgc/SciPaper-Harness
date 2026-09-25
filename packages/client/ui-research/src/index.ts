@@ -12,9 +12,10 @@ export interface Config {
    * Shadow the shell cells that are developer surfaces in this product: the
    * turn, step, token-rate and cache-hit pills under the composer, General
    * settings' default permission (the research's autonomy decides it), and the
-   * button that opens the raw configuration file draw nothing, and the
-   * research's autonomy chip takes the composer's access chip. The shipped Web
-   * bundle sets it.
+   * button that opens the raw configuration file draw nothing, the research's
+   * autonomy chip takes the composer's access chip, and the research's folder
+   * menu takes the entry screen's Workspace picker. The shipped Web bundle
+   * sets it.
    */
   hideDeveloperCells?: boolean
 }

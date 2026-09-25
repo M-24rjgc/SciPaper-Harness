@@ -47,6 +47,11 @@ describe('the Web composition of the research edition', () => {
     expect(row('ui-research')).toMatchObject({ config: { hideDeveloperCells: true } })
   })
 
+  it('hands startup and the unscoped New Session to the entry policy, and keeps the brand row plain', () => {
+    expect(row('ui-workspace')).toMatchObject({ config: { entry: 'policy' } })
+    expect(row('ui-sidebar')).toMatchObject({ config: { brandAction: 'none' } })
+  })
+
   it('gives the automatic autonomy preset a display name', () => {
     const presets = (row('permission').config as { presets?: Record<string, unknown> } | undefined)?.presets
     expect(presets?.['research-auto']).toMatchObject({
