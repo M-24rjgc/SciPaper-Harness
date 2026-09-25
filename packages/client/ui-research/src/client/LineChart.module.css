@@ -16,7 +16,7 @@
 .line4 { stroke: var(--dsw-alias-chart-4); }
 .line5 { stroke: var(--dsw-alias-chart-5); }
 .line6 { stroke: var(--dsw-alias-chart-6); }
-.sparkLine { stroke: var(--dsw-alias-state-success-primary); stroke-width: 1.6; }
+.sparkLine { stroke: var(--dsw-alias-chart-1); stroke-width: 1.6; }
 
 .dot1, .dot2, .dot3, .dot4, .dot5, .dot6 { stroke: var(--dsw-alias-bg-layer-1); stroke-width: 2; }
 .dot1 { fill: var(--dsw-alias-chart-1); }

@@ -7,9 +7,9 @@
 .sync { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
 .live { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--dsw-alias-label-secondary); }
 .live i { width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--dsw-alias-label-caption); }
-.live[data-state="live"] { color: var(--dsw-alias-state-success-primary); }
-.live[data-state="live"] i { background: var(--dsw-alias-state-success-primary); }
-.live[data-state="reading"] i { background: var(--dsw-alias-state-success-primary); animation: pulse 1.2s ease-in-out infinite; }
+.live[data-state="live"] { color: var(--dsw-alias-state-ongoing-primary); }
+.live[data-state="live"] i { background: var(--dsw-alias-state-ongoing-primary); }
+.live[data-state="reading"] i { background: var(--dsw-alias-state-ongoing-primary); animation: pulse 1.2s ease-in-out infinite; }
 .live[data-state="offline"] { color: var(--dsw-alias-state-warn-primary); }
 .live[data-state="offline"] i { background: var(--dsw-alias-state-warn-primary); }
 @keyframes pulse { 50% { opacity: .25; } }
@@ -74,13 +74,13 @@
 .listDetail { font-size: 12px; color: var(--dsw-alias-label-secondary); line-height: 1.6; }
 
 .markRunning, .markDone, .markAttention, .markIdle { display: inline-block; width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; vertical-align: middle; }
-.markRunning { background: var(--dsw-alias-state-success-primary); box-shadow: 0 0 0 3px var(--dsw-alias-state-success-tertiary); }
-.markDone { background: var(--dsw-alias-state-success-primary); }
+.markRunning { background: var(--dsw-alias-state-ongoing-primary); box-shadow: 0 0 0 3px var(--dsw-alias-state-ongoing-tertiary); }
+.markDone { background: var(--dsw-alias-label-tertiary); }
 .markAttention { background: var(--dsw-alias-state-warn-primary); }
 .markIdle { background: transparent; box-shadow: inset 0 0 0 1.5px var(--dsw-alias-label-caption); }
 
 .meter { display: block; height: 4px; border-radius: 3px; background: var(--dsw-alias-border-l3); overflow: hidden; }
-.meterFill, .meterWarn { display: block; height: 100%; border-radius: 3px; background: var(--dsw-alias-state-success-primary); }
+.meterFill, .meterWarn { display: block; height: 100%; border-radius: 3px; background: var(--dsw-alias-state-ongoing-primary); }
 .meterWarn { background: var(--dsw-alias-state-warn-primary); }
 
 .liveRuns { display: flex; flex-direction: column; }

@@ -42,7 +42,8 @@ function OpenTag(props: WorkbenchProps & { record: ExperimentRecord }): ReactNod
   const { record, t } = props
   if (record.status === 'queued') return <Tag tone="neutral">{t('queued')}</Tag>
   if (record.status === 'unknown') return <Tag tone="warning">{t('unknown')}</Tag>
-  return <Tag tone="success">{t('runRunning')}</Tag>
+  // Green means verified; the card's mark and progress bar carry the ongoing blue.
+  return <Tag tone="neutral">{t('runRunning')}</Tag>
 }
 
 /** One run: what it is, how far it has got, and the things worth doing to it. */

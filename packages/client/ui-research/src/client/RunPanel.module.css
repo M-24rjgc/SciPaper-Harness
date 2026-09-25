@@ -17,12 +17,12 @@
 
 .markQueued, .markRunning, .markDone, .markAttention { width: 8px; height: 8px; border-radius: 50%; corner-shape: round; flex-shrink: 0; box-sizing: border-box; }
 .markQueued { border: 0.5px solid var(--dsw-alias-border-l4); }
-.markRunning { background: var(--dsw-alias-state-success-primary); box-shadow: 0 0 0 3px var(--dsw-alias-state-success-tertiary); }
-.markDone { background: var(--dsw-alias-state-success-primary); }
+.markRunning { background: var(--dsw-alias-state-ongoing-primary); box-shadow: 0 0 0 3px var(--dsw-alias-state-ongoing-tertiary); }
+.markDone { background: var(--dsw-alias-label-tertiary); }
 .markAttention { background: var(--dsw-alias-state-warn-primary); }
 
 .bar { height: 4px; border-radius: 3px; background: var(--dsw-alias-border-l3); overflow: hidden; }
-.barFill { display: block; height: 100%; background: var(--dsw-alias-state-success-primary); }
+.barFill { display: block; height: 100%; background: var(--dsw-alias-state-ongoing-primary); }
 
 .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .action, .stop { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 12px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }

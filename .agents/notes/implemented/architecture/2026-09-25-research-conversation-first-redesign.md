@@ -71,6 +71,23 @@ The unit specs of the five packages pin the new values as literal text, in the l
   - An environment earns no tag for a status that was never probed.
 - **Developer cells shadowed.** Empty occupants take the composer's turn, step, token-rate and cache pills (`conversation.composer.dock#stats`), General settings' default permission (`settings.general.item#permission`, which the research's autonomy decides) and the open-configuration-file action (`settings.action#open-document`). They register only when `ui-research`'s `hideDeveloperCells` is true, which the Web bundle sets on its row. A client row's `config` reaches only the package's Host half, so that half validates it and puts it into every served page as the `__DSH_RESEARCH__` global, the way `client-connection` hands the browser its recovery timing; the browser half reads it when it applies. The Web e2e scaffold turns it off for the inherited scenarios together with the rows of step 1, so their goldens keep the pills.
 
+### Step 4: one colour per meaning
+
+Brand, button, business accent, success and link were one teal, so done, running, suggested and "act here" looked the same. The research theme (`ui-theme/src/styles/research.css`) now gives each meaning its own token, and the research surfaces use them by meaning.
+
+| Meaning | Token | Light | Dark |
+|---|---|---|---|
+| Brand, and where to act: the flask marks, send, focus rings, selection | `brand-primary`, `state-business-*` (the shell's accent), `button-info-*` | teal `#15635f` | teal `#7bc4bb`, send `#3f8f86` |
+| Verified by a check or the evidence | `state-success-*` | green `#3b7a1f` on `#e9f2e1` | `#98c46a` on `#26331d` |
+| Work in progress | `state-ongoing-*`, a new alias (base `deepseek-450` / `-100`, dark `-400` / `-800`) | blue `#3366cc` on `#e8eefa` | `#8fb0e6` on `#26324a` |
+| Needs the person | `state-warn-*` | clay, unchanged | unchanged |
+| Done, pending, neutral | `label-secondary`, `label-tertiary`, `border-l4` | — | — |
+
+- **Where each goes.** Running marks, progress bars, the rail's running tag and the board's live indicator use the ongoing blue. Done phases and finished runs are neutral; a running run's tag is neutral beside its blue mark. Focus rings and selection use the brand. Decorative marks (the claim sheet's thumbnails and quote rule) are neutral, and the sparkline takes the first chart colour.
+- **Shell CSS.** The fork's sidebar override makes 新研究 tinted (the accent's tint with brand text) instead of filled, so the composer holds the one filled button. The sidebar and entry-screen flask marks move from `state-success` to `brand-primary` (`SidebarRoot.module.css`, `HeroShell.module.css`).
+- **Contrast.** Every state colour carries text at 4.6:1 or more on its own tint and 5:1 or more on the page in light, and 5.8:1 or more in dark. The dark send button carries its white icon at 3.8:1.
+- **Colour is never the only signal.** The OKLab check (`validate_palette.js`) passes for blue against teal (ΔE 18). Green against teal is 12.8, the most a green gets next to this teal. Green and clay are close under protanopia, and nearly equal under deuteranopia in the dark theme. Every verified mark therefore carries ✓ or words, every needs-you mark its words, and a running mark its label.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -91,6 +108,10 @@ The unit specs of the five packages pin the new values as literal text, in the l
 
 **Guard binary files by extension only (step 3).** A dataset or checkpoint under an unusual name would still be emptied. The NUL-byte probe reads at most 8 KiB, and a text file never contains a NUL byte.
 
+**Repoint `state-business` to blue for running work (step 4).** The shell uses `state-business` as its accent in about 30 places (caret, pending dot, hover rules, reference chips, focus outlines), so the caret and every accent would have turned the running blue. A new `state-ongoing` alias carries work in progress instead.
+
+**Use the plan's green `#2e7d4f` (step 4).** It sits at ΔE 7 from the brand teal in light and at 5.6 in dark, so verified and brand would read as one colour; the leaf green keeps them apart.
+
 **Keep one error banner and clear it per action (step 3).** A banner above the panel tells nobody which button failed, and two actions in flight overwrite each other's message. A line beside each control needs no clearing rules.
 
 ## Consequences
@@ -105,3 +126,4 @@ The unit specs of the five packages pin the new values as literal text, in the l
 - The inherited user guide (`docs/user/guide`) and upstream Agent Notes still quote the shell's old labels, such as **Choose workspace** and `Deep diving...`.
 - A person who wants a check, the pipeline or another mode now asks the assistant in the conversation. Until step 6 the rail's phases still read the last check whatever its scope.
 - Until step 9 the 新建项目目录… pill and the composer's folder button stay as the only direct ways to put a research in a chosen folder.
+- The shell's own success marks (a done todo, a diff's added lines, the connection indicator) now read the verified green in the research edition, which is their conventional meaning. Until step 11 the rail's phases are a filled neutral dot or a hollow one; the ring for the current phase arrives with the rail's rebuild.

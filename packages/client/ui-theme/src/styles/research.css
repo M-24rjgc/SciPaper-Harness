@@ -26,10 +26,14 @@ body[data-research-workbench]:not([data-ds-dark-theme]) {
   --dsw-alias-button-primary-hover: #104f4c;
   --dsw-alias-button-info-fill: #15635f;
   --dsw-alias-button-info-hover: #104f4c;
+  /* Teal is the brand and the shell's accent: where to act, never a state. */
   --dsw-alias-state-business-primary: #15635f;
   --dsw-alias-state-business-tertiary: #e6efed;
-  --dsw-alias-state-success-primary: #15635f;
-  --dsw-alias-state-success-tertiary: #e6efed;
+  /* Green is only what a check or the evidence verified; blue is only work in progress. Both always sit beside a mark or words. */
+  --dsw-alias-state-success-primary: #3b7a1f;
+  --dsw-alias-state-success-tertiary: #e9f2e1;
+  --dsw-alias-state-ongoing-primary: #3366cc;
+  --dsw-alias-state-ongoing-tertiary: #e8eefa;
   --dsw-alias-state-warn-primary: #b65328;
   --dsw-alias-state-warn-label: #a26f18;
   --dsw-alias-state-warn-tertiary: #f7e9df;
@@ -45,8 +49,15 @@ body[data-research-workbench]:not([data-ds-dark-theme]) {
 body[data-research-workbench][data-ds-dark-theme] {
   --dsw-alias-bg-base: #1c211f;
   --dsw-specific-sidebar-fill: #202723;
-  --dsw-alias-state-success-primary: #7bc4bb;
-  --dsw-alias-state-success-tertiary: #263f3a;
+  /* The accent and the send button stay the brand's teal in the dark, apart from the ongoing blue. */
+  --dsw-alias-state-business-primary: #7bc4bb;
+  --dsw-alias-state-business-tertiary: #263f3a;
+  --dsw-alias-button-info-fill: #3f8f86;
+  --dsw-alias-button-info-hover: #4c9c93;
+  --dsw-alias-state-success-primary: #98c46a;
+  --dsw-alias-state-success-tertiary: #26331d;
+  --dsw-alias-state-ongoing-primary: #8fb0e6;
+  --dsw-alias-state-ongoing-tertiary: #26324a;
   --dsw-alias-state-warn-primary: #e99a72;
   --dsw-alias-state-warn-tertiary: #49352c;
   --dsw-alias-link: #7bc4bb;

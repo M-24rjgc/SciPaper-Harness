@@ -233,5 +233,5 @@
 }
 
 .headline { font-size: 30px; line-height: 1.35; font-weight: 700; }
-.fish { color: var(--dsw-alias-state-success-primary); }
+.fish { color: var(--dsw-alias-brand-primary); }
 .root { padding: 0 16px; }

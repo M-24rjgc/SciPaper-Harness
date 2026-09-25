@@ -3,5 +3,5 @@
 .separator { color: var(--dsw-alias-label-caption); }
 .stage { color: var(--dsw-alias-label-secondary); }
 .chip:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.chip:focus-visible { outline: 2px solid var(--dsw-alias-state-success-primary); outline-offset: 2px; }
+.chip:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
 .chip { border: 0; font-family: inherit; cursor: pointer; }
