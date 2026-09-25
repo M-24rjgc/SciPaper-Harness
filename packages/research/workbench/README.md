@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Gives the agent a research project ledger and the tools to work in it: import and search sources with page-level quotes, verify literature and fetch open-access full text, write and compile LaTeX, render pages to look at, build Python environments, run experiments that outlive the app and SSH, lay out an experiment board that scripts keep current, and export a submission archive. `research_check` reports whether each phase of the paper is done; nothing is refused for failing it. Choose it for the research edition; it needs a storage domain and the desktop or web host.
+Gives the agent a research project ledger and the tools to work in it: import and search sources with page-level quotes, verify literature and fetch open-access full text, write and compile LaTeX, render pages to look at, build Python environments, run experiments that outlive the app and SSH, lay out an experiment board that scripts keep current, and export a submission archive. `research_check` reports and records whether each phase of the paper is done; nothing is refused for failing it. Choose it for the research edition; it needs a storage domain and the desktop or web host.
 
 ## Table of Contents
 
@@ -53,7 +53,14 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Adding a mode
 
-A mode is a directory, not code. To add one — a learning mode, say — create `runtime/modes/<id>/` with a `mode.yml` (identity, routes, phases with the facts each requires and the checks that decide it, gates and scripts), the skills under `skills/<name>/SKILL.md`, and any gate or script it runs with the platform Python; an adapted upstream method also carries its `LICENSE` and a `NOTICE.md`. The registry loads and validates it at start and skips it with a warning when it is broken, the skill provider shows its skills only in projects in that mode, and `research_check` runs its phases and gates. Add a line for it to the preset's `research-modes` skill and a spec like `tests/spark-pack.spec.ts`. Code changes only when a phase needs a kind of fact the requirement vocabulary does not have yet.
+A mode is a directory, not code. To add one — a learning mode, say — create `runtime/modes/<id>/` with a `mode.yml` (identity, routes, phases with the facts each requires and the checks that decide it, gates and scripts), the skills under `skills/<name>/SKILL.md`, and any gate or script it runs with the platform Python; an adapted upstream method also carries its `LICENSE` and a `NOTICE.md`. The manifest also says what the person reads:
+
+- `paperRoot`: the folder its paper sources live in (`paper`, or `.` for the project root);
+- a `hint` on every requirement: one short sentence in English and Chinese saying what is missing, which the research record shows under the current phase;
+- a `label` on every gate: the name its findings are grouped under;
+- optionally, `deferrable: <decision key>` on a phase a recorded decision may defer, and `reviewAgainst: <glob>` when a review covers only part of the paper.
+
+The registry loads and validates it at start and skips it with a warning when it is broken, the skill provider shows its skills only in projects in that mode, and `research_check` runs its phases and gates. Add a line for it to the preset's `research-modes` skill and a spec like `tests/spark-pack.spec.ts`. Code changes only when a phase needs a kind of fact the requirement vocabulary does not have yet.
 
 -----
 
@@ -69,6 +76,7 @@ One service owns every project record in the `research_workbench` storage domain
 |---|---|
 | [`src/index.ts`](src/index.ts) | The service: project lifecycle, command dispatch, the per-project queue, run observation |
 | [`src/checks.ts`](src/checks.ts) | `research_check`: every base check, a mode's gates through the runner the service supplies, and phase progress from the mode's requirements |
+| [`src/progress.ts`](src/progress.ts) | The project's progress, merged report by report from `research_check`, and `standing`: where the project stands for the person, the brief and the header |
 | [`src/modes.ts`](src/modes.ts) | Mode packs: manifest validation, the registry, routes and the mode a project resolves to |
 | [`src/mode-skills.ts`](src/mode-skills.ts) | The skill provider that lists the skills of each project's mode |
 | [`src/gates.ts`](src/gates.ts) | Pack gates and scripts: running them with the platform Python and reading their findings |
@@ -127,7 +135,7 @@ Prefix-stable while the definitions and their visibility are unchanged.
 
 #### What the model sees
 
-Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode, route and the reason for them, autonomy, phase progress from the last check on that route, the skills each phase uses, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next unfinished phase, the mode's skills to load first and when to ask. Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`.
+Results are compact JSON: what the call produced (a message, paths, run views, a check report, literature items, source excerpts clipped to `maxSourceBytes`), never the whole project. `research_project current` returns the project brief: mode, route and the reason for them, the mode's `paperRoot`, autonomy, each phase's state (done, current, pending or deferred) with what its last check found missing, when the project was last checked and whether files changed since, the skills each phase uses, the last 20 decisions, every registered file, the last 60 sources, environments, the last 20 runs and the last compile, with guidance naming the next phase and its hint, deferred phases, the mode's skills to load first and when to ask. The phases are the same `standing` the research record shows the person. Failures are thrown errors that name what to fix, such as `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`.
 
 #### Token effect
 

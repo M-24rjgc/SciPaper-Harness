@@ -143,16 +143,22 @@ it('reports the mode and checks the assistant records, and changes only the auto
   expect(await page.getByRole('button', { name: 'Run the pipeline', exact: true }).count()).toBe(0)
   await autonomy.selectOption('automatic')
   await expect.poll(() => scaffold.ctx.research.getProject(projectId).autonomy).toBe('automatic')
-  // The assistant sets the mode and checks; the tab reports both.
+  // The assistant sets the mode and checks; the tab reports both, from the progress research_check records.
   await command({ action: 'set-mode', projectId, mode: 'spark-to-paper', route: 'proposal' })
   await command({ action: 'check', projectId })
-  expect(scaffold.ctx.research.getProject(projectId).lastCheck?.mode).toBe('spark-to-paper')
+  expect(scaffold.ctx.research.getProject(projectId).progress).toMatchObject({ mode: 'spark-to-paper', route: 'proposal' })
   // The project's file panel draws the same status while hidden; only the tab beside the conversation counts.
-  await page.getByText(/^Still open/).filter({ visible: true }).first().waitFor({ timeout: 30000 })
+  await page.getByText('Open issues', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 30000 })
+  await page.getByText(/^Checked /).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await page.getByRole('img', { name: 'Current phase', exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  // Each issue group names its check in the reader's language; the checks' own words wait behind Details.
+  await page.getByText('Details', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await saveFailureShot(page, 'research-tab-check')
-  // A decision the agent records reaches the tab on the next poll.
+  // A decision the agent records reaches the tab on the next poll; one that defers the experiments marks that phase.
   await command({ action: 'record-decision', projectId, question: 'Which dataset?', answer: 'The measured sample' })
   await page.getByText('The measured sample', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await command({ action: 'record-decision', projectId, question: 'Run the experiments here?', answer: 'Later, on the lab server', key: 'experiments-deferred' })
+  await page.getByText('Deferred', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
 })
 
 it.skipIf(!python)('executes a real local CPU task, collects metrics and exports the project', async () => {

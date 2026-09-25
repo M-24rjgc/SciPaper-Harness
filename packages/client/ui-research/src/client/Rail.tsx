@@ -1,25 +1,35 @@
 /**
  * The research record beside the conversation: the autonomy the person chose,
- * where the paper stands by its last check, what was decided, what the project
- * holds, and its tools. It reports; the assistant sets the mode and runs the
- * checks, so nothing here starts work. The only thing it changes is the
- * autonomy, which is the person's.
+ * where the paper stands (the host's `standing`, derived from the checks the
+ * assistant ran), what was decided, what the project holds, and its tools. It
+ * reports; the assistant sets the mode and runs the checks, so nothing here
+ * starts work. The only thing it changes is the autonomy, which is the
+ * person's. Every caption is the mode pack's or this package's own copy, never
+ * text written for the model.
  */
 import type { ReactNode } from 'react'
-import type { Autonomy, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { Autonomy, PhaseState, ResearchProject, ResearchStanding, StandingIssues } from '@deepseek-ai/dsh-research-workbench/types'
 import { useModes, useSessionProject, type SessionSeatProps, type WorkbenchProps } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { ResearchHeroMark } from './Hero.tsx'
-import { modePhases, phaseName } from './format.ts'
+import { checkedText, modePhases, packText } from './format.ts'
+import type { ResearchKey } from './locales.ts'
 import styles from './Rail.module.css'
 
 /** Runs that still occupy a supervisor, and therefore may still be moving. */
 const OPEN_RUN_STATUS = ['queued', 'running', 'unknown']
 /** The phase id both mode packs give their experiments; its presence on the route is what makes runs expected. */
 const EXPERIMENTS_PHASE = 'experiments'
-/** Open errors listed before the rest collapse into the count. */
-const VISIBLE_FINDINGS = 5
+/** Groups of open issues listed; the rest wait for the next check or the conversation. */
+const VISIBLE_ISSUE_GROUPS = 3
 const VISIBLE_DECISIONS = 5
+/** What a phase's mark says to a screen reader. */
+const PHASE_STATE_KEYS: Record<PhaseState, ResearchKey> = {
+  done: 'phaseDone', current: 'phaseCurrent', pending: 'phasePending', deferred: 'phaseDeferred',
+}
+const PHASE_MARKS: Record<Exclude<PhaseState, 'done'>, string | undefined> = {
+  current: styles.markCurrent, pending: styles.markPending, deferred: styles.markDeferred,
+}
 /** The access preset automatic autonomy runs under, and the one checkpoints return to. */
 const AUTONOMY_PRESET: Record<Autonomy, string> = { automatic: 'research-auto', checkpoints: 'workspace-write' }
 
@@ -65,47 +75,85 @@ function decisionAuthor(project: ResearchProject, by: 'user' | 'agent'): 'decisi
   return project.example === true ? 'exampleAuthor' : 'decisionByUser'
 }
 
-/** The mode's phases as the last check left them, with what still stands in each one's way. */
-function Phases(props: RailProps): ReactNode {
-  const { project, t } = props
-  const check = project.lastCheck
-  const modes = useModes(props)
-  if (modePhases(modes, project).length === 0) return null
-  if (!check || check.mode !== project.mode || check.route !== project.route || check.phases.length === 0) {
-    return <p className={styles.note}>{t('checkNever')}</p>
+/** One phase's mark: a check for done, a ring on the current phase, hollow for the rest. */
+function PhaseMark(props: { state: PhaseState; t: WorkbenchProps['t'] }): ReactNode {
+  const label = props.t(PHASE_STATE_KEYS[props.state])
+  if (props.state === 'done') {
+    return <svg className={styles.markDone} role="img" aria-label={label} viewBox="0 0 12 12"><path d="M2.5 6.4 5 8.8 9.5 3.4" /></svg>
   }
-  return <ol className={styles.spine}>
-    {check.phases.map(phase => <li key={phase.id} className={styles.stage}>
-      <span className={phase.done ? styles.dotDone : styles.dotPending}></span>
-      <span className={styles.stageBody}>
-        <span className={phase.done ? styles.stageName : `${styles.stageName} ${styles.stageNamePending}`}>{phaseName(modes, project.mode, phase.id, t)}</span>
-        {phase.missing.slice(0, 2).map(line => <span key={line} className={styles.caption}>{line}</span>)}
-      </span>
-    </li>)}
-  </ol>
+  return <span className={PHASE_MARKS[props.state]} role="img" aria-label={label}></span>
 }
 
-/** The errors the last check reported, each opening the file it names. */
-function Findings(props: RailProps): ReactNode {
+/** When the last check ran and whether a file changed after it; before any check, that there was none. */
+function CheckedLine(props: { standing: ResearchStanding; t: WorkbenchProps['t'] }): ReactNode {
+  const { standing, t } = props
+  if (standing.checkedAt === undefined) return <p className={styles.note}>{t('checkNever')}</p>
+  return <p className={styles.note}>
+    {checkedText(standing.checkedAt, Date.now(), t)}
+    {standing.changedSinceCheck === true && <span className={styles.changed}> · {t('changedSinceCheck')}</span>}
+  </p>
+}
+
+/** The mode's phases as the host reads them from the stored progress, the current one with what it lacks. */
+function Phases(props: RailProps): ReactNode {
+  const { project, t } = props
+  const standing = project.standing
+  if (standing === undefined || standing.phases.length === 0) return null
+  return <section className={styles.phases}>
+    <ol className={styles.spine}>
+      {standing.phases.map(phase => <li key={phase.id} className={styles.stage}>
+        <PhaseMark state={phase.state} t={t} />
+        <span className={styles.stageBody}>
+          <span className={phase.state === 'done' || phase.state === 'current' ? styles.stageName : `${styles.stageName} ${styles.stageNamePending}`}>
+            {packText(phase.label, t)}
+            {phase.state === 'deferred' && <span className={styles.deferred}>{t('phaseDeferred')}</span>}
+          </span>
+          {phase.state === 'current' && standing.hint !== undefined && <span className={styles.caption}>{packText(standing.hint, t)}</span>}
+          {phase.checkpoint && <span className={styles.caption}>{t('phaseCheckpoint')}</span>}
+        </span>
+      </li>)}
+    </ol>
+    <CheckedLine standing={standing} t={t} />
+  </section>
+}
+
+/** One check's issues, named in the reader's language: `引用 · 2 个错误`. */
+function issueName(group: StandingIssues, t: WorkbenchProps['t']): string {
+  const count = (n: number, one: ResearchKey, many: ResearchKey): string[] => n === 0 ? [] : [n === 1 ? t(one) : t(many, { n })]
+  const counts = [...count(group.errors, 'issueOneError', 'checkErrors'), ...count(group.warnings, 'issueOneWarning', 'checkWarnings')]
+  return [packText(group.label, t), ...counts].join(' · ')
+}
+
+/**
+ * What the latest checks found, in at most three groups. A group opens its
+ * file only while the file exists; the checks' own words stay behind Details.
+ */
+function Issues(props: RailProps): ReactNode {
   const { project, t } = props
   const opening = useAction()
-  const check = project.lastCheck
-  if (!check) return null
-  const errors = check.findings.filter(finding => finding.severity === 'error')
-  const warnings = check.findings.length - errors.length
+  const standing = project.standing
+  if (standing?.checkedAt === undefined) return null
+  const groups = standing.issues.slice(0, VISIBLE_ISSUE_GROUPS)
   return <section className={styles.block}>
-    <div className={styles.blockHead}>
-      {check.clean ? t('checkClean') : t('findings')}
-      <span className={styles.note}> {t('checkErrors', { n: errors.length })} · {t('checkWarnings', { n: warnings })}</span>
-    </div>
-    {errors.slice(0, VISIBLE_FINDINGS).map((finding, index) => {
-      const where = finding.file === undefined ? '' : `${finding.file}${finding.line === undefined ? '' : `:${finding.line}`}`
-      const file = finding.file
-      return <div key={index} className={styles.finding}>
-        <span className={styles.findingText}>{finding.message}</span>
-        {file !== undefined && <button type="button" className={styles.link} onClick={() => { opening.start(() => { props.openFile(project.root, file) }) }}>{where}</button>}
+    <div className={styles.blockHead}>{t('issuesTitle')}</div>
+    {groups.length === 0 && <p className={styles.note}>{t('issuesNone')}</p>}
+    {groups.map((group) => {
+      const name = issueName(group, t)
+      const file = group.file
+      return <div key={group.check} className={styles.issue}>
+        {file === undefined
+          ? <span className={styles.issueName}>{name}</span>
+          : <button type="button" className={styles.issueOpen} title={t('issueOpenFile', { file })} onClick={() => { opening.start(() => { props.openFile(project.root, file) }) }}>{name}</button>}
+        <details className={styles.details}>
+          <summary className={styles.detailsToggle}>{t('issueDetails')}</summary>
+          {group.findings.map((finding, index) => <p key={index} className={styles.findingText}>
+            {finding.message}
+            {finding.file !== undefined && <span className={styles.where}> {finding.file}{finding.line === undefined ? '' : `:${finding.line}`}</span>}
+          </p>)}
+        </details>
       </div>
     })}
+    {standing.phases.length === 0 && <CheckedLine standing={standing} t={t} />}
     <ActionError t={t} error={opening.error} />
   </section>
 }
@@ -155,7 +203,7 @@ function Tools(props: RailProps): ReactNode {
 }
 
 /**
- * How a project is run and where it stands: autonomy, phases, open errors and
+ * How a project is run and where it stands: autonomy, phases, open issues and
  * decisions. The rail shows it beside a conversation; the full workbench shows
  * it from outside one.
  */
@@ -163,7 +211,7 @@ export function ProjectStatus(props: RailProps): ReactNode {
   return <>
     <AutonomyField {...props} />
     <Phases {...props} />
-    <Findings {...props} />
+    <Issues {...props} />
     <Decisions {...props} />
   </>
 }

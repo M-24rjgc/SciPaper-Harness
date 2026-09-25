@@ -8,7 +8,7 @@ Source: [`packages/research/workbench/src/types.ts`](../../packages/research/wor
 
 ## Project record
 
-A `ResearchProject` binds one canonical Workspace directory. It carries the evidence (imported sources, literature, collected run outputs), claims and their evidence links, registered files with revisions and inputs, environments, experiment runs, compilations, page renders and visual reviews, decisions, and the last check report. Three settings shape how the agent works:
+A `ResearchProject` binds one canonical Workspace directory. It carries the evidence (imported sources, literature, collected run outputs), claims and their evidence links, registered files with revisions and inputs, environments, experiment runs, compilations, page renders and visual reviews, decisions (each with an optional `key`, a short slug such as `experiments-deferred` naming what it settles), and the progress its checks established ([below](#progress-and-standing)). Three settings shape how the agent works:
 
 | Field | Values | Meaning |
 |---|---|---|
@@ -29,13 +29,15 @@ A mode pack is a directory under `packages/research/workbench/runtime/modes/<id>
 | `id`, `order`, `name`, `summary` | Identity and display, with names in English and Chinese |
 | `source` | The upstream repository, version and licence the pack follows |
 | `entry`, `preload` | The skill that runs the mode, and skills loaded before it |
+| `paperRoot` | The project folder the mode's paper sources live in: `paper`, or `.` for the project root |
+| `reviewAgainst` | Optional project-relative glob: only a matching file changed after the newest review makes the review out of date |
 | `routes`, `defaultRoute` | Alternative paths through the mode |
-| `phases` | Each phase's label, routes, skills, whether it is a checkpoint, the checks that decide it, and the facts it requires |
-| `gates`, `scripts` | Python scripts the pack's checks run, and scripts the agent may run |
+| `phases` | Each phase's label, routes, skills, whether it is a checkpoint, the checks that decide it, the facts it requires (each with a `hint`, one sentence in English and Chinese saying what is missing), and an optional `deferrable` decision key |
+| `gates`, `scripts` | Python scripts the pack's checks run, each gate with a `label` in English and Chinese, and scripts the agent may run |
 
 The general mode is a pack with no phases and no skills: every research tool, no pipeline. A pack's skills reach the agent through a skill provider mounted with the research tools: it lists the skills of the mode of the project containing the session's working directory, so switching the mode swaps the catalog in the live session. `research/mode` tells the provider when a project's mode changed.
 
-Phase requirements use a fixed set of facts: a file glob (`file`, with an optional `min`), `manuscript`, `bibEntries`, `sections`, `figures`, `diagram`, `pagesInspected`, `reviewCurrent`, `runsCollected`, `noActiveRuns`, `dataEvidence` and `resultsOrData`. A requirement given as a list holds when any one of them holds.
+Phase requirements use a fixed set of facts: a file glob (`file`, with an optional `min`), `manuscript`, `bibEntries`, `sections`, `figures`, `diagram`, `pagesInspected`, `reviewCurrent`, `runsCollected`, `noActiveRuns`, `dataEvidence` and `resultsOrData`. A requirement given as a list holds when any one of them holds. A requirement is named within its phase by its conditions (`requirementKey`: `file:story.json`, `sections>=4`, alternatives joined by ` | `), which must be unique in the phase; checks report unmet requirements under these keys. A `hint`, a gate `label` and `paperRoot` are required, so a pack without them is skipped with a warning.
 
 A gate is a Python script in the pack. It runs with the platform Python (`python -I -X utf8`, no shell, an argument vector) in the project root, and its last line of output is `{"findings": [{severity, message, file?, line?}]}`; anything else it prints becomes one error finding. A check never installs Python: without it, each gate reports that it could not run. `research_artifact` run-script runs a script the pack declares for the project's route the same way and returns what it printed. The spark-to-paper pack runs its upstream linters unchanged through such an adapter; its `NOTICE.md` lists what was taken, patched and replaced.
 
@@ -71,6 +73,8 @@ Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. W
 
 `research_check` runs deterministic checks over the files on disk and the ledger, and reports; it is the definition of done, not a permission. The base checks below run in every mode; a pack adds its phases and gates. A phase is done when its requirements hold and its checks carry no errors. The whole paper (scope `all`) is clean only when no check reports an error and every phase of its mode on its route is done.
 
+A scope names a phase before a base check or gate of the same id, and a phase scope runs the gates that decide the phase. Each report records `gatesRun`, the gates it ran, and gives each phase its `unmet` keys (the unmet requirements, then `errors:<check>` for each deciding check with errors) beside the English `missing` lines the agent reads. A finding whose file does not exist on disk loses its file and line. With a pack's `reviewAgainst`, `review` compares the newest review with the files matching that glob only: spark-to-paper reviews `sections/*.tex`, so assembling `main.tex` in its latex phase leaves the review current.
+
 | Check | Reports |
 |---|---|
 | `cite` | citation keys without a bibliography entry, incomplete entries, entries with no venue or not verified by a provider |
@@ -83,6 +87,29 @@ Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. W
 | `stale` / `claims` | out-of-date files and sources, contradicted claims, evidence links that no longer resolve |
 | `structure` | missing inputs; in a mode with phases, missing expected sections and a generic document class |
 | `prose` | warnings only: machine-written tell phrases, defensive framing, stacked hedges, formulaic contrasts, em-dash overuse and promotional words, in English and Chinese (spark-to-paper's AI-tell list with CCFA's prose guardrails) |
+
+<a id="progress-and-standing"></a>
+## Progress and standing
+
+`research_check` is the only writer of `project.progress` (`ResearchProgress`): the mode and route it describes, each phase's `done`, `unmet` keys and `checkedAt`, each check's findings and `checkedAt`, and `full`, the summary of the last scope-`all` check. Each report is folded in by one rule:
+
+- a phase changes only when the report ran every gate that decides it, so a phase check never marks another phase done on partial evidence;
+- the findings of every check the report ran are replaced;
+- `full` changes only with scope `all`;
+- a report for another mode or route starts the progress afresh.
+
+`lastCheck` is still written, for readers of earlier versions. `export` runs its own check for the package's report and records nothing. A record stored before progress existed reads its last scope-`all` `lastCheck` as its progress, matching that report's English lines to the pack's requirements, so the shipped examples show their phases unchanged.
+
+`standing(project)` derives where a project stands (`ResearchStanding`) for each snapshot and for the agent's brief, and never stores it. Progress stored for another mode or route counts as none. It holds:
+
+- the phases of the mode on its route: `done`, `current` (the first that is neither done nor deferred), `pending` or `deferred`, each with its checkpoint flag and the pack's hints for what its last check found unmet;
+- the next phase and its first hint;
+- `checkedAt`, the time of the last check;
+- `changedSinceCheck`: whether a project file outside `.research`, `exports`, `.git` and `node_modules` is newer than that check, listed at most every 30 seconds per project and `unknown` past 5,000 files;
+- `finished`: the full check is clean, every phase is done, and nothing changed since the full check;
+- the open issues: one group per check with findings, groups with errors first, named by the gate's `label` or the base check's built-in name, each with the first of its files that exists.
+
+A phase that declares `deferrable: <key>` is deferred while it is not done and the project has a decision with that key (`record-decision` with `key`). spark-to-paper's experiments phase declares `experiments-deferred`. A deferred phase is never done, so a project with one is never finished; once the phase's own check passes it is done.
 
 ## What is refused
 
@@ -116,9 +143,17 @@ One durable owner for each project's evidence, files, decisions and execution re
 ```ts cordis-catalog
 /**
  * Read detached project snapshots and non-secret component settings.
- * @returns every project without source bodies, the preferences and the component status.
+ * @returns every project without source bodies and with where it stands, the preferences and the component status.
  */
 @Remote async snapshot(): Promise<ResearchSnapshot>
+
+/**
+ * Where a project stands, derived from its stored progress, its mode and its
+ * files; never stored. File times are listed at most every thirty seconds.
+ * @param project - the project record.
+ * @returns its phases, the next one and what it lacks, the open issues, and whether files changed since the last check.
+ */
+standing(project: ResearchProject): Promise<ResearchStanding>
 
 /**
  * Read durable operation handles, including interrupted calls from prior launches.

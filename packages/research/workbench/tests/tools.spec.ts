@@ -4,13 +4,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { projectBrief, registerResearchTools } from '../src/tools.ts'
 import { newProject } from '../src/project.ts'
-import { ModeRegistry, type ModePack } from '../src/modes.ts'
+import { ModeRegistry, type ModePack, type ResolvedMode } from '../src/modes.ts'
+import { projectStanding } from '../src/progress.ts'
 import type { ResearchWorkbench } from '../src/index.ts'
-import type { ProjectId, ResearchCommand, ResearchProject, ResearchTask } from '../src/types.ts'
+import type { ProjectId, ResearchCommand, ResearchProject, ResearchStanding, ResearchTask } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 let modes: ModeRegistry
 beforeAll(async () => { modes = await ModeRegistry.load([join(import.meta.dirname, '../runtime/modes')], { warn: (...args: unknown[]) => { throw new Error(args.join(' ')) } }) })
+
+/** Where a project stands, over files that never changed and all exist. */
+const standingOf = (project: ResearchProject, mode: ResolvedMode = modes.resolve(project)): Promise<ResearchStanding> =>
+  projectStanding(project, mode, { newest: async () => 0, exists: () => true })
 
 interface RegisteredTool {
   name: string
@@ -40,6 +45,7 @@ function harness() {
     execute: async (request: ResearchCommand, _signal: AbortSignal, actor: string) => { executed.push({ request, actor }); return { message: `did ${request.action}`, project } },
     createProject: async (request: { root: string }, sessionId?: string) => { created.push({ request, sessionId }); return newProject({ ...request, title: 't', brief: '' }, 'w' as WorkspaceId) },
     tasks: () => tasks,
+    standing: (item: ResearchProject) => standingOf(item),
     modes,
   } as unknown as ResearchWorkbench
   const tools = new Map<string, RegisteredTool>()
@@ -65,12 +71,13 @@ describe('research tools find the project from the working directory', () => {
     type Brief = { id: string; guide: string[]; mode: string; route: string; phases: unknown[] }
     const brief = await h.call('research_project', { action: 'current' }, `${root}/paper`) as Brief
     expect(brief.id).toBe(h.project.id)
-    expect(brief).toMatchObject({ mode: 'spark-to-paper', route: 'proposal' })
-    expect(brief.guide[0]).toMatch(/^Mode spark-to-paper \(route proposal\): plan → cite → .* → submission\./)
+    expect(brief).toMatchObject({ mode: 'spark-to-paper', route: 'proposal', paperRoot: '.', checkedAt: null, changedSinceCheck: false, finished: false })
+    expect(brief.guide[0]).toMatch(/^Mode spark-to-paper \(route proposal\): plan → cite → .* → submission\. Next phase: plan\./)
     expect(brief.guide[0]).toMatch(/ Checkpoint before: experiments\.$/)
     expect(brief.guide[2]).toBe('Load the ts-paper skill before working in this mode.')
     expect(brief.guide[3]).toMatch(/ask_user_question/)
-    expect(brief.phases[0]).toEqual({ id: 'plan', done: false, missing: ['Not checked yet'] })
+    expect(brief.phases[0]).toEqual({ id: 'plan', state: 'current', done: false, checkpoint: false, missing: ['Not checked yet'] })
+    expect(brief.phases[1]).toMatchObject({ id: 'cite', state: 'pending' })
     await expect(h.call('research_project', { action: 'current' }, process.platform === 'win32' ? 'C:\\elsewhere' : '/elsewhere')).rejects.toThrow(/No research project contains/)
     await expect(h.call('research_project', { action: 'current' }, null)).rejects.toThrow(/working directory/)
     await expect(h.call('research_project', { action: 'current', projectId: h.foreign.id })).rejects.toThrow(/does not belong/)
@@ -109,11 +116,14 @@ describe('research tools find the project from the working directory', () => {
     const result = await h.call('research_project', { action: 'record-decision', question: 'Q?', answer: 'A' })
     expect(result).toEqual({ message: 'did record-decision' })
     await h.call('research_project', { action: 'record-decision', question: 'Go?', answer: 'Yes', decidedBy: 'user' })
+    await h.call('research_project', { action: 'record-decision', question: 'Run experiments?', answer: 'Not here', key: 'experiments-deferred' })
+    await expect(h.call('research_project', { action: 'record-decision', question: 'Q?', answer: 'A', key: 'Not A Slug' })).rejects.toThrow(/lowercase words/)
     expect(h.executed.map(item => [item.request, item.actor])).toEqual([
       [{ action: 'set-mode', projectId: h.project.id, mode: 'spark-to-paper', route: 'data', reason: 'data exists' }, 'agent'],
       [{ action: 'set-autonomy', projectId: h.project.id, autonomy: 'automatic' }, 'agent'],
       [{ action: 'record-decision', projectId: h.project.id, question: 'Q?', answer: 'A' }, 'agent'],
       [{ action: 'record-decision', projectId: h.project.id, question: 'Go?', answer: 'Yes', decidedBy: 'user' }, 'agent'],
+      [{ action: 'record-decision', projectId: h.project.id, question: 'Run experiments?', answer: 'Not here', key: 'experiments-deferred' }, 'agent'],
     ])
   })
 
@@ -175,27 +185,33 @@ describe('reaching outside the project asks the user through DSH approval', () =
 })
 
 describe('the project brief the model reads', () => {
-  it('describes a general automatic project and the next unfinished phase of a pack mode', () => {
+  it('describes a general automatic project and the next unfinished phase of a pack mode', async () => {
     const project: ResearchProject = newProject({ root, title: 'T', brief: '', autonomy: 'automatic' }, 'w' as WorkspaceId)
-    const brief = (): ReturnType<typeof projectBrief> => projectBrief(project, modes.resolve(project))
-    const general = brief() as { guide: string[]; mode: string; route: null; phases: unknown[]; lastCompile: null }
-    expect(general).toMatchObject({ mode: 'general', route: null, phases: [], lastCompile: null })
+    const brief = async (): Promise<ReturnType<typeof projectBrief>> =>
+      projectBrief(project, modes.resolve(project), await standingOf(project))
+    const general = await brief() as { guide: string[]; mode: string; route: null; phases: unknown[]; lastCompile: null }
+    expect(general).toMatchObject({ mode: 'general', route: null, paperRoot: 'paper', phases: [], lastCompile: null })
     expect(general.guide[0]).toMatch(/^Mode general: no pipeline\. .*suggest a mode \(research_project modes\)/)
     expect(general.guide[1]).toMatch(/Autonomy automatic/)
     project.mode = 'gone'
-    expect((brief() as { guide: string[] }).guide[0]).toMatch(/"gone" is not installed/)
+    expect((await brief() as { guide: string[] }).guide[0]).toMatch(/"gone" is not installed/)
     project.mode = 'spark-to-paper'
     project.route = 'data'
-    project.lastCheck = { clean: false, scope: 'all', mode: 'spark-to-paper', route: 'data', phases: [{ id: 'data', done: true, missing: [] }, { id: 'plan', done: false, missing: ['x'] }], findings: [], checkedAt: '' }
+    const at = '2026-09-25T10:00:00.000Z'
+    project.progress = {
+      mode: 'spark-to-paper', route: 'data', findings: {},
+      phases: { data: { done: true, unmet: [], checkedAt: at }, plan: { done: false, unmet: ['file:blueprint.json', 'errors:blueprint-lint'], checkedAt: at } },
+    }
     project.compilations.push({ artifactId: 'a' as never, artifactRevision: 1, inputDigest: 'd', engine: 'pdflatex', status: 'completed', pdfPath: 'x.pdf', logPath: 'l', diagnostics: [], createdAt: '' })
     project.decisions.push({ id: 'd', question: 'Q', answer: 'A', by: 'user', rationale: '', at: '' })
     project.artifacts.push({ id: 'a' as never, path: 'paper/main.tex', kind: 'manuscript', revision: 2, sha256: 's', evidence: [], claimIds: [], inputArtifacts: [], stale: false, updatedAt: '', author: 'agent' })
     project.evidence.push({ id: 'e' as never, title: 'data', kind: 'file', path: 'p', sha256: 's', revision: 1, importedAt: '', chunks: [{ text: 'secret body', locator: {} }], coverage: 'data', verified: true, stale: false })
     project.environments.push({ id: 'env' as never, name: 'env', kind: 'uv', target: 'local', python: 'py', requirements: [], fingerprint: 'f', status: 'ready', details: 'long details', isDefault: true })
     project.experiments.push({ id: 'r' as never, spec: { name: 'train' } as never, status: 'running', createdAt: '', updatedAt: '', directory: '', inputRevision: 1, environmentFingerprint: '', metrics: {}, message: 'm', snapshotPath: '', collected: false })
-    const routed = brief() as {
+    const routed = await brief() as {
       guide: string[]
       phases: unknown[]
+      checkedAt: string
       phaseSkills: Record<string, string[]>
       lastCompile: unknown
       decisions: unknown[]
@@ -204,8 +220,15 @@ describe('the project brief the model reads', () => {
       environments: unknown[]
       experiments: unknown[]
     }
-    expect(routed.guide[0]).toMatch(/Next unfinished phase: plan\.$/)
-    expect(routed.phases).toHaveLength(2)
+    // The next phase and what it lacks are the ones the person's record shows, in the pack's own words.
+    expect(routed.guide[0]).toMatch(/ Next phase: plan \(There is no paper blueprint yet\)\.$/)
+    expect(routed.phases).toHaveLength(9)
+    expect(routed.phases.slice(0, 3)).toEqual([
+      { id: 'data', state: 'done', done: true, checkpoint: false, missing: [] },
+      { id: 'plan', state: 'current', done: false, checkpoint: false, missing: ['There is no paper blueprint yet', 'Fix the errors in Blueprint check'] },
+      { id: 'cite', state: 'pending', done: false, checkpoint: false, missing: ['Not checked yet'] },
+    ])
+    expect(routed.checkedAt).toBe(at)
     expect(routed.phaseSkills.data).toEqual(['ts-paper-data', 'results-ingest'])
     expect(routed.lastCompile).toEqual({ status: 'completed', pdfPath: 'x.pdf' })
     expect(routed.decisions).toEqual([{ question: 'Q', answer: 'A', by: 'user', rationale: '' }])
@@ -213,31 +236,43 @@ describe('the project brief the model reads', () => {
     expect(JSON.stringify(routed.evidence)).not.toContain('secret body')
     expect(JSON.stringify(routed.environments)).not.toContain('long details')
     expect(routed.experiments).toEqual([{ id: 'r', status: 'running', message: 'm', metrics: {}, name: 'train' }])
-    project.lastCheck = { ...project.lastCheck, phases: [{ id: 'data', done: true, missing: [] }] }
-    expect((brief() as { guide: string[] }).guide[0]).not.toMatch(/Next/)
-    // A check made on another route no longer describes this one.
+    // A current phase that was never checked has no hint to give.
+    project.progress.phases.plan = { done: true, unmet: [], checkedAt: at }
+    expect((await brief() as { guide: string[] }).guide[0]).toMatch(/ Next phase: cite\.$/)
+    // A phase deferred by a recorded decision is named as deferred, and never as done.
+    project.route = 'proposal'
+    project.progress = { mode: 'spark-to-paper', route: 'proposal', findings: {}, phases: {} }
+    for (const phase of ['plan', 'cite', 'write', 'refine', 'review', 'figures', 'latex', 'submission']) project.progress.phases[phase] = { done: true, unmet: [], checkedAt: at }
+    project.decisions.push({ id: 'k', question: 'Run experiments here?', answer: 'No GPU', by: 'user', rationale: '', at, key: 'experiments-deferred' })
+    const deferred = await brief() as { guide: string[]; phases: { id: string; state: string; done: boolean }[] }
+    expect(deferred.guide[0]).toMatch(/ → submission\. Deferred by a recorded decision: experiments\. Checkpoint before: experiments\.$/)
+    expect(deferred.phases.find(phase => phase.id === 'experiments')).toMatchObject({ state: 'deferred', done: false, missing: ['Not checked yet'] })
+    // Progress stored for another route no longer describes this one.
     project.route = 'idea'
-    const rerouted = brief() as { guide: string[]; phases: { missing: string[] }[] }
-    expect(rerouted.guide[0]).not.toMatch(/Next/)
+    const rerouted = await brief() as { guide: string[]; phases: { missing: string[] }[] }
+    expect(rerouted.guide[0]).toMatch(/ Next phase: story\./)
     expect(rerouted.phases[0]?.missing).toEqual(['Not checked yet'])
   })
 
-  it('names the skills a pack loads first, and a pack route without phases', () => {
+  it('names the skills a pack loads first, and a pack route without phases', async () => {
     const pack = (id: string, extra: Partial<ModePack>): ModePack => ({
-      id, order: 5, name: { en: id, zh: id }, summary: { en: 's', zh: 's' }, preload: [], routes: [], phases: [], gates: [], scripts: [],
+      id, order: 5, name: { en: id, zh: id }, summary: { en: 's', zh: 's' }, paperRoot: 'paper', preload: [], routes: [], phases: [], gates: [], scripts: [],
       directory: '', skills: [], ...extra,
     })
     const general = pack('general', {})
     const registry = new ModeRegistry([general, pack('family', { preload: ['first', 'second'], entry: 'lead' }), pack('solo', { entry: 'lead' })])
     const project: ResearchProject = newProject({ root, title: 'T', brief: '' }, 'w' as WorkspaceId)
+    const briefIn = async (modes: ModeRegistry): Promise<{ guide: string[] }> => {
+      const mode = modes.resolve(project)
+      return projectBrief(project, mode, await standingOf(project, mode)) as { guide: string[] }
+    }
     project.mode = 'family'
-    const family = projectBrief(project, registry.resolve(project)) as { guide: string[] }
-    expect(family.guide.slice(0, 2)).toEqual(['Mode family: no pipeline on this route; work as the mode\'s skills direct and run the relevant checks.', 'Load the first, then second, then lead skills before working in this mode.'])
+    expect((await briefIn(registry)).guide.slice(0, 2)).toEqual(['Mode family: no pipeline on this route; work as the mode\'s skills direct and run the relevant checks.', 'Load the first, then second, then lead skills before working in this mode.'])
     project.mode = 'solo'
-    expect((projectBrief(project, registry.resolve(project)) as { guide: string[] }).guide[1]).toBe('Load the lead skill before working in this mode.')
+    expect((await briefIn(registry)).guide[1]).toBe('Load the lead skill before working in this mode.')
     expect(() => new ModeRegistry([pack('solo', {})])).toThrow(/general mode pack is missing/)
     const flat = new ModeRegistry([general, pack('flat', { phases: [{ id: 'p', label: { en: 'P', zh: 'P' }, skills: [], checkpoint: false, checks: [], requires: [] }] })])
     project.mode = 'flat'
-    expect((projectBrief(project, flat.resolve(project)) as { guide: string[] }).guide[0]).toBe('Mode flat: p.')
+    expect((await briefIn(flat)).guide[0]).toBe('Mode flat: p. Next phase: p.')
   })
 })

@@ -20,6 +20,8 @@ source:
   license: MIT
 entry: ccf-pipeline-orchestrator
 preload: [ccf-humanization, ccf-common]
+# The manuscript folder the CCFA skills write (ccfa.yaml records paper/main.tex).
+paperRoot: paper
 routes:
   - id: full-paper
     name: { en: Full paper, zh: 完整论文 }
@@ -51,6 +53,7 @@ phases:
     requires:
       - when: { file: ccfa.yaml }
         message: Scaffold the project — ccfa.yaml from the template with the project and venue filled in, and the venue template applied (ccf-project-scaffolder)
+        hint: { en: The project is not set up yet, zh: 还没有搭好项目框架 }
   - id: idea
     label: { en: Idea, zh: 想法 }
     routes: [full-paper]
@@ -58,8 +61,10 @@ phases:
     requires:
       - when: { file: "ccfa-workfiles/ideas/*/idea-card.md" }
         message: Develop the direction into an idea card (ccf-idea-optimizer) at ccfa-workfiles/ideas/<idea>/idea-card.md
+        hint: { en: There is no idea card yet, zh: 还没有想法卡 }
       - when: { file: "ccfa-workfiles/ideas/*/idea-review.md" }
         message: Review the idea concept-only (ccf-idea-reviewer) and save the report beside the card as idea-review.md
+        hint: { en: The idea has not been reviewed yet, zh: 想法还没有评审 }
   - id: literature
     label: { en: Literature, zh: 文献 }
     routes: [full-paper]
@@ -67,6 +72,7 @@ phases:
     requires:
       - when: { file: "ccfa-workfiles/literature/*/papers.md" }
         message: Search and verify the closest work (ccf-literature-searcher) into ccfa-workfiles/literature/<topic>/papers.md, importing each paper you will cite with literature-import
+        hint: { en: The closest work is not searched and verified yet, zh: 还没有检索和核实最相关的工作 }
   - id: design
     label: { en: Experiment design, zh: 实验设计 }
     routes: [full-paper]
@@ -74,6 +80,7 @@ phases:
     requires:
       - when: { file: experiments/design.md }
         message: Design the smallest sufficient experiment package (ccf-experiment-designer) in experiments/design.md — claim-evidence matrix, baselines, metrics, ablations, execution priority
+        hint: { en: There is no experiment design yet, zh: 还没有实验设计 }
   - id: experiments
     label: { en: Experiments, zh: 实验 }
     routes: [full-paper]
@@ -82,9 +89,12 @@ phases:
     requires:
       - when: resultsOrData
         message: Run the designed experiments and collect them (research_experiment), or import the author's measured results
+        hint: { en: There are no experiment results yet, zh: 还没有实验结果 }
       - when: noActiveRuns
+        hint: { en: Experiments are still running, zh: 还有实验在运行 }
       - when: { file: "experiments/results.*" }
         message: Write experiments/results.* from the collected metrics with a script, never by hand, and import it as data evidence
+        hint: { en: The results file is not produced from the runs yet, zh: 还没有用实验结果生成结果文件 }
   - id: diagnose
     label: { en: Diagnosis, zh: 诊断评审 }
     routes: [manuscript-improvement]
@@ -92,8 +102,10 @@ phases:
     requires:
       - when: manuscript
         message: Bring the manuscript into the project (its .tex sources, or import the PDF as evidence and rebuild the sources)
+        hint: { en: The manuscript is not in the project yet, zh: 项目里还没有稿件 }
       - when: { file: "ccfa-review-reports/*-review.md" }
         message: Review the manuscript (ccf-paper-reviewer, full mode) into ccfa-review-reports/<paper-slug>-<venue>-review.md
+        hint: { en: The manuscript has not been diagnosed yet, zh: 稿件还没有做诊断评审 }
   - id: ledger
     label: { en: Revision ledger, zh: 修订台账 }
     routes: [post-review-response]
@@ -101,6 +113,7 @@ phases:
     requires:
       - when: { file: reviews/revision-ledger.md }
         message: Import the reviews and parse every comment into reviews/revision-ledger.md (ccf-rebuttal-writer, revision-ledger mode)
+        hint: { en: The reviews are not in a revision ledger yet, zh: 审稿意见还没有整理成修订台账 }
   - id: response
     label: { en: Response, zh: 回复 }
     routes: [post-review-response]
@@ -108,6 +121,7 @@ phases:
     requires:
       - when: { file: "ccfa-workfiles/responses/*/response.{tex,md}" }
         message: Draft the rebuttal or response letter (ccf-rebuttal-writer) at ccfa-workfiles/responses/<paper>/response.tex or .md, promising only what the ledger holds
+        hint: { en: There is no response to the reviews yet, zh: 还没有写审稿回复 }
   - id: writing
     label: { en: Writing, zh: 写作 }
     routes: [full-paper, manuscript-improvement]
@@ -116,7 +130,9 @@ phases:
     requires:
       - when: manuscript
         message: Write the manuscript in the venue template (ccf-paper-writer, draft mode)
+        hint: { en: The manuscript is not written in the venue template yet, zh: 还没有按会议模板写出稿件 }
       - when: pagesInspected
+        hint: { en: The compiled pages have not been looked at yet, zh: 编译出的页面还没有逐页看过 }
   - id: revision
     label: { en: Revision, zh: 修改 }
     routes: [post-review-response]
@@ -124,7 +140,9 @@ phases:
     checks: [revision-ledger, compile, cite, placeholders, visual]
     requires:
       - when: manuscript
+        hint: { en: The manuscript is not in the project yet, zh: 项目里还没有稿件 }
       - when: pagesInspected
+        hint: { en: The compiled pages have not been looked at yet, zh: 编译出的页面还没有逐页看过 }
   - id: visuals
     label: { en: Figures, zh: 图表 }
     routes: [full-paper]
@@ -133,6 +151,7 @@ phases:
     requires:
       - when: diagram
         message: Compose the method figure (ccf-visual-composer — a gpt-image-2 draft, then an editable SVG or draw.io figure exported to a vector PDF) and include it in the paper
+        hint: { en: There is no method figure yet, zh: 还没有方法图 }
   - id: integrity
     label: { en: Integrity, zh: 诚信审计 }
     routes: [full-paper, manuscript-improvement]
@@ -141,6 +160,7 @@ phases:
     requires:
       - when: { file: ccfa-workfiles/checks/integrity/audit.md }
         message: Audit claims, numbers and citations (ccf-integrity-auditor, full mode) into ccfa-workfiles/checks/integrity/audit.md
+        hint: { en: The integrity audit has not been done yet, zh: 还没有做诚信审计 }
   - id: review
     label: { en: Review, zh: 评审 }
     routes: [full-paper, manuscript-improvement]
@@ -149,6 +169,7 @@ phases:
     requires:
       - when: { file: "ccfa-review-reports/*-review.md" }
         message: Review the paper (ccf-paper-reviewer) into ccfa-review-reports/<paper-slug>-<venue>-review.md
+        hint: { en: There is no review report yet, zh: 还没有评审报告 }
   - id: submission
     label: { en: Submission, zh: 投稿 }
     routes: [full-paper, manuscript-improvement, post-review-response]
@@ -157,25 +178,32 @@ phases:
     requires:
       - when: { file: submission/checks.md }
         message: Check the venue rules and the package (ccf-submission-checker, full mode) into submission/checks.md
+        hint: { en: The submission checks have not been done yet, zh: 还没有做投稿检查 }
       - when: pagesInspected
+        hint: { en: The compiled pages have not been looked at yet, zh: 编译出的页面还没有逐页看过 }
 gates:
   - id: ccfa-yaml
+    label: { en: Project state file, zh: 项目状态文件 }
     script: gates/run_gate.py
     args: [yaml, --root, "{root}"]
     routes: [full-paper, manuscript-improvement, post-review-response]
   - id: review-report
+    label: { en: Review report, zh: 评审报告 }
     script: gates/run_gate.py
     args: [review, --root, "{root}"]
     routes: [full-paper, manuscript-improvement]
   - id: revision-ledger
+    label: { en: Revision ledger, zh: 修订台账 }
     script: gates/run_gate.py
     args: [ledger, --root, "{root}"]
     routes: [post-review-response]
   - id: submission-checks
+    label: { en: Submission checks, zh: 投稿检查 }
     script: gates/run_gate.py
     args: [submission, --root, "{root}"]
     routes: [full-paper, manuscript-improvement, post-review-response]
   - id: path-privacy
+    label: { en: Path privacy, zh: 路径隐私 }
     script: gates/run_gate.py
     args: [privacy, --root, "{root}"]
     routes: [full-paper, manuscript-improvement, post-review-response]

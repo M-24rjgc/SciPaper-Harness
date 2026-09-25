@@ -117,8 +117,11 @@ const visualReviewSchema = z.object({
   inputDigest: z.string().optional(),
   sessionId: z.string().optional(), findings: z.string(), createdAt: id,
 })
+/** A decision key: lowercase words joined by hyphens, such as `experiments-deferred`. */
+const decisionKey = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase words joined by hyphens, such as experiments-deferred')
 const decisionSchema = z.object({
   id, question: z.string().min(1), answer: z.string().min(1), by: z.enum(['user', 'agent']), rationale: z.string(), at: id,
+  key: decisionKey.optional(),
 })
 // Mode, route, phase and check ids are stored as plain strings: which packs are
 // installed is the registry's business, and a record must still open when a
@@ -127,10 +130,18 @@ const findingSchema = z.object({
   check: id, severity: z.enum(['error', 'warning']), message: z.string(),
   file: z.string().optional(), line: integer.optional(),
 })
+// Reports stored before requirement keys and gatesRun existed read with none.
 const checkReportSchema = z.object({
   clean: z.boolean(), scope: z.string(), mode: z.string().optional(), route: z.string().optional(),
-  phases: z.array(z.object({ id, done: z.boolean(), missing: z.array(z.string()) })),
+  gatesRun: z.array(z.string()).default([]),
+  phases: z.array(z.object({ id, done: z.boolean(), missing: z.array(z.string()), unmet: z.array(z.string()).default([]) })),
   findings: z.array(findingSchema), checkedAt: id,
+})
+const progressSchema = z.object({
+  mode: id, route: z.string().optional(),
+  phases: z.record(z.string(), z.object({ done: z.boolean(), unmet: z.array(z.string()), checkedAt: id })),
+  findings: z.record(z.string(), z.object({ items: z.array(findingSchema), checkedAt: id })),
+  full: z.object({ clean: z.boolean(), errors: integer, warnings: integer, checkedAt: id }).optional(),
 })
 
 const projectSchema = z.object({
@@ -149,6 +160,7 @@ const projectSchema = z.object({
   compilations: z.array(compilationSchema),
   visualReviews: z.array(visualReviewSchema),
   lastCheck: checkReportSchema.optional(),
+  progress: progressSchema.optional(),
   sessionId: z.string().optional(),
 })
 
@@ -342,7 +354,7 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ ...base, action: z.literal('set-autonomy'), autonomy: z.enum(autonomies) }),
   z.object({
     ...base, action: z.literal('record-decision'), question: z.string().trim().min(1), answer: z.string().trim().min(1),
-    rationale: z.string().optional(), decidedBy: z.enum(['user', 'agent']).optional(),
+    rationale: z.string().optional(), decidedBy: z.enum(['user', 'agent']).optional(), key: decisionKey.optional(),
   }),
   z.object({ ...base, action: z.literal('check'), scope: z.string().optional() }),
   z.object({ ...base, action: z.literal('import'), paths: z.array(id).min(1).max(100) }),

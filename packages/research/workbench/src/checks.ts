@@ -7,19 +7,20 @@
  * and its checks carry no errors — whether to keep working is the agent's
  * call, guided by its skills.
  */
+import { existsSync } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { join, posix } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { errorText, projectPath, readText } from './files.ts'
 import {
   bibliographyFiles, citations, documentClass, findMainManuscript, flattenPaper, graphicReferences,
   listProjectFiles, originAt, paperDigest, paperModifiedAt, parseBibliography, sections,
   type BibEntry, type FlatPaper,
 } from './latex.ts'
-import type { ModeCondition, ModePhase, ModeScript, ResolvedMode } from './modes.ts'
+import { requirementKey, type ModeCondition, type ModeGate, type ModePhase, type ModeScript, type ResolvedMode } from './modes.ts'
 import { validateLinks } from './project.ts'
 import { proseFindings } from './prose.ts'
 import { checkIds } from './schema.ts'
-import type { CheckFinding, CheckId, CheckReport, PhaseStatus, ResearchProject } from './types.ts'
+import type { CheckFinding, CheckId, CheckReport, LocalizedText, PhaseStatus, ResearchProject } from './types.ts'
 
 /**
  * Runs one of the mode pack's gates over the project. The service supplies it,
@@ -42,6 +43,76 @@ const MAX_FINDINGS_PER_CHECK = 25
 /** A review: Markdown in reviews/ or a *-review-reports/ folder, or named review*.md. A revision ledger tracks reviews but is not one. */
 const REVIEW_FILE = /(?:^|\/)(?:(?:reviews?|[\w-]+-review-reports?)\/[^/]+|review[\w-]*)\.md$/i
 const LEDGER_FILE = /(?:^|\/)revision-ledger\.md$/i
+/** How an unmet key names a deciding check that reported errors: `errors:<check id>`. */
+export const ERRORS_KEY_PREFIX = 'errors:'
+
+/** What each base check is called where people read it; a gate's name comes from its pack. */
+export const CHECK_LABELS: Record<CheckId, LocalizedText> = {
+  cite: { en: 'Citations', zh: '引用' },
+  numbers: { en: 'Numbers', zh: '数字溯源' },
+  placeholders: { en: 'Placeholders', zh: '占位内容' },
+  figures: { en: 'Figures', zh: '图表' },
+  compile: { en: 'Compile', zh: '编译' },
+  visual: { en: 'Page check', zh: '页面检查' },
+  review: { en: 'Review', zh: '评审' },
+  stale: { en: 'Out of date', zh: '待更新' },
+  claims: { en: 'Claims', zh: '论点' },
+  structure: { en: 'Structure', zh: '结构' },
+  prose: { en: 'Prose', zh: '行文' },
+}
+
+/**
+ * A check's name for the person.
+ * @param mode - the mode whose gates may carry the id.
+ * @param check - a base check or gate id.
+ * @returns the built-in name of a base check, the pack's label of a gate, or the id itself for a gate the pack no longer has.
+ */
+export function checkLabel(mode: ResolvedMode, check: string): LocalizedText {
+  if (Object.hasOwn(CHECK_LABELS, check)) return CHECK_LABELS[check as CheckId]
+  return mode.pack.gates.find(gate => gate.id === check)?.label ?? { en: check, zh: check }
+}
+
+/** What a check's scope names. A phase wins over a base check or gate of the same id; anything unknown means everything. */
+export type CheckScope = { kind: 'all' } | { kind: 'phase'; phase: ModePhase } | { kind: 'check'; id: string }
+
+/**
+ * Read a scope the way research_check does.
+ * @param mode - the mode in effect.
+ * @param scope - `all`, a phase id, a base check id or a gate id.
+ * @returns what the scope names.
+ */
+export function resolveScope(mode: ResolvedMode, scope: string): CheckScope {
+  const phase = mode.phases.find(item => item.id === scope)
+  if (phase) return { kind: 'phase', phase }
+  if ((checkIds as readonly string[]).includes(scope) || mode.gates.some(gate => gate.id === scope)) return { kind: 'check', id: scope }
+  return { kind: 'all' }
+}
+
+/**
+ * The checks whose errors hold a phase back.
+ * @param phase - a phase of the mode.
+ * @param mode - the mode in effect, whose gates `checks: all` covers.
+ * @returns base check and gate ids.
+ */
+export function decidingChecks(phase: ModePhase, mode: ResolvedMode): Set<string> {
+  return new Set(phase.checks === 'all' ? [...checkIds, ...mode.gates.map(gate => gate.id)] : phase.checks)
+}
+
+/**
+ * The checks whose findings a report carries in full: every check it ran that
+ * its scope reports on. Base checks always run; gates ran as `gatesRun` says.
+ * @param report - a report runChecks produced under the mode.
+ * @param mode - the mode it was produced under.
+ * @returns base check and gate ids.
+ */
+export function reportedChecks(report: CheckReport, mode: ResolvedMode): string[] {
+  const scope = resolveScope(mode, report.scope)
+  if (scope.kind === 'check') return [scope.id]
+  const ran = [...checkIds, ...report.gatesRun]
+  if (scope.kind === 'all') return ran
+  const deciding = decidingChecks(scope.phase, mode)
+  return ran.filter(check => deciding.has(check))
+}
 
 interface Context {
   project: ResearchProject
@@ -88,18 +159,31 @@ export async function runChecks(
   }
   await checkReview(context)
   checkLedger(context)
-  await runGates(context, gatesInScope(mode, scope ?? 'all'), runGate)
+  const resolved = resolveScope(mode, scope ?? 'all')
+  const gates = gatesInScope(mode, resolved)
+  await runGates(context, gates, runGate)
+  context.findings = withoutMissingFiles(project.root, context.findings)
   const phases = await phaseProgress(context)
-  return summarize(context, phases, scope ?? 'all')
+  return summarize(context, phases, scope ?? 'all', resolved, gates.map(gate => gate.id))
 }
 
-/** The mode's gates a scope calls for: all of them, those deciding one phase, or one by id. */
-function gatesInScope(mode: ResolvedMode, scope: string): ModeScript[] {
-  if ((checkIds as readonly string[]).includes(scope)) return []
-  const phase = mode.phases.find(item => item.id === scope)
-  if (phase) return phase.checks === 'all' ? mode.gates : mode.gates.filter(gate => phase.checks.includes(gate.id))
-  const gate = mode.gates.find(item => item.id === scope)
-  return gate ? [gate] : mode.gates
+/** The mode's gates a scope calls for: all of them, those deciding one phase, the one it names, or none for a base check. */
+function gatesInScope(mode: ResolvedMode, scope: CheckScope): ModeGate[] {
+  if (scope.kind === 'all') return mode.gates
+  if (scope.kind === 'check') return mode.gates.filter(gate => gate.id === scope.id)
+  const deciding = decidingChecks(scope.phase, mode)
+  return mode.gates.filter(gate => deciding.has(gate.id))
+}
+
+/** Findings with every file that does not exist on disk dropped, together with its line, so no report links to nothing. */
+function withoutMissingFiles(root: string, findings: CheckFinding[]): CheckFinding[] {
+  const exists = new Map<string, boolean>()
+  return findings.map((finding) => {
+    const { file, line: _line, ...rest } = finding
+    if (file === undefined) return finding
+    if (!exists.has(file)) exists.set(file, existsSync(resolve(root, file)))
+    return exists.get(file) === true ? finding : rest
+  })
 }
 
 async function runGates(context: Context, gates: ModeScript[], runGate: GateRunner | undefined): Promise<void> {
@@ -336,7 +420,7 @@ function checkStructure(context: Context, paper: FlatPaper, styles: string[]): v
 }
 
 async function checkReview(context: Context): Promise<void> {
-  const { project, limit, paper } = context
+  const { project, limit, mode } = context
   const reviews = await listProjectFiles(project.root, path => REVIEW_FILE.test(path) && !LEDGER_FILE.test(path), 3)
   if (!reviews.length) {
     add(context, 'review', 'warning', 'No review yet: review the paper with the review skill your mode names (paper-review in the general mode) and save the review under reviews/')
@@ -351,9 +435,26 @@ async function checkReview(context: Context): Promise<void> {
       if (/^\s*[-*]\s*\[ \]\s*\[(?:blocker|major)\]/i.test(line)) add(context, 'review', 'error', `Open review issue: ${line.replace(/^\s*[-*]\s*\[ \]\s*/, '').slice(0, 160)}`, review, index + 1)
     })
   }
-  if (paper && newest < await paperModifiedAt(project.root, paper)) {
-    add(context, 'review', 'warning', 'The latest review predates the latest manuscript changes', reviews[0])
+  const against = mode.pack.reviewAgainst
+  if (newest >= await reviewedChangedAt(context, against)) return
+  add(context, 'review', 'warning', against === undefined
+    ? 'The latest review predates the latest manuscript changes'
+    : `The latest review predates the latest changes to ${against}`, reviews[0])
+}
+
+/**
+ * When what a review covers last changed, in epoch milliseconds: the files a
+ * mode reviews against (its sections, say), otherwise every manuscript source;
+ * zero when there is none.
+ */
+async function reviewedChangedAt(context: Context, against: string | undefined): Promise<number> {
+  const { project, paper } = context
+  if (against === undefined) return paper ? paperModifiedAt(project.root, paper) : 0
+  let latest = 0
+  for (const file of await listProjectFiles(project.root, globMatcher(against), 4)) {
+    latest = Math.max(latest, (await stat(join(project.root, file))).mtimeMs)
   }
+  return latest
 }
 
 function checkLedger(context: Context): void {
@@ -428,18 +529,35 @@ function gatherFacts(context: Context): Facts {
   }
 }
 
+/** The reason a fact condition gives while it does not hold; `noActiveRuns` names its count instead. */
+const FACT_REASONS: Record<Exclude<Extract<ModeCondition, string>, 'noActiveRuns'>, string> = {
+  manuscript: 'No manuscript yet',
+  diagram: 'No editable architecture diagram (draw.io file or TikZ picture)',
+  pagesInspected: 'Compiled pages not inspected',
+  reviewCurrent: 'No current review',
+  runsCollected: 'No completed, collected experiment run',
+  dataEvidence: 'No data evidence: import the measured results',
+  resultsOrData: 'No collected results to report',
+}
+
+/** A count condition's required number and the noun its reason names. */
+function countOf(condition: Exclude<ModeCondition, string | { file: string }>): [number, string] {
+  if ('bibEntries' in condition) return [condition.bibEntries, 'bibliography entries']
+  return 'sections' in condition ? [condition.sections, 'sections'] : [condition.figures, 'figures in the paper']
+}
+
 /** Why a condition does not hold yet, or undefined when it does. */
 async function unmet(condition: ModeCondition, facts: Facts): Promise<string | undefined> {
   if (typeof condition === 'string') {
     switch (condition) {
-      case 'manuscript': return facts.paper ? undefined : 'No manuscript yet'
-      case 'diagram': return await facts.diagram() ? undefined : 'No editable architecture diagram (draw.io file or TikZ picture)'
-      case 'pagesInspected': return facts.pagesInspected ? undefined : 'Compiled pages not inspected'
-      case 'reviewCurrent': return facts.reviewCurrent ? undefined : 'No current review'
-      case 'runsCollected': return facts.completedRuns ? undefined : 'No completed, collected experiment run'
+      case 'manuscript': return facts.paper ? undefined : FACT_REASONS.manuscript
+      case 'diagram': return await facts.diagram() ? undefined : FACT_REASONS.diagram
+      case 'pagesInspected': return facts.pagesInspected ? undefined : FACT_REASONS.pagesInspected
+      case 'reviewCurrent': return facts.reviewCurrent ? undefined : FACT_REASONS.reviewCurrent
+      case 'runsCollected': return facts.completedRuns ? undefined : FACT_REASONS.runsCollected
       case 'noActiveRuns': return facts.activeRuns ? `${facts.activeRuns} run(s) still in progress` : undefined
-      case 'dataEvidence': return facts.dataSources ? undefined : 'No data evidence: import the measured results'
-      case 'resultsOrData': return facts.completedRuns || facts.dataSources ? undefined : 'No collected results to report'
+      case 'dataEvidence': return facts.dataSources ? undefined : FACT_REASONS.dataEvidence
+      case 'resultsOrData': return facts.completedRuns || facts.dataSources ? undefined : FACT_REASONS.resultsOrData
     }
   }
   if ('file' in condition) {
@@ -449,16 +567,26 @@ async function unmet(condition: ModeCondition, facts: Facts): Promise<string | u
     if (found >= min) return undefined
     return found === 0 ? `No file matching ${condition.file}` : `Fewer than ${min} files matching ${condition.file} (${found})`
   }
-  const [have, need, noun] = 'bibEntries' in condition
-    ? [facts.bibEntries, condition.bibEntries, 'bibliography entries']
-    : 'sections' in condition ? [facts.sections, condition.sections, 'sections'] : [facts.figures, condition.figures, 'figures in the paper']
+  const [need, noun] = countOf(condition)
+  const have = 'bibEntries' in condition ? facts.bibEntries : 'sections' in condition ? facts.sections : facts.figures
   if (have >= need) return undefined
   return have === 0 ? `No ${noun} yet` : `Fewer than ${need} ${noun} (${have})`
 }
 
-/** The checks whose errors hold a phase back. */
-function decidingChecks(phase: ModePhase, context: Context): Set<string> {
-  return new Set(phase.checks === 'all' ? [...checkIds, ...context.mode.gates.map(gate => gate.id)] : phase.checks)
+/**
+ * Whether a line is the reason a check gives while a condition does not
+ * hold. Reads reports stored before requirement keys existed, which name
+ * unmet requirements only by their words.
+ * @param condition - one condition of a requirement.
+ * @param line - one `missing` line of such a report.
+ * @returns true when the line is that condition's reason.
+ */
+export function explainsCondition(condition: ModeCondition, line: string): boolean {
+  if (condition === 'noActiveRuns') return /^\d+ run\(s\) still in progress$/.test(line)
+  if (typeof condition === 'string') return line === FACT_REASONS[condition]
+  if ('file' in condition) return line === `No file matching ${condition.file}` || line.startsWith(`Fewer than ${condition.min ?? 1} files matching ${condition.file} (`)
+  const [need, noun] = countOf(condition)
+  return line === `No ${noun} yet` || line.startsWith(`Fewer than ${need} ${noun} (`)
 }
 
 async function phaseProgress(context: Context): Promise<PhaseStatus[]> {
@@ -466,9 +594,11 @@ async function phaseProgress(context: Context): Promise<PhaseStatus[]> {
   const statuses: PhaseStatus[] = []
   for (const phase of context.mode.phases) {
     const missing: string[] = []
-    const deciding = decidingChecks(phase, context)
+    const unmetKeys: string[] = []
+    const deciding = decidingChecks(phase, context.mode)
     const blocking = context.findings.filter(finding => finding.severity === 'error' && deciding.has(finding.check))
-    if (blocking.length) missing.push(`${blocking.length} error(s) in ${[...new Set(blocking.map(item => item.check))].join(', ')}`)
+    const blockingChecks = [...new Set(blocking.map(item => item.check))]
+    if (blocking.length) missing.push(`${blocking.length} error(s) in ${blockingChecks.join(', ')}`)
     for (const requirement of phase.requires) {
       const alternatives = Array.isArray(requirement.when) ? requirement.when : [requirement.when]
       const reasons: string[] = []
@@ -477,30 +607,34 @@ async function phaseProgress(context: Context): Promise<PhaseStatus[]> {
         if (reason === undefined) break
         reasons.push(reason)
       }
-      if (reasons.length === alternatives.length) missing.push(requirement.message ?? reasons[0] as string)
+      if (reasons.length === alternatives.length) {
+        missing.push(requirement.message ?? reasons[0] as string)
+        unmetKeys.push(requirementKey(requirement))
+      }
     }
-    statuses.push({ id: phase.id, done: missing.length === 0, missing })
+    // What the person is told first is what to make; the errors of what exists come after.
+    unmetKeys.push(...blockingChecks.map(check => `${ERRORS_KEY_PREFIX}${check}`))
+    statuses.push({ id: phase.id, done: missing.length === 0, missing, unmet: unmetKeys })
   }
   return statuses
 }
 
-function summarize(context: Context, phases: PhaseStatus[], scope: string): CheckReport {
+function summarize(context: Context, phases: PhaseStatus[], scope: string, resolved: CheckScope, gatesRun: string[]): CheckReport {
   const { mode } = context
   let findings = context.findings
   // The whole paper is done only when nothing is wrong and every phase of its mode is done.
   let clean = !findings.some(finding => finding.severity === 'error') && phases.every(phase => phase.done)
-  const phase = mode.phases.find(item => item.id === scope)
-  if (phase) {
-    const deciding = decidingChecks(phase, context)
+  if (resolved.kind === 'phase') {
+    const deciding = decidingChecks(resolved.phase, mode)
     findings = findings.filter(finding => deciding.has(finding.check))
     clean = phases.some(item => item.id === scope && item.done)
-  } else if ((checkIds as readonly string[]).includes(scope) || mode.gates.some(gate => gate.id === scope)) {
+  } else if (resolved.kind === 'check') {
     findings = findings.filter(finding => finding.check === scope)
     clean = !findings.some(finding => finding.severity === 'error')
   }
   findings = [...findings].sort((a, b) => Number(a.severity === 'warning') - Number(b.severity === 'warning'))
   return {
     clean, scope, mode: mode.pack.id, ...(mode.route === undefined ? {} : { route: mode.route }),
-    phases, findings, checkedAt: new Date().toISOString(),
+    gatesRun, phases, findings, checkedAt: new Date().toISOString(),
   }
 }

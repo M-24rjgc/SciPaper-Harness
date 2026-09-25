@@ -2781,7 +2781,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_check`
 
-Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode, one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure, prose) or one of the mode's gates. It reports and never blocks. Not clean means not done: fix the errors and check again.
+Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode (with its gates), one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure, prose) or one of the mode's gates; a phase and a base check of the same name mean the phase. It reports and never blocks, and it records where each phase stands for the user. Not clean means not done: fix the errors and check again.
 
 ```json
 {
@@ -3176,7 +3176,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_project`
 
-The research project around your working directory. current: mode, route, autonomy, phases, decisions, files, runs — call it when you start work. create {title, brief?, root?, mode?, route?, autonomy?}: make the working directory (or root) a research project. list: all projects. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason}: switch the project's mode; its skills follow. set-autonomy {autonomy: checkpoints|automatic}. record-decision {question, answer, rationale?, decidedBy?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode.
+The research project around your working directory. current: mode, route, autonomy, where each phase stands, decisions, files, runs — call it when you start work. create {title, brief?, root?, mode?, route?, autonomy?}: make the working directory (or root) a research project. list: all projects. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason}: switch the project's mode; its skills follow. set-autonomy {autonomy: checkpoints|automatic}. record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred defers a phase that allows it (spark-to-paper's experiments), which then shows as deferred and never as done.
 
 ```json
 {
@@ -3249,6 +3249,10 @@ The research project around your working directory. current: mode, route, autono
         "user",
         "agent"
       ]
+    },
+    "key": {
+      "type": "string",
+      "description": "record-decision: optional slug naming what the decision settles, such as experiments-deferred"
     }
   },
   "required": [

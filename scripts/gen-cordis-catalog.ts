@@ -711,7 +711,7 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ...Object.fromEntries([
     'ResearchSnapshot', 'ResearchTask', 'CreateProjectRequest', 'ResearchProject', 'ResearchPreferences',
-    'ResearchResponse', 'ResearchCommand', 'ProjectId', 'ResearchModeEvent',
+    'ResearchResponse', 'ResearchCommand', 'ProjectId', 'ResearchModeEvent', 'ResearchStanding',
   ].map(name => [name, 'research record contract is owned by packages/research/workbench/src/types.ts'])),
   McpResourceProvider: 'scoped resource provider is owned by packages/mcp/mcp-resources/README.md',
   'z.ZodType': 'Zod response validation API is owned by https://zod.dev/packages/zod',

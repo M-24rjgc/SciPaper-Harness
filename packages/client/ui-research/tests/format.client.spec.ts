@@ -19,13 +19,14 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import {
-  appendedDraft, chosenMode, dateText, digestText, durationText, elapsedOf, galleryImageUrl, locatorText, modeChoice, modeName, modePhases,
-  momentText, packText, parseModeChoice, phaseName, projectFileAddress, researchFileUrl, standingText,
+  appendedDraft, checkedText, chosenMode, dateText, digestText, durationText, elapsedOf, galleryImageUrl, locatorText, modeChoice, modeName,
+  modePhases, momentText, packText, parseModeChoice, projectFileAddress, researchFileUrl, standingText,
 } from '../src/client/format.ts'
 import type { Translate } from '../src/client/format.ts'
 import { en, zh } from '../src/client/locales.ts'
 import type { ResearchKey } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
+import { standingOf } from './fixtures/standing.ts'
 
 const LIMIT = 100_000
 /** Any origin: `researchFileUrl` returns a site-relative address. */
@@ -271,11 +272,6 @@ describe('modes, routes and phases read in the interface language', () => {
     expect([modeName(MODES, 'general', tEn), modeName(MODES, 'general', tZh), modeName(MODES, 'retired', tZh)]).toEqual(['General', '通用', 'retired'])
   })
 
-  it('names a phase by its label in its mode, and an unknown phase or mode by the phase id', () => {
-    expect([phaseName(MODES, 'spark-to-paper', 'cite', tEn), phaseName(MODES, 'spark-to-paper', 'cite', tZh)]).toEqual(['Citations', '引用'])
-    expect([phaseName(MODES, 'spark-to-paper', 'gone', tZh), phaseName(MODES, 'retired', 'cite', tZh)]).toEqual(['gone', 'cite'])
-  })
-
   it('lists the phases on the project route, the pack default route when none is recorded, and none without a pack', () => {
     expect(modePhases(MODES, { mode: 'general' })).toEqual([])
     expect(modePhases(MODES, { mode: 'retired', route: 'data' })).toEqual([])
@@ -299,34 +295,61 @@ describe('modes, routes and phases read in the interface language', () => {
   })
 })
 
-describe('where a project stands reads from its last check under its current mode and route', () => {
-  const project = (): ResearchProject => newProject({ root: '/research/sparse', title: 'Sparse', brief: '', mode: 'spark-to-paper', route: 'data' }, 'workspace' as WorkspaceId)
-  const check = (phases: { id: string; done: boolean }[], over: { mode?: string; route?: string } = {}): NonNullable<ResearchProject['lastCheck']> =>
-    ({ clean: false, scope: 'all', mode: 'spark-to-paper', route: 'data', checkedAt: '2026-09-25T10:00:00.000Z', findings: [], phases: phases.map(phase => ({ ...phase, missing: [] })), ...over })
-
-  it('names only the mode before any check, or when the check listed no phases', () => {
-    const fresh = project()
-    expect(standingText(fresh, MODES, tZh)).toBe('spark-to-paper')
-    expect(standingText({ ...fresh, lastCheck: check([]) }, MODES, tZh)).toBe('spark-to-paper')
-    expect(standingText({ ...fresh, mode: 'general', route: undefined }, MODES, tEn)).toBe('General')
+describe('where a project stands reads from the standing the host derived', () => {
+  const project = (standing?: ResearchProject['standing']): ResearchProject => ({
+    ...newProject({ root: '/research/sparse', title: 'Sparse', brief: '', mode: 'spark-to-paper', route: 'proposal' }, 'workspace' as WorkspaceId),
+    ...(standing ? { standing } : {}),
   })
 
-  it('names the first unfinished phase and how many are done', () => {
-    const phases = [{ id: 'data', done: true }, { id: 'plan', done: false }, { id: 'cite', done: false }]
-    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tZh)).toBe('spark-to-paper · 规划 1/3')
-    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tEn)).toBe('spark-to-paper · Plan 1/3')
+  it('names only the mode without a standing, or in a mode without phases', () => {
+    expect(standingText(project(), MODES, tZh)).toBe('spark-to-paper')
+    expect(standingText(project(standingOf([])), MODES, tZh)).toBe('spark-to-paper')
+    expect(standingText({ ...project(standingOf([])), mode: 'general', route: undefined }, MODES, tEn)).toBe('General')
   })
 
-  it('says the check is clean once every phase is done', () => {
-    const phases = [{ id: 'data', done: true }, { id: 'plan', done: true }]
-    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tZh)).toBe(`spark-to-paper · ${zh.checkClean}`)
-    expect(standingText({ ...project(), lastCheck: check(phases) }, MODES, tEn)).toBe(`spark-to-paper · ${en.checkClean}`)
+  it('names the current phase and how many are done', () => {
+    const standing = standingOf([['plan', 'done'], ['cite', 'current'], ['experiments', 'pending']])
+    expect(standingText(project(standing), MODES, tZh)).toBe('spark-to-paper · 引用 1/3')
+    expect(standingText(project(standing), MODES, tEn)).toBe('spark-to-paper · Citations 1/3')
   })
 
-  it('ignores a check made under another mode or route', () => {
-    const phases = [{ id: 'plan', done: false }]
-    expect(standingText({ ...project(), lastCheck: check(phases, { mode: 'general' }) }, MODES, tZh)).toBe('spark-to-paper')
-    expect(standingText({ ...project(), lastCheck: check(phases, { route: 'proposal' }) }, MODES, tZh)).toBe('spark-to-paper')
+  it('says a finished paper is finished', () => {
+    const standing = standingOf([['plan', 'done'], ['cite', 'done']], { finished: true })
+    expect(standingText(project(standing), MODES, tZh)).toBe('spark-to-paper · 已完成 ✓')
+    expect(standingText(project(standing), MODES, tEn)).toBe('spark-to-paper · Finished ✓')
+  })
+
+  it('says a phase is deferred once nothing before it still waits', () => {
+    const late = standingOf([['plan', 'done'], ['experiments', 'deferred'], ['submission', 'current']])
+    expect(standingText(project(late), MODES, tZh)).toBe('spark-to-paper · 实验已推迟')
+    expect(standingText(project(late), MODES, tEn)).toBe('spark-to-paper · Experiments deferred')
+    expect(standingText(project(standingOf([['plan', 'done'], ['experiments', 'deferred']])), MODES, tZh)).toBe('spark-to-paper · 实验已推迟')
+    // Work still to do before the deferred phase comes first.
+    const early = standingOf([['plan', 'current'], ['experiments', 'deferred']])
+    expect(standingText(project(early), MODES, tZh)).toBe('spark-to-paper · 规划 0/2')
+  })
+
+  it('asks for another check once every phase is done but the paper is not finished', () => {
+    const standing = standingOf([['plan', 'done'], ['cite', 'done']], { changedSinceCheck: true })
+    expect(standingText(project(standing), MODES, tZh)).toBe('spark-to-paper · 待复查')
+    expect(standingText(project(standing), MODES, tEn)).toBe('spark-to-paper · Check again')
+  })
+})
+
+describe('when the last check ran, as the reader counts it', () => {
+  const NOW = Date.parse('2026-09-25T12:00:00.000Z')
+  const ago = (ms: number): string => new Date(NOW - ms).toISOString()
+
+  it('reads just now, then minutes, then hours, then the date and time', () => {
+    expect([checkedText(ago(30_000), NOW, tZh), checkedText(ago(30_000), NOW, tEn)]).toEqual(['刚刚检查过', 'Checked just now'])
+    // A check stamped a little ahead of this clock is still just now.
+    expect(checkedText(ago(-5_000), NOW, tEn)).toBe('Checked just now')
+    expect([checkedText(ago(5 * 60_000), NOW, tZh), checkedText(ago(59 * 60_000), NOW, tEn)]).toEqual(['检查于 5 分钟前', 'Checked 59 min ago'])
+    expect([checkedText(ago(3 * 3_600_000), NOW, tZh), checkedText(ago(23 * 3_600_000 + 59 * 60_000), NOW, tEn)]).toEqual(['检查于 3 小时前', 'Checked 23 h ago'])
+    const older = ago(2 * 86_400_000)
+    expect(checkedText(older, NOW, tZh)).toBe(`检查于 ${momentText(older, tZh)}`)
+    expect(checkedText(older, NOW, tEn)).toBe(`Checked ${momentText(older, tEn)}`)
+    expect(checkedText('not a time', NOW, tEn)).toBe('Checked not a time')
   })
 })
 

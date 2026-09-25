@@ -37978,7 +37978,7 @@
         ]
       },
       "names": [
-        "event:agent/inbox/spliced.data.inserted[0].source[10]"
+        "event:agent/inbox/spliced.data.inserted[0].source[11]"
       ],
       "sources": [
         "packages/api/session-controller/src/types.ts:380"

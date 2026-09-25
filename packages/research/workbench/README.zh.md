@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-为 agent（智能体）提供科研项目台账以及在其中工作的工具：导入并检索带页码级引文的资料，核实文献并获取开放获取全文，撰写并编译 LaTeX，渲染页面以便查看，构建 Python 环境，运行不受应用与 SSH 断开影响的实验，排布由脚本保持最新的实验看板，并导出投稿压缩包。`research_check` 报告论文各阶段是否完成；检查不通过也不会拒绝任何操作。科研版应选用它；它需要存储域以及桌面端或 Web 宿主。
+为 agent（智能体）提供科研项目台账以及在其中工作的工具：导入并检索带页码级引文的资料，核实文献并获取开放获取全文，撰写并编译 LaTeX，渲染页面以便查看，构建 Python 环境，运行不受应用与 SSH 断开影响的实验，排布由脚本保持最新的实验看板，并导出投稿压缩包。`research_check` 报告并记下论文各阶段是否完成；检查不通过也不会拒绝任何操作。科研版应选用它；它需要存储域以及桌面端或 Web 宿主。
 
 ## 目录
 
@@ -53,7 +53,14 @@ kind: "package-reference"
 
 ### 新增一个模式
 
-模式是一个目录，不是代码。要新增一个模式（比如学习模式），就创建 `runtime/modes/<id>/`：一份 `mode.yml`（标识、路线、各阶段要求的事实与决定它的检查、门禁和脚本），`skills/<name>/SKILL.md` 下的技能，以及它用平台 Python 运行的门禁或脚本；改编自上游方法的模式还要带上它的 `LICENSE` 和一份 `NOTICE.md`。注册表在启动时加载并校验它，损坏时给出警告并跳过；技能提供者只在处于该模式的项目里显示它的技能；`research_check` 运行它的阶段与门禁。再在预设的 `research-modes` 技能里为它加一行，并仿照 `tests/spark-pack.spec.ts` 写一个测试。只有当某个阶段需要要求词汇里还没有的事实种类时，才需要改代码。
+模式是一个目录，不是代码。要新增一个模式（比如学习模式），就创建 `runtime/modes/<id>/`：一份 `mode.yml`（标识、路线、各阶段要求的事实与决定它的检查、门禁和脚本），`skills/<name>/SKILL.md` 下的技能，以及它用平台 Python 运行的门禁或脚本；改编自上游方法的模式还要带上它的 `LICENSE` 和一份 `NOTICE.md`。清单还要写明给人看的内容：
+
+- `paperRoot`：论文源文件所在的文件夹（`paper`，或表示项目根目录的 `.`）；
+- 每条要求的 `hint`：中英文各一句短话，说明缺了什么，研究记录会把它显示在当前阶段下面；
+- 每个门禁的 `label`：它的发现归组时使用的名称；
+- 可选：阶段上的 `deferrable: <决策键>`，表示记下对应决策后可以推迟该阶段；评审只覆盖论文一部分时，用 `reviewAgainst: <通配>` 指明。
+
+注册表在启动时加载并校验它，损坏时给出警告并跳过；技能提供者只在处于该模式的项目里显示它的技能；`research_check` 运行它的阶段与门禁。再在预设的 `research-modes` 技能里为它加一行，并仿照 `tests/spark-pack.spec.ts` 写一个测试。只有当某个阶段需要要求词汇里还没有的事实种类时，才需要改代码。
 
 -----
 
@@ -69,6 +76,7 @@ kind: "package-reference"
 |---|---|
 | [`src/index.ts`](src/index.ts) | 服务本体：项目生命周期、命令分派、项目队列、运行观测 |
 | [`src/checks.ts`](src/checks.ts) | `research_check`：每一项基础检查、通过服务提供的执行器运行的模式门禁，以及按模式要求得出的阶段进度 |
+| [`src/progress.ts`](src/progress.ts) | 项目的进展（由 `research_check` 的报告逐份并入），以及 `standing`：给人、项目简报和对话标题栏看的项目现状 |
 | [`src/modes.ts`](src/modes.ts) | 模式包：清单校验、注册表、路线，以及项目最终落到的模式 |
 | [`src/mode-skills.ts`](src/mode-skills.ts) | 按项目所在模式列出技能的技能提供者 |
 | [`src/gates.ts`](src/gates.ts) | 模式包的门禁与脚本：用平台 Python 运行它们并读取其发现 |
@@ -127,7 +135,7 @@ kind: "package-reference"
 
 #### What the model sees
 
-结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、自主度、该路线上次检查得出的阶段进度、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一个未完成的阶段、该模式要先加载的技能，以及何时应当提问。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。
+结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、该模式的 `paperRoot`、自主度、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、该模式要先加载的技能，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。
 
 #### Token effect
 

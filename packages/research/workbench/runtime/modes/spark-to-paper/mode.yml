@@ -17,6 +17,10 @@ source:
   version: 1.2.0
   license: MIT
 entry: ts-paper
+# The upstream layout: sections/, blueprint.json and main.tex sit in the project root.
+paperRoot: .
+# The review reads the sections; assembling them into main.tex in the latex phase changes no text a reviewer read.
+reviewAgainst: "sections/*.tex"
 routes:
   - id: idea
     name: { en: From an idea, zh: 从想法开始 }
@@ -43,6 +47,7 @@ phases:
     requires:
       - when: { file: story.json }
         message: Build the 8-field story from the idea and write story.json (ts-idea2story)
+        hint: { en: The idea is not written up as a research story yet, zh: 还没有把想法整理成研究故事 }
   - id: data
     label: { en: Data, zh: 数据 }
     routes: [data]
@@ -50,8 +55,10 @@ phases:
     requires:
       - when: dataEvidence
         message: Import the measured results as data evidence (research_evidence import)
+        hint: { en: The measured results are not imported yet, zh: 还没有导入实测结果 }
       - when: { file: results.facts.json }
         message: Write results.facts.json — the real numbers, produced by a script from the data — and import it as data evidence
+        hint: { en: The result numbers are not extracted from the data yet, zh: 还没有从数据里整理出结果数字 }
   - id: plan
     label: { en: Plan, zh: 规划 }
     skills: [ts-paper-plan]
@@ -59,6 +66,7 @@ phases:
     requires:
       - when: { file: blueprint.json }
         message: Write blueprint.json against the venue's template.json (ts-paper-plan)
+        hint: { en: There is no paper blueprint yet, zh: 还没有论文蓝图 }
   - id: cite
     label: { en: Citations, zh: 引用 }
     skills: [ts-paper-cite]
@@ -66,6 +74,7 @@ phases:
     requires:
       - when: { file: refs.bib }
         message: Build refs.bib from verified literature, with claims_map.json (ts-paper-cite)
+        hint: { en: There is no bibliography of verified sources yet, zh: 还没有核实过的参考文献库 }
   - id: write
     label: { en: Write, zh: 写作 }
     skills: [ts-paper-write]
@@ -73,6 +82,7 @@ phases:
     requires:
       - when: { file: "sections/*.tex", min: 3 }
         message: Write every section as sections/<id>.tex, plus sections/abstract.tex (ts-paper-write)
+        hint: { en: The sections are not written yet, zh: 各章节还没写完 }
   - id: refine
     label: { en: Refine, zh: 润色 }
     skills: [ts-paper-refine]
@@ -80,6 +90,7 @@ phases:
     requires:
       - when: { file: logs/4_refine.io.md }
         message: Run the refine pass (right-size, de-AI, logic self-check) and log it in logs/4_refine.io.md
+        hint: { en: The draft has not been refined yet, zh: 稿件还没有润色 }
   - id: review
     label: { en: Review, zh: 评审 }
     skills: [ts-paper-review]
@@ -87,8 +98,10 @@ phases:
     requires:
       - when: reviewCurrent
         message: No current review — run the adversarial review panel and write reviews/review.md
+        hint: { en: The current draft has not been reviewed, zh: 当前稿件还没有评审 }
       - when: { file: logs/5_review.io.md }
         message: Log the review round in logs/5_review.io.md (tier, issues found, closed, left for the author)
+        hint: { en: This review round is not logged yet, zh: 这一轮评审还没有记录 }
   - id: figures
     label: { en: Figures, zh: 图表 }
     skills: [ts-paper-figure, ts-figure-svg, ts-paper-data]
@@ -96,6 +109,7 @@ phases:
     requires:
       - when: { file: figures/figures.manifest.json }
         message: Draw every planned figure and record it in figures/figures.manifest.json (ts-paper-figure)
+        hint: { en: The planned figures are not all drawn yet, zh: 规划的图还没有画完 }
   - id: latex
     label: { en: LaTeX, zh: 编译排版 }
     skills: [ts-paper-latex, latex-compile-and-fix, visual-self-review]
@@ -103,50 +117,67 @@ phases:
     requires:
       - when: { file: main.tex }
         message: Assemble main.tex (research_artifact run-script assemble-paper), then compile it
+        hint: { en: The paper is not assembled into one document yet, zh: 论文还没有排成完整的文档 }
       - when: pagesInspected
+        hint: { en: The compiled pages have not been looked at yet, zh: 编译出的页面还没有逐页看过 }
   - id: experiments
     label: { en: Experiments, zh: 实验 }
     routes: [idea, proposal]
     checkpoint: true
+    # Recorded when nothing can run here: the phase shows as deferred, and the paper stays a proposal.
+    deferrable: experiments-deferred
     skills: [ts-paper-experiment, running-experiments]
     checks: [placeholders, numbers, draft-lint, compile]
     requires:
       - when: resultsOrData
         message: Run the feasible experiments and collect them (research_experiment), or import the author's results
+        hint: { en: There are no experiment results yet, zh: 还没有实验结果 }
       - when: noActiveRuns
+        hint: { en: Experiments are still running, zh: 还有实验在运行 }
       - when: { file: results.facts.json }
         message: Write results.facts.json from the collected results with a script, import it, and set results_mode to data_aware in template.json
+        hint: { en: The result numbers are not produced from the runs yet, zh: 还没有用实验结果生成结果数字 }
   - id: submission
     label: { en: Submission, zh: 投稿 }
     skills: [submission-package]
     checks: all
     requires:
       - when: reviewCurrent
+        hint: { en: The latest draft has not been reviewed, zh: 最新稿件还没有评审 }
       - when: pagesInspected
+        hint: { en: The final pages have not been looked at yet, zh: 最终的页面还没有逐页看过 }
 gates:
   - id: story-lint
+    label: { en: Story check, zh: 研究故事检查 }
     script: gates/run_gate.py
     args: [story, --root, "{root}"]
     routes: [idea]
   - id: template-lint
+    label: { en: Template check, zh: 模板检查 }
     script: gates/run_gate.py
     args: [template, --root, "{root}"]
   - id: blueprint-lint
+    label: { en: Blueprint check, zh: 蓝图检查 }
     script: gates/run_gate.py
     args: [blueprint, --root, "{root}"]
   - id: citations-bib
+    label: { en: Bibliography check, zh: 参考文献检查 }
     script: gates/run_gate.py
     args: [citations, --root, "{root}", --stage, cite]
   - id: citations-lint
+    label: { en: Citation check, zh: 引用检查 }
     script: gates/run_gate.py
     args: [citations, --root, "{root}"]
   - id: draft-lint
+    label: { en: Draft check, zh: 草稿检查 }
     script: gates/run_gate.py
     args: [draft, --root, "{root}"]
   - id: vector-figures
+    label: { en: Vector figures, zh: 矢量图检查 }
     script: gates/run_gate.py
     args: [vector, --root, "{root}"]
   - id: figure-critique
+    label: { en: Figure critique, zh: 图表评审 }
     script: gates/run_gate.py
     args: [critique, --root, "{root}"]
 scripts:

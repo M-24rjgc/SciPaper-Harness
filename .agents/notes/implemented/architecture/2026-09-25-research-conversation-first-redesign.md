@@ -100,6 +100,18 @@ The example researches (`<data home>/demo`, made by `research-demo.e2e.ts`) look
   - The sidebar lists examples after the person's own researches, each tagged 示例.
   - `guardExampleComposers` (`examples.ts`) keeps the composer of every conversation inside an example inert through `conversation.blocks`, with 这是示例研究，只能查看。点「新研究」开始你自己的研究。. A session holds one block, which `ui-model-selection` also sets and clears, so the guard raises its block again whenever another plugin clears it.
 
+### Step 6: one record of progress
+
+The rail's phases, the header chip and the agent's brief each read `lastCheck`, the last report whatever its scope, so a phase check replaced a full one and 检查通过 sat beside unfinished phases. Now `research_check` keeps one record of progress, and one host function says where the research stands.
+
+- **Reports say what ran.** Each `CheckReport` carries `gatesRun`, and each phase its `unmet` keys: the keys of its unmet requirements (`requirementKey`, built from the conditions and unique within a phase), then `errors:<check>` for each deciding check with errors. The English `missing` lines stay for the model. A scope that names both a phase and a base check, such as spark-to-paper's `cite`, means the phase and runs its gates, which the report's filtering already assumed. A finding whose file is not on disk loses its file and line, so the CCFA link to a missing `submission/checks.md` is gone.
+- **The merge rule.** `mergeProgress` (`progress.ts`) folds each report into `project.progress`: a phase moves only when the report ran every gate that decides it; each check the report ran replaces its findings; `full` comes only from scope `all`; a report for another mode or route starts afresh. `research_check` is the only writer: `export` still puts its own report in the package and records nothing. `lastCheck` is still written.
+- **Read-time seeding.** A record without `progress` reads its scope-`all` `lastCheck` as its progress (`storedProgress`). The old English lines are matched to requirements by their message or by the reason text a check gives, and `N error(s) in …` to error keys, so the shipped examples show their phases and hints with no example file or record changed. The stored-report schema reads a missing `gatesRun` or `unmet` as empty.
+- **Standing.** `standing(project)` derives the phases (done, current, pending or deferred, with the checkpoint flag and the pack's hints), the next phase and its first hint, `finished`, `checkedAt`, `changedSinceCheck` and the open issues grouped by check. The file time is the newest mtime outside `.research`, `exports`, `.git` and `node_modules`, cached for 30 s per root (`FileTimes`) and `unknown` past 5,000 files; unknown never counts as finished. `snapshot()` adds it to every project, as `publicProject` adds `example`, and nothing stores it. `projectBrief` takes its phases (`state`, `checkpoint`, and `missing` from the hints), next phase, hint and deferred phases from it, and adds `checkedAt`, `changedSinceCheck`, `finished` and `paperRoot`. `scripts/gen-cordis-catalog.ts` lists `ResearchStanding` with the other research record types that `types.ts` documents.
+- **Mode packs.** Every requirement carries `hint: {en, zh}`, every gate `label: {en, zh}`, and every pack `paperRoot` (`paper` for general and CCFA, whose skills write `paper/main.tex`; `.` for spark-to-paper); all three are required. spark-to-paper's experiments phase declares `deferrable: experiments-deferred`, and the pack declares `reviewAgainst: "sections/*.tex"`, so assembling `main.tex` leaves the review current. Base checks carry built-in names (`CHECK_LABELS`).
+- **Decision keys.** `record-decision` takes an optional `key` slug and stores it on the decision. A deferrable phase is deferred while it is not done and a decision carries its key. A deferred phase never counts as done; a phase whose own check passes is done, deferral or not.
+- **In the browser.** `Rail.tsx` draws the standing: a neutral ✓ for done, a ring in `brand-primary` on the current phase, a hollow mark for pending, 已推迟 in the warn colour, 开始前会先问你 on checkpoint phases, the current phase's hint in the pack's words, and 检查于 {relative time} with 检查后有改动. 待处理 lists at most three groups named in the reader's language (引用 · 2 个错误); a group opens its file only when the host found it on disk, and the checks' own words sit behind 详细信息. `standingText` reads `{mode} · {phase} {done}/{total}`, `{mode} · 已完成 ✓` when finished, `{mode} · 实验已推迟` once nothing before the deferred phase is left, and `{mode} · 待复查` when every phase is done but the paper is not finished.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -128,6 +140,16 @@ The example researches (`<data home>/demo`, made by `research-demo.e2e.ts`) look
 
 **Keep one error banner and clear it per action (step 3).** A banner above the panel tells nobody which button failed, and two actions in flight overwrite each other's message. A line beside each control needs no clearing rules.
 
+**Keep a report per scope, or let only scope `all` write (step 6).** Reports per scope leave every reader to work out which one is newest for each phase. An `all`-only writer throws away the phase checks the agent runs at the end of each phase. Merging by the gates that ran keeps phase checks useful and never marks a phase done on partial evidence.
+
+**Name requirements by their position (step 6).** An index names a different requirement after a pack edit, so stored progress would show the wrong hint. A key built from the conditions survives reordering, and a changed condition only loses its hint.
+
+**Seed progress in the storage migration (step 6).** `migrateProject` runs without the mode registry, so it cannot map an old report's English lines to requirement keys. Seeding where the mode is resolved can, and it changes no stored record until the next check.
+
+**Let a deferral count as done (step 6).** The paper would then read 已完成 while its result cells still read "--" (D18).
+
+**Move the review after the latex phase (step 6).** It would reorder ts-paper's stage chain. Comparing the review with the sections it read holds through any number of recompiles.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -138,7 +160,13 @@ The example researches (`<data home>/demo`, made by `research-demo.e2e.ts`) look
 - Until the entry policy of step 9 lands, 新研究 creates no research while no folder is chosen, which is when the fallback placeholder shows, so its 新建 (start new) points at a button that does not do that yet; opening a listed research, or choosing a folder with the chip, works.
 - Every shell locale string that names DeepSeek, Harness or DSH and still renders in the shipped composition names a model the person selects (the model picker's DeepSeek descriptions, the DeepSeek endpoint placeholders in the Models settings). The inherited welcome notice about DeepSeek Harness 0.1 is in `ui-settings-models`, but `ui-research` occupies that onboarding step with a component that renders nothing, and the web-search description sits on the disabled plugin settings page. The model-visible system prompt still introduces the agent as powered by DeepSeek Harness (`includeHarnessIdentity`), and the web-search provider's missing-key error still points to Settings > Plugins; neither is UI copy.
 - The inherited user guide (`docs/user/guide`) and upstream Agent Notes still quote the shell's old labels, such as **Choose workspace** and `Deep diving...`.
-- A person who wants a check, the pipeline or another mode now asks the assistant in the conversation. Until step 6 the rail's phases still read the last check whatever its scope.
+- A person who wants a check, the pipeline or another mode now asks the assistant in the conversation.
 - Until step 9 the 新建项目目录… pill and the composer's folder button stay as the only direct ways to put a research in a chosen folder.
 - An example cannot be continued, even by the person who has it open; making a copy of one is left to the tutorial (`复制为我的研究`). Until step 9 startup can still land in an example, which now says it is one.
-- The shell's own success marks (a done todo, a diff's added lines, the connection indicator) now read the verified green in the research edition, which is their conventional meaning. Until step 11 the rail's phases are a filled neutral dot or a hollow one; the ring for the current phase arrives with the rail's rebuild.
+- The shell's own success marks (a done todo, a diff's added lines, the connection indicator) now read the verified green in the research edition, which is their conventional meaning.
+- The rail, the header chip and the brief agree, because all three read one standing. A phase check changes only the phases whose gates it ran, and the whole-paper summary changes only with a full check.
+- A project holding more than 5,000 files never reads as finished and never shows 检查后有改动. Each snapshot lists a checked project's files at most every 30 seconds.
+- `research_check scope: cite`, and `figures`, in spark-to-paper now run that phase's gates as well.
+- A pack without hints, gate labels or `paperRoot` no longer loads.
+- `lastCheck` is written but nothing reads it; task results stored by earlier versions keep the report fields they had.
+- Until step 7 the persona and skills do not mention the decision key; the tool description is the only place the agent learns it. Until step 8 the rail keeps its autonomy select, and until step 11 it has no 现在 line.

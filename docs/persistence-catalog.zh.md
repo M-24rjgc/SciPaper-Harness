@@ -1786,9 +1786,9 @@ SHA-256: `0ddab4577db37a3e0d9e3a91761735c8ef6f5629d526ab8ecaeeea19c097c8f8`
 | `kind` | 必需 | `"plugin"` |
 | `plugin` | 必需 | `string` |
 
-<a id="persistence-type-eventagentinboxspliceddatainserted0source10"></a>
+<a id="persistence-type-eventagentinboxspliceddatainserted0source11"></a>
 
-### `event:agent/inbox/spliced.data.inserted[0].source[10]`
+### `event:agent/inbox/spliced.data.inserted[0].source[11]`
 
 SHA-256: `6a4f72e2e179e17b922f2a9392c0e1c8f8c707f32494372454850a3eb184a6e7`
 
@@ -5142,7 +5142,7 @@ SHA-256: `4c965666d5b42116945bc356087cd5e1fd549e6dece560785ed60511059a8283`
 
 - [`packages/context/agent-instructions/src/state.ts#AgentInstructionSource`](#persistence-type-packagescontextagent-instructionssrcstatetsagentinstructionsource)
 - [`packages/llm/llm/src/message.ts#ToolMessageSource`](#persistence-type-packagesllmllmsrcmessagetstoolmessagesource)
-- [`event:agent/inbox/spliced.data.inserted[0].source[10]`](#persistence-type-eventagentinboxspliceddatainserted0source10)
+- [`event:agent/inbox/spliced.data.inserted[0].source[11]`](#persistence-type-eventagentinboxspliceddatainserted0source11)
 - [`event:agent/inbox/spliced.data.inserted[0].source[19]`](#persistence-type-eventagentinboxspliceddatainserted0source19)
 - [`packages/skill/tool-skill/src/index.ts#SkillCatalogSource`](#persistence-type-packagesskilltool-skillsrcindextsskillcatalogsource)
 - [`packages/skill/skill/src/index.ts#SkillInvocationSource`](#persistence-type-packagesskillskillsrcindextsskillinvocationsource)

@@ -102,6 +102,12 @@ export interface DecisionRecord {
   by: 'user' | 'agent'
   rationale: string
   at: string
+  /**
+   * A short slug naming what the decision settles, such as
+   * `experiments-deferred`; a phase that declares it as `deferrable` is
+   * deferred while the phase is not done. Absent on most decisions.
+   */
+  key?: string | undefined
 }
 export interface EnvironmentRecord {
   id: EnvironmentId
@@ -203,6 +209,13 @@ export interface PhaseStatus {
   done: boolean
   /** What still stands between this phase and done, in the agent's terms. */
   missing: string[]
+  /**
+   * The same as keys, for the person's view: the key of each unmet
+   * requirement in the order the pack lists them (`requirementKey`), then
+   * `errors:<check>` for each deciding check that reported an error. Empty
+   * when the phase is done; reports stored before keys existed read as empty.
+   */
+  unmet: string[]
 }
 /** A deterministic report on the paper's current files; it never refuses anything. */
 export interface CheckReport {
@@ -211,9 +224,106 @@ export interface CheckReport {
   /** The mode and route whose phases the report lists. */
   mode?: string | undefined
   route?: string | undefined
+  /**
+   * The ids of the mode's gates this check ran, or tried to (a gate that could
+   * not run reports an error under its id). Base checks always run. Reports
+   * stored before this field existed read as none.
+   */
+  gatesRun: string[]
   phases: PhaseStatus[]
   findings: CheckFinding[]
   checkedAt: string
+}
+/** Where one phase stood after the last check that decided it. */
+export interface PhaseProgress {
+  done: boolean
+  /** What held it back, as {@link PhaseStatus.unmet} keys. */
+  unmet: string[]
+  checkedAt: string
+}
+/** The findings of one check, from the last report that ran it. */
+export interface CheckProgress {
+  items: CheckFinding[]
+  checkedAt: string
+}
+/** The last check of the whole paper (scope `all`). */
+export interface FullCheckProgress {
+  clean: boolean
+  errors: number
+  warnings: number
+  checkedAt: string
+}
+/**
+ * What research_check reports established for the project's mode and route,
+ * merged report by report; research_check is its only writer. A phase moves
+ * only when the report ran every gate that decides it, a check's findings are
+ * replaced whenever a report ran that check, and `full` changes only with a
+ * scope-`all` report. A report for another mode or route starts it afresh.
+ */
+export interface ResearchProgress {
+  mode: string
+  route?: string | undefined
+  /** By phase id. */
+  phases: Record<string, PhaseProgress>
+  /** By check id: a base check or one of the mode's gates. */
+  findings: Record<string, CheckProgress>
+  full?: FullCheckProgress | undefined
+}
+/**
+ * How a phase stands for the person: `done` by its last check, `current` for
+ * the first phase that is neither done nor deferred, `pending` after it, and
+ * `deferred` while a recorded decision defers a phase that is not done.
+ */
+export type PhaseState = 'done' | 'current' | 'pending' | 'deferred'
+/** One phase of the project's mode as the person reads it. */
+export interface StandingPhase {
+  id: string
+  label: LocalizedText
+  state: PhaseState
+  /** The phase asks the person before its work starts. */
+  checkpoint: boolean
+  /** One sentence per unmet key of its last check, from the mode pack; empty when done or never checked. */
+  hints: LocalizedText[]
+  /** When a check last decided this phase; absent before any did. */
+  checkedAt?: string | undefined
+}
+/** What one check found at its last run, for the person. */
+export interface StandingIssues {
+  /** A base check or gate id. */
+  check: string
+  /** The check's name: a gate's label from its pack, or the built-in name of a base check. */
+  label: LocalizedText
+  errors: number
+  warnings: number
+  /** The first file its findings name that exists now, errors first; absent when none does. */
+  file?: string | undefined
+  line?: number | undefined
+  /** The check's findings, errors first, in the words the check wrote for the agent. */
+  findings: CheckFinding[]
+}
+/**
+ * Where a project stands, derived from its stored progress, its mode and its
+ * files for each snapshot and brief; never stored.
+ */
+export interface ResearchStanding {
+  /** The phases of the project's mode on its route, in order; none in a mode without phases. */
+  phases: StandingPhase[]
+  /** The current phase's id; absent when every phase is done or deferred. */
+  next?: string | undefined
+  /** The current phase's first hint; absent when it has none or was never checked. */
+  hint?: LocalizedText | undefined
+  /** The whole-paper check is clean, every phase is done, and no file changed since that check. */
+  finished: boolean
+  /** When the last check ran; absent before any check under this mode and route. */
+  checkedAt?: string | undefined
+  /**
+   * Whether a project file (outside `.research`, `exports`, `.git` and
+   * `node_modules`) changed after the last check; `unknown` when the project
+   * holds too many files to list.
+   */
+  changedSinceCheck: boolean | 'unknown'
+  /** What the last checks found, one group per check that has findings: groups with errors first. */
+  issues: StandingIssues[]
 }
 export interface ResearchProject {
   id: ProjectId
@@ -248,7 +358,12 @@ export interface ResearchProject {
   experiments: ExperimentRecord[]
   compilations: CompileRecord[]
   visualReviews: VisualReview[]
+  /** The last check report, whatever its scope; kept for compatibility, progress is read from `progress`. */
   lastCheck?: CheckReport | undefined
+  /** Absent until the first check this version stored; a stored scope-`all` `lastCheck` then stands in for it. */
+  progress?: ResearchProgress | undefined
+  /** Where the project stands: derived for each snapshot, never stored; absent elsewhere. */
+  standing?: ResearchStanding | undefined
   sessionId?: string | undefined
 }
 export interface ModelBinding {
@@ -572,6 +687,8 @@ export type ResearchCommand =
     rationale?: string | undefined
     /** Who decided; the caller when absent. The agent names the user when it records the user's checkpoint answer. */
     decidedBy?: 'user' | 'agent' | undefined
+    /** A short slug naming what the decision settles, such as `experiments-deferred`. */
+    key?: string | undefined
   }
   | { action: 'check'; projectId: ProjectId; scope?: string | undefined }
   | { action: 'import'; projectId: ProjectId; paths: string[] }

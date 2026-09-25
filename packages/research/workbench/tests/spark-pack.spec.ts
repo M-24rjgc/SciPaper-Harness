@@ -18,6 +18,19 @@ describe('the spark-to-paper pack', () => {
     expect(experiments?.checkpoint).toBe(true)
   })
 
+  it('keeps its paper in the project root, reviews its sections, and lets only the experiments be deferred', () => {
+    const pack = registry.get('spark-to-paper')!
+    expect(pack).toMatchObject({ paperRoot: '.', reviewAgainst: 'sections/*.tex' })
+    expect(pack.phases.filter(phase => phase.deferrable !== undefined).map(phase => [phase.id, phase.deferrable])).toEqual([['experiments', 'experiments-deferred']])
+    // Every gate has its own name where the person reads its findings, and every requirement its own sentence.
+    expect(new Set(pack.gates.map(gate => gate.label.zh)).size).toBe(pack.gates.length)
+    expect(new Set(pack.gates.map(gate => gate.label.en)).size).toBe(pack.gates.length)
+    for (const phase of pack.phases) {
+      expect(new Set(phase.requires.map(requirement => requirement.hint.zh)).size, phase.id).toBe(phase.requires.length)
+    }
+    expect(registry.get('general')?.paperRoot).toBe('paper')
+  })
+
   it('runs the story gate only on the idea route and every other upstream gate on all routes', () => {
     const gates = (route: string) => registry.resolve({ mode: 'spark-to-paper', route }).gates.map(gate => gate.id)
     const shared = ['template-lint', 'blueprint-lint', 'citations-bib', 'citations-lint', 'draft-lint', 'vector-figures', 'figure-critique']

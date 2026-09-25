@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { format } from 'node:util'
 import { globMatcher, runChecks } from '../src/checks.ts'
-import { GENERAL_MODE, loadPack, ModeRegistry, parseSkillFile } from '../src/modes.ts'
+import { GENERAL_MODE, loadPack, ModeRegistry, parseSkillFile, requirementKey } from '../src/modes.ts'
 import { newProject } from '../src/project.ts'
 import type { CheckFinding, ResearchProject } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -23,7 +23,9 @@ async function write(path: string, content: string): Promise<void> {
   await writeFile(path, content)
 }
 
-const GENERAL = 'id: general\norder: 0\nname: { en: General, zh: 通用 }\nsummary: { en: s, zh: s }\n'
+const GENERAL = 'id: general\norder: 0\nname: { en: General, zh: 通用 }\nsummary: { en: s, zh: s }\npaperRoot: paper\n'
+/** A hint for a requirement of the demo pack. */
+const HINT = 'hint: { en: Missing, zh: 缺少 }'
 /** A logger that keeps each formatted warning. */
 const collect = (into: string[]) => ({ warn: (pattern: string, ...args: unknown[]) => { into.push(format(pattern, ...args)) } })
 const quiet = { warn: () => {} }
@@ -38,6 +40,8 @@ summary: { en: A demo pack, zh: 演示包 }
 source: { repo: https://example.org/demo, version: 1.0.0, license: MIT }
 entry: lead
 preload: [first]
+paperRoot: paper/tex
+reviewAgainst: "sections/*.tex"
 routes:
   - id: short
     name: { en: Short, zh: 短 }
@@ -51,33 +55,46 @@ phases:
     label: { en: Notes, zh: 笔记 }
     requires:
       - when: { file: "notes/*.md", min: 2 }
+        hint: { en: Fewer than two notes, zh: 笔记不到两篇 }
       - when: [{ file: "**/story.json" }, { file: "{idea,brief}.md" }]
         message: Write the story
+        hint: { en: No story yet, zh: 还没有故事 }
   - id: counts
     label: { en: Counts, zh: 计数 }
     routes: [long]
     checkpoint: true
+    deferrable: counts-deferred
     checks: [lint]
     requires:
       - when: { sections: 2 }
+        ${HINT}
       - when: { figures: 2 }
+        ${HINT}
       - when: { bibEntries: 3 }
+        ${HINT}
   - id: results
     label: { en: Results, zh: 结果 }
     checks: [cite]
     requires:
       - when: manuscript
+        ${HINT}
       - when: runsCollected
+        ${HINT}
       - when: dataEvidence
+        ${HINT}
       - when: resultsOrData
+        ${HINT}
       - when: reviewCurrent
+        ${HINT}
   - id: all
     label: { en: All, zh: 全部 }
     checks: all
 gates:
   - id: lint
+    label: { en: Lint, zh: 检查 }
     script: gates/lint.py
   - id: long-only
+    label: { en: Long only, zh: 仅长路线 }
     script: gates/long.py
     routes: [long]
 scripts:
@@ -162,6 +179,7 @@ id: odd
 order: 1
 name: { en: Odd, zh: 怪 }
 summary: { en: s, zh: s }
+paperRoot: paper
 entry: absent
 preload: [missing]
 routes:
@@ -169,13 +187,19 @@ routes:
   - { id: a, name: { en: A, zh: A }, summary: { en: A, zh: A } }
 defaultRoute: z
 phases:
-  - { id: p, label: { en: P, zh: P }, routes: [nowhere], checks: [ghost] }
+  - id: p
+    label: { en: P, zh: P }
+    routes: [nowhere]
+    checks: [ghost]
+    requires:
+      - { when: manuscript, ${HINT} }
+      - { when: [manuscript], ${HINT} }
   - { id: q, label: { en: Q, zh: Q } }
   - { id: q, label: { en: Q, zh: Q } }
 gates:
-  - { id: cite, script: gates/cite.py }
-  - { id: g, script: gates/g.py }
-  - { id: g, script: gates/g.py }
+  - { id: cite, label: { en: C, zh: C }, script: gates/cite.py }
+  - { id: g, label: { en: G, zh: G }, script: gates/g.py }
+  - { id: g, label: { en: G, zh: G }, script: gates/g.py }
 scripts:
   - { id: s, script: s.py }
   - { id: s, script: s.py }
@@ -183,12 +207,43 @@ scripts:
     await expect(loadPack(root)).rejects.toThrow([
       'duplicate route a', 'duplicate gate g', 'duplicate script s', 'defaultRoute must name one of the routes',
       'gate cite shadows a base check', 'skill absent is not in skills/', 'skill missing is not in skills/',
-      'p names unknown route nowhere', 'phase p names unknown check ghost', 'duplicate phase on route a q',
+      'p names unknown route nowhere', 'duplicate requirement of phase p manuscript', 'phase p names unknown check ghost', 'duplicate phase on route a q',
     ].join('; '))
     await write(join(root, 'mode.yml'), `${GENERAL.replace('id: general', 'id: lone')}defaultRoute: x\n`)
     await expect(loadPack(root)).rejects.toThrow('defaultRoute needs routes')
     await write(join(root, 'mode.yml'), `${GENERAL}surprise: true\n`)
     await expect(loadPack(root)).rejects.toThrow(/surprise/)
+    // What the person reads is required: a hint on every requirement, a label on every gate, and where the paper lives.
+    const phase = (requirement: string): string => `${GENERAL}phases:\n  - { id: p, label: { en: P, zh: P }, requires: [${requirement}] }\n`
+    await write(join(root, 'mode.yml'), phase('{ when: manuscript }'))
+    await expect(loadPack(root)).rejects.toThrow(/hint/)
+    await write(join(root, 'mode.yml'), phase('{ when: manuscript, hint: { en: Missing } }'))
+    await expect(loadPack(root)).rejects.toThrow(/zh/)
+    await write(join(root, 'mode.yml'), `${GENERAL}gates:\n  - { id: lint, script: gates/lint.py }\n`)
+    await expect(loadPack(root)).rejects.toThrow(/label/)
+    for (const paperRoot of ['', '../paper', '/paper', 'paper/', 'a b']) {
+      await write(join(root, 'mode.yml'), GENERAL.replace('paperRoot: paper', `paperRoot: "${paperRoot}"`))
+      await expect(loadPack(root)).rejects.toThrow(/project-relative folder/)
+    }
+    await write(join(root, 'mode.yml'), GENERAL.replace('paperRoot: paper\n', ''))
+    await expect(loadPack(root)).rejects.toThrow(/paperRoot/)
+    await write(join(root, 'mode.yml'), `${GENERAL}phases:\n  - { id: p, label: { en: P, zh: P }, deferrable: Not A Key }\n`)
+    await expect(loadPack(root)).rejects.toThrow(/lowercase words/)
+  })
+
+  it('names each requirement by its conditions, so a check can say which ones are unmet', async () => {
+    const pack = await loadPack(join(await packs(), 'demo'))
+    const keys = Object.fromEntries(pack.phases.map(phase => [phase.id, phase.requires.map(requirementKey)]))
+    expect(keys).toEqual({
+      notes: ['file:notes/*.md>=2', 'file:**/story.json | file:{idea,brief}.md'],
+      counts: ['sections>=2', 'figures>=2', 'bibEntries>=3'],
+      results: ['manuscript', 'runsCollected', 'dataEvidence', 'resultsOrData', 'reviewCurrent'],
+      all: [],
+    })
+    expect(pack).toMatchObject({ paperRoot: 'paper/tex', reviewAgainst: 'sections/*.tex' })
+    expect(pack.phases.find(phase => phase.id === 'counts')?.deferrable).toBe('counts-deferred')
+    expect(pack.gates.map(gate => gate.label.zh)).toEqual(['检查', '仅长路线'])
+    expect(pack.phases[0]?.requires[1]?.hint).toEqual({ en: 'No story yet', zh: '还没有故事' })
   })
 
   it('reads skill frontmatter and body', () => {
@@ -215,7 +270,14 @@ describe('mode phases and gates in the check report', () => {
     expect(missing.notes).toEqual(['No file matching notes/*.md', 'Write the story'])
     expect(missing.counts).toEqual(['No figures in the paper yet', 'Fewer than 3 bibliography entries (2)'])
     expect(missing.results).toEqual(['No completed, collected experiment run', 'No data evidence: import the measured results', 'No collected results to report', 'No current review'])
-    expect(report).toMatchObject({ mode: 'demo', route: 'long', clean: false })
+    // The same, as the requirements' keys the person's view looks the hints up by.
+    expect(Object.fromEntries(report.phases.map(phase => [phase.id, phase.unmet]))).toEqual({
+      notes: ['file:notes/*.md>=2', 'file:**/story.json | file:{idea,brief}.md'],
+      counts: ['figures>=2', 'bibEntries>=3'],
+      results: ['runsCollected', 'dataEvidence', 'resultsOrData', 'reviewCurrent'],
+      all: ['errors:compile'],
+    })
+    expect(report).toMatchObject({ mode: 'demo', route: 'long', clean: false, gatesRun: ['lint', 'long-only'] })
     await write(join(p.root, 'notes', 'a.md'), 'a')
     const one = await runChecks(p, 100000, 'notes', registry.resolve(p), async () => [])
     expect(one.phases[0]?.missing).toEqual(['Fewer than 2 files matching notes/*.md (1)', 'Write the story'])
@@ -235,6 +297,7 @@ describe('mode phases and gates in the check report', () => {
 
   it('runs the gates a scope calls for and folds their findings into the report', async () => {
     const { registry, p } = await project('long')
+    await write(join(p.root, 'x.tex'), '% the file the gate names')
     const mode = registry.resolve(p)
     const ran: string[] = []
     const finding = (message: string): CheckFinding => ({ check: 'ignored', severity: 'error', message, file: 'x.tex', line: 2 })
@@ -251,26 +314,56 @@ describe('mode phases and gates in the check report', () => {
     expect(lint.at(-1)?.message).toBe('…and 2 more findings')
     expect(all.findings.find(item => item.check === 'long-only')?.message).toBe('The gate failed to run: python exploded')
     expect(all.phases.find(phase => phase.id === 'counts')?.missing[0]).toBe('26 error(s) in lint')
+    expect(all.phases.find(phase => phase.id === 'counts')?.unmet).toEqual(['figures>=2', 'bibEntries>=3', 'errors:lint'])
     expect(all.phases.find(phase => phase.id === 'all')?.missing[0]).toMatch(/error\(s\) in .*lint.*long-only|error\(s\) in .*long-only.*lint/)
 
     ran.length = 0
     const counts = await runChecks(p, 100000, 'counts', mode, gate)
     expect(ran).toEqual(['lint'])
+    expect(counts.gatesRun).toEqual(['lint'])
     expect(counts.findings.every(item => item.check === 'lint')).toBe(true)
     ran.length = 0
-    await runChecks(p, 100000, 'results', mode, gate)
+    expect((await runChecks(p, 100000, 'results', mode, gate)).gatesRun).toEqual([])
     expect(ran).toEqual([])
     await runChecks(p, 100000, 'all', mode, gate)
     expect(ran).toEqual(['lint', 'long-only'])
     ran.length = 0
     const single = await runChecks(p, 100000, 'long-only', mode, gate)
     expect(ran).toEqual(['long-only'])
-    expect(single).toMatchObject({ clean: false, findings: [{ check: 'long-only' }] })
+    expect(single).toMatchObject({ clean: false, gatesRun: ['long-only'], findings: [{ check: 'long-only' }] })
     ran.length = 0
     await runChecks(p, 100000, 'cite', mode, gate)
     expect(ran).toEqual([])
+    // A phase named like a base check is the phase: its gates run and its checks are reported.
+    const shadowing = { ...mode, phases: mode.phases.map(phase => phase.id === 'counts' ? { ...phase, id: 'cite' } : phase) }
+    const phaseNamedCite = await runChecks(p, 100000, 'cite', shadowing, gate)
+    expect(ran).toEqual(['lint'])
+    expect(phaseNamedCite.findings.every(item => item.check === 'lint')).toBe(true)
     const unrunnable = await runChecks(p, 100000, 'lint', mode)
     expect(unrunnable.findings).toEqual([{ check: 'lint', severity: 'error', message: 'This gate could not run here' }])
+  })
+
+  it('takes a review as current while the files the mode reviews are older than it', async () => {
+    const { registry, p } = await project('short')
+    const mode = registry.resolve(p)
+    const at = (seconds: number): Date => new Date(Date.now() + seconds * 1000)
+    await write(join(p.root, 'reviews', 'review.md'), '# Review\n')
+    await utimes(join(p.root, 'reviews', 'review.md'), at(-60), at(-60))
+    await write(join(p.root, 'sections', 'intro.tex'), 'Intro')
+    await utimes(join(p.root, 'sections', 'intro.tex'), at(-120), at(-120))
+    // The assembled main.tex is newer than the review; the sections the review read are not.
+    expect((await runChecks(p, 100000, 'review', mode)).findings).toEqual([])
+    await utimes(join(p.root, 'sections', 'intro.tex'), at(0), at(0))
+    expect((await runChecks(p, 100000, 'review', mode)).findings).toEqual([
+      { check: 'review', severity: 'warning', message: 'The latest review predates the latest changes to sections/*.tex', file: 'reviews/review.md' },
+    ])
+    // Without reviewAgainst every manuscript source counts, main.tex included.
+    await utimes(join(p.root, 'sections', 'intro.tex'), at(-120), at(-120))
+    const unscoped = { ...mode, pack: { ...mode.pack, reviewAgainst: undefined } }
+    expect((await runChecks(p, 100000, 'review', unscoped)).findings.map(finding => finding.message)).toEqual(['The latest review predates the latest manuscript changes'])
+    // Nothing the mode reviews exists yet: nothing is newer than the review.
+    await rm(join(p.root, 'sections'), { recursive: true })
+    expect((await runChecks(p, 100000, 'review', mode)).findings).toEqual([])
   })
 })
 

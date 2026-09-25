@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * The research rail. It reports how the project stands by its last check, what
+ * The research rail. It reports how the project stands by the host's standing, what
  * was decided and what the project holds, and offers the project's tools. The
  * assistant sets the mode and runs the checks, so the one thing a person
  * changes here is the autonomy; that control keeps its own pending and failure
@@ -18,6 +18,7 @@ import { ProjectStatus, ResearchRail, ResearchRailTitle } from '../src/client/Ra
 import type { SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
+import { standingOf } from './fixtures/standing.ts'
 
 afterEach(() => { cleanup() })
 
@@ -167,76 +168,116 @@ describe('the research rail', () => {
     expect(log.lines).toEqual([])
   })
 
-  it('shows the phases of the last check, what still blocks each, and the errors with the files they name', async () => {
+  it('marks each phase done, current, not started or deferred, with the current phase\'s hint and the checkpoint note', () => {
     const routed = project('spark-to-paper', 'proposal')
-    routed.lastCheck = {
-      clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '',
-      phases: [
-        { id: 'plan', done: true, missing: [] },
-        { id: 'cite', done: false, missing: ['2 error(s) in cite', 'No bibliography entries yet', 'hidden third'] },
-        { id: 'renamed-upstream', done: false, missing: [] },
-      ],
-      findings: [
-        { check: 'cite', severity: 'error', message: 'Citation key has no bibliography entry: x', file: 'paper/main.tex', line: 12 },
-        { check: 'compile', severity: 'error', message: 'The paper has not been compiled yet', file: 'paper/main.tex' },
-        { check: 'structure', severity: 'error', message: 'No LaTeX manuscript yet' },
-        { check: 'review', severity: 'warning', message: 'No review yet' },
-        ...Array.from({ length: 4 }, (_, index) => ({ check: 'numbers' as const, severity: 'error' as const, message: `untraced ${index}` })),
-      ],
-    }
-    const { rail, log } = mount([routed])
+    routed.standing = standingOf([['plan', 'done'], ['cite', 'current'], ['experiments', 'deferred'], ['submission', 'pending']], {
+      checkedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+      hint: { en: 'There is no bibliography of verified sources yet', zh: '还没有核实过的参考文献库' },
+    })
+    const { rail } = mount([routed])
     expect(rail.getByText('规划')).toBeTruthy()
-    expect(rail.getByText('引用')).toBeTruthy()
-    // A phase the installed pack no longer has shows its id.
-    expect(rail.getByText('renamed-upstream')).toBeTruthy()
-    expect(rail.getByText('No bibliography entries yet')).toBeTruthy()
-    expect(rail.queryByText('hidden third')).toBeNull()
-    expect(rail.getByText(zh.findings)).toBeTruthy()
-    expect(rail.getByText(/7 个错误 · 1 个提醒/)).toBeTruthy()
-    expect(rail.getByText('No LaTeX manuscript yet')).toBeTruthy()
-    // Five errors are listed; the rest are only counted.
-    expect(rail.queryByText('untraced 3')).toBeNull()
-    fireEvent.click(rail.getByRole('button', { name: 'paper/main.tex:12' }))
-    fireEvent.click(rail.getByRole('button', { name: 'paper/main.tex' }))
-    await settle()
-    expect(log.opened).toEqual([[ROOT, 'paper/main.tex'], [ROOT, 'paper/main.tex']])
+    // Each mark says what it means; done is a check mark, the current phase a ring.
+    expect(rail.getAllByRole('img').map(mark => [mark.tagName.toLowerCase(), mark.getAttribute('aria-label')])).toEqual([
+      ['svg', zh.phaseDone], ['span', zh.phaseCurrent], ['span', zh.phaseDeferred], ['span', zh.phasePending],
+    ])
+    // The caption is the pack's own sentence, never the words a check wrote for the assistant.
+    expect(rail.getByText('还没有核实过的参考文献库')).toBeTruthy()
+    expect(rail.getByText(zh.phaseDeferred, { selector: 'span:not([role])' })).toBeTruthy()
+    expect(rail.getAllByText(zh.phaseCheckpoint)).toHaveLength(1)
+    expect(rail.getByText('检查于 5 分钟前')).toBeTruthy()
+    expect(rail.queryByText(zh.changedSinceCheck, { exact: false })).toBeNull()
+    cleanup()
+    // Without a hint the current phase carries no caption.
+    const bare = project('spark-to-paper', 'proposal')
+    bare.standing = standingOf([['plan', 'current']], { checkedAt: new Date().toISOString() })
+    const quiet = mount([bare]).rail
+    expect(quiet.container.querySelectorAll('li span').length).toBe(3)
   })
 
-  it('says why a finding\'s file could not be opened', async () => {
+  it('says when the research was last checked, whether a file changed since, and that no check has run yet', () => {
     const routed = project('spark-to-paper', 'proposal')
-    routed.lastCheck = {
-      clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '', phases: [],
-      findings: [{ check: 'compile', severity: 'error', message: 'The paper has not been compiled yet', file: 'paper/main.tex' }],
-    }
-    const { rail } = mount([routed], { openFile: () => { throw new Error('no sidebar') } })
-    expect(rail.queryByRole('alert')).toBeNull()
-    fireEvent.click(rail.getByRole('button', { name: 'paper/main.tex' }))
-    await settle()
-    expect(rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'no sidebar' }))
-  })
-
-  it('asks for a check when the last one was for another route or mode, and shows no phases in the general mode', () => {
-    const switched = project('spark-to-paper', 'data')
-    switched.lastCheck = { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '', phases: [{ id: 'plan', done: true, missing: [] }], findings: [] }
-    const first = mount([switched])
-    expect(first.rail.getByText(zh.checkNever)).toBeTruthy()
-    expect(first.rail.getByText(zh.checkClean)).toBeTruthy()
+    routed.standing = standingOf([['plan', 'current']], { checkedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(), changedSinceCheck: true })
+    const changed = mount([routed]).rail
+    expect(changed.getByText(/^检查于 2 小时前/)).toBeTruthy()
+    expect(changed.getByText(zh.changedSinceCheck, { exact: false })).toBeTruthy()
     cleanup()
-    switched.lastCheck = { ...switched.lastCheck, route: 'data', mode: 'general' }
-    expect(mount([switched]).rail.getByText(zh.checkNever)).toBeTruthy()
+    // Too many files to tell says nothing.
+    routed.standing = standingOf([['plan', 'current']], { checkedAt: new Date().toISOString(), changedSinceCheck: 'unknown' })
+    expect(mount([routed]).rail.queryByText(zh.changedSinceCheck, { exact: false })).toBeNull()
     cleanup()
-    switched.lastCheck = { ...switched.lastCheck, mode: 'spark-to-paper', phases: [] }
-    expect(mount([switched]).rail.getByText(zh.checkNever)).toBeTruthy()
+    const unchecked = project('spark-to-paper', 'proposal')
+    unchecked.standing = standingOf([['plan', 'current'], ['cite', 'pending']])
+    const never = mount([unchecked]).rail
+    expect(never.getByText(zh.checkNever)).toBeTruthy()
+    expect(never.queryByText(zh.issuesTitle)).toBeNull()
     cleanup()
-    const unchecked = mount([project('spark-to-paper')])
-    expect(unchecked.rail.getByText(zh.checkNever)).toBeTruthy()
-    expect(unchecked.rail.queryByText(zh.findings)).toBeNull()
+    // Before the first snapshot carries a standing, and in the general mode before a check, nothing is shown.
+    const loading = mount([project('spark-to-paper', 'proposal')]).rail
+    expect(loading.queryByText(zh.checkNever)).toBeNull()
+    expect(loading.queryByRole('img')).toBeNull()
     cleanup()
     const general = project()
-    general.lastCheck = { clean: true, scope: 'all', mode: 'general', checkedAt: '', phases: [], findings: [] }
-    const second = mount([general])
-    expect(second.rail.queryByText(zh.checkNever)).toBeNull()
-    expect(second.rail.getByText(zh.checkClean)).toBeTruthy()
+    general.standing = standingOf([])
+    expect(mount([general]).rail.queryByText(zh.checkNever)).toBeNull()
+  })
+
+  it('lists at most three groups of open issues in the reader\'s language, each opening its file only when it exists', async () => {
+    const routed = project('spark-to-paper', 'proposal')
+    const finding = (check: string, severity: 'error' | 'warning', message: string, file?: string, line?: number) =>
+      ({ check, severity, message, ...(file === undefined ? {} : { file }), ...(line === undefined ? {} : { line }) })
+    routed.standing = standingOf([['plan', 'current']], {
+      checkedAt: new Date().toISOString(),
+      issues: [
+        { check: 'cite', label: { en: 'Citations', zh: '引用' }, errors: 2, warnings: 1, file: 'paper/main.tex', line: 12, findings: [
+          finding('cite', 'error', 'Citation key has no bibliography entry: x', 'paper/main.tex', 12),
+          finding('cite', 'error', 'Incomplete bibliography entry y', 'paper/refs.bib'),
+          finding('cite', 'warning', 'Not verified'),
+        ] },
+        { check: 'submission-checks', label: { en: 'Submission checks', zh: '投稿检查' }, errors: 1, warnings: 0, findings: [
+          finding('submission-checks', 'error', 'submission/checks.md is missing'),
+        ] },
+        { check: 'review', label: { en: 'Review', zh: '评审' }, errors: 0, warnings: 1, findings: [finding('review', 'warning', 'No review yet')] },
+        { check: 'prose', label: { en: 'Prose', zh: '行文' }, errors: 0, warnings: 4, findings: [finding('prose', 'warning', 'hidden fourth group')] },
+      ],
+    })
+    const { rail, log } = mount([routed])
+    expect(rail.getByText(zh.issuesTitle)).toBeTruthy()
+    // A group whose file exists opens it; one without a file is only named.
+    const cite = rail.getByRole('button', { name: '引用 · 2 个错误 · 1 个提醒' })
+    expect(cite.getAttribute('title')).toBe('打开 paper/main.tex')
+    expect(rail.getByText('投稿检查 · 1 个错误').tagName.toLowerCase()).toBe('span')
+    expect(rail.getByText('评审 · 1 个提醒')).toBeTruthy()
+    expect(rail.queryByText(/^行文/)).toBeNull()
+    // The checks' own words wait behind Details, with where each one points.
+    expect(rail.getAllByText(zh.issueDetails)).toHaveLength(3)
+    expect(rail.getByText('Citation key has no bibliography entry: x').closest('details')).toBeTruthy()
+    expect(rail.getByText('paper/main.tex:12', { exact: false })).toBeTruthy()
+    expect(rail.getByText('paper/refs.bib', { exact: false })).toBeTruthy()
+    fireEvent.click(cite)
+    await settle()
+    expect(log.opened).toEqual([[ROOT, 'paper/main.tex']])
+    cleanup()
+    // A general project has no phases: its issues carry the time of the check, and a clean check says so.
+    const general = project()
+    general.standing = standingOf([], { checkedAt: new Date().toISOString() })
+    const clean = mount([general]).rail
+    expect(clean.getByText(zh.issuesNone)).toBeTruthy()
+    expect(clean.getByText(zh.checkedJustNow)).toBeTruthy()
+  })
+
+  it('says why an issue\'s file could not be opened', async () => {
+    const routed = project('spark-to-paper', 'proposal')
+    routed.standing = standingOf([['plan', 'current']], {
+      checkedAt: new Date().toISOString(),
+      issues: [{ check: 'compile', label: { en: 'Compile', zh: '编译' }, errors: 1, warnings: 0, file: 'paper/main.tex', findings: [
+        { check: 'compile', severity: 'error', message: 'The paper has not been compiled yet', file: 'paper/main.tex' },
+      ] }],
+    })
+    const { rail } = mount([routed], { openFile: () => { throw new Error('no sidebar') } })
+    expect(rail.queryByRole('alert')).toBeNull()
+    fireEvent.click(rail.getByRole('button', { name: '编译 · 1 个错误' }))
+    await settle()
+    expect(rail.getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'no sidebar' }))
   })
 
   it('lists the newest decisions with who made them and why', () => {

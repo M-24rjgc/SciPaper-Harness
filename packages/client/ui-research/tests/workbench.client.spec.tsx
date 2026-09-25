@@ -22,10 +22,11 @@ import {
   sessionProject, useModes, type ClaimFocus, type ResearchFocus, type ResearchView, type WorkbenchProps,
 } from '../src/client/contract.ts'
 import {
-  chosenMode, modeChoice, modeName, modePhases, packText, parseModeChoice, phaseName, projectFileAddress, standingText, type Translate,
+  chosenMode, modeChoice, modeName, modePhases, packText, parseModeChoice, projectFileAddress, standingText, type Translate,
 } from '../src/client/format.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
+import { standingOf } from './fixtures/standing.ts'
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
@@ -173,7 +174,7 @@ describe('the workbench panel', () => {
       { id: 't', kind: 'k', status: 'running', message: 'working', createdAt: '' },
       { id: 'u', kind: 'k', status: 'completed', message: 'finished', createdAt: '' },
     ]
-    const check: CheckReport = { clean: false, scope: 'all', phases: [], checkedAt: '', findings: [
+    const check: CheckReport = { clean: false, scope: 'all', gatesRun: [], phases: [], checkedAt: '', findings: [
       { check: 'cite', severity: 'error', message: 'Missing key', file: 'paper/main.tex', line: 3 },
       { check: 'review', severity: 'warning', message: 'No review', file: 'reviews/review.md' },
       { check: 'stale', severity: 'warning', message: 'Stale thing' },
@@ -213,7 +214,7 @@ describe('the workbench panel', () => {
   it('opens the project\'s own conversation, switches its access preset there, and says why a refresh failed', async () => {
     const project = { ...fixture(), sessionId: 'session-p' }
     const h = harness([project])
-    h.view.response = { message: 'Clean', check: { clean: true, scope: 'all', phases: [], checkedAt: '', findings: [] } }
+    h.view.response = { message: 'Clean', check: { clean: true, scope: 'all', gatesRun: [], phases: [], checkedAt: '', findings: [] } }
     const refusing = { ...h.props, refresh: () => Promise.reject(new Error('offline')) } as unknown as WorkbenchProps
     const ui = render(<Workbench {...refusing} />)
     expect(ui.getByText(new RegExp(`^${zh.checkClean} · `))).toBeTruthy()
@@ -674,8 +675,6 @@ describe('matching a session to its project, and the helpers the surfaces share'
     const english = ((key: string) => (en as Record<string, string>)[key] ?? key) as Translate
     expect([packText({ en: 'Plan', zh: '规划' }, t), packText({ en: 'Plan', zh: '规划' }, english)]).toEqual(['规划', 'Plan'])
     expect([modeName(MODES, 'general', t), modeName(MODES, 'general', english), modeName(MODES, 'retired', t)]).toEqual(['通用', 'General', 'retired'])
-    expect([phaseName(MODES, 'spark-to-paper', 'cite', t), phaseName(MODES, 'spark-to-paper', 'gone', t), phaseName(MODES, 'retired', 'cite', t)])
-      .toEqual(['引用', 'gone', 'cite'])
     expect(modePhases(MODES, { mode: 'general' })).toEqual([])
     expect(modePhases(MODES, { mode: 'retired' })).toEqual([])
     expect(modePhases(MODES, { mode: 'spark-to-paper' })).toEqual(['plan', 'cite', 'experiments'])
@@ -688,11 +687,10 @@ describe('matching a session to its project, and the helpers the surfaces share'
 
     const project = newProject({ root: '/r', title: 'T', brief: '', mode: 'spark-to-paper', route: 'data' }, 'w' as WorkspaceId)
     expect(standingText(project, MODES, t)).toBe('spark-to-paper')
-    project.lastCheck = { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'data', checkedAt: '', findings: [], phases: [{ id: 'data', done: true, missing: [] }] }
-    expect(standingText(project, MODES, t)).toBe(`spark-to-paper · ${zh.checkClean}`)
-    project.lastCheck.phases.push({ id: 'plan', done: false, missing: [] })
+    project.standing = standingOf([['data', 'done']], { finished: true })
+    expect(standingText(project, MODES, t)).toBe(`spark-to-paper · ${zh.standingFinished}`)
+    project.standing = standingOf([['data', 'done'], ['plan', 'current']])
     expect(standingText(project, MODES, t)).toBe('spark-to-paper · 规划 1/2')
-    expect(standingText({ ...project, lastCheck: { ...project.lastCheck, mode: 'general' } }, MODES, t)).toBe('spark-to-paper')
     expect(useModes(harness([]).props)).toBe(MODES)
     const loading = harness([])
     loading.view.snapshot = null

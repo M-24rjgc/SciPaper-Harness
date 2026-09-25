@@ -1456,7 +1456,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async snapshot(): Promise<ResearchSnapshot>',
         description: 'Read detached project snapshots and non-secret component settings.',
         parameters: [],
-        returns: 'every project without source bodies, the preferences and the component status.',
+        returns: 'every project without source bodies and with where it stands, the preferences and the component status.',
+      },
+      {
+        signature: 'standing(project: ResearchProject): Promise<ResearchStanding>',
+        description: 'Where a project stands, derived from its stored progress, its mode and its files; never stored. File times are listed at most every thirty seconds.',
+        parameters: [{ name: 'project', description: 'the project record.' }],
+        returns: 'its phases, the next one and what it lacks, the open issues, and whether files changed since the last check.',
       },
       {
         signature: '@Remote tasks(): ResearchTask[]',
@@ -4165,8 +4171,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CheckFinding {\n    check: string;\n    severity: \'error\' | \'warning\';\n    message: string;\n    file?: string | undefined;\n    line?: number | undefined;\n}',
   },
   {
+    name: 'CheckProgress',
+    declaration: 'export interface CheckProgress {\n    items: CheckFinding[];\n    checkedAt: string;\n}',
+  },
+  {
     name: 'CheckReport',
-    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: string | undefined;\n    route?: string | undefined;\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
+    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: string | undefined;\n    route?: string | undefined;\n    gatesRun: string[];\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
   },
   {
     name: 'ClaimRecord',
@@ -4418,7 +4428,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'DecisionRecord',
-    declaration: 'export interface DecisionRecord {\n    id: string;\n    question: string;\n    answer: string;\n    by: \'user\' | \'agent\';\n    rationale: string;\n    at: string;\n}',
+    declaration: 'export interface DecisionRecord {\n    id: string;\n    question: string;\n    answer: string;\n    by: \'user\' | \'agent\';\n    rationale: string;\n    at: string;\n    key?: string | undefined;\n}',
   },
   {
     name: 'DeepSeekLlmApiExtensionMap',
@@ -4699,6 +4709,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsWriteOutcome',
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
+  },
+  {
+    name: 'FullCheckProgress',
+    declaration: 'export interface FullCheckProgress {\n    clean: boolean;\n    errors: number;\n    warnings: number;\n    checkedAt: string;\n}',
   },
   {
     name: 'GalleryFigure',
@@ -5153,6 +5167,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface MessageSourceMap {\n    user: {\n        kind: \'user\';\n    };\n    plugin: {\n        kind: \'plugin\';\n        plugin: string;\n    } & ContextFormed;\n    model: ModelMessageSource;\n    tool: ToolMessageSource;\n}',
   },
   {
+    name: 'ModeGate',
+    declaration: 'export type ModeGate = z.infer<typeof gateSchema>;',
+  },
+  {
     name: 'ModelBinding',
     declaration: 'export interface ModelBinding {\n    provider: string;\n    model: string;\n}',
   },
@@ -5205,10 +5223,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export class ModeRegistry {\n    constructor(packs: ModePack[]);\n    static async load(roots: string[], logger: {\n        warn(format: string, ...args: unknown[]): void;\n    }): Promise<ModeRegistry>;\n    list(): ModePack[];\n    get(id: string): ModePack | undefined;\n    summaries(): ModeSummary[];\n    choose(mode: string, route?: string): {\n        mode: string;\n        route?: string;\n    };\n    resolve(project: Pick<ResearchProject, \'mode\' | \'route\'>): ResolvedMode;\n}',
   },
   {
-    name: 'ModeScript',
-    declaration: 'export type ModeScript = z.infer<typeof scriptSchema>;',
-  },
-  {
     name: 'ModeSkill',
     declaration: 'export interface ModeSkill {\n    name: string;\n    description: string;\n    whenToUse?: string | undefined;\n    directory: string;\n}',
   },
@@ -5241,8 +5255,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionCatalog {\n    options: PresetOption[];\n}',
   },
   {
+    name: 'PhaseProgress',
+    declaration: 'export interface PhaseProgress {\n    done: boolean;\n    unmet: string[];\n    checkedAt: string;\n}',
+  },
+  {
+    name: 'PhaseState',
+    declaration: 'export type PhaseState = \'done\' | \'current\' | \'pending\' | \'deferred\';',
+  },
+  {
     name: 'PhaseStatus',
-    declaration: 'export interface PhaseStatus {\n    id: string;\n    done: boolean;\n    missing: string[];\n}',
+    declaration: 'export interface PhaseStatus {\n    id: string;\n    done: boolean;\n    missing: string[];\n    unmet: string[];\n}',
   },
   {
     name: 'PostToolDecision',
@@ -5462,7 +5484,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchCommand',
-    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: string;\n    route?: string | undefined;\n    reason?: string | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n    decidedBy?: \'user\' | \'agent\' | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: ProjectId;\n} & ArtifactFields) | {\n    action: \'read-artifact\';\n    projectId: ProjectId;\n    artifactId: ArtifactId;\n} | {\n    action: \'environment\';\n   /* …truncated — full shape in source */',
+    declaration: 'export type ResearchCommand = {\n    action: \'set-mode\';\n    projectId: ProjectId;\n    mode: string;\n    route?: string | undefined;\n    reason?: string | undefined;\n} | {\n    action: \'set-autonomy\';\n    projectId: ProjectId;\n    autonomy: Autonomy;\n} | {\n    action: \'record-decision\';\n    projectId: ProjectId;\n    question: string;\n    answer: string;\n    rationale?: string | undefined;\n    decidedBy?: \'user\' | \'agent\' | undefined;\n    key?: string | undefined;\n} | {\n    action: \'check\';\n    projectId: ProjectId;\n    scope?: string | undefined;\n} | {\n    action: \'import\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'import-template\';\n    projectId: ProjectId;\n    paths: string[];\n} | {\n    action: \'refresh-evidence\';\n    projectId: ProjectId;\n    evidenceId: EvidenceId;\n} | {\n    action: \'search-evidence\';\n    projectId: ProjectId;\n    query: string;\n} | {\n    action: \'literature-search\';\n    projectId: ProjectId;\n    query: string;\n    provider: LiteratureItem[\'provider\'];\n} | {\n    action: \'literature-import\';\n    projectId: ProjectId;\n    item: LiteratureItem;\n} | {\n    action: \'claim\';\n    projectId: ProjectId;\n    claim: ClaimRecord;\n} | ({\n    action: \'save-artifact\';\n    projectId: ProjectId;\n    content: string;\n    expectedRevision?: number | undefined;\n} & ArtifactFields) | ({\n    action: \'register-artifact\';\n    projectId: ProjectId;\n} & ArtifactFields) | {\n    action: \'read-artifact\';\n    projectId: ProjectId;\n    artifactId: ArtifactId;\n} | { /* …truncated — full shape in source */',
   },
   {
     name: 'ResearchModeEvent',
@@ -5473,8 +5495,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    embedding?: EmbeddingBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n}',
   },
   {
+    name: 'ResearchProgress',
+    declaration: 'export interface ResearchProgress {\n    mode: string;\n    route?: string | undefined;\n    phases: Record<string, PhaseProgress>;\n    findings: Record<string, CheckProgress>;\n    full?: FullCheckProgress | undefined;\n}',
+  },
+  {
     name: 'ResearchProject',
-    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    root: string;\n    example?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    sessionId?: string | undefined;\n}',
+    declaration: 'export interface ResearchProject {\n    id: ProjectId;\n    workspaceId: WorkspaceId;\n    title: string;\n    root: string;\n    example?: boolean | undefined;\n    mode: string;\n    route?: string | undefined;\n    venue?: string | undefined;\n    modeReason?: string | undefined;\n    modeSetBy?: \'user\' | \'agent\' | undefined;\n    autonomy: Autonomy;\n    brief: string;\n    revision: number;\n    researchRevision: number;\n    createdAt: string;\n    updatedAt: string;\n    evidence: EvidenceRecord[];\n    claims: ClaimRecord[];\n    artifacts: ArtifactRecord[];\n    decisions: DecisionRecord[];\n    environments: EnvironmentRecord[];\n    experiments: ExperimentRecord[];\n    compilations: CompileRecord[];\n    visualReviews: VisualReview[];\n    lastCheck?: CheckReport | undefined;\n    progress?: ResearchProgress | undefined;\n    standing?: ResearchStanding | undefined;\n    sessionId?: string | undefined;\n}',
   },
   {
     name: 'ResearchResponse',
@@ -5483,6 +5509,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ResearchSnapshot',
     declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n}',
+  },
+  {
+    name: 'ResearchStanding',
+    declaration: 'export interface ResearchStanding {\n    phases: StandingPhase[];\n    next?: string | undefined;\n    hint?: LocalizedText | undefined;\n    finished: boolean;\n    checkedAt?: string | undefined;\n    changedSinceCheck: boolean | \'unknown\';\n    issues: StandingIssues[];\n}',
   },
   {
     name: 'ResearchTask',
@@ -5498,7 +5528,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResolvedMode',
-    declaration: 'export interface ResolvedMode {\n    pack: ModePack;\n    route?: string | undefined;\n    phases: ModePhase[];\n    gates: ModeScript[];\n    missing?: string | undefined;\n}',
+    declaration: 'export interface ResolvedMode {\n    pack: ModePack;\n    route?: string | undefined;\n    phases: ModePhase[];\n    gates: ModeGate[];\n    missing?: string | undefined;\n}',
   },
   {
     name: 'ResolvedNormalRetryPolicy',
@@ -6287,6 +6317,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SshStreamEndpoint',
     declaration: 'export type SshStreamEndpoint = z.infer<typeof streamEndpointSchema>;',
+  },
+  {
+    name: 'StandingIssues',
+    declaration: 'export interface StandingIssues {\n    check: string;\n    label: LocalizedText;\n    errors: number;\n    warnings: number;\n    file?: string | undefined;\n    line?: number | undefined;\n    findings: CheckFinding[];\n}',
+  },
+  {
+    name: 'StandingPhase',
+    declaration: 'export interface StandingPhase {\n    id: string;\n    label: LocalizedText;\n    state: PhaseState;\n    checkpoint: boolean;\n    hints: LocalizedText[];\n    checkedAt?: string | undefined;\n}',
   },
   {
     name: 'StorageBackend',

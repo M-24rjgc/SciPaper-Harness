@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, realpath, rm } from 'node:fs/promises'
-import { basename, dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
@@ -22,6 +22,7 @@ import { compilePaper, compileTarget, exportPaper, extractText, importEvidence, 
 import { runChecks, type GateRunner } from './checks.ts'
 import { createGateRunner, runPackScript } from './gates.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
+import { FileTimes, mergeProgress, projectStanding, storedProgress } from './progress.ts'
 import { createEnvironment } from './environments.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
 import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
@@ -38,7 +39,7 @@ import {
 import { registerResearchRoutes } from './routes.ts'
 import type {
   ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand,
-  ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask, VisualReview,
+  ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchStanding, ResearchTask, VisualReview,
 } from './types.ts'
 export type * from './types.ts'
 
@@ -148,6 +149,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   readonly boards: ExperimentBoards
   /** The installed mode packs, loaded once at start. */
   modes!: ModeRegistry
+  /** Each project's newest file time, for whether anything changed since its last check. */
+  private readonly fileTimes = new FileTimes()
   private venueLibrary: Promise<VenueLibrary> | undefined
   private refreshResourceRoutes!: () => Promise<void>
 
@@ -235,16 +238,31 @@ export class ResearchWorkbench extends TypertRemoteService {
 
   /**
    * Read detached project snapshots and non-secret component settings.
-   * @returns every project without source bodies, the preferences and the component status.
+   * @returns every project without source bodies and with where it stands, the preferences and the component status.
    */
   @Remote
   async snapshot(): Promise<ResearchSnapshot> {
+    const withStanding = async (project: ResearchProject): Promise<ResearchProject> =>
+      ({ ...publicProject(project), standing: await this.standing(project) })
     return {
-      projects: this.projects().map(publicProject),
+      projects: await Promise.all(this.projects().map(withStanding)),
       preferences: structuredClone(this.domain.global.get()),
       components: await this.components.status(),
       modes: this.modes.summaries(),
     }
+  }
+
+  /**
+   * Where a project stands, derived from its stored progress, its mode and its
+   * files; never stored. File times are listed at most every thirty seconds.
+   * @param project - the project record.
+   * @returns its phases, the next one and what it lacks, the open issues, and whether files changed since the last check.
+   */
+  standing(project: ResearchProject): Promise<ResearchStanding> {
+    return projectStanding(project, this.modes.resolve(project), {
+      newest: () => this.fileTimes.newest(project.root),
+      exists: path => existsSync(resolve(project.root, path)),
+    })
   }
 
   /**
@@ -507,8 +525,15 @@ export class ResearchWorkbench extends TypertRemoteService {
       }
       case 'check': {
         const snapshot = this.getProject(project.id)
-        const check = await runChecks(snapshot, this.config.maxSourceBytes, request.scope, this.modes.resolve(snapshot), this.gates(signal))
-        if (!example) await this.mutate(project.id, (current) => { current.lastCheck = check })
+        const mode = this.modes.resolve(snapshot)
+        const check = await runChecks(snapshot, this.config.maxSourceBytes, request.scope, mode, this.gates(signal))
+        // research_check is the one writer of progress; lastCheck stays for readers of earlier versions.
+        if (!example) {
+          await this.mutate(project.id, (current) => {
+            current.progress = mergeProgress(storedProgress(current, mode), check, mode)
+            current.lastCheck = check
+          })
+        }
         return { message: check.clean ? 'Clean' : 'Not done yet: fix the errors and check again', check }
       }
       case 'experiment-wait': return this.waitForRuns(project.id, request.runIds, request.timeoutSeconds, signal)
@@ -701,13 +726,11 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'generate-image': return this.generateImage(id, request, signal)
       case 'fetch-reference-figures': return this.referenceFigures(id, request, signal)
       case 'export': {
+        // The package carries its own check report; progress is research_check's alone to record.
         const snapshot = this.getProject(id)
         const check = await runChecks(snapshot, limit, 'all', this.modes.resolve(snapshot), this.gates(signal))
         const result = await exportPaper(snapshot, limit, check)
-        return (project) => {
-          project.lastCheck = check
-          return { message: result.final ? 'Submission package exported' : 'Draft exported; the bundled check report lists what is still open', path: result.path, check }
-        }
+        return { message: result.final ? 'Submission package exported' : 'Draft exported; the bundled check report lists what is still open', path: result.path, check }
       }
       case 'list-venues': {
         const venues = listVenues(await this.venues(), request.query)
@@ -809,7 +832,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'record-decision': {
         project.decisions.push({
           id: randomUUID(), question: request.question, answer: request.answer, by: request.decidedBy ?? actor,
-          rationale: request.rationale?.trim() ?? '', at: new Date().toISOString(),
+          rationale: request.rationale?.trim() ?? '', at: new Date().toISOString(), ...(request.key === undefined ? {} : { key: request.key }),
         })
         return { message: 'Decision recorded' }
       }

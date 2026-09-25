@@ -19,6 +19,18 @@ describe('the CCFA pack', () => {
     expect(checkpoints).toEqual(['experiments'])
   })
 
+  it('keeps its manuscript in paper/, reviews the whole manuscript, and defers no phase', () => {
+    const pack = registry.get('ccfa')!
+    expect(pack.paperRoot).toBe('paper')
+    expect(pack.reviewAgainst).toBeUndefined()
+    expect(pack.phases.some(phase => phase.deferrable !== undefined)).toBe(false)
+    // Every gate has its own name where the person reads its findings, and every requirement its own sentence.
+    expect(new Set(pack.gates.map(gate => gate.label.zh)).size).toBe(pack.gates.length)
+    for (const phase of pack.phases) {
+      expect(new Set(phase.requires.map(requirement => requirement.hint.zh)).size, phase.id).toBe(phase.requires.length)
+    }
+  })
+
   it('checks the CCFA contracts on the routes that write them, and none on the open route', () => {
     const gates = (route: string) => registry.resolve({ mode: 'ccfa', route }).gates.map(gate => gate.id)
     expect(gates('full-paper')).toEqual(['ccfa-yaml', 'review-report', 'submission-checks', 'path-privacy'])

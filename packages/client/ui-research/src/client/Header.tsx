@@ -8,7 +8,7 @@ import { useModes, useSessionProject, type SessionSeatProps, type WorkbenchProps
 import { standingText } from './format.ts'
 import styles from './Header.module.css'
 
-/** Mode and the phase the last check left open; opening it shows the full record beside the conversation. */
+/** Mode and where the research stands by the host's standing; opening it shows the full record beside the conversation. */
 export function ResearchStatusChip(props: WorkbenchProps & SessionSeatProps): ReactNode {
   const { t } = props
   const project = useSessionProject(props)

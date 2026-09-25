@@ -31,7 +31,10 @@ const conditionSchema = z.union([
 ])
 const requirementSchema = z.strictObject({
   when: z.union([conditionSchema, z.array(conditionSchema).min(1)]),
+  /** What the agent reads while the requirement is unmet; the reason the check found when absent. */
   message: z.string().trim().min(1).optional(),
+  /** What the person reads while it is unmet: one short sentence saying what is missing. */
+  hint: localized,
 })
 const phaseSchema = z.strictObject({
   id: name,
@@ -41,6 +44,8 @@ const phaseSchema = z.strictObject({
   checkpoint: z.boolean().default(false),
   checks: z.union([z.literal('all'), z.array(z.string().min(1))]).default([]),
   requires: z.array(requirementSchema).default([]),
+  /** A decision key (`record-decision` key) that defers this phase while the phase is not done. */
+  deferrable: name.optional(),
 })
 const scriptSchema = z.strictObject({
   id: name,
@@ -50,6 +55,8 @@ const scriptSchema = z.strictObject({
   timeoutSeconds: z.number().int().min(1).max(600).default(120),
   description: z.string().trim().min(1).optional(),
 })
+/** A gate is a script that `research_check` runs; its label names its findings for the person. */
+const gateSchema = scriptSchema.extend({ label: localized })
 const manifestSchema = z.strictObject({
   id: name,
   order: z.number().int(),
@@ -58,10 +65,14 @@ const manifestSchema = z.strictObject({
   source: z.strictObject({ repo: z.url(), version: z.string().min(1), license: z.string().min(1) }).optional(),
   entry: name.optional(),
   preload: z.array(name).default([]),
+  /** The project folder the mode's paper sources live in: `paper`, or `.` for the project root. */
+  paperRoot: z.string().regex(/^(?:\.|[\w-]+(?:\/[\w-]+)*)$/, 'a project-relative folder such as paper, or . for the project root'),
+  /** A project-relative glob: when set, only a matching file changed after the newest review makes the review out of date. */
+  reviewAgainst: z.string().trim().min(1).optional(),
   routes: z.array(z.strictObject({ id: name, name: localized, summary: localized })).default([]),
   defaultRoute: name.optional(),
   phases: z.array(phaseSchema).default([]),
-  gates: z.array(scriptSchema).default([]),
+  gates: z.array(gateSchema).default([]),
   scripts: z.array(scriptSchema).default([]),
 })
 
@@ -69,6 +80,26 @@ export type ModeCondition = z.infer<typeof conditionSchema>
 export type ModeRequirement = z.infer<typeof requirementSchema>
 export type ModePhase = z.infer<typeof phaseSchema>
 export type ModeScript = z.infer<typeof scriptSchema>
+/** A script research_check runs, with the name its findings are grouped under for the person. */
+export type ModeGate = z.infer<typeof gateSchema>
+
+/** A condition's name within its phase: the fact, with its glob or its count. */
+function conditionKey(condition: ModeCondition): string {
+  if (typeof condition === 'string') return condition
+  if ('file' in condition) return condition.min === undefined ? `file:${condition.file}` : `file:${condition.file}>=${condition.min}`
+  if ('bibEntries' in condition) return `bibEntries>=${condition.bibEntries}`
+  return 'sections' in condition ? `sections>=${condition.sections}` : `figures>=${condition.figures}`
+}
+
+/**
+ * The key a check reports an unmet requirement under, unique within its phase:
+ * its conditions, joined by ` | ` when any one of them is enough.
+ * @param requirement - one requirement of a phase.
+ * @returns the key, such as `file:story.json` or `resultsOrData`.
+ */
+export function requirementKey(requirement: ModeRequirement): string {
+  return (Array.isArray(requirement.when) ? requirement.when : [requirement.when]).map(conditionKey).join(' | ')
+}
 
 /** A skill a pack shows the agent while its mode is active. */
 export interface ModeSkill {
@@ -92,7 +123,7 @@ export interface ResolvedMode {
   route?: string | undefined
   phases: ModePhase[]
   /** The pack gates that apply on this route. */
-  gates: ModeScript[]
+  gates: ModeGate[]
   /** The recorded mode id when no installed pack carries it; the project then runs as general. */
   missing?: string | undefined
 }
@@ -151,6 +182,7 @@ export async function loadPack(directory: string): Promise<ModePack> {
     for (const route of item.routes ?? []) if (!routeIds.has(route)) problems.push(`${item.id} names unknown route ${route}`)
   }
   for (const phase of manifest.phases) {
+    unique(`requirement of phase ${phase.id}`, phase.requires.map(requirementKey))
     if (phase.checks === 'all') continue
     for (const check of phase.checks) {
       if (!(checkIds as readonly string[]).includes(check) && !gateIds.has(check)) problems.push(`phase ${phase.id} names unknown check ${check}`)

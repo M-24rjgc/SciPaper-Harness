@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
-import type { ModePack, ModeScript, ResolvedMode } from '../src/modes.ts'
+import type { ModeGate, ModePack, ResolvedMode } from '../src/modes.ts'
 import type { ResearchProject } from '../src/types.ts'
 
 const calls = vi.hoisted(() => [] as { command: string; args: string[]; options: unknown }[])
@@ -15,7 +15,10 @@ vi.mock('../src/process.ts', async original => ({
 }))
 const { createGateRunner, parseGateOutput, runPackScript } = await import('../src/gates.ts')
 
-const gate: ModeScript = { id: 'draft-lint', script: 'gates/run_gate.py', args: ['draft', '--root', '{root}', '--route', '{route}', '--pack', '{pack}'], timeoutSeconds: 30 }
+const gate: ModeGate = {
+  id: 'draft-lint', label: { en: 'Draft check', zh: '草稿检查' }, script: 'gates/run_gate.py',
+  args: ['draft', '--root', '{root}', '--route', '{route}', '--pack', '{pack}'], timeoutSeconds: 30,
+}
 const pack = { id: 'demo', directory: join('/packs', 'demo') } as ModePack
 const mode: ResolvedMode = { pack, route: 'proposal', phases: [], gates: [gate] }
 const project = { root: '/projects/p' } as ResearchProject

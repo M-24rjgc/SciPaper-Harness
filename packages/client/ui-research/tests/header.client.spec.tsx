@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * The conversation header's research chip. It names the mode and the phase
- * the last check left open, for this session's project only — found through the
+ * The conversation header's research chip. It names the mode and where the
+ * host's standing says the research is, for this session's project only — found through the
  * session's binding or its working directory — and it is the one door to the
  * research record: the record opens when the person clicks it, never by itself.
  */
@@ -15,6 +15,7 @@ import { ResearchStatusChip } from '../src/client/Header.tsx'
 import type { ResearchView, SessionSeatProps, WorkbenchProps } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
+import { standingOf } from './fixtures/standing.ts'
 
 afterEach(() => { cleanup() })
 
@@ -66,14 +67,10 @@ describe('the header names where this session\'s project stands', () => {
     expect(render(<ResearchStatusChip {...propsFor([routed], log())} />).container.textContent).toBe('retired-pack')
   })
 
-  it('names the first unfinished phase and how many are done, and the automatic autonomy', () => {
+  it('names the current phase and how many are done, and the automatic autonomy', () => {
     const mine = project('C:\\research\\mine', 'spark-to-paper', 'proposal')
     mine.autonomy = 'automatic'
-    mine.lastCheck = {
-      clean: false, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '',
-      phases: [{ id: 'plan', done: true, missing: [] }, { id: 'cite', done: false, missing: ['x'] }, { id: 'experiments', done: false, missing: [] }],
-      findings: [],
-    }
+    mine.standing = standingOf([['plan', 'done'], ['cite', 'current'], ['experiments', 'pending']])
     // Any conversation opened inside the project folder shows it, bound or not.
     const chip = render(<ResearchStatusChip {...propsFor([mine], log(), { [SESSION]: 'c:/research/MINE/paper' })} />)
     expect(chip.container.textContent).toBe(`spark-to-paper · 引用 1/3·${zh.autonomyShortAutomatic}`)
@@ -86,15 +83,14 @@ describe('the header names where this session\'s project stands', () => {
     expect(render(<ResearchStatusChip {...propsFor([shipped], log())} />).container.textContent).toBe(`${zh.exampleTag}·spark-to-paper`)
   })
 
-  it('says the check is clean once every phase is done', () => {
+  it('says a finished paper is finished, and a deferred phase deferred', () => {
     const mine = project('/research/mine', 'spark-to-paper', 'proposal')
     mine.sessionId = SESSION
-    mine.lastCheck = { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'proposal', checkedAt: '', phases: [{ id: 'submission', done: true, missing: [] }], findings: [] }
-    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe(`spark-to-paper · ${zh.checkClean}`)
+    mine.standing = standingOf([['plan', 'done'], ['submission', 'done']], { finished: true })
+    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe('spark-to-paper · 已完成 ✓')
     cleanup()
-    // A check made on another route no longer says where this one stands.
-    mine.route = 'data'
-    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe('spark-to-paper')
+    mine.standing = standingOf([['plan', 'done'], ['experiments', 'deferred'], ['submission', 'current']])
+    expect(render(<ResearchStatusChip {...propsFor([mine], log())} />).container.textContent).toBe('spark-to-paper · 实验已推迟')
   })
 })
 

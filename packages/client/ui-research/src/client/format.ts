@@ -164,19 +164,6 @@ export function modeName(modes: readonly ModeSummary[], mode: string, t: Transla
 }
 
 /**
- * A phase's label in its mode; an unknown phase shows its id.
- * @param modes - the installed modes.
- * @param mode - the mode the phase belongs to.
- * @param phase - the phase id.
- * @param t - bound dictionary lookup.
- * @returns the phase's label.
- */
-export function phaseName(modes: readonly ModeSummary[], mode: string, phase: string, t: Translate): string {
-  const label = modes.find(item => item.id === mode)?.phases.find(item => item.id === phase)?.label
-  return label ? packText(label, t) : phase
-}
-
-/**
  * The phases a project's mode has on its route; none for the general mode or
  * a pack that is no longer installed.
  * @param modes - the installed modes.
@@ -218,22 +205,48 @@ export function chosenMode(form: FormData): Pick<CreateProjectRequest, 'mode' | 
 }
 
 /**
- * Where a project stands, from its last check: the first unfinished phase and
- * how many are done, or the mode alone when there is no phase list.
+ * Where a project stands, from the standing the host derives: finished; a
+ * deferred phase that nothing before it still waits on; the current phase and
+ * how many are done; or, once every phase is done but the paper is not
+ * finished, that it needs another check. A mode without phases, or a snapshot
+ * without a standing, names the mode alone.
  * @param project - the project as the snapshot carries it.
  * @param modes - the installed modes.
  * @param t - bound dictionary lookup.
  * @returns one line of standing text.
  */
 export function standingText(project: ResearchProject, modes: readonly ModeSummary[], t: Translate): string {
-  const check = project.lastCheck
-  const current = check?.mode === project.mode && check.route === project.route ? check : undefined
-  const phases = current?.phases ?? []
   const mode = modeName(modes, project.mode, t)
+  const phases = project.standing?.phases ?? []
   if (phases.length === 0) return mode
-  const next = phases.find(phase => !phase.done)
-  const done = phases.filter(phase => phase.done).length
-  return next ? `${mode} · ${phaseName(modes, project.mode, next.id, t)} ${done}/${phases.length}` : `${mode} · ${t('checkClean')}`
+  if (project.standing?.finished === true) return `${mode} · ${t('standingFinished')}`
+  const current = phases.find(phase => phase.state === 'current')
+  const deferred = phases.find(phase => phase.state === 'deferred')
+  if (deferred && (!current || phases.indexOf(deferred) < phases.indexOf(current))) {
+    return `${mode} · ${t('standingDeferred', { phase: packText(deferred.label, t) })}`
+  }
+  if (!current) return `${mode} · ${t('standingRecheck')}`
+  const done = phases.filter(phase => phase.state === 'done').length
+  return `${mode} · ${packText(current.label, t)} ${done}/${phases.length}`
+}
+
+const MS_PER_MINUTE = 60_000
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
+
+/**
+ * When the last check ran, as the reader counts it: just now, minutes or hours
+ * ago, and the date and clock time after a day.
+ * @param iso - the check's ISO timestamp.
+ * @param now - the current time in epoch milliseconds.
+ * @param t - bound dictionary lookup.
+ * @returns one localized sentence; a timestamp that does not parse is shown as written.
+ */
+export function checkedText(iso: string, now: number, t: Translate): string {
+  const minutes = Math.floor((now - Date.parse(iso)) / MS_PER_MINUTE)
+  if (minutes < 1) return t('checkedJustNow')
+  if (minutes < MINUTES_PER_HOUR) return t('checkedMinutesAgo', { n: minutes })
+  if (minutes < MINUTES_PER_DAY) return t('checkedHoursAgo', { n: Math.floor(minutes / MINUTES_PER_HOUR) })
+  return t('checkedOn', { time: momentText(iso, t) })
 }
 
 /**

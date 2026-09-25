@@ -57,7 +57,7 @@ Every surface reads one polled snapshot of projects, preferences and components,
 | --- | --- |
 | `Hero.tsx` | The flask mark on the blank-session entry and the research tab |
 | `Header.tsx` | The project's status chip in the conversation header; clicking it opens the research tab |
-| `Rail.tsx` | The research tab: autonomy, phases, findings, decisions, counts, and the tools row (board, gallery, research files) |
+| `Rail.tsx` | The research tab: autonomy, the phases and open issues of the host's `standing` with when it was checked, decisions, counts, and the tools row (board, gallery, research files) |
 | `NewProject.tsx`, `ProjectEntry.tsx` | Project creation with mode and autonomy, and the sidebar project list |
 | `ClaimSheet.tsx` | One claim and every source under it, over the whole frame, looked up in its own project |
 | `RunPanel.tsx`, `MetricsGrid.tsx`, `StopRun.tsx` | Submitted experiments above the composer, with their metrics, and stopping one after a confirmation |

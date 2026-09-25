@@ -266,7 +266,9 @@ describe('the research service records; it never drives the agent', () => {
     await write(python, '')
     await service.configure({ python })
     const checked = await run({ action: 'check', scope: 'plan' })
-    expect(checked.check?.findings.filter(f => f.check === 'blueprint-lint')).toEqual([{ check: 'blueprint-lint', severity: 'error', message: 'blueprint found a problem', file: 'blueprint.json' }])
+    // The gate names blueprint.json, which the project does not have yet, so the finding links to no file.
+    expect(checked.check?.findings.filter(f => f.check === 'blueprint-lint')).toEqual([{ check: 'blueprint-lint', severity: 'error', message: 'blueprint found a problem' }])
+    expect(checked.check?.gatesRun).toEqual(['template-lint', 'blueprint-lint'])
     const gate = processes.calls.find(call => call.args.includes('blueprint'))!
     expect(gate).toMatchObject({ command: python, options: { cwd: p.root } })
     expect(gate.args.slice(0, 3)).toEqual(['-I', '-X', 'utf8'])
@@ -418,13 +420,15 @@ describe('the research service records; it never drives the agent', () => {
       expect(existsSync(join(root, 'demo', 'mine'))).toBe(false)
       // The agent's brief says so.
       const { projectBrief } = await import('../src/tools.ts')
-      const modes = (service as unknown as { modes: { resolve(project: ResearchProject): Parameters<typeof projectBrief>[1] } }).modes
       type Brief = { example?: boolean; guide: string[] }
-      const briefOf = (id: ResearchProject['id']): Brief => projectBrief(service.getProject(id), modes.resolve(service.getProject(id))) as Brief
-      const brief = briefOf(example.id)
+      const briefOf = async (id: ResearchProject['id']): Promise<Brief> => {
+        const project = service.getProject(id)
+        return projectBrief(project, service.modes.resolve(project), await service.standing(project)) as Brief
+      }
+      const brief = await briefOf(example.id)
       expect(brief.example).toBe(true)
       expect(brief.guide[0]).toMatch(/^This is an example research shipped with the app, and it is read-only/)
-      const ownBrief = briefOf(own.id)
+      const ownBrief = await briefOf(own.id)
       expect(ownBrief).not.toHaveProperty('example')
       expect(ownBrief.guide[0]).not.toMatch(/example/)
       // The own research beside it records as before.
@@ -494,6 +498,108 @@ describe('the research service records; it never drives the agent', () => {
     expect(service.getProject(p.id).claims).toHaveLength(1)
     const clean = await run({ action: 'check', scope: 'figures' })
     expect(clean.message).toBe('Clean')
+  })
+
+  it('keeps one record of progress that only research_check writes, and derives where each project stands', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-progress-'))
+    const pool = new MemoryMediaPool()
+    const first = await boot(pool)
+    const p = await first.service.create({ title: 'Progress', root: join(root, 'p'), brief: '', mode: 'spark-to-paper', route: 'data' })
+    const run = (service: Harness['service'], request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    const python = join(root, 'python.exe')
+    await write(python, '')
+    await first.service.configure({ python })
+    await write(join(p.root, 'main.tex'), '\\documentclass{article}\n\\begin{document}\nText.\n\\end{document}\n')
+    const progress = () => first.service.getProject(p.id).progress!
+
+    // A phase check moves only the phases whose gates all ran, and replaces only the findings of the checks it reports on.
+    await run(first.service, { action: 'check', scope: 'plan' })
+    expect(Object.keys(progress().phases).sort()).toEqual(['data', 'latex', 'plan', 'review'])
+    expect(Object.keys(progress().findings)).toEqual(['template-lint', 'blueprint-lint'])
+    expect(progress()).toMatchObject({ mode: 'spark-to-paper', route: 'data' })
+    expect(progress().full).toBeUndefined()
+    // The whole paper: every phase, every check, and the summary.
+    const all = (await run(first.service, { action: 'check' })).check!
+    expect(Object.keys(progress().phases)).toHaveLength(9)
+    expect(Object.keys(progress().findings)).toHaveLength(18)
+    expect(progress().full).toEqual({ clean: false, errors: all.findings.filter(f => f.severity === 'error').length, warnings: all.findings.filter(f => f.severity === 'warning').length, checkedAt: all.checkedAt })
+    // cite names both a phase and a base check: the phase, with its gate.
+    const cite = (await run(first.service, { action: 'check', scope: 'cite' })).check!
+    expect(cite.gatesRun).toEqual(['citations-bib'])
+    expect(progress().phases.cite?.checkedAt).toBe(cite.checkedAt)
+    expect(progress().phases.plan?.checkedAt).toBe(all.checkedAt)
+    expect(progress().full?.checkedAt).toBe(all.checkedAt)
+    expect(first.service.getProject(p.id).lastCheck?.checkedAt).toBe(cite.checkedAt)
+    // An export runs its own check for the package and records nothing.
+    const recorded = structuredClone(first.service.getProject(p.id))
+    expect((await run(first.service, { action: 'export' })).check?.scope).toBe('all')
+    expect(first.service.getProject(p.id)).toMatchObject({ progress: recorded.progress, lastCheck: recorded.lastCheck })
+
+    // The snapshot carries where the project stands, in the pack's words and names.
+    const standingOf = async (service: Harness['service']) => (await service.snapshot()).projects.find(item => item.id === p.id)!.standing!
+    const standing = await standingOf(first.service)
+    expect(standing).toMatchObject({
+      next: 'data', hint: { en: 'The measured results are not imported yet', zh: '还没有导入实测结果' },
+      finished: false, checkedAt: cite.checkedAt, changedSinceCheck: false,
+    })
+    expect(standing.phases.map(phase => [phase.id, phase.state])).toEqual([
+      ['data', 'current'], ['plan', 'pending'], ['cite', 'pending'], ['write', 'pending'], ['refine', 'pending'], ['review', 'pending'],
+      ['figures', 'pending'], ['latex', 'pending'], ['submission', 'pending'],
+    ])
+    const groups = new Map(standing.issues.map(group => [group.check, group]))
+    expect(groups.get('template-lint')).toMatchObject({ label: { en: 'Template check', zh: '模板检查' }, errors: 1, warnings: 0 })
+    expect(groups.get('template-lint')).not.toHaveProperty('file')
+    expect(groups.get('compile')).toMatchObject({ label: { en: 'Compile', zh: '编译' }, file: 'main.tex' })
+    expect(standing.issues.findIndex(group => group.errors === 0)).toBeGreaterThan(standing.issues.findLastIndex(group => group.errors > 0))
+    // The brief reads the same standing.
+    expect(await first.service.standing(first.service.getProject(p.id))).toEqual(standing)
+
+    // Progress for another route describes nothing on this one, and a recorded deferral defers the phase that allows it.
+    await run(first.service, { action: 'set-mode', mode: 'spark-to-paper', route: 'proposal' })
+    await run(first.service, { action: 'record-decision', question: 'Run the experiments here?', answer: 'No GPU; the author runs them', decidedBy: 'user', key: 'experiments-deferred' })
+    expect(first.service.getProject(p.id).decisions.at(-1)).toMatchObject({ key: 'experiments-deferred', by: 'user' })
+    const rerouted = await standingOf(first.service)
+    expect(rerouted).toMatchObject({ next: 'plan', finished: false, changedSinceCheck: false, issues: [] })
+    expect(rerouted).not.toHaveProperty('checkedAt')
+    expect(rerouted.phases.find(phase => phase.id === 'experiments')?.state).toBe('deferred')
+    await run(first.service, { action: 'record-decision', question: 'Which venue?', answer: 'NeurIPS' })
+    expect(first.service.getProject(p.id).decisions.at(-1)).not.toHaveProperty('key')
+    await ctx!.fiber.dispose(); ctx = undefined
+
+    // A record from before progress was stored: its last full check, in words only, stands in for it.
+    for (const medium of pool.media.values()) {
+      const table = medium.tables.get('projects')
+      const stored = table?.get(p.id) as (ResearchProject & Record<string, unknown>) | undefined
+      if (!table || !stored) continue
+      const { progress: _progress, ...legacy } = stored
+      table.set(p.id, {
+        ...legacy, route: 'data',
+        lastCheck: {
+          clean: false, scope: 'all', mode: 'spark-to-paper', route: 'data', checkedAt: '2026-09-01T00:00:00.000Z',
+          phases: [
+            { id: 'data', done: false, missing: ['1 error(s) in cite', 'Write results.facts.json — the real numbers, produced by a script from the data — and import it as data evidence'] },
+            { id: 'plan', done: true, missing: [] },
+          ],
+          findings: [{ check: 'cite', severity: 'error', message: 'Citation key has no bibliography entry: x', file: 'main.tex', line: 3 }],
+        },
+      })
+    }
+    const second = await boot(pool)
+    const seeded = await standingOf(second.service)
+    expect(second.service.getProject(p.id).progress).toBeUndefined()
+    expect(seeded).toMatchObject({
+      next: 'data', hint: { en: 'The result numbers are not extracted from the data yet', zh: '还没有从数据里整理出结果数字' },
+      checkedAt: '2026-09-01T00:00:00.000Z', changedSinceCheck: true, finished: false,
+      issues: [{ check: 'cite', errors: 1, file: 'main.tex', line: 3 }],
+    })
+    expect(seeded.phases[0]?.hints).toEqual([
+      { en: 'The result numbers are not extracted from the data yet', zh: '还没有从数据里整理出结果数字' },
+      { en: 'Fix the errors in Citations', zh: '处理「引用」里的错误' },
+    ])
+    expect(seeded.phases[1]?.state).toBe('done')
+    // The next check folds into the progress the old report established.
+    await run(second.service, { action: 'check', scope: 'data' })
+    expect(second.service.getProject(p.id).progress?.phases.plan).toEqual({ done: true, unmet: [], checkedAt: '2026-09-01T00:00:00.000Z' })
   })
 
   it('imports sources and templates, verifies literature and searches evidence', async () => {

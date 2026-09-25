@@ -137,6 +137,14 @@ describe('research checks report on the paper as it is on disk', () => {
     expect((await runChecks(p, 100000, 'review')).findings).toEqual([])
   })
 
+  it('holds a review against nothing before there is a manuscript', async () => {
+    const p = await fixture('proposal')
+    await rm(join(p.root, 'paper'), { recursive: true })
+    await write(p.root, 'reviews/review.md', '# An early review of the plan\n')
+    await utimes(join(p.root, 'reviews/review.md'), new Date(0), new Date(0))
+    expect((await runChecks(p, 100000, 'review')).findings).toEqual([])
+  })
+
   it('reports prose worth reconsidering where it stands, as warnings only, and caps a long list', async () => {
     const p = await fixture('proposal')
     await write(p.root, 'paper/sections/method.tex', `The method.\n${'It is worth noting that it plays a crucial role. '.repeat(14)}\n`)
@@ -204,7 +212,9 @@ describe('research checks report on the paper as it is on disk', () => {
       'Result plot figures/plot.png is raster; export plots as vector PDF',
       'Diagram diagrams/arch.drawio is not included in the paper; export it and \\includegraphics it',
     ]))
-    expect(warnings(report, 'stale').map(f => f.file)).toEqual(['paper/main.tex', 'z'])
+    // A finding keeps its file only while the file exists, so nothing links to a file that is not there.
+    expect(warnings(report, 'stale').map(f => f.file)).toEqual(['paper/main.tex', undefined])
+    expect(warnings(report, 'stale')[1]).toEqual({ check: 'stale', severity: 'warning', message: 'Source changed or its run inputs changed: old data' })
     expect(warnings(report, 'claims').map(f => f.message)).toEqual(['Contradicted by the evidence — make sure the paper says so: It improves'])
     expect(errors(report, 'claims').map(f => f.message)).toEqual(['c2: Evidence is missing or outdated: gone'])
     const latex = report.phases.find(phase => phase.id === 'latex')
@@ -343,7 +353,8 @@ describe('research checks report on the paper as it is on disk', () => {
       'Result plot figures/mixed.pdf does not record the data and script that produced it',
     ])
     expect(errors(report, 'compile')).toEqual([])
-    expect(warnings(report, 'visual').map(f => f.file)).toEqual(['b/main.pdf'])
+    // The recorded PDF is gone from disk, so the warning names no file.
+    expect(warnings(report, 'visual').map(f => f.file)).toEqual([undefined])
     const phase = (id: string) => report.phases.find(item => item.id === id)?.missing ?? []
     expect(phase('latex')).toContain('Compiled pages not inspected')
     expect(phase('experiments')).toEqual([expect.stringMatching(/error\(s\) in figures/)])

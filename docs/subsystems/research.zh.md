@@ -8,7 +8,7 @@
 
 ## 项目记录
 
-一个 `ResearchProject` 绑定一个规范的 Workspace 目录。它记录证据（导入的资料、文献、收集到的运行输出）、论点及其证据关联、带修订号与输入的已登记文件、环境、实验运行、编译、页面渲染与视觉复核、决策，以及最近一次检查报告。三个设置决定 agent 如何工作：
+一个 `ResearchProject` 绑定一个规范的 Workspace 目录。它记录证据（导入的资料、文献、收集到的运行输出）、论点及其证据关联、带修订号与输入的已登记文件、环境、实验运行、编译、页面渲染与视觉复核、决策（每条可带一个 `key`，即说明它定下了什么的短标识，例如 `experiments-deferred`），以及检查确立的进展（[见下文](#progress-and-standing)）。三个设置决定 agent 如何工作：
 
 | 字段 | 取值 | 含义 |
 |---|---|---|
@@ -29,13 +29,15 @@
 | `id`、`order`、`name`、`summary` | 标识与显示，名称含英文与中文 |
 | `source` | 该模式包所依据的上游仓库、版本与许可证 |
 | `entry`、`preload` | 运行该模式的技能，以及在它之前加载的技能 |
+| `paperRoot` | 该模式的论文源文件所在的项目文件夹：`paper`，或表示项目根目录的 `.` |
+| `reviewAgainst` | 可选的项目内相对通配：设置后，只有匹配的文件在最新评审之后改动过，评审才算过期 |
 | `routes`、`defaultRoute` | 模式内可选的路径 |
-| `phases` | 每个阶段的名称、所属路线、技能、是否为检查点、决定它的检查，以及它要求的事实 |
-| `gates`、`scripts` | 模式包的检查要运行的 Python 脚本，以及 agent 可以运行的脚本 |
+| `phases` | 每个阶段的名称、所属路线、技能、是否为检查点、决定它的检查、它要求的事实（每条带一个 `hint`，用中英文各一句话说明缺什么），以及可选的 `deferrable` 决策键 |
+| `gates`、`scripts` | 模式包的检查要运行的 Python 脚本（每个门禁带中英文的 `label`），以及 agent 可以运行的脚本 |
 
 通用模式也是一个模式包，只是没有阶段、没有技能：全部科研工具，不走流水线。模式包的技能通过与科研工具一起挂载的技能提供者送达 agent：它按会话工作目录所在项目的模式列出技能，因此切换模式会在进行中的会话里替换技能目录。`research/mode` 事件在项目模式变化时通知这个提供者。
 
-阶段要求使用一组固定的事实：文件通配（`file`，可带 `min`）、`manuscript`、`bibEntries`、`sections`、`figures`、`diagram`、`pagesInspected`、`reviewCurrent`、`runsCollected`、`noActiveRuns`、`dataEvidence` 与 `resultsOrData`。以列表给出的要求，其中任意一项成立即视为满足。
+阶段要求使用一组固定的事实：文件通配（`file`，可带 `min`）、`manuscript`、`bibEntries`、`sections`、`figures`、`diagram`、`pagesInspected`、`reviewCurrent`、`runsCollected`、`noActiveRuns`、`dataEvidence` 与 `resultsOrData`。以列表给出的要求，其中任意一项成立即视为满足。一条要求在所属阶段内以它的条件命名（`requirementKey`：`file:story.json`、`sections>=4`，多个备选之间用 ` | ` 连接），同一阶段内不能重复；检查按这些键报告未满足的要求。`hint`、门禁的 `label` 和 `paperRoot` 都是必填项，缺少它们的模式包会被跳过并给出警告。
 
 门禁是模式包里的 Python 脚本。它用平台 Python 在项目根目录运行（`python -I -X utf8`，不经过 shell，按参数向量传参），输出的最后一行是 `{"findings": [{severity, message, file?, line?}]}`；除此之外的任何输出都记为一条错误发现。检查从不安装 Python：没有它时，每个门禁都报告自己无法运行。`research_artifact` 的 run-script 以同样方式运行模式包为项目当前路线声明的脚本，并返回脚本的输出。spark-to-paper 模式包通过这样一个适配器原样运行上游的检查脚本；它的 `NOTICE.md` 列出了取用、修补和替换了哪些内容。
 
@@ -71,6 +73,8 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 `research_check` 对磁盘上的文件和台账做确定性检查并给出报告；它定义的是“完成”，而不是许可。下列基础检查在每种模式下都会运行；模式包再加上自己的阶段与门禁。阶段的要求成立、且决定它的检查没有错误时即为完成。整篇论文（scope 为 `all`）只有在没有任何检查报告错误、并且当前模式在当前路线上的每个阶段都已完成时，才算通过。
 
+scope 与某个基础检查或门禁同名时指的是阶段，阶段 scope 会运行决定该阶段的门禁。每份报告记下 `gatesRun`（它运行过的门禁），并在给 agent 看的英文 `missing` 之外，为每个阶段给出 `unmet` 键（先是未满足的要求，再是每个有错误的决定性检查对应的 `errors:<check>`）。发现所指的文件在磁盘上不存在时，这条发现不再带文件和行号。模式包设置了 `reviewAgainst` 时，`review` 只拿最新评审与匹配该通配的文件比较：spark-to-paper 评审的是 `sections/*.tex`，所以 latex 阶段拼装 `main.tex` 不会让评审过期。
+
 | 检查 | 报告内容 |
 |---|---|
 | `cite` | 没有对应参考文献条目的引用键、不完整的条目、缺少发表信息或未经提供方核实的条目 |
@@ -83,6 +87,29 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 | `stale` / `claims` | 过期的文件与资料、被证据推翻的论点、已无法解析的证据关联 |
 | `structure` | 缺失的输入文件；在有阶段的模式下，还包括应有却缺失的章节与通用文档类 |
 | `prose` | 只给警告：像机器写的套话、防御性表述、叠加的模糊限定、公式化的对比结构、过多的破折号和宣传性词语，覆盖中英文（spark-to-paper 的 AI 腔词表与 CCFA 的行文规范合并而来） |
+
+<a id="progress-and-standing"></a>
+## 进展与现状
+
+`research_check` 是 `project.progress`（`ResearchProgress`）唯一的写入方：它记下所描述的模式与路线、每个阶段的 `done`、`unmet` 键与 `checkedAt`、每项检查的发现与 `checkedAt`，以及 `full`，即最近一次 scope 为 `all` 的检查的汇总。每份报告按同一条规则并入：
+
+- 只有当报告运行了决定某个阶段的全部门禁时，这个阶段才会变化，因此针对某个阶段的检查不会凭不完整的证据把别的阶段标为完成；
+- 报告运行过的每项检查，其发现整体替换；
+- 只有 scope 为 `all` 时 `full` 才会变化；
+- 模式或路线不同的报告会让进展重新开始。
+
+`lastCheck` 仍会写入，供早期版本读取。`export` 为投稿包自己运行一次检查，但不记录任何内容。在有进展记录之前存储的项目，会把它最近一次 scope 为 `all` 的 `lastCheck` 读作进展，并把那份报告的英文文字对应到模式包的要求上，因此随应用提供的示例无需任何改动就能显示各阶段。
+
+`standing(project)` 为每次快照和 agent 的项目简报推导出项目的现状（`ResearchStanding`），从不存储。为其他模式或路线存储的进展视为没有。它包括：
+
+- 当前模式在当前路线上的各阶段：`done`、`current`（第一个既未完成也未推迟的阶段）、`pending` 或 `deferred`，每个带检查点标记，以及最近一次检查发现未满足之处对应的模式包提示；
+- 下一阶段及其第一条提示；
+- `checkedAt`，最近一次检查的时间；
+- `changedSinceCheck`：`.research`、`exports`、`.git` 与 `node_modules` 之外是否有项目文件比那次检查新；每个项目最多每 30 秒列一次文件，超过 5,000 个文件时为 `unknown`；
+- `finished`：全文检查通过、每个阶段都已完成，而且全文检查之后没有改动；
+- 待处理的问题：每项有发现的检查一组，有错误的组排在前面，组名取门禁的 `label` 或基础检查的内置名称，并附上组内第一个仍存在的文件。
+
+声明了 `deferrable: <key>` 的阶段，在它未完成且项目有一条带该键的决策（`record-decision` 带 `key`）时处于推迟状态。spark-to-paper 的实验阶段声明的是 `experiments-deferred`。推迟的阶段永远不算完成，所以有推迟阶段的项目永远不算已完成；等这个阶段自己的检查通过，它就是已完成。
 
 ## 会被拒绝的操作
 
@@ -116,9 +143,17 @@ One durable owner for each project's evidence, files, decisions and execution re
 ```ts cordis-catalog
 /**
  * Read detached project snapshots and non-secret component settings.
- * @returns every project without source bodies, the preferences and the component status.
+ * @returns every project without source bodies and with where it stands, the preferences and the component status.
  */
 @Remote async snapshot(): Promise<ResearchSnapshot>
+
+/**
+ * Where a project stands, derived from its stored progress, its mode and its
+ * files; never stored. File times are listed at most every thirty seconds.
+ * @param project - the project record.
+ * @returns its phases, the next one and what it lacks, the open issues, and whether files changed since the last check.
+ */
+standing(project: ResearchProject): Promise<ResearchStanding>
 
 /**
  * Read durable operation handles, including interrupted calls from prior launches.
