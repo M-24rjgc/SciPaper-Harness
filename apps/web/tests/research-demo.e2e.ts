@@ -331,7 +331,10 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
 
   const overlay = join(backup, 'overlay.yml')
   await writeFile(overlay, '- id: agent-default-model\n  config:\n    provider: deepseek-official\n    model: deepseek-flash\n')
-  const scaffold: WebScaffold = await launchWebScaffold({ agentPresets: { roots: [], default: 'research' }, extraOverlayPath: overlay })
+  // The examples are made in the research edition as shipped, none of the inherited rows it turns off.
+  const scaffold: WebScaffold = await launchWebScaffold({
+    agentPresets: { roots: [], default: 'research' }, extraOverlayPath: overlay, enableInheritedRows: false,
+  })
   const transcript: string[] = []
   const toolErrors: string[] = []
   try {

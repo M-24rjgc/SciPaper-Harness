@@ -23,6 +23,9 @@ import type {} from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-terminal'
+// The feedback Context merges, for asserting that neither Remote is composed.
+import type {} from '@deepseek-ai/dsh-command-feedback'
+import type {} from '@deepseek-ai/dsh-message-feedback'
 import { launchWebScaffold, readPersistedEvents, type WebScaffold } from './scaffold.ts'
 import { AUTO_REVIEW_FIXTURE } from './auto-review-fixture.ts'
 import { REPO_ROOT } from './support.ts'
@@ -48,7 +51,8 @@ const SHELL_TOOL = process.platform === 'win32' ? 'pwsh' : 'bash'
 const DELETE_PREFIX = process.platform === 'win32' ? 'Remove-Item -LiteralPath ' : 'rm -- '
 const RESEARCH_TOOLS = [
   'research_project', 'research_check', 'research_evidence', 'research_artifact',
-  'research_environment', 'research_experiment', 'research_media', 'research_task',
+  'research_environment', 'research_experiment', 'research_board', 'research_media',
+  'research_knowledge', 'research_task',
 ].sort()
 
 /** Quote a single fixture-owned path for the shipped host shell. */
@@ -523,7 +527,7 @@ afterEach(async () => {
 })
 
 it('assembles the shipped Web transport, catalog, guidance, and defaults', async () => {
-  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true, enableInheritedRows: false })
   expect(existsSync(join(scaffold.harnessHome, 'profiles', 'node_modules'))).toBe(false)
   const ctx = scaffold.ctx
   expect(ctx.llm.listProviders().some(provider => provider.id === 'deepseek-messages')).toBe(false)
@@ -649,12 +653,10 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
     agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
   })
   try {
-    expect(scaffold.ctx.commands.list(commandHandle.agent)).toContainEqual({
-      definitionId: '@deepseek-ai/dsh-command-feedback',
-      name: 'feedback',
-      description: 'Record feedback about this session',
-      input: { hint: '<text>' },
-    })
+    // The research edition records no feedback: no `/feedback`, and neither feedback Remote.
+    expect(scaffold.ctx.commands.list(commandHandle.agent).map(command => command.name)).not.toContain('feedback')
+    expect(scaffold.ctx.get('sessionFeedback')).toBeUndefined()
+    expect(scaffold.ctx.get('messageFeedback')).toBeUndefined()
   } finally {
     await commandHandle.dispose()
   }

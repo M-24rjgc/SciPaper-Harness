@@ -32,8 +32,8 @@
   - img
   - text: Bash Print alpha to stdout
 - paragraph: partial
-- status: Deep diving...
-- textbox "Message or run a task, / commands, @ files or sessions"
+- status: Thinking…
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write

@@ -423,7 +423,7 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
       expect(await page.locator('[data-composer-seat]').evaluate(element =>
         getComputedStyle(element).visibility)).toBe('hidden')
       releaseCatalog()
-      const input = page.getByRole('textbox', { name: 'Message or run a task, / commands, @ files or sessions' })
+      const input = page.getByRole('textbox', { name: 'Keep going, or drop in papers and data; / for commands, @ for files or conversations' })
       await input.waitFor({ timeout: 15_000 })
       await expect.poll(() => input.isEnabled(), { timeout: 15_000 }).toBe(true)
       acknowledgeReloadConnectionLoss(tripwire, warningStart)
@@ -447,7 +447,7 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
         resolveEnded()
       })
     })
-    const input = page.getByRole('textbox', { name: 'Message or run a task, / commands, @ files or sessions' })
+    const input = page.getByRole('textbox', { name: 'Keep going, or drop in papers and data; / for commands, @ for files or conversations' })
     await input.fill(FOLLOWUP)
     await input.press('Enter')
     await expect.poll(
@@ -537,7 +537,7 @@ describe('web e2e: persisted subagent conversation and human continuation', () =
       .click()
     await page.getByRole('button', { name: '3 subagents' }).hover()
     await page.getByRole('treeitem', { name: new RegExp(LABEL) }).click()
-    await page.getByRole('textbox', { name: 'Message or run a task, / commands, @ files or sessions' }).waitFor()
+    await page.getByRole('textbox', { name: 'Keep going, or drop in papers and data; / for commands, @ for files or conversations' }).waitFor()
     const forkResponse = page.waitForResponse(response =>
       new URL(response.url()).pathname === '/api/session/fork')
     await page.getByRole('button', { name: 'Branch into a new conversation' }).last().click()

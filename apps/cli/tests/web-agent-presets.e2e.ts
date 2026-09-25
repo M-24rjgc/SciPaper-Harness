@@ -27,6 +27,10 @@ import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: resolves `ctx.get('sessionProjections')` and `ctx.get('tokenMeter')`.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-token-meter'
+// Type-only: `ctx.loader`, `ctx.get('messageFeedback')` and `ctx.get('sessionFeedback')`.
+import type {} from '@deepseek-ai/cordis-plugin-loader'
+import type {} from '@deepseek-ai/dsh-command-feedback'
+import type {} from '@deepseek-ai/dsh-message-feedback'
 
 const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url))
 /** The shipped Web surface: the dsh-base and dsh-web-app bundle patches over an empty preset root. */
@@ -71,8 +75,10 @@ async function bootWeb(
     { id: 'storage-json', config: { root: storageRoot } },
     // Fixed Session IDs must stay inside this boot's temporary profile root.
     { id: 'session-persistence-jsonl', config: { root: join(dirname(settingsFile), 'sessions') } },
-    // Host rows with side effects outside this process: a bound port, a served
-    // asset tree, a telemetry exporter. `api-gateway` and `directory-picker`
+    // Host rows with side effects outside this process: a bound port and a
+    // served asset tree. The shipped Web bundle already disables the telemetry
+    // exporter, the Session-log download and the open-in-app routes (asserted
+    // by the first composition test below). `api-gateway` and `directory-picker`
     // stay ENABLED on purpose — the api-proxy is the host row that injects
     // `subagents`, `workspace`, and the rest of the agent plane, so disabling
     // it would hide exactly the breakage this file exists to catch: a service
@@ -84,7 +90,6 @@ async function bootWeb(
     // and the URL prompt line — surface glue, not anything that decides an
     // agent's capabilities, which is all this file asserts.
     { id: 'web-runtime', disabled: true },
-    { id: 'session-telemetry-otel', disabled: true },
     // A deployment-level skill on the host registry's GLOBAL layer — the same
     // registration shape a repository plugin's skill root uses. The layered
     // skills test below proves it reaches preset-composed agents.
@@ -94,12 +99,6 @@ async function bootWeb(
     // supplies only its in-process registries so Host services still prove
     // their shipped dependency graph without binding a port.
     { id: 'connection', disabled: true },
-    // Export owns a Connection Fetch route, so this Host-only composition
-    // disables it with the transport service above.
-    { id: 'session-log-download', disabled: true },
-    // The open-in-app host routes wait for the webserver and connection
-    // rows disabled above (connection's trust fence guards every route).
-    { id: 'open-in-app', disabled: true },
     // The always-on reload chain waits for the browser roster and bound port
     // disabled above.
     { id: 'client-hmr', disabled: true },
@@ -199,6 +198,16 @@ beforeAll(async () => {
 }, 120_000)
 
 describe('the shipped Web composition', () => {
+  it('composes no telemetry exporter, feedback Remote or Session-log download', () => {
+    // These rows are off in the shipped bundle, not in this file's overrides.
+    for (const id of ['session-telemetry-otel', 'command-feedback', 'message-feedback', 'session-log-download', 'open-in-app']) {
+      const entry = [...ctx.loader.entries()].find(candidate => candidate.options.id === id)
+      expect(entry?.disabled, id).toBe(true)
+    }
+    expect(ctx.get('messageFeedback')).toBeUndefined()
+    expect(ctx.get('sessionFeedback')).toBeUndefined()
+  })
+
   it('leaves the global tool layer empty', () => {
     // Every model-facing tool belongs to a preset, `ask_user_question`
     // included: a tool in the global layer reaches EVERY agent regardless of

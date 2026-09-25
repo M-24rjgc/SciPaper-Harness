@@ -295,7 +295,7 @@ async function bootPreview(origin: string, browser: Browser): Promise<void> {
     expect(await page.getByText('Empty environment', { exact: true }).count()).toBe(1)
     expect(await page.getByText('WebFS directory', { exact: true }).count()).toBe(1)
     expect(await page.locator('input[name="preview-source"][value="webfs"]').isDisabled()).toBe(true)
-    expect(await page.getByRole('textbox', { name: 'Choose workspace' }).count()).toBe(0)
+    expect(await page.getByRole('textbox', { name: 'Choose research' }).count()).toBe(0)
     await compareOrRefreshGolden(
       SOURCE_CHOOSER_EXPECTED,
       await captureStableAria(page, '[data-preview-source-card]', '/__preview_no_workspace__'),
@@ -309,15 +309,14 @@ async function bootPreview(origin: string, browser: Browser): Promise<void> {
     // report the older one.
     expect(bootLine).toContain(`image lowering=${WRAPPER_CONTRACT}`)
     expect(bootLine).toContain('data overlays=1')
-    // The versioned notice is the seeded preview's first stable interactive
-    // surface after the startup chain completes over the tunnel.
-    const continueButton = page.getByRole('button', { name: 'Continue' })
-    await continueButton.waitFor({ timeout: HERO_TIMEOUT_MS })
-    await continueButton.click()
+    // The first-run key dialog is the seeded preview's first stable
+    // interactive surface after the startup chain completes over the tunnel:
+    // the research edition occupies the versioned-notice step with a
+    // component that renders nothing.
     const configureLater = page.getByRole('button', { name: 'Configure later' })
-    await configureLater.waitFor({ timeout: 30_000 })
+    await configureLater.waitFor({ timeout: HERO_TIMEOUT_MS })
     await configureLater.click()
-    await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data, / commands, @ files or sessions"]')
+    await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
       .waitFor({ timeout: 30_000 })
 
     const exercised = await page.evaluate(async ({ seededSessionId, seededSessionTitle }) => {
@@ -469,7 +468,7 @@ async function bootEmptyPreview(origin: string, browser: Browser): Promise<void>
     )
     expect(bootLine).toContain(`image lowering=${WRAPPER_CONTRACT}`)
     expect(bootLine).toContain('data overlays=0')
-    await page.getByRole('textbox', { name: 'Choose workspace' }).waitFor({ timeout: HERO_TIMEOUT_MS })
+    await page.getByRole('textbox', { name: 'Choose research' }).waitFor({ timeout: HERO_TIMEOUT_MS })
     const sessionCount = await page.evaluate(async () => {
       const transport = (globalThis as typeof globalThis & {
         __DSH_TRANSPORT__?: { fetch(input: string, init: RequestInit): Promise<Response> }
@@ -491,11 +490,10 @@ async function bootEmptyPreview(origin: string, browser: Browser): Promise<void>
     })
     expect(sessionCount).toBe(0)
     expect(pageErrors.map(error => error.message)).toEqual([])
-    // Two accepted static-host 404s, sorted (the boot fetches race): the HMR
-    // event stream has no server here, and the open-in-app availability read
-    // has no host routes — the controller publishes an empty list and the
-    // header renders no button, which is that surface's designed degradation.
-    expect([...failedResponses].sort()).toEqual(['/open-in-app/apps', '/plugins/events'])
+    // One accepted static-host 404: the HMR event stream has no server here.
+    // The research edition composes no Open In surface, so nothing reads the
+    // open-in-app availability route.
+    expect([...failedResponses].sort()).toEqual(['/plugins/events'])
     expect(consoleErrors.filter(line => !line.includes('Failed to load resource: the server responded with a status of 404')))
       .toEqual([])
   } catch (error) {

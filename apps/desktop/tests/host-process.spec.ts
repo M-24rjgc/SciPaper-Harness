@@ -99,24 +99,27 @@ function onRequestFrame(frame) {
     try { await expect(host.start()).rejects.toThrow() } finally { await host.stop() }
   })
 
-  it('loads the resource entry with a separate profile and scrubs Node resolution overrides', async () => {
+  it('loads the resource entry with a separate profile, scrubs Node resolution overrides, and turns telemetry off', async () => {
     const runtime = projectWithHost(`
 process.send({ type: 'ready', protocolVersion: 3, dshVersion: 'split-runtime' })
 function onRequestFrame(frame) {
   if (frame.type !== 1) return
   responseStart(frame.streamId)
-  responseData(frame.streamId, JSON.stringify({runtime: process.argv[2], profile: process.argv[3], cwd: process.cwd(), nodePath: process.env.NODE_PATH, runAsNode: process.env.ELECTRON_RUN_AS_NODE}))
+  responseData(frame.streamId, JSON.stringify({runtime: process.argv[2], profile: process.argv[3], cwd: process.cwd(), nodePath: process.env.NODE_PATH, runAsNode: process.env.ELECTRON_RUN_AS_NODE, telemetryDisabled: process.env.DSH_TELEMETRY_DISABLED}))
   responseEnd(frame.streamId)
 }
 `)
     const profile = mkdtempSync(join(tmpdir(), 'desktop-external-profile-'))
     roots.push(profile)
+    // An inherited opt-in value cannot turn the Host's telemetry back on.
     const host = new DesktopHostProcess(process.execPath, runtime, profile, undefined, {
-      ...process.env, NODE_OPTIONS: '--invalid-desktop-test-option', NODE_PATH: '/unowned',
+      ...process.env, NODE_OPTIONS: '--invalid-desktop-test-option', NODE_PATH: '/unowned', DSH_TELEMETRY_DISABLED: '',
     })
     try {
       const response = await host.fetch(new Request('dsh-app://app/environment'))
-      expect(await response.json()).toEqual({ runtime, profile, cwd: realpathSync(profile), runAsNode: '1' })
+      expect(await response.json()).toEqual({
+        runtime, profile, cwd: realpathSync(profile), runAsNode: '1', telemetryDisabled: '1',
+      })
     } finally { await host.stop() }
   })
 

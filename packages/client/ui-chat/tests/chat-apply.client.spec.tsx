@@ -20,7 +20,7 @@ import {
   apply as applyChat, EMPTY_CHAT_SNAPSHOT, inject as injectChat,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
-  ChatNodeTurnDataInjected, ChatSnapshot, TranscriptViewRowInjected, UseChatNodeTurnData,
+  ChatNodeTurnDataInjected, ChatSnapshot, ChatViewInjected, TranscriptViewRowInjected, UseChatNodeTurnData,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 
@@ -154,6 +154,19 @@ describe('Chat apply wiring', () => {
     expect(source.getSnapshot()).toBe(EMPTY_CHAT_SNAPSHOT)
 
     off()
+    await b.runtime.dispose()
+  })
+
+  it('resolves keyed Chat nodes and their Turn processes from the session Chat source', async () => {
+    const b = await bench()
+    await b.runtime.sessions.add({ id: SID }, { current: false })
+    const entry = b.runtime.slots.entries('conversation.view')[0]
+    if (entry === undefined) throw new Error('ui-chat registered no Chat View')
+    const face = (entry.inject as unknown as (sessionId: SessionId) => ChatViewInjected)(SID)
+    const chat = b.runtime.ctx.uiSession.adapter.resolve(SID)!.hooks.chat as ObservableSnapshot<ChatSnapshot>
+    const { nodes } = chat.getSnapshot()
+    expect(face.keyedHooks.chatNode('turn-1')).toBe(nodes.source('turn-1'))
+    expect(face.keyedHooks.chatNodeProcess('turn-1')).toBe(nodes.processSource('turn-1'))
     await b.runtime.dispose()
   })
 

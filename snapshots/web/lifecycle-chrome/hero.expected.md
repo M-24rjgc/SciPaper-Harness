@@ -23,13 +23,13 @@
 - button "Settings":
   - img
   - text: Settings
-- text: Start a piece of research
-- paragraph: Hand me the material and the idea you have; we turn it into a paper that holds up. You make three decisions, and I do the checking, the runs and the writing.
-- article: "I already have material Papers, data, drafts, logs. The evidence base comes first: every import keeps its version and the exact place a quote came from. “Import these 6 PDFs and results.csv, and sort out what each one actually shows”"
-- article: I only have an idea Compare the literature, find the gap, narrow it into one falsifiable question — then you confirm it. “Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?”
+- text: What shall we work on today?
+- paragraph: Bring a spark or the results you already have. I carry the research to a paper that holds up — asking you at the key decisions, or deciding on my own, as you choose.
+- article: I already have material Papers, data, drafts, logs. Every import keeps its version and the exact place a quote came from, and the paper is written from the results you have. “Import these 6 PDFs and results.csv, and sort out what each one actually shows”
+- article: I only have an idea Develop it into a method paper first — everything written except the results — then run the experiments and fill them in. “Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?”
 - article: Pick up where I left off Back to the point it stopped, with the evidence of that moment and whatever decision is still open. Your research projects will appear here.
 - button "New project folder…"
-- button "Choose workspace":
+- button "Choose research":
   - img
   - text: workspace
   - img
@@ -37,7 +37,7 @@
   - img
   - text: Standard mode
   - img
-- textbox "Describe your research question, or drop in papers and data, / commands, @ files or sessions":
+- textbox "Describe your research question, or drop in papers and data; / for commands, @ for files or conversations":
   - paragraph
 - button "Add files or run commands":
   - img
@@ -47,4 +47,4 @@
   - text: DeepSeek-V4-Flash
   - img
 - button "Send message" [disabled]
-- text: You decide the question, the method and the experiment plan Every conclusion points back to the page it came from Experiments run on their own; closing the window will not stop them
+- text: "Checkpoints or fully automatic: you choose how often I ask Every conclusion points back to the page it came from Experiments run on their own; closing the window will not stop them"

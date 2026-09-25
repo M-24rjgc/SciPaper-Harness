@@ -9,16 +9,13 @@ import { closeSync, createReadStream, createWriteStream, existsSync, mkdirSync, 
 import { once } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import {
   boot,
-  composeEntries,
   createProfileResolutionGeneration,
   loadLayeredEnv,
   loadProfileDirectory,
-  loadOverlayPatches,
   PluginPackages,
   type Profile,
 } from '@deepseek-ai/dsh-app-boot'
@@ -40,6 +37,7 @@ import {
   encodeDesktopResponseStart,
   type DesktopHostRequestFrame,
 } from './wire.ts'
+import { desktopPatchLayers } from './layers.ts'
 
 export { DESKTOP_HOST_PROTOCOL_VERSION } from './wire.ts'
 
@@ -94,7 +92,6 @@ interface PackageManifest {
   readonly version?: string
 }
 
-const DESKTOP_PATCH = fileURLToPath(new URL('../config/desktop.cordis.patch.yml', import.meta.url))
 const ROOT_CONFIG = '# Electron desktop composition root; package transactions own this file.\n[]\n'
 const ROOT_CONFIG_FILENAME = 'desktop.cordis.yml'
 const DESKTOP_STREAM_PATH = '/.dsh/remote-stream'
@@ -171,22 +168,7 @@ function desktopComposition(
       throw new Error(`dsh desktop: profile bundle ${JSON.stringify(layer.packageName)} resolved outside the Desktop runtime and profile`)
     }
   }
-  const layers = [
-    ...profile.layers.map(layer => layer.patches),
-    profile.patches,
-    loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
-  ]
-  const rows = new Map(composeEntries(layers).flatMap(row => typeof row.id === 'string' ? [[row.id, row] as const] : []))
-  const agentPresets = rows.get('agent-presets')
-  if (agentPresets !== undefined) {
-    layers.push([{
-      id: 'agent-presets',
-      config: {
-        ...(agentPresets.config ?? {}) as Record<string, unknown>,
-        roots: [{ path: join(dshRoot, 'config', 'agent-presets'), trust: 'system' }],
-      },
-    }])
-  }
+  const layers = desktopPatchLayers(profile, dshRoot, process.env.DSH_TELEMETRY_DISABLED)
   return { installAnchor, profile, patches: layers.flat() }
 }
 

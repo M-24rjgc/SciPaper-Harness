@@ -1,14 +1,18 @@
 /** The research edition through the shipped browser and durable host: the agent drives, the ledger records. */
 import { readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
 import { afterAll, beforeAll, expect, it, beforeEach, onTestFailed } from 'vitest'
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { ArtifactId, ExperimentId, ProjectId, ResearchCommand, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-research-workbench'
-import { launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
-import { newEnglishPage, saveFailureShot, writeComposerDraft } from './support.ts'
+import { launchWebScaffold, seedSession, watchConsole, type WebScaffold } from './scaffold.ts'
+import { newEnglishPage, saveFailureShot, writeComposerDraft, ZH_BROWSER_LOCALE } from './support.ts'
+
+// Borrowed read-only: any settled transcript with a closing assistant reply.
+const SETTLED_SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
 
 /** A deterministic model: the project storage, tools and execution stay real. */
 class ReplyAdapter extends LlmAdapter {
@@ -37,7 +41,9 @@ const python = process.env.DSH_RESEARCH_TEST_PYTHON
 const texBin = process.env.DSH_RESEARCH_TEST_TEX_BIN
 
 beforeAll(async () => {
-  scaffold = await launchWebScaffold()
+  // The research edition as shipped: none of the inherited rows it turns off, and
+  // conversations compose from the research preset, the shipped default.
+  scaffold = await launchWebScaffold({ enableInheritedRows: false, agentPresets: { roots: [], default: 'research' } })
   scaffold.ctx.effect(() => scaffold.ctx.llm.registerAdapter(['research-browser-test'], new ReplyAdapter()))
   await scaffold.ctx.research.configure({
     main: { provider: 'research-browser-test', model: 'reply' },
@@ -69,6 +75,10 @@ async function command(request: ResearchCommand): Promise<ResearchResponse> {
 
 it('creates a project from the welcome screen, records evidence and opens a claim with its sources', async () => {
   await page.getByText('Bring a spark or the results you already have.', { exact: false }).first().waitFor()
+  // The shell's entry copy is the research product's; with no research yet the composer says where to start one.
+  await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
+  await page.getByRole('button', { name: 'Choose research', exact: true }).first().waitFor()
+  await page.locator('[data-composer-input][data-placeholder="Start new research or open one on the left first"]').first().waitFor()
   await saveFailureShot(page, 'research-welcome')
   const viewport = page.viewportSize()!
   await page.setViewportSize({ width: 390, height: 844 })
@@ -125,7 +135,8 @@ it('steers mode and autonomy from the research tab and records every choice in t
   // A pipeline mode offers to hand the pipeline to the assistant as a goal (not started here: the stub model never finishes one).
   await page.getByRole('button', { name: 'Run the pipeline', exact: true }).first().waitFor({ timeout: 15000 })
   await page.getByRole('button', { name: 'Run check', exact: true }).first().click()
-  await expect.poll(() => scaffold.ctx.research.getProject(projectId).lastCheck?.mode).toBe('spark-to-paper')
+  // The check reads the whole project and its gates, which can take longer than the default one-second poll.
+  await expect.poll(() => scaffold.ctx.research.getProject(projectId).lastCheck?.mode, { timeout: 30000 }).toBe('spark-to-paper')
   // The project's file panel draws the same status while hidden; only the tab beside the conversation counts.
   await page.getByText(/^Still open/).filter({ visible: true }).first().waitFor({ timeout: 15000 })
   await saveFailureShot(page, 'research-tab-check')
@@ -172,6 +183,10 @@ it('offers a new project from a blank conversation and keeps the composer draft 
   await page.getByText('Bring a spark or the results you already have.', { exact: false }).first().waitFor()
   const createProject = page.getByRole('button', { name: 'New project folder…', exact: true }).first()
   await createProject.waitFor()
+  // The edition ships no preset chooser: no preset chip beside the composer.
+  expect(await page.getByTitle('Agent preset for the session you are about to start').count()).toBe(0)
+  await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
+    .first().waitFor()
   const input = page.locator('[data-composer-input][contenteditable="true"]').first()
   await writeComposerDraft(page, input, 'Compare the available measurements')
   await createProject.click()
@@ -181,4 +196,42 @@ it('offers a new project from a blank conversation and keeps the composer draft 
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
   expect(await input.innerText()).toBe('Compare the available measurements')
   expect((await scaffold.ctx.research.snapshot()).projects).toHaveLength(1)
+})
+
+it('shows a settled reply with no feedback buttons or view tabs', async () => {
+  await seedSession(scaffold, await readFile(SETTLED_SEED, 'utf8'), 'research-edition-settled')
+  await page.reload({ waitUntil: 'load' })
+  const ungrouped = page.getByRole('treeitem', { name: /^Ungrouped/ }).first()
+  await ungrouped.waitFor({ timeout: 15000 })
+  if (await ungrouped.getAttribute('aria-expanded') !== 'true') await ungrouped.click()
+  // Until its log is read, the seeded conversation's row is labelled with its folder's name.
+  await page.getByRole('treeitem', { name: new RegExp(basename(scaffold.workspaceCwd)) }).first().click({ timeout: 15000 })
+  const reply = page.getByText('DONE', { exact: true }).first()
+  await reply.waitFor({ timeout: 30000 })
+  await reply.hover()
+  // The reply's action strip is drawn, without the ratings that authorise a Session-log upload.
+  await page.getByRole('button', { name: 'Branch into a new conversation' }).first().waitFor({ timeout: 15000 })
+  expect(await page.getByRole('button', { name: 'Good response' }).count()).toBe(0)
+  expect(await page.getByRole('button', { name: 'Bad response' }).count()).toBe(0)
+  // The conversation is the only view: no Chat / Trajectory tab strip.
+  expect(await page.getByRole('tab', { name: 'Trajectory' }).count()).toBe(0)
+  expect(await page.getByRole('tab', { name: 'Chat' }).count()).toBe(0)
+  // The composer under a conversation invites the next step of the research.
+  await page.locator('[data-composer-input][data-placeholder="Keep going, or drop in papers and data; / for commands, @ for files or conversations"]')
+    .first().waitFor({ timeout: 15000 })
+  await saveFailureShot(page, 'research-settled-reply')
+})
+
+it('speaks Chinese on the entry screen of a new research', async () => {
+  const zhPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE, timezoneId: 'Asia/Shanghai' })
+  try {
+    await zhPage.goto(scaffold.authenticatedUrl)
+    await zhPage.getByRole('button', { name: '新研究', exact: true }).last().click({ timeout: 30000 })
+    await zhPage.getByText('今天想推进什么？', { exact: true }).first().waitFor({ timeout: 15000 })
+    await zhPage.locator('[data-composer-input][data-placeholder="说说你的研究问题，或把论文、数据拖进来（/ 调用指令，@ 引用文件或对话）"]')
+      .first().waitFor({ timeout: 15000 })
+    await saveFailureShot(zhPage, 'research-welcome-zh')
+  } finally {
+    await zhPage.close()
+  }
 })

@@ -23,7 +23,7 @@ DeepSeek 模型仍作为可选的模型服务商之一，与其他服务商并�
 ## 影响
 
 - 服务商日志和网站服务器看到的是 `scipaper-harness/<版本>` 和本仓库地址。
-- 模型请求不再创建 `.anonymous-user-id`；该文件存在时，`/feedback` 仍会读取它。
+- 模型请求不再创建 `.anonymous-user-id`。Web 与 Desktop 组合也不再提供遥测、反馈和 `/feedback`（[以对话为中心的重新设计](2026-09-25-research-conversation-first-redesign.zh.md)）；在其他 profile 中，该文件存在时 `/feedback` 仍会读取它。
 - 上游 DeepSeek Harness 的改动只有在有人专门移植时才会进来。
 - 阅读代码和开发文档的开发者仍会看到内部的 `dsh` 名称。
 

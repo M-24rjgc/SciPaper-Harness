@@ -64,10 +64,10 @@
   - img
   - text: Ran for {{duration}}
 - text: {{clock}}
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
-- 'button "Access mode, current: Custom"': Custom
+- 'button "Access mode, current: 全自动 · Automatic"': 全自动 · Automatic
 - button "New project folder…"
 - button "6% of context used"
 - button "Send message" [disabled]

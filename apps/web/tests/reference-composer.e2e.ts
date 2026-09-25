@@ -180,7 +180,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     )
     await compareOrRefreshGolden(MENU_EXPECTED, snapshot, MODE)
     expect(snapshot).toContain('Files & folders')
-    expect(snapshot).toContain('Sessions')
+    expect(snapshot).toContain('Conversations')
     expect(snapshot).not.toContain('text: reference Files & folders')
     expect(snapshot).toContain('reference.txt')
     // A seed reaches disk as a log alone, and the Host labels a session from
@@ -319,7 +319,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     await expect.poll(() => input.textContent()).toBe('@folderx/')
     await menu.getByRole('option', { name: /child\.txt/ }).waitFor()
     await expect.poll(() => page.getByRole('navigation', { name: 'Folder navigation' })
-      .getByRole('button').allTextContents()).toEqual(['Workspace', 'folderx'])
+      .getByRole('button').allTextContents()).toEqual(['Research folder', 'folderx'])
     // The listing knows it was drilled into, so its rows drop the location the
     // header already carries.
     await expect.poll(() => menu.getByRole('option', { name: /child\.txt/ }).textContent())
@@ -348,7 +348,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     await menu.getByRole('option', { name: /child\.txt/ }).waitFor()
     await crumbs.waitFor()
     await expect.poll(() => crumbs.getByRole('button').allTextContents())
-      .toEqual(['Workspace', 'folderx'])
+      .toEqual(['Research folder', 'folderx'])
     // The listed folder is where the menu already is: its crumb is inert, and
     // the rows drop the location the header now carries.
     await expect.poll(() => crumbs.getByRole('button', { name: 'folderx' }).isDisabled()).toBe(true)
@@ -364,14 +364,14 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     await nested.getByRole('button', { name: 'Browse folder' }).click()
     await expect.poll(() => input.textContent()).toBe('@folderx/nested/')
     await expect.poll(() => crumbs.getByRole('button').allTextContents())
-      .toEqual(['Workspace', 'folderx', 'nested'])
+      .toEqual(['Research folder', 'folderx', 'nested'])
     await crumbs.getByRole('button', { name: 'folderx' }).click()
     await expect.poll(() => input.textContent()).toBe('@folderx/')
     await expect.poll(() => crumbs.getByRole('button').allTextContents())
-      .toEqual(['Workspace', 'folderx'])
+      .toEqual(['Research folder', 'folderx'])
 
     // Clicking the root crumb rewrites the token back to a bare trigger.
-    await crumbs.getByRole('button', { name: 'Workspace' }).click()
+    await crumbs.getByRole('button', { name: 'Research folder' }).click()
     await expect.poll(() => input.textContent()).toBe('@')
     await expect.poll(() => crumbs.count()).toBe(0)
     await menu.getByRole('option', { name: /^folderx\// }).waitFor()

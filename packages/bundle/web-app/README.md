@@ -63,7 +63,11 @@ When you launch `dsh --profile web` over SSH, the URL line still prints but the 
 
 ### Per-session agent setup
 
-Each browser session composes its own agent from the shipped presets (the `standard` preset by default), instead of sharing one process-wide tool set. You can change the default preset or add your own presets under `$DSH_HOME/.agent-presets`.
+Each browser session composes its own agent from the shipped presets (the `research` preset by default), instead of sharing one process-wide tool set. The GUI offers no preset chooser. The `agent-presets` row's `default` names the preset unless the settings document holds a user default (`agent-presets.default`, which the preset settings section of earlier builds wrote); that value wins while `agent-presets.modeSelectionEnabled` is true. You can add your own presets under `$DSH_HOME/.agent-presets`.
+
+### What the research edition leaves out
+
+The patch ships no developer controls and reaches DeepSeek services only through what you configure: the DeepSeek models, and web search, whose one provider (`web-search-deepseek`) sends the `web_search` tool's queries to DeepSeek's search endpoint whenever a DeepSeek key is stored. The GUI has no switch for web search, because the plugin settings page is disabled. The patch disables the session-telemetry exporter and every feedback row (`message-feedback`, `ui-message-feedback`, `command-feedback`), because a rating or `/feedback` releases the Session log to the telemetry endpoint, and it sets `session-log-deepseek` to `enabled: false`, so official DeepSeek requests carry no copy of the Session log. It also disables the Session-log download, open-in-app, the Cordis plugin badge, the agent-preset chooser and settings section, the plugin settings pages, the terminal tab and the trajectory view. Each is a disabled row, so a deployment turns one back on with a patch row such as `- id: ui-trajectory` followed by `disabled: false`. The `research-auto` permission preset is named `全自动 · Automatic`.
 
 -----
 
@@ -73,7 +77,7 @@ Each browser session composes its own agent from the shipped presets (the `stand
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The bundle is one patch plus one runtime glue plugin. The storage stack and projection cache come from `dsh-base`; the web overlay's workspace and message-feedback rows consume that shared `storageDomain` service. The patch restates the surface-specific values the base deliberately omits, inserts the web-only host rows and browser roster, then moves the agent plane behind presets. The glue plugin owns dist serving, trust sampling, prompt sections, the bash variable, and the readiness announcements.
+The bundle is one patch plus one runtime glue plugin. The storage stack and projection cache come from `dsh-base`; the web overlay's workspace row, and its message-feedback row where a deployment enables it, consume that shared `storageDomain` service. The patch restates the surface-specific values the base deliberately omits, inserts the web-only host rows and browser roster, then moves the agent plane behind presets. The glue plugin owns dist serving, trust sampling, prompt sections, the bash variable, and the readiness announcements.
 
 ### Patch semantics
 
@@ -93,12 +97,14 @@ The URL line and browser handoff are readiness signals: supervisors RPC as soon 
 |---|---|
 | [`src/index.ts`](src/index.ts) | The `web-app` glue plugin: dist resolution, LAN trust sampling, prompt sections, bash variable, URL line, browser handoff |
 | [`src/startup.ts`](src/startup.ts) | The `web-startup` provider: `--host`, `--port`, `--trusted-host`, `--no-open`, `--help` |
-| [`cordis.patch.yml`](cordis.patch.yml) | The web patch: restated base values, web host rows, browser roster, agent plane behind presets |
+| [`cordis.patch.yml`](cordis.patch.yml) | The web patch: restated base values, the research edition's disabled rows, web host rows, browser roster, agent plane behind presets |
 | — | No runtime invariant companion is published; every contribution (frontend-static child plugin, prompt section, bashEnv registration) is registry-disposed with the fiber, and each owning registry's package carries that relation's invariant; the package holds no mutable state of its own to audit. |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | Dist resolution, fallback seat, prompt sections, readiness |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | Command-line parsing over a real Loader tree |
 | [`tests/trusted-hosts.spec.ts`](tests/trusted-hosts.spec.ts) | LAN-trust sampling |
 | [`tests/browser-open.spec.ts`](tests/browser-open.spec.ts) | Default-browser handoff after the page is reachable |
+| [`tests/independence.spec.ts`](tests/independence.spec.ts) | The composed rows: no telemetry, feedback or developer controls |
+| [`tests/research-edition-rows.ts`](tests/research-edition-rows.ts) | The rows the research edition disables, listed once for the composition specs and the Web e2e harnesses |
 
 ### Invariant ownership
 

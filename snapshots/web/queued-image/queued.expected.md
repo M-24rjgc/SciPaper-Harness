@@ -22,7 +22,7 @@
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
 - paragraph: partial
-- status: Deep diving...
+- status: Thinking…
 - list:
   - listitem:
     - img "Queued message image"

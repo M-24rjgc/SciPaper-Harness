@@ -28,7 +28,7 @@ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
  * research plugin fills the sidebar brand slots.
  */
 const RESEARCH_CLIENT_BUILD_ENVIRONMENT = {
-  DSH_CLIENT_TITLE: 'Research Workbench',
+  DSH_CLIENT_TITLE: 'SciPaper Harness',
 } as const
 
 /** Public variable carrying the source commit embedded in client artifacts. */

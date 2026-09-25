@@ -23,7 +23,7 @@ DeepSeek models remain an optional model provider next to the others, used only 
 ## Consequences
 
 - Provider logs and web servers see `scipaper-harness/<version>` and this repository's address.
-- `.anonymous-user-id` is no longer created by model requests; `/feedback` still reads it where it exists.
+- `.anonymous-user-id` is no longer created by model requests. The Web and Desktop compositions also ship no telemetry, feedback or `/feedback` ([conversation-first redesign](2026-09-25-research-conversation-first-redesign.md)); in other profiles `/feedback` still reads the file where it exists.
 - Changes from upstream DeepSeek Harness arrive only when someone ports one on purpose.
 - The internal `dsh` names remain visible to developers reading the code and its documentation.
 

@@ -25,7 +25,7 @@
 - button "Bash Rejected by Auto review":
   - img
   - text: Bash Rejected by Auto review
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Auto review EXP"':
@@ -71,7 +71,7 @@
   - text: Bash Rejected by Auto review
 - text: "OUT Tool was not executed. Reason: ptc raw reason"
 - button "Inspect"
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Auto review EXP"':
@@ -142,7 +142,7 @@
     - tab "Schema"
     - tab "Timing"
   - tabpanel "Result": "AutoReviewDeniedError: AUTO_REVIEW_DENIED Error: Auto review rejected tool \"bash\"; its body was not executed"
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Auto review EXP"':

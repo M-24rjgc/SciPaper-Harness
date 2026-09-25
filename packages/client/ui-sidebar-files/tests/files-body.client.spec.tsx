@@ -39,7 +39,7 @@ function names(root: HTMLElement): string[] {
 describe('FilesBody', () => {
   it('says so when the session has no workspace directory, and asks for nothing', () => {
     const { view, script } = mountBody(null)
-    expect(view.container.querySelector('[data-files-state="no-workspace"]')?.textContent).toBe(zh.noWorkspace)
+    expect(view.container.querySelector('[data-files-state="no-workspace"]')?.textContent).toBe('这段对话没有研究文件夹。')
     expect(script.list).not.toHaveBeenCalled()
   })
 
@@ -242,7 +242,7 @@ describe('failureLine', () => {
   it('names each directory failure', () => {
     expect(failureLine(t, new RemoteError('workspace-file/not-found', 'x', { path: 'p' }))).toBe(zh['error.notFound'])
     expect(failureLine(t, new RemoteError('workspace-file/outside-workspace', 'x', { path: 'p' })))
-      .toBe(zh['error.outsideWorkspace'])
+      .toBe('这个目录在研究文件夹之外，侧栏不会读取它。')
     expect(failureLine(t, new RemoteError('workspace-file/not-directory', 'x', { path: 'p', kind: 'file' })))
       .toBe(zh['error.notDirectory'])
   })

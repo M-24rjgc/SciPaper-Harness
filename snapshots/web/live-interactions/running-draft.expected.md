@@ -22,8 +22,8 @@
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
 - paragraph: partial
-- status: Deep diving...
-- textbox "Message or run a task, / commands, @ files or sessions":
+- status: Thinking…
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations":
   - paragraph: Queue this follow-up while the current turn is running.
 - button "Add files or run commands":
   - img

@@ -24,7 +24,7 @@
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
 - paragraph: partial
-- status: Deep diving...
+- status: Thinking…
 - list:
   - listitem:
     - text: Keep working until I stop you again.
@@ -37,7 +37,7 @@
 - textbox "Parent session offline; sending is unavailable but you can still stop the run" [disabled]
 - button "Add files or run commands" [disabled]:
   - img
-- 'button "Access mode, current: Custom" [disabled]': Custom
+- 'button "Access mode, current: 全自动 · Automatic" [disabled]': 全自动 · Automatic
 - button "New project folder…"
 - button "Stop generating"
 - button "Send message" [disabled]

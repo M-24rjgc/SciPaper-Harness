@@ -41,7 +41,7 @@ describe('web e2e: startup auto-selection', () => {
   it('keeps the resident Hero and composer nodes when the first Workspace session appears', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-first-workspace-stable-tree'))
     await page.locator(`${ROOT_PHASE}[data-phase="hero"]`).waitFor({ timeout: 15_000 })
-    const headline = page.getByText('Start a piece of research', { exact: true })
+    const headline = page.getByText('What shall we work on today?', { exact: true })
     // The headline text sits in its own span inside the title group; the fish
     // hitbox precedes the group, not the text span.
     const fishHitbox = headline.locator('xpath=../preceding-sibling::span[1]')
@@ -54,7 +54,7 @@ describe('web e2e: startup auto-selection', () => {
     await page.evaluate(() => {
       const refs = {
         root: document.querySelector('div[data-phase="hero"]'),
-        workspaceChip: document.querySelector('[aria-label="Choose workspace"]'),
+        workspaceChip: document.querySelector('[aria-label="Choose research"]'),
         scrollBody: document.querySelector('[data-conversation-scroll]'),
         composerSeat: document.querySelector('[data-composer-seat]'),
         composer: document.querySelector('[data-composer-input]'),
@@ -72,7 +72,7 @@ describe('web e2e: startup auto-selection', () => {
       return {
         phase: document.querySelector('div[data-phase]')?.getAttribute('data-phase'),
         root: document.querySelector('div[data-phase="hero"]') === before.root,
-        workspaceChip: document.querySelector('[aria-label="Choose workspace"]') === before.workspaceChip,
+        workspaceChip: document.querySelector('[aria-label="Choose research"]') === before.workspaceChip,
         scrollBody: document.querySelector('[data-conversation-scroll]') === before.scrollBody,
         composerSeat: document.querySelector('[data-composer-seat]') === before.composerSeat,
         composer: document.querySelector('[data-composer-input]') === before.composer,
@@ -129,11 +129,11 @@ describe('web e2e: startup auto-selection', () => {
       // seat with `visibility:hidden`, which Playwright reports as not visible).
       await page.waitForSelector(ROOT_PHASE, { timeout: 15_000 })
       expect(await page.locator(ROOT_PHASE).first().getAttribute('data-phase')).toBe('hero')
-      expect(await page.getByText('Start a piece of research').isVisible()).toBe(true)
+      expect(await page.getByText('What shall we work on today?').isVisible()).toBe(true)
       expect(await page.locator('[data-composer-input]').first().isVisible()).toBe(true)
 
       releaseOpening()
-      await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe your research question, or drop in papers and data, / commands, @ files or sessions"]')
+      await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
         .waitFor({ timeout: 15_000 })
       acknowledgeReloadConnectionLoss(tripwire, warningsBefore)
 

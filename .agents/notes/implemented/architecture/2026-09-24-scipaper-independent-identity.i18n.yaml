@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-scipaper-independent-identity.md
-2026-09-24-scipaper-independent-identity.md: 3c975e0ea62574dd0f798f5e13582c62c35127b9
-2026-09-24-scipaper-independent-identity.zh.md: 5c42e2cff2dedec8c443b4fd68d575374ef1ab96
+2026-09-24-scipaper-independent-identity.md: f95434749abf302e4a4ca2341df7ae31f5d4265d
+2026-09-24-scipaper-independent-identity.zh.md: 0da763fbb8bfb0677ba335b2325c6fe3eee2ed69

@@ -35,8 +35,9 @@ describe('filesDefinition', () => {
     expect(rest).toEqual([])
     expect(entry?.order).toBe(10)
     expect(entry?.kind).toBe(FILES_KIND)
-    expect(entry?.title()).toBe(zh['guide.title'])
-    expect(entry?.description?.()).toBe(zh['guide.description'])
+    // The entry names the research's folder, never a project or a workspace.
+    expect(entry?.title()).toBe('研究文件')
+    expect(entry?.description?.()).toBe('浏览这项研究的文件夹')
     if (entry?.icon === undefined) throw new Error('expected the guide icon')
     const icon = render(createElement(entry.icon, { size: 26 }))
     expect(icon.container.querySelector('svg')?.getAttribute('width')).toBe('26')

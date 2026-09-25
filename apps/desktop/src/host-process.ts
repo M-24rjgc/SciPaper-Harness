@@ -90,7 +90,7 @@ export class DesktopHostProcess {
    * @param runtimeDir - immutable packages carried by the current application.
    * @param projectDir - active or staged desktop plugin profile.
    * @param inspectPort - optional loopback inspector port for workspace development.
-   * @param environment - Child environment; runtime and package-manager overrides are removed.
+   * @param environment - Child environment; runtime and package-manager overrides are removed, and `DSH_TELEMETRY_DISABLED` is always `1`.
    * @param onFailure - Receives the first fatal child or transport failure, including after readiness.
    */
   constructor(
@@ -119,6 +119,9 @@ export class DesktopHostProcess {
           name !== 'NODE_OPTIONS' && name !== 'NODE_PATH' && !/^DSH_DESKTOP_/u.test(name) && !/^(?:npm|pnpm|corepack)_/iu.test(name)
         ))),
         ELECTRON_RUN_AS_NODE: '1',
+        // The desktop application sends no telemetry: the Host drops the
+        // session-telemetry row, and dsh processes started under it inherit the switch.
+        DSH_TELEMETRY_DISABLED: '1',
       },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'ipc'],
     })

@@ -1,4 +1,4 @@
-- button "Choose workspace":
+- button "Choose research":
   - img
   - text: workspace
   - img

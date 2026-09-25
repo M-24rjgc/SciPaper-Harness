@@ -12,7 +12,7 @@ import type { DeepSeekOnboardingDialogProps } from '../src/client/DeepSeekOnboar
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { ModelsSettingsStore } from '../src/client/store.ts'
 import { createModelsOperations } from '../src/client/operations.ts'
-import { en } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 import { settingsSchema } from './settings-schema.client.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
@@ -173,12 +173,20 @@ describe('DeepSeekOnboardingDialog', () => {
   it('loads a credential-only modal, inerts the product, and focuses the key', async () => {
     const h = harness()
     render(<DeepSeekOnboardingDialog {...h.props} />)
-    expect(await screen.findByRole('dialog', { name: en.onboardingTitle })).toBeTruthy()
+    // The copy asks for a model service's key and names DeepSeek only as the provider this dialog takes.
+    expect(await screen.findByRole('dialog', { name: 'Add an API key for a model service to get started' })).toBeTruthy()
     expect(document.getElementById('root')?.inert).toBe(true)
-    expect(screen.getByText(en.onboardingDescription)).toBeTruthy()
+    expect(screen.getByText('You can enter a DeepSeek key here; add other providers in Settings › Models.')).toBeTruthy()
     const key = screen.getByLabelText<HTMLInputElement>(en.keyInput)
     await waitFor(() => { expect(document.activeElement).toBe(key) })
     expect(screen.queryByText(en.customized)).toBeNull()
+  })
+
+  it('asks for a model service key in Chinese', async () => {
+    const h = harness()
+    render(<DeepSeekOnboardingDialog {...h.props} t={key => zh[key]} />)
+    expect(await screen.findByRole('dialog', { name: '添加一个模型服务的 API Key 即可开始使用' })).toBeTruthy()
+    expect(screen.getByText('这里可直接填写 DeepSeek 的密钥；其他提供方可在 设置 › 模型 中添加。')).toBeTruthy()
   })
 
   it('cannot be dismissed implicitly and restores the previous inert state', async () => {

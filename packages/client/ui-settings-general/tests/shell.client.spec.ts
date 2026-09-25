@@ -36,13 +36,20 @@ const CHILD_NAMES = Object.keys(CHILD_SPECS) as Array<keyof typeof CHILD_SPECS>
 
 /**
  * Section ids the web-app roster registers, in nav order: this package, then
- * ui-settings-models, ui-settings-plugins, ui-agent-preset, and
- * ui-settings-unarchive-sessions. A plugin adding a section changes this list.
+ * ui-settings-models, ui-settings-unarchive-sessions and ui-research (the
+ * research edition ships ui-settings-plugins and ui-agent-preset disabled).
+ * A plugin adding a section changes this list.
  */
-const PRODUCT_SECTIONS: readonly string[] = ['general', 'models', 'plugins', 'agent-presets', 'archived-sessions', 'research']
-/** Onboarding steps the web-app roster registers, in coordinator order; both come from ui-settings-models. */
+const PRODUCT_SECTIONS: readonly string[] = ['general', 'models', 'archived-sessions', 'research']
+/**
+ * Onboarding steps the web-app roster registers, in coordinator order: the
+ * welcome notice and the DeepSeek key step from ui-settings-models, and
+ * ui-research's occupant of the welcome-notice id (default order), which
+ * shadows the notice with a component that renders nothing.
+ */
 const PRODUCT_ONBOARDING: readonly { id: string; order: number }[] = [
   { id: 'welcome-notice', order: -100 },
+  { id: 'welcome-notice', order: 0 },
   { id: 'deepseek-official', order: 0 },
 ]
 

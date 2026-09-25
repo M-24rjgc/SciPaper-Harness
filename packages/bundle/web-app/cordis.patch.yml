@@ -37,6 +37,29 @@
     # once the web UI owns the choice per session.
     mode: !!js process.env.DSH_TOOLS_MODE
 
+# ── the research edition exports no telemetry and records no feedback ───────
+#
+# SciPaper Harness exports no telemetry and records no feedback: in the base
+# FEEDBACK_ONLY mode a rating or `/feedback` releases the Session log to the
+# DeepSeek telemetry endpoint. The web profile and the Desktop Host both
+# compose this bundle, so these rows are off in both; the Desktop Host also
+# applies DSH_TELEMETRY_DISABLED, which the Electron shell always sets. The
+# Web feedback rows below (`message-feedback`, `ui-message-feedback`) are
+# inserted disabled. DeepSeek models stay an ordinary provider, but their
+# requests carry no `dsh_session_log` copy of the Session log. Every row the
+# research edition disables is also listed in `tests/research-edition-rows.ts`,
+# which the composition specs and the Web e2e harnesses read.
+
+- id: session-telemetry-otel
+  disabled: true
+
+- id: command-feedback
+  disabled: true
+
+- id: session-log-deepseek
+  config:
+    enabled: false
+
 # ── web-only host rows, the transport layer, and the browser roster ─────────
 
 # `dsh.client` rows are the browser roster the modules node half scans into
@@ -47,20 +70,26 @@
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
 
+    # Off in the research edition: message ratings authorise a Session-log upload.
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
+      disabled: true
       config:
         maxNoteBytes: 8192
 
     # Browser Session export: `/export` command plus the shared download dialog.
+    # Off in the research edition, which offers no Session-log download.
     - id: session-log-download
       name: '@deepseek-ai/dsh-session-log-export'
+      disabled: true
 
     # Session-header "Open In..." split button over the host application
     # resolution (macOS/Windows/Linux; a host with no resolved application
     # renders no button). Two halves: the host routes and the browser surface.
+    # Off in the research edition, on the web as on the desktop.
     - id: open-in-app
       name: '@deepseek-ai/dsh-host-open-in-app'
+      disabled: true
       config:
         probeTimeoutMs: 10000
         iconTimeoutMs: 10000
@@ -68,6 +97,7 @@
 
     - id: ui-open-in-app
       name: '@deepseek-ai/dsh-client-ui-open-in-app'
+      disabled: true
 
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
@@ -229,9 +259,12 @@
     - id: ui-sidebar-documentpreview
       name: '@deepseek-ai/dsh-client-ui-sidebar-documentpreview'
 
-    # The right Sidebar's workspace file tree tab type.
+    # The right Sidebar's terminal tab type; off in the research edition.
     - id: ui-sidebar-terminal
       name: '@deepseek-ai/dsh-client-ui-sidebar-terminal'
+      disabled: true
+
+    # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'
 
@@ -244,8 +277,10 @@
     - id: ui-settings-models
       name: '@deepseek-ai/dsh-client-ui-settings-models'
 
+    # The plugin list in settings; off in the research edition.
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
+      disabled: true
 
     - id: ui-settings-unarchive-sessions
       name: '@deepseek-ai/dsh-client-ui-settings-unarchive-sessions'
@@ -270,8 +305,10 @@
     - id: ui-tool
       name: '@deepseek-ai/dsh-client-ui-tool'
 
+    # The Cordis plugin badge and panel; off in the research edition.
     - id: ui-cordis
       name: '@deepseek-ai/dsh-client-ui-cordis'
+      disabled: true
 
     # Durable workflow lifecycle as an independent Chat node after the
     # existing generic workflow tool row.
@@ -322,8 +359,10 @@
     # The feedback surface: Like/Dislike in the assistant-message action
     # strip, the feedback dialog behind Dislike and /feedback with its
     # acknowledgement toast, over the messageFeedback and sessionFeedback Remotes.
+    # Off in the research edition, with both Remotes' Host rows.
     - id: ui-message-feedback
       name: '@deepseek-ai/dsh-client-ui-message-feedback'
+      disabled: true
 
     # Model selection: the /model popupSelect + composer seat over session.models.
     - id: ui-model-selection
@@ -332,15 +371,20 @@
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
 
-    # The agent-preset row in General settings: the default preset for
-    # sessions created later. Absent a roster it renders nothing.
+    # The agent-preset controls: the preset chip on a blank conversation, the
+    # preset label in the session header, and the preset settings section.
+    # Absent a roster it renders nothing. Off in the research edition, where
+    # every conversation composes from the roster's default preset.
     - id: ui-agent-preset
       name: '@deepseek-ai/dsh-client-ui-agent-preset'
+      disabled: true
 
     # Plugin configuration: the host-plane sections a user owns, as expandable
     # cards. A namespace this deployment does not expose renders nothing.
+    # Off in the research edition.
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
+      disabled: true
 
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan
@@ -349,8 +393,11 @@
     - id: ui-user-questions
       name: '@deepseek-ai/dsh-client-ui-user-questions'
 
+    # The trajectory view beside the conversation. Off in the research
+    # edition, so the session header draws no view tabs.
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
+      disabled: true
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #
@@ -489,7 +536,7 @@
       name: '@deepseek-ai/dsh-agent-presets'
       config:
         # The research edition opens every conversation as a research
-        # collaborator; the other shipped presets stay one pick away.
+        # collaborator. It ships no preset chooser (`ui-agent-preset` is off).
         default: research
 
 # The research edition's automatic autonomy runs unattended: workspace writes
@@ -511,6 +558,7 @@
       research-auto:
         sandbox: workspace-write
         approval: never
+        name: 全自动 · Automatic
         description: 工作区内修改，不弹审批：越权请求直接拒绝，无人值守时不会卡住。Workspace writes without approval prompts; escalations are declined so unattended runs never stall.
 
 - insert:

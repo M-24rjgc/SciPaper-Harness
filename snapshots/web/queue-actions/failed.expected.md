@@ -1,5 +1,5 @@
 - alert: Queue submission failed (session/agent-busy)
-- textbox "Message or run a task, / commands, @ files or sessions":
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations":
   - paragraph: Queue submission to retry
 - button "Add files or run commands":
   - img

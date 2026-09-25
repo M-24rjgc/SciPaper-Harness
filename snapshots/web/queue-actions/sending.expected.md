@@ -22,7 +22,7 @@
   - img
   - text: Context injection @deepseek-ai/dsh-system-prompt
 - paragraph: partial
-- status: Deep diving...
+- status: Thinking…
 - list:
   - listitem:
     - text: Queue item to remove
@@ -33,7 +33,7 @@
       - img
     - button "Steer queued message" [disabled]:
       - img
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write

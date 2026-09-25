@@ -63,7 +63,11 @@ dsh --profile web --no-open --port 8080
 
 ### 按会话的 agent 设置
 
-每个浏览器会话都从随发行版交付的 preset（默认 `standard`）组合自己的 agent，而不是共享一套进程级工具集。你可以更改默认 preset，或在 `$DSH_HOME/.agent-presets` 下添加自己的 preset。
+每个浏览器会话都从随发行版交付的 preset（默认 `research`）组合自己的 agent，而不是共享一套进程级工具集。GUI 不提供 preset 选择器。默认 preset 由 `agent-presets` 行的 `default` 指定，除非设置文件里存有用户默认值（`agent-presets.default`，早期版本的 preset 设置分区会写入它）；只要 `agent-presets.modeSelectionEnabled` 为 true，该值就优先生效。你可以在 `$DSH_HOME/.agent-presets` 下添加自己的 preset。
+
+### 科研版不包含的部分
+
+这份 patch 不提供开发者控件，只通过你配置的内容连接 DeepSeek 服务：DeepSeek 模型，以及网页搜索——它唯一的提供方（`web-search-deepseek`）会在存有 DeepSeek 密钥时，把 `web_search` 工具的查询发往 DeepSeek 的搜索端点。插件设置页已禁用，因此 GUI 中没有网页搜索的开关。这份 patch 禁用会话遥测导出器和所有反馈行（`message-feedback`、`ui-message-feedback`、`command-feedback`），因为一次评分或 `/feedback` 就会把 Session 日志交给遥测端点；它还把 `session-log-deepseek` 设为 `enabled: false`，因此 DeepSeek 官方请求不再附带 Session 日志的副本。此外它禁用 Session 日志下载、在应用中打开（open-in-app）、Cordis 插件徽标、agent preset 选择器及其设置分区、插件设置页、终端标签页和轨迹视图。每一项都是一个被禁用的行，部署方用一行 patch（例如 `- id: ui-trajectory` 加上 `disabled: false`）即可重新打开。`research-auto` 权限预设的显示名为 `全自动 · Automatic`。
 
 -----
 
@@ -73,7 +77,7 @@ dsh --profile web --no-open --port 8080
 <details>
 <summary>实现细节——点击展开</summary>
 
-本组合包是一份 patch 加一个运行时粘合插件。存储栈与投影缓存来自 `dsh-base`；Web 叠加层的 workspace 与 message-feedback 行使用共享的 `storageDomain` 服务。patch 重述 base 刻意省略的表层专属值，插入仅 Web 使用的宿主行与浏览器名录，然后把 agent 层改由 preset 承载；粘合插件负责 dist 服务、信任采样、提示词段落、bash 变量与就绪宣告。
+本组合包是一份 patch 加一个运行时粘合插件。存储栈与投影缓存来自 `dsh-base`；Web 叠加层的 workspace 行，以及部署方启用时的 message-feedback 行，使用共享的 `storageDomain` 服务。patch 重述 base 刻意省略的表层专属值，插入仅 Web 使用的宿主行与浏览器名录，然后把 agent 层改由 preset 承载；粘合插件负责 dist 服务、信任采样、提示词段落、bash 变量与就绪宣告。
 
 ### patch 语义
 
@@ -93,12 +97,14 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 |---|---|
 | [`src/index.ts`](src/index.ts) | `web-app` 粘合插件：dist 解析、LAN 信任采样、提示词段落、bash 变量、URL 行、浏览器交接 |
 | [`src/startup.ts`](src/startup.ts) | `web-startup` 提供方：`--host`、`--port`、`--trusted-host`、`--no-open`、`--help` |
-| [`cordis.patch.yml`](cordis.patch.yml) | Web patch：重述的基础值、Web 宿主行、浏览器名录、由 preset 承载的 agent 层 |
+| [`cordis.patch.yml`](cordis.patch.yml) | Web patch：重述的基础值、科研版禁用的行、Web 宿主行、浏览器名录、由 preset 承载的 agent 层 |
 | — | 不发布运行时不变式伴生入口；每项贡献（frontend-static 子插件、提示词段落、bashEnv 注册）都会随 fiber 由注册表释放，且每个所属注册表的包负责该关系的不变式；本包不持有需要审计的可变状态。 |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | dist 解析、回退席位、提示词段落、就绪宣告 |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | 在真实 Loader 树上的命令行解析 |
 | [`tests/trusted-hosts.spec.ts`](tests/trusted-hosts.spec.ts) | LAN 信任采样 |
 | [`tests/browser-open.spec.ts`](tests/browser-open.spec.ts) | 页面可达后的默认浏览器交接 |
+| [`tests/independence.spec.ts`](tests/independence.spec.ts) | 组合后的行：没有遥测、反馈或开发者控件 |
+| [`tests/research-edition-rows.ts`](tests/research-edition-rows.ts) | 科研版禁用的行，只列一次，供组合 spec 与 Web e2e 测试框架读取 |
 
 ### 不变式归属
 

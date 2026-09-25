@@ -63,7 +63,7 @@
   - img
   - text: "feedback Feedback recorded for session {{seededId}} Anonymous user: {{uuid}}."
 - text: "Feedback recorded for session {{seededId}} Anonymous user: {{uuid}}."
-- textbox "Message or run a task, / commands, @ files or sessions"
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands":
   - img
 - 'button "Access mode, current: Read Only"': Read Only

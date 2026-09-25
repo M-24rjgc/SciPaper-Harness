@@ -29,6 +29,13 @@ interface AssembledPlugin extends WebBootEntry {
 interface AssembledBootOptions {
   /** Package ids omitted from this mounted composition. */
   readonly exclude?: readonly string[]
+  /**
+   * Ids of rows the shipped patches disable that this mount composes anyway,
+   * for a scenario of an inherited plugin the research edition ships disabled
+   * (the Playwright scaffold's `enableInheritedRows` does this for its lane).
+   * Omitted, the mounted roster is the shipped one.
+   */
+  readonly enableRows?: readonly string[]
   /** Remote answers owned by this assembled case. */
   readonly remote?: AssembledRemoteOptions
 }
@@ -47,6 +54,7 @@ interface ClientPackageManifest {
 }
 
 interface ComposedEntry {
+  id?: unknown
   name?: unknown
   disabled?: unknown
 }
@@ -94,13 +102,22 @@ function resolveClientExport(packagePath: string, pkg: ClientPackageManifest): s
 const comboUrl = (ids: readonly string[], rev: string): string =>
   `/plugins/??${ids.map(id => `${id}/client.js`).join(',')}&rev=${rev}`
 
-/** Derive the assembled browser graph from the same bundle patches and package declarations as `dsh web`. */
-function loadAssembledPlugins(): readonly AssembledPlugin[] {
+/** Whether a composed row is mounted: enabled, or disabled but named by the scenario. */
+function mounted(entry: ComposedEntry, enableRows: ReadonlySet<string>): boolean {
+  return entry.disabled !== true || (typeof entry.id === 'string' && enableRows.has(entry.id))
+}
+
+/**
+ * Derive the assembled browser graph from the same bundle patches and package declarations as `dsh web`.
+ * @param enableRows - ids of disabled rows to mount anyway.
+ * @returns the client rows in module-graph order.
+ */
+function loadAssembledPlugins(enableRows: ReadonlySet<string>): readonly AssembledPlugin[] {
   const entries = appBoot.composeEntries(BUNDLE_LAYERS.map(layer =>
     appBoot.loadOverlayPatches('assembled boot', layer.patch)))
   const plugins = new Map<string, AssembledPlugin>()
   for (const entry of entries) {
-    if (entry.disabled === true || typeof entry.name !== 'string') continue
+    if (!mounted(entry, enableRows) || typeof entry.name !== 'string') continue
     const packagePath = resolvePackageManifest(entry.name)
     if (packagePath === undefined) continue
     const pkg = JSON.parse(readFileSync(packagePath, 'utf8')) as ClientPackageManifest
@@ -127,7 +144,7 @@ function loadAssembledPlugins(): readonly AssembledPlugin[] {
   })
 }
 
-const PLUGINS = loadAssembledPlugins()
+const SHIPPED_PLUGINS = loadAssembledPlugins(new Set())
 
 const BOOTSTRAP_IDS = ['@deepseek-ai/dsh-client-modules'] as const
 
@@ -274,7 +291,8 @@ export function installAssembledBootEnv(): void {
  */
 export function mountAssembledApp(options: AssembledBootOptions = {}): AssembledRemote {
   const excluded = new Set(options.exclude)
-  const plugins = PLUGINS.filter(plugin => !excluded.has(plugin.id))
+  const roster = options.enableRows === undefined ? SHIPPED_PLUGINS : loadAssembledPlugins(new Set(options.enableRows))
+  const plugins = roster.filter(plugin => !excluded.has(plugin.id))
   const remote = createAssembledRemote(options.remote)
   mountedRemote = remote.mock
   win.__DSH_TRANSPORT__ = { rpc: remote.mock.rpc }

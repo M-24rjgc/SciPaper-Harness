@@ -91,6 +91,7 @@ import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-agent'
 import { provideCmdline } from '@deepseek-ai/dsh-cmdline'
+import { INHERITED_SCENARIO_ROWS } from '../../../packages/bundle/web-app/tests/research-edition-rows.ts'
 import { REPO_ROOT, requireDist } from './support.ts'
 
 // Host-side web e2e cannot import a browser package: doing so would pull that
@@ -398,8 +399,18 @@ export interface LaunchOptions {
     default: string
   }
   /**
-   * Patch the telemetry exporter URL while preserving the shipped enabled
-   * setting. A scenario-owned loopback collector contains all fixture uploads.
+   * Re-enable the inherited Web rows the research edition ships disabled
+   * ({@link RESEARCH_EDITION_DISABLED_ROWS}), so the inherited scenarios and
+   * their goldens keep exercising those plugins in the assembled browser.
+   * Defaults to true. Every research scenario passes false and runs the rows
+   * as shipped (`research-workbench`, `research-demo`, and the shipped-defaults
+   * test of `shipped-composition`).
+   */
+  enableInheritedRows?: boolean
+  /**
+   * Patch the telemetry exporter URL while preserving the composed enabled
+   * setting: enabled with {@link enableInheritedRows}, disabled as shipped
+   * without it. A scenario-owned loopback collector contains all fixture uploads.
    */
   telemetryUrl?: string
   /** Mode when telemetryUrl is supplied; defaults to FEEDBACK_ONLY without enabling a disabled row. */
@@ -415,6 +426,15 @@ export interface LaunchOptions {
   /** Reuse an existing harness home so a second Host can verify user settings across origins. */
   harnessHome?: string
 }
+
+/**
+ * Rows of the inherited Web features that the research edition's Web bundle
+ * disables: telemetry and feedback, Session-log download, the Cordis badge,
+ * the preset, plugin and plugin-list settings, the terminal tab and the
+ * trajectory view. Open In keeps its own {@link LaunchOptions.openInAppEnvironment} switch.
+ * The list is the Web bundle's own (`packages/bundle/web-app/tests/research-edition-rows.ts`).
+ */
+export const RESEARCH_EDITION_DISABLED_ROWS: readonly string[] = INHERITED_SCENARIO_ROWS
 
 /** Dispose the booted tree and remove both owned temp roots, reporting every independent cleanup failure. */
 async function cleanupScaffoldWorld(ctx: Context, workspaceCwd: string, persistenceRoot: string): Promise<unknown[]> {
@@ -535,6 +555,11 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
   const patches: PatchOptions[] = [
     ...basePatches,
     ...surfacePatches,
+    // Before every hermetic patch below, so the telemetry exporter still stays
+    // off unless a scenario supplies its own collector.
+    ...options.enableInheritedRows === false
+      ? []
+      : RESEARCH_EDITION_DISABLED_ROWS.map(id => ({ id, disabled: false })),
     { id: 'session-log-deepseek', config: { enabled: false } },
     // The historical Messages fixture retains its recorded route during replay;
     // live configuration uses the shared DeepSeek route. Explicit overlays win.
@@ -586,7 +611,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     // Fixture sessions must never leave the process: the shipped row defaults
     // to the production OTLP endpoint (or whatever DSH_TELEMETRY_OTLP_URL
     // names in the ambient environment). A scenario with a local collector
-    // preserves the shipped disabled setting instead of overriding it.
+    // preserves the composed disabled setting instead of overriding it.
     options.telemetryUrl === undefined
       ? { id: 'session-telemetry-otel', disabled: true }
       : {
