@@ -558,4 +558,4 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 - An example's board with no stored read reads 尚未读取 and offers no way to read it.
 - An older untouched research beside the draft is listed as 新研究 in upright type, and is removed from the list like any research.
 - The chip closes the panel only while the research tab is the active tab of the active pane. With another tab in front, it opens the record, suggesting 320 px only while the panel has no width yet.
-- The Web e2e files that fail on Windows fail as they did before step 1, apart from those this sweep fixed. Preview-boot and the real-key smoke were not compared.
+- The Web e2e files that fail on Windows fail as they did before step 1, apart from those this sweep fixed. `preview-boot` failed before step 1 too; it now stops later, waiting for the old entry screen's folder box. The real-key smoke was not compared.
