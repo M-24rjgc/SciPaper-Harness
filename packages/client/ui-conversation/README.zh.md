@@ -44,6 +44,8 @@ target package 通过 declaration merge 扩展 snapshot 与 Location data map，
 
 工作区选择使用 `uiWorkspace.openWorkspace` 准备目标并提交导航。草稿文字和附件仅在该请求仍为当前请求时，通过它的同步准备回调搬移；后续导航或所有者释放会保留原草稿。
 
+若目标的空白 Session 已有文字或附件，携带的草稿会进入该工作区中的一个新 Session。输入注册表为导航提供草稿文字与附件数量，包括视图尚未挂载时已保存的文字。新输入实例只在创建时恢复一次已保存的文字，此后的编辑与清空以实时输入为准。视图绑定持久化镜像时会立即保存当前文字，包括挂载前转入的草稿。
+
 本包占据 root 作用域 `main` 中的 `conversation` key，其包装层声明 optional-Session `main.conversation` shell。本包注册 strict Session header/body、View list、composer chain 与 bar、输入区域、Hero 区域、queue dock、草稿持久化和 phase 计算。`ctx.uiSession.provide()` 从同一个 Session binding 物化 Conversation 与 input source，并将 `inputActions` 作为稳定标准 prop 提供。
 
 View 选择规则固定：有效且已注册的持久化选择优先，其次是已注册的 `chat`，否则不渲染 View；绝不选择第一个已注册 View。Shell phase 只组合 Session lifecycle 与 active-target set，不读取任何 target-specific 快照。

@@ -16,6 +16,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { createConversationStore } from '../src/client/stores.ts'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
+import { LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
+import { UiWorkspaceService } from '@deepseek-ai/dsh-client-ui-workspace/src/client/navigation.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -32,7 +34,7 @@ function sessionFakeFor() {
   } satisfies SessionBehaviorOverrides
 }
 
-async function bench() {
+async function bench(realNavigation = false) {
   const runtime = await SlotTestRuntime.create()
   const rootUpload = vi.fn(() => Promise.resolve({
     ok: true as const,
@@ -49,7 +51,16 @@ async function bench() {
   }
   runtime.ctx.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
   const connectWorkspace = vi.fn(async () => ROOT)
-  runtime.ctx.provide('uiWorkspace', {
+  if (realNavigation) {
+    const layout = new LayoutController({
+      selectPanel: vi.fn(), retainMainPanels: vi.fn(), setSidebar: vi.fn(), toggleSidebar: vi.fn(),
+      setViewportWidth: vi.fn(), setRightbar: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn(),
+      setInitialRightbarWidth: vi.fn(),
+    }, () => true)
+    runtime.ctx.provide('layout', layout)
+    runtime.ctx.effect(() => () => { layout.dispose() })
+    new UiWorkspaceService(runtime.ctx, {} as never, runtime.workspaces, runtime.sessions)
+  } else runtime.ctx.provide('uiWorkspace', {
     openWorkspace: async (_workspaceId: WorkspaceId, beforeOpen: (id: SessionId) => void) => {
       const id = await connectWorkspace()
       beforeOpen(id)
@@ -266,7 +277,7 @@ describe('Conversation inject API', () => {
     const mirrored: string[] = []
     const unbind = injected.bindDraftMirror(text => mirrored.push(text))
     actions.setDraft('mirrored text')
-    expect(mirrored).toEqual(['mirrored text'])
+    expect(mirrored).toEqual(['retry me', 'mirrored text'])
     unbind()
     expect(b.inputApi(ROOT).state).toBe(state)
 
@@ -276,6 +287,36 @@ describe('Conversation inject API', () => {
     b.composerApi(ROOT).stop!()
     await vi.waitFor(() => { expect(b.sessionFake.cancel).toHaveBeenCalledOnce() })
     await b.runtime.dispose()
+  })
+
+  it('lists saved drafts before their views mount, seeds their inputs, and keeps live clearing authoritative', async () => {
+    const b = await bench()
+    onTestFinished(() => b.runtime.dispose())
+    const saved = 'saved-draft' as SessionId
+    const key = `dsh.conversation.${saved}`
+    localStorage.setItem(key, JSON.stringify({ draft: 'saved text X', view: null, viewRequest: null }))
+    onTestFinished(() => { localStorage.removeItem(key) })
+    await b.runtime.sessions.add({ id: saved, summary: { blank: true } }, { current: false })
+    const drafts = b.runtime.ctx.conversation.input.drafts
+    expect(drafts.getSnapshot()[saved]).toEqual({ text: 'saved text X', attachmentCount: 0 })
+
+    const input = b.inputApi(saved)
+    expect(input.state.getSnapshot().draft).toBe('saved text X')
+    input.actions.setDraft('')
+    await b.runtime.flush()
+    expect(drafts.getSnapshot()[saved]).toBeUndefined()
+    // The view has not bound its mirror yet; a list update must not resurrect its saved text.
+    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ draft: 'saved text X' })
+    await b.runtime.sessions.setCurrent(ROOT)
+    expect(drafts.getSnapshot()[saved]).toBeUndefined()
+
+    const source = b.inputApi(ROOT)
+    b.composerApi(ROOT).addFiles!([new File([Uint8Array.of(1)], 'source.pdf', { type: 'application/pdf' })])
+    await b.runtime.flush()
+    expect(drafts.getSnapshot()[ROOT]).toEqual({ text: '', attachmentCount: 1 })
+    b.composerApi(ROOT).removeAttachment!(source.state.getSnapshot().attachmentIds[0]!)
+    await b.runtime.flush()
+    expect(drafts.getSnapshot()[ROOT]).toBeUndefined()
   })
 
   it('releases a draft attachment only after the input shell accepts its removal', async () => {
@@ -357,6 +398,11 @@ describe('Conversation inject API', () => {
     expect(b.inputApi(other).state.getSnapshot().draft).toBe('carry me')
     await vi.waitFor(() => { expect(targetUpload).toHaveBeenCalledOnce() })
     expect(b.inputApi(other).state.getSnapshot().attachmentIds).toHaveLength(1)
+    const body = b.conversationApi(other)
+    const unbind = body.injected.bindDraftMirror(body.instance.actions.setDraft)
+    expect(JSON.parse(localStorage.getItem(`dsh.conversation.${other}`)!)).toMatchObject({ draft: 'carry me' })
+    unbind()
+    localStorage.removeItem(`dsh.conversation.${other}`)
     await b.runtime.dispose()
   })
 
@@ -372,6 +418,79 @@ describe('Conversation inject API', () => {
       .rejects.toThrow('offline')
     expect(b.runtime.sessions.calls.filter(call => call.method === 'open')).toHaveLength(opens)
     await b.runtime.dispose()
+  })
+
+  it('leaves a submitting command and its attachments in the source Session', async () => {
+    const b = await bench()
+    onTestFinished(() => b.runtime.dispose())
+    const other = 'command-target' as SessionId
+    await b.runtime.sessions.add({ id: other }, { current: false })
+    const input = b.inputApi(ROOT)
+    const submitted = Promise.withResolvers<{ kind: 'error' }>()
+    input.actions.setDraft('/hold')
+    expect(input.actions.beginCommand({ name: 'hold', token: '/hold', attachments: true, submit: () => submitted.promise }, {
+      start: 0, end: 5, draftRev: input.state.getSnapshot().draftRev,
+    })).toBe(true)
+    b.composerApi(ROOT).addFiles!([new File([Uint8Array.of(1)], 'source.pdf', { type: 'application/pdf' })])
+    const attachmentIds = input.state.getSnapshot().attachmentIds
+    input.actions.submit()
+    await vi.waitFor(() => { expect(input.state.getSnapshot().phase).toBe('submitting') })
+    b.connectWorkspace.mockResolvedValueOnce(other)
+    await b.residentApi(ROOT).selectWorkspace('target-workspace' as WorkspaceId)
+    expect(input.state.getSnapshot()).toMatchObject({ draft: '/hold', attachmentIds })
+    expect(b.inputApi(other).state.getSnapshot()).toMatchObject({ draft: '', attachmentIds: [] })
+    submitted.resolve({ kind: 'error' })
+    await vi.waitFor(() => { expect(input.state.getSnapshot().phase).toBe('claimed') })
+    expect(input.state.getSnapshot().attachmentIds).toEqual(attachmentIds)
+  })
+
+  it.each(['text', 'attachments', 'persisted'] as const)('keeps the target %s draft and carries the source into a new Session', async (kind) => {
+    const b = await bench(true)
+    onTestFinished(() => b.runtime.dispose())
+    const target = `occupied-${kind}` as SessionId
+    const fresh = `carried-${kind}` as SessionId
+    const workspaceId = 'target-workspace' as WorkspaceId
+    const upload = vi.fn(async () => ({
+      ok: true,
+      value: { receiptId: 'receipt' as never, file: { attachmentId: 'file' as never, name: 'draft.pdf', bytes: 1 } },
+    }))
+    b.uploads.set(target, upload)
+    b.uploads.set(fresh, upload)
+    await b.runtime.sessions.setCurrent(ROOT)
+    await b.runtime.sessions.add({ id: target, summary: { blank: true, cwd: '/target' } }, { current: false })
+    await b.runtime.workspaces.update((draft) => {
+      draft.items = [{ workspaceId, path: '/target', title: 'Target', sessionIds: [target], createdAt: '', updatedAt: '' }]
+    })
+    b.runtime.sessions.stubCreate(async (options) => {
+      expect(options).toEqual({ workspaceId })
+      await b.runtime.sessions.add({ id: fresh, summary: { blank: true, cwd: '/target' } }, { current: false })
+      return fresh
+    })
+    const targetInput = b.inputApi(target)
+    if (kind === 'text') targetInput.actions.setDraft('keep the target text')
+    if (kind === 'attachments') {
+      b.composerApi(target).addFiles!([new File([Uint8Array.of(2)], 'target.pdf', { type: 'application/pdf' })])
+    }
+    if (kind === 'persisted') {
+      localStorage.setItem(`dsh.conversation.${target}`, JSON.stringify({ draft: 'keep the saved text', view: null, viewRequest: null }))
+      onTestFinished(() => { localStorage.removeItem(`dsh.conversation.${target}`) })
+    }
+    const previousTarget = targetInput.state.getSnapshot()
+    const source = b.inputApi(ROOT)
+    source.actions.setDraft('carry the source text')
+    b.composerApi(ROOT).addFiles!([new File([Uint8Array.of(1)], 'source.pdf', { type: 'application/pdf' })])
+    const sourceIds = source.state.getSnapshot().attachmentIds
+
+    await b.residentApi(ROOT).selectWorkspace(workspaceId)
+
+    expect(b.runtime.sessions.list.getSnapshot().current).toBe(fresh)
+    expect(targetInput.state.getSnapshot()).toMatchObject({ draft: previousTarget.draft, attachmentIds: previousTarget.attachmentIds })
+    if (kind === 'persisted') expect(JSON.parse(localStorage.getItem(`dsh.conversation.${target}`)!)).toMatchObject({ draft: 'keep the saved text' })
+    expect(source.state.getSnapshot()).toMatchObject({ draft: '', attachmentIds: [] })
+    expect(b.inputApi(fresh).state.getSnapshot()).toMatchObject({ draft: 'carry the source text', attachmentIds: sourceIds })
+    await vi.waitFor(() => { expect(upload).toHaveBeenCalledTimes(kind === 'attachments' ? 2 : 1) })
+    const attachment = b.composerApi(fresh).resolveDraftAttachments!(sourceIds)[0]
+    expect(attachment).toMatchObject({ kind: 'file', file: { name: 'source.pdf' } })
   })
 
   it('projects the dynamic View registration ledger', async () => {

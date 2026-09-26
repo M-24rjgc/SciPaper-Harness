@@ -52,9 +52,14 @@ export interface UiWorkspace {
    * Connect a Workspace and open its Session unless a later navigation supersedes it.
    * @param workspaceId - target Workspace.
    * @param beforeOpen - optional synchronous preparation for the selected Session, skipped after supersession.
+   * @param canReuse - optional check before preparation; false keeps the candidate intact and creates a new Session instead.
    * @returns completion; a superseded request may create a Session but does not open it.
    */
-  openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>
+  openWorkspace(
+    workspaceId: WorkspaceId,
+    beforeOpen?: (sessionId: SessionId) => void,
+    canReuse?: (sessionId: SessionId) => boolean,
+  ): Promise<void>
   /**
    * Fork a Session and open the child unless a later navigation supersedes it.
    * @param sessionId - source Session.
@@ -186,11 +191,19 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     this.ctx.layout.selectPanel(null)
   }
 
-  async openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void> {
+  async openWorkspace(
+    workspaceId: WorkspaceId,
+    beforeOpen?: (sessionId: SessionId) => void,
+    canReuse?: (sessionId: SessionId) => boolean,
+  ): Promise<void> {
     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
     const isCurrent = (): boolean => !navigation.aborted
-    const sessionId = await this.connectWorkspace(workspaceId)
+    let sessionId = await this.connectWorkspace(workspaceId)
     if (!isCurrent()) return
+    if (canReuse?.(sessionId) === false) {
+      sessionId = await this.sessions.create({ workspaceId })
+      if (!isCurrent()) return
+    }
     beforeOpen?.(sessionId)
     if (isCurrent()) this.openSession(sessionId)
   }

@@ -50,7 +50,11 @@ const PROMOTIONAL = ['delve', 'tapestry', 'pivotal', 'crucial', 'foster', 'showc
 /** More em dashes than this in a paper reads as a tic. */
 const EM_DASH_LIMIT = 3
 
-/** Blank out what is not authored prose — comments, math, code, citations and command names — keeping every offset. */
+/**
+ * Blank out what is not authored prose — comments, math, code, citations and command names — keeping every offset.
+ * @param tex - manuscript source to inspect for prose patterns.
+ * @returns same-length text preserving line breaks and the positions of remaining prose.
+ */
 export function proseOnly(tex: string): string {
   const blank = (match: string): string => match.replace(/[^\n]/g, ' ')
   const environments = 'verbatim|lstlisting|minted|equation\\*?|align\\*?|gather\\*?|multline\\*?|displaymath|tabular\\*?|tikzpicture|algorithmic'

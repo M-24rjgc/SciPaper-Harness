@@ -333,6 +333,45 @@ describe('UiWorkspaceService', () => {
     expect(b.sessions.open).not.toHaveBeenCalled()
   })
 
+  it('creates a separate Session when the reusable blank is occupied by the caller', async () => {
+    const occupied = sid('occupied')
+    const b = bench({
+      sessions: sessionState([summary('current'), summary('occupied', { blank: true, cwd: '/w/alpha' })], sid('current')),
+      workspaces: workspaceState([workspace('alpha', [occupied])]),
+    })
+    const prepare = vi.fn()
+    const canReuse = vi.fn(() => false)
+    await b.uiWorkspace.openWorkspace(wid('alpha'), prepare, canReuse)
+    expect(canReuse).toHaveBeenCalledExactlyOnceWith(occupied)
+    expect(b.sessions.create).toHaveBeenCalledExactlyOnceWith({ workspaceId: wid('alpha') })
+    expect(prepare).toHaveBeenCalledExactlyOnceWith(sid('created-alpha'))
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('created-alpha'))
+  })
+
+  it('keeps drafts untouched when separate Session creation fails or navigation supersedes it', async () => {
+    const occupied = sid('occupied')
+    const b = bench({
+      sessions: sessionState([summary('current'), summary('occupied', { blank: true, cwd: '/w/alpha' })], sid('current')),
+      workspaces: workspaceState([workspace('alpha', [occupied])]),
+    })
+    const prepare = vi.fn()
+    b.sessions.create.mockRejectedValueOnce(new Error('creation failed'))
+    await expect(b.uiWorkspace.openWorkspace(wid('alpha'), prepare, () => false)).rejects.toThrow('creation failed')
+    expect(prepare).not.toHaveBeenCalled()
+    expect(b.sessions.open).not.toHaveBeenCalled()
+
+    const created = Promise.withResolvers<SessionId>()
+    b.sessions.create.mockReturnValueOnce(created.promise)
+    const pending = b.uiWorkspace.openWorkspace(wid('alpha'), prepare, () => false)
+    await flush()
+    expect(b.sessions.create).toHaveBeenCalledTimes(2)
+    b.uiWorkspace.openSession(sid('current'))
+    created.resolve(sid('late'))
+    await pending
+    expect(prepare).not.toHaveBeenCalled()
+    expect(b.sessions.open).toHaveBeenCalledExactlyOnceWith(sid('current'))
+  })
+
   it('opens a fork only while its navigation is current and preserves fork failures', async () => {
     const b = bench()
     await b.uiWorkspace.forkSession(sid('source'))

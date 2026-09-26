@@ -16,7 +16,14 @@ if shutil.which('nvidia-smi'):
   pass
 print(json.dumps({'executable':sys.executable,'version':sys.version,'platform':platform.platform(),'gpu':gpu,'packages':sorted([(d.metadata.get('Name',''),d.version) for d in importlib.metadata.distributions()])}))`
 
-/** Create a uv environment or inspect an existing one without modifying its packages. */
+/**
+ * Create a uv environment or inspect an existing one without modifying its packages.
+ * @param project - project owning locally created environments and dependency snapshots.
+ * @param request - target, interpreter and dependencies; adopted environments are inspected only.
+ * @param components - provider of uv and managed interpreter locations.
+ * @param signal - cancellation for environment creation, installation and inspection.
+ * @returns ready environment record with interpreter details and their fingerprint; the caller persists it.
+ */
 export async function createEnvironment(project: ResearchProject, request: Omit<EnvironmentRecord, 'id' | 'fingerprint' | 'status' | 'details'>, components: ComponentManager, signal: AbortSignal): Promise<EnvironmentRecord> {
   const id = randomUUID() as EnvironmentId
   let python = request.python
@@ -48,7 +55,12 @@ export async function createEnvironment(project: ResearchProject, request: Omit<
   return { ...request, id, python: info.executable, fingerprint: hashBytes(details), status: 'ready', details }
 }
 
-/** Snapshot the interpreter immediately before a run, catching changed adopted environments. */
+/**
+ * Snapshot the interpreter immediately before a run, catching changed adopted environments.
+ * @param environment - registered local or SSH interpreter to inspect.
+ * @param signal - cancellation for the inspection process.
+ * @returns JSON inspection output covering interpreter, platform, packages and available GPU details.
+ */
 export async function inspectEnvironment(environment: EnvironmentRecord, signal: AbortSignal): Promise<string> {
   const host = environment.sshHost
   if (environment.target === 'ssh') {

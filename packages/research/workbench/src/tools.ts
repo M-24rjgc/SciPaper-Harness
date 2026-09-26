@@ -9,6 +9,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
 import { isAbsolute, resolve } from 'node:path'
 import type { ResearchWorkbench } from './index.ts'
+import { canonicalPath } from './drafts.ts'
 import { errorText, isAttachment, isExampleRoot, isInside, sameDirectory } from './files.ts'
 import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
@@ -362,10 +363,11 @@ async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): 
   if (args.action === 'import' || args.action === 'import-template') {
     const paths = Array.isArray(args.paths) ? args.paths.filter((path): path is string => typeof path === 'string') : []
     const outside: string[] = []
+    const root = await canonicalPath(project.root)
     for (const path of paths) {
       const source = isAbsolute(path) ? path : resolve(project.root, path)
       // Attaching a file to the conversation already was the person's consent.
-      if (!isInside(project.root, source) && !await isAttachment(source)) outside.push(path)
+      if (!isInside(root, await canonicalPath(source)) && !await isAttachment(source)) outside.push(path)
     }
     if (outside.length) return `Copy files from outside the research project into it: ${outside.join(', ')}`
   }
@@ -376,7 +378,11 @@ async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): 
   return undefined
 }
 
-/** Register the research tools and the approval hook for calls that reach outside the project. */
+/**
+ * Register the research tools and the approval hook for calls that reach outside the project.
+ * @param ctx - plugin context owning tool contributions and approval-hook disposal.
+ * @param service - workbench executing commands in the initiating session's research project.
+ */
 export function registerResearchTools(ctx: Context, service: ResearchWorkbench): void {
   ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> => {
     const reason = await approvalReason(service, exec)

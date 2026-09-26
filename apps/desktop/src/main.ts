@@ -69,7 +69,10 @@ const MIME: Readonly<Record<string, string>> = {
 }
 
 interface RuntimeResources {
+  /** Bundled upstream Node.js used by pnpm and plugin build scripts. */
   readonly node: string
+  /** Node-compatible executable that can read the Host inside ASAR. */
+  readonly hostNode: string
   readonly pnpm: string
   readonly dsh: string
   readonly profileResolution?: 'runtime'
@@ -77,15 +80,14 @@ interface RuntimeResources {
 
 function runtimeResources(): RuntimeResources {
   const development = !app.isPackaged
-  const node = development
-    ? process.env.DSH_DESKTOP_NODE_BINARY
-      ?? join(process.resourcesPath, 'runtime', 'node', process.platform === 'win32' ? 'node.exe' : 'node')
-    : process.execPath
+  const node = (development ? process.env.DSH_DESKTOP_NODE_BINARY : undefined)
+    ?? join(process.resourcesPath, 'runtime', 'node', process.platform === 'win32' ? 'node.exe' : 'node')
+  const hostNode = development ? node : process.execPath
   const pnpm = (development ? process.env.DSH_DESKTOP_PNPM_ENTRY : undefined)
     ?? join(process.resourcesPath, 'runtime', 'pnpm', 'bin', 'pnpm.mjs')
   const dsh = (development ? process.env.DSH_DESKTOP_DSH_DIR : undefined)
     ?? (development ? join(process.resourcesPath, 'dsh') : join(app.getAppPath(), 'dsh'))
-  return { node, pnpm, dsh, ...(development ? {} : { profileResolution: 'runtime' }) }
+  return { node, hostNode, pnpm, dsh, ...(development ? {} : { profileResolution: 'runtime' }) }
 }
 
 function developmentHostInspectPort(enabled: boolean): number | undefined {
@@ -214,7 +216,7 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     if (development === undefined) manager.assertProfileRuntime(activeProject)
     const hostInspectPort = developmentHostInspectPort(development !== undefined)
-    const host = new DesktopHostProcess(resources.node, development ?? resources.dsh, activeProject,
+    const host = new DesktopHostProcess(resources.hostNode, development ?? resources.dsh, activeProject,
       hostInspectPort, process.env, onFailure)
     return {
       start: () => host.start(),
@@ -289,8 +291,6 @@ async function main(): Promise<void> {
       shellInstallerOwnsQuit = true
       await backend.stop()
     },
-    undefined,
-    () => false,
   )
 
   protocol.handle(SCHEME, (request) => {

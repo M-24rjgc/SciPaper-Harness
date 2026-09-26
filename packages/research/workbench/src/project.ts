@@ -30,7 +30,11 @@ export function newProject(request: CreateProjectRequest, workspaceId: Workspace
 /** Collapse whitespace runs so extracted PDF text with line breaks still matches a plain quote. */
 const flatten = (text: string): string => text.replace(/\s+/g, ' ')
 
-/** Reject references to absent, stale or differently versioned source material. */
+/**
+ * Reject references to absent, stale or differently versioned source material.
+ * @param project - project containing the referenced evidence revisions.
+ * @param links - citations to validate, including any quoted text and source locators.
+ */
 export function validateLinks(project: ResearchProject, links: EvidenceLink[]): void {
   for (const link of links) {
     const evidence = project.evidence.find(item => item.id === link.evidenceId)
@@ -48,7 +52,11 @@ export function validateLinks(project: ResearchProject, links: EvidenceLink[]): 
   }
 }
 
-/** Mark affected claims and all transitively dependent outputs as stale. */
+/**
+ * Mark affected claims and all transitively dependent outputs as stale.
+ * @param project - mutable ledger whose dependent records are invalidated in place.
+ * @param changed - evidence or artifact identity whose previous content was replaced.
+ */
 export function invalidate(project: ResearchProject, changed: { evidenceId?: EvidenceId; artifactId?: ArtifactId }): void {
   for (const run of project.experiments) {
     const usesInput = changed.evidenceId !== undefined && run.spec.dataEvidenceIds.includes(changed.evidenceId)
@@ -87,6 +95,8 @@ export function invalidate(project: ResearchProject, changed: { evidenceId?: Evi
 /**
  * Validate and replace one scholarly claim. A contradicted claim is a result
  * like any other: it is recorded, and nothing downstream is reset.
+ * @param project - mutable ledger receiving the replacement and invalidation of linked artifacts.
+ * @param claim - claim with current evidence links and existing artifact IDs.
  */
 export function putClaim(project: ResearchProject, claim: ClaimRecord): void {
   validateLinks(project, claim.evidence)
@@ -116,6 +126,7 @@ export function putClaim(project: ResearchProject, claim: ClaimRecord): void {
   project.claims = [...project.claims.filter(item => item.id !== claim.id), claim]
 }
 
+/** A ranked evidence excerpt retaining the source identity, revision and locator needed to cite it. */
 export interface EvidenceHit {
   evidenceId: EvidenceId
   revision: number
@@ -128,8 +139,12 @@ export interface EvidenceHit {
 
 /**
  * Rank evidence chunks for a query: the whole phrase outranks term coverage,
- * and title/path matches outrank body hits. Each hit carries a snippet around
+ * and title matches receive an additional score. Each hit carries a snippet around
  * its first match. The result is serialized within the byte budget.
+ * @param project - ledger containing extracted evidence chunks.
+ * @param query - phrase split into case-insensitive search terms.
+ * @param maxBytes - serialized hit-array byte budget, at least two bytes for an empty array.
+ * @returns a count message and JSON containing at most twelve ranked excerpts.
  */
 export function searchEvidence(project: ResearchProject, query: string, maxBytes: number): { message: string; content: string } {
   const phrase = query.trim().toLowerCase()
@@ -162,7 +177,11 @@ export function searchEvidence(project: ResearchProject, query: string, maxBytes
   return { message: `${parts.length} evidence matches`, content: `[${parts.join(',')}]` }
 }
 
-/** Compact run view for tool results. */
+/**
+ * Compact run view for tool results.
+ * @param run - persisted experiment record.
+ * @returns run identity, execution status, diagnostic message and metrics.
+ */
 export function runView(run: ExperimentRecord): NonNullable<ResearchResponse['runs']>[number] {
   return { id: run.id, status: run.status, message: run.message, metrics: run.metrics }
 }

@@ -71,6 +71,43 @@ class FigureScripts(unittest.TestCase):
         self.assertIn("is not well-formed XML", json.loads(result.stdout)["error"])
         self.assertEqual(self.run_script("export_figure.py").returncode, 2)
 
+    def test_export_keeps_arrowheads_on_transformed_connectors(self):
+        from PIL import Image
+
+        svg = self.root / "transformed.svg"
+        svg.write_text('''<svg xmlns="http://www.w3.org/2000/svg" width="240" height="60">
+          <defs><marker id="arrow" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10"
+            refX="10" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10 Z" fill="red"/></marker></defs>
+          <path d="M10 20 L90 20" transform="translate(100 0)" stroke="black" fill="none" marker-end="url(#arrow)"/>
+        </svg>''', encoding="utf-8")
+        result = self.run_script("export_figure.py", svg, self.root / "transformed.pdf", self.root / "previews", 240)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        with Image.open(self.root / "previews/transformed.240.png") as preview:
+            pixels = preview.convert("RGB")
+            red = [(x, y) for y in range(pixels.height) for x in range(pixels.width)
+                   if pixels.getpixel((x, y))[0] > 200 and pixels.getpixel((x, y))[1] < 50]
+        self.assertTrue(red)
+        self.assertGreaterEqual(min(x for x, _ in red), 180)
+        self.assertLessEqual(max(x for x, _ in red), 190)
+
+    def test_export_resolves_relative_images_beside_the_source_svg(self):
+        from PIL import Image
+
+        assets = self.root / "assets 中文"
+        assets.mkdir()
+        Image.new("RGB", (30, 30), "red").save(assets / "tile.png")
+        for attribute in ("href", "xlink:href"):
+            with self.subTest(attribute=attribute):
+                svg = self.root / "relative.svg"
+                source = f'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+                  width="100" height="100"><image width="100" height="100" {attribute}="assets 中文/tile.png"/></svg>'''
+                svg.write_text(source, encoding="utf-8")
+                result = self.run_script("export_figure.py", svg, self.root / "relative.pdf", self.root / "previews", 100)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with Image.open(self.root / "previews/relative.100.png") as preview:
+                    self.assertEqual(preview.convert("RGB").getpixel((50, 50)), (255, 0, 0))
+                self.assertEqual(svg.read_text(encoding="utf-8"), source)
+
 
 if __name__ == "__main__":
     unittest.main()

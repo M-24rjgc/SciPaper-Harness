@@ -54,12 +54,22 @@ export interface ComponentHost {
   releases: Record<'uv' | 'drawio' | 'latex', ComponentRelease>
 }
 
-/** Resolve an installed package runtime asset from source or bundled JavaScript. */
+/**
+ * Resolve an installed package runtime asset from source or bundled JavaScript.
+ * @param name - path relative to the package's runtime directory.
+ * @returns absolute path, redirected to the unpacked directory for Electron ASAR builds.
+ */
 export function runtimeAsset(name: string): string {
   return fileURLToPath(new URL(`../runtime/${name}`, import.meta.url)).replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
 }
 
-/** Download a checksum-pinned asset. Interrupted temporary files never become installed assets. */
+/**
+ * Download a checksum-pinned asset. Interrupted temporary files never become installed assets.
+ * @param url - upstream download URL.
+ * @param sha256 - expected hexadecimal SHA-256 digest.
+ * @param destination - installed asset path; matching existing content is reused.
+ * @param signal - cancellation shared by downloads and retries.
+ */
 export async function downloadAsset(url: string, sha256: string, destination: string, signal: AbortSignal): Promise<void> {
   await mkdir(dirname(destination), { recursive: true })
   if (existsSync(destination) && await hashFile(destination) === sha256) return
@@ -114,12 +124,19 @@ export class ComponentManager {
     return result
   }
 
-  /** The interpreter inside a virtual environment created on this host. */
+  /**
+   * The interpreter inside a virtual environment created on this host.
+   * @param directory - virtual environment root.
+   * @returns interpreter path using the host platform's environment layout.
+   */
   venvPython(directory: string): string {
     return join(directory, this.host.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
   }
 
-  /** Describe installed components without downloading or executing them. */
+  /**
+   * Describe installed components without downloading or executing them.
+   * @returns installation status and discovered paths for each managed component.
+   */
   async status(): Promise<ComponentStatus[]> {
     const preferences = this.preferences()
     const platformPython = this.host.platform === 'win32' ? 'python.exe' : 'python'
@@ -153,7 +170,11 @@ export class ComponentManager {
     return python?.installed ? python.path : undefined
   }
 
-  /** Resolve or provision uv without relying on the user's package manager. */
+  /**
+   * Resolve or provision uv without relying on the user's package manager.
+   * @param signal - cancellation for verification and downloads.
+   * @returns executable path; automatic installation rejects unsupported hosts.
+   */
   async uv(signal: AbortSignal): Promise<string> {
     return this.once('uv', async () => {
       const configured = this.preferences().uv
@@ -174,7 +195,11 @@ export class ComponentManager {
     })
   }
 
-  /** Resolve a private platform Python environment with document and plotting dependencies. */
+  /**
+   * Resolve a private platform Python environment with document and plotting dependencies.
+   * @param signal - cancellation for interpreter and dependency preparation.
+   * @returns configured, bundled or privately provisioned interpreter path.
+   */
   async python(signal: AbortSignal): Promise<string> {
     return this.once('python', async () => {
       const configured = this.preferences().python
@@ -203,7 +228,11 @@ export class ComponentManager {
     })
   }
 
-  /** Install the offline draw.io editor and retain its upstream notices. */
+  /**
+   * Install the offline draw.io editor and retain its upstream notices.
+   * @param signal - cancellation for the editor download.
+   * @returns directory containing the bundled or installed editor entry page.
+   */
   async drawio(signal: AbortSignal): Promise<string> {
     return this.once('drawio', async () => {
       const bundled = this.host.asset('components/drawio')
@@ -220,7 +249,11 @@ export class ComponentManager {
     })
   }
 
-  /** Install a relocatable TeX Live distribution or use an explicitly bound binary directory. */
+  /**
+   * Install a relocatable TeX Live distribution or use an explicitly bound binary directory.
+   * @param signal - cancellation for distribution download and verification.
+   * @returns TeX binary directory; unconfigured non-Windows hosts are rejected.
+   */
   async latex(signal: AbortSignal): Promise<string> {
     return this.once('latex', async () => {
       const configured = this.preferences().texBin
@@ -273,6 +306,7 @@ export class ComponentManager {
  * bundled Perl runs the underlying script instead.
  * @param bin - the TeX Live binary directory.
  * @param platform - the host platform.
+ * @returns executable and argument prefix to prepend to the requested tlmgr arguments.
  */
 export function tlmgrCommand(bin: string, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
   if (platform !== 'win32') return { command: join(bin, 'tlmgr'), args: [] }
@@ -283,6 +317,9 @@ export function tlmgrCommand(bin: string, platform: NodeJS.Platform = process.pl
 /**
  * Read the package providing a file out of `tlmgr search --file` output, where
  * each package name ends in a colon on its own line and its files follow indented.
+ * @param output - stdout from tlmgr's global file search.
+ * @param file - exact missing filename to locate.
+ * @returns matching package, preferring a non-documentation copy, or undefined without a match.
  */
 export function packageForFile(output: string, file: string): string | undefined {
   let current: string | undefined

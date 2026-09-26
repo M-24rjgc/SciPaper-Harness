@@ -1,6 +1,6 @@
 ---
 description: "Research edition browser surfaces: the sidebar's research tree, where startup and 新研究 (New research) land, the entry screen's line, Try sentences and folder menu, header status, the composer's autonomy chip, the read-only right-sidebar research record with the mode, autonomy, the Now line, phases, check findings, decisions and tools, the right-sidebar tabs of the experiment board, the sources and claims, the figure gallery and the draw.io editor, the research tool cards in the conversation, the claim evidence sheet, experiment runs and research settings."
-kind: "package-plugin"
+kind: "package-reference"
 ---
 
 # @deepseek-ai/dsh-client-ui-research
@@ -57,6 +57,8 @@ The entry policy (`entry.ts`) lands, whenever nothing is selected, on the own re
 
 The research tree (`ResearchTree.tsx`, rows derived in `treeValues.ts`) takes the sidebar's browsing seat at priority -1. The shell's workspace browser stays registered underneath, so its `sidebar.workspaces.directoryFlow` child stays declared for the folder pickers. A conversation belongs to the research it is bound to or whose folder holds its working directory, else to the research of the Workspace that lists it, else to that Workspace as a folder without a research (其他文件夹), else to no folder. Archived conversations, child sessions and visual-review reviewers are never rows. A research removed from the list (`archived`) is hidden with its conversations, and its folder does not count as a folder without a research. A row's dot is warn while a conversation of it waits on an approval, a plan review or a question, or a goal of it is blocked, and ongoing blue while one of its conversations, goals or runs moves; the header chip's dot reads the same (`activity.ts`). Clicking a research opens it on its newest started conversation, else its folder's blank conversation (never in an example). ＋ 新对话 reuses or creates the blank one. The menus send `rename` and `archive-project`, rename and archive conversations through the session and Workspace controllers, and make a folder a research through `create`. The search matches names and titles at once and conversation text through `sessions.search` after 250 ms. Which rows are open lives in the tree's own store, so it survives the collapsed rail.
 
+Unsent conversations with text or attachments remain in the tree as drafts, with the first line of text or the attachment count. Saved text appears before its composer mounts; empty non-current conversations stay hidden. The untouched research draft remains a single New research row.
+
 | Module | What it draws |
 | --- | --- |
 | `Hero.tsx` | The flask mark on the blank-session entry and the research tab |
@@ -79,7 +81,7 @@ The research tree (`ResearchTree.tsx`, rows derived in `treeValues.ts`) takes th
 | `ResearchToolView.tsx`, `toolCallValues.ts` | The keyed `tool.call.toolview` cards of the `research_*` tools, derived from each logged call and result: a row naming the tool and what the call did (`研究资料 · 导入 3 个文件`), with the raw call behind it and a failure in place; for `research_check`, a card with the scope, 通过 or 未通过 with counts, the first three groups of findings, each file a link when the report shows it on disk, and the check's words behind 详细信息. The record only names things (phases, check labels, routes) and gives the folder |
 | `Action.tsx`, `EmptyCell.tsx` | One control's own progress and failure line; the empty cell that shadows the composer statistics, the default-permission setting and the open-config-file action |
 | `Board.tsx`, `BoardBlocks.tsx`, `LineChart.tsx`, `boardValues.ts` | The experiment board: runs in flight, machines, the agent's sections resolved against the live record, every run, and the line charts; an unconfirmed run is reconnected or dismissed from its card, whichever conversation submitted it; an example's board is its last read, read once, with no read controls and no run actions |
-| `Gallery.tsx` | The figure gallery: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/`, except in an example |
+| `Gallery.tsx` | The figure gallery: filters, a grid of top-venue Figure 1s, and saving one as a reference under `figures/refs/`, except in an example. Loading more waits for the current request and continues the last successful query |
 | `ResearchSettings.tsx`, `EnvironmentForm.tsx` | Where new researches are kept (研究存放位置), whether the tree lists the examples (显示示例研究), the researches removed from the list with 恢复 (已移出的研究), model roles, managed components, bound environments |
 | `Onboarding.tsx` | Skips the harness's first-run internal-testing notice |
 | `contract.ts`, `format.ts`, `locales.ts` | The injected face, session-to-project resolution, formatting, and every string in `en` and `zh` |

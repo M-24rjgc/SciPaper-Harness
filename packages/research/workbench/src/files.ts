@@ -6,7 +6,12 @@ import { homedir } from 'node:os'
 import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
-/** Resolve a project path and reject traversal through existing symlinks. */
+/**
+ * Resolve a project path and reject traversal through existing symlinks.
+ * @param root - existing project directory.
+ * @param path - relative or absolute candidate; its resolved location must stay inside the project.
+ * @returns absolute path under the canonical root, including for a not-yet-created file.
+ */
 export async function projectPath(root: string, path: string): Promise<string> {
   const canonicalRoot = await realpath(root)
   const target = resolve(canonicalRoot, path)
@@ -29,17 +34,29 @@ export async function projectPath(root: string, path: string): Promise<string> {
   }
 }
 
-/** Hash a file without loading large datasets into memory. */
+/**
+ * Hash a file without loading large datasets into memory.
+ * @param path - file to read.
+ * @returns lowercase hexadecimal SHA-256 digest.
+ */
 export async function hashFile(path: string): Promise<string> {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
   return hash.digest('hex')
 }
 
-/** Hash a UTF-8 input or a byte array. */
+/**
+ * Hash a UTF-8 input or a byte array.
+ * @param value - UTF-8 text or raw bytes to hash.
+ * @returns lowercase hexadecimal SHA-256 digest.
+ */
 export function hashBytes(value: string | Uint8Array): string { return createHash('sha256').update(value).digest('hex') }
 
-/** Atomically replace one file using a private sibling staging file. */
+/**
+ * Atomically replace one file using a private sibling staging file.
+ * @param path - destination file; missing parent directories are created.
+ * @param data - UTF-8 text or raw bytes replacing the destination content.
+ */
 export async function atomicWrite(path: string, data: string | Uint8Array): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   const temp = `${path}.${randomUUID()}.tmp`
@@ -47,7 +64,11 @@ export async function atomicWrite(path: string, data: string | Uint8Array): Prom
   await rename(temp, path)
 }
 
-/** Copy one immutable revision only once, rejecting unequal existing content. */
+/**
+ * Copy one immutable revision only once, rejecting unequal existing content.
+ * @param source - file whose current bytes are retained.
+ * @param destination - immutable revision path; identical existing bytes are accepted.
+ */
 export async function keepRevision(source: string, destination: string): Promise<void> {
   await mkdir(dirname(destination), { recursive: true })
   try { await copyFile(source, destination, 1) }
@@ -58,6 +79,8 @@ export async function keepRevision(source: string, destination: string): Promise
 
 /**
  * Create a file that must not exist yet, atomically with respect to other writers.
+ * @param path - destination path whose parent directory already exists.
+ * @param content - bytes for the new file.
  * @returns false when the path already exists; other failures throw.
  */
 export async function writeNew(path: string, content: Uint8Array): Promise<boolean> {
@@ -70,7 +93,12 @@ export async function writeNew(path: string, content: Uint8Array): Promise<boole
   }
 }
 
-/** Read a bounded text artifact; binary sources use dedicated extractors. */
+/**
+ * Read a bounded text artifact; binary sources use dedicated extractors.
+ * @param path - file to decode as UTF-8.
+ * @param limit - maximum file size in bytes; larger files are rejected.
+ * @returns decoded text.
+ */
 export async function readText(path: string, limit: number): Promise<string> {
   if ((await stat(path)).size > limit) throw new Error(`Text exceeds the ${limit} byte limit: ${path}`)
   return readFile(path, 'utf8')
@@ -110,7 +138,13 @@ function foldCase(value: string, platform: NodeJS.Platform): string { return pla
 /** The path module whose rules the platform's filesystem follows. */
 function pathsOf(platform: NodeJS.Platform): typeof posix { return platform === 'win32' ? win32 : posix }
 
-/** Compare two absolute directories after resolution, case-folded on Windows. */
+/**
+ * Compare two absolute directories after resolution, case-folded on Windows.
+ * @param a - first directory path.
+ * @param b - second directory path.
+ * @param platform - operating system whose path and case rules apply.
+ * @returns whether the resolved spellings match, without resolving symlinks.
+ */
 export function sameDirectory(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
   const paths = pathsOf(platform)
   return foldCase(paths.resolve(a), platform) === foldCase(paths.resolve(b), platform)
@@ -147,6 +181,7 @@ export function assertUsableProjectRoot(root: string, platform: NodeJS.Platform 
  * Checked on the normalized path and case-folded, so `./.research`,
  * `paper/../.research` and `.RESEARCH` are all recognised.
  * @param relativePath - path relative to the project root, either separator.
+ * @returns whether the normalized first component names the metadata directory.
  */
 export function isMetadataPath(relativePath: string): boolean {
   const normalized = posix.normalize(relativePath.replaceAll('\\', '/')).replace(/^\.\//, '')
@@ -168,7 +203,13 @@ export function isExampleRoot(root: string, home: string = resolveDshHome()): bo
   return isInside(join(home, 'demo'), root)
 }
 
-/** Whether an absolute path lies inside a root, compared after resolution and case-folded on Windows. */
+/**
+ * Whether an absolute path lies inside a root, compared after resolution and case-folded on Windows.
+ * @param root - containing directory.
+ * @param path - candidate path.
+ * @param platform - operating system whose path and case rules apply.
+ * @returns true for the root itself or a descendant; symlinks are not resolved.
+ */
 export function isInside(root: string, path: string, platform: NodeJS.Platform = process.platform): boolean {
   const paths = pathsOf(platform)
   const rel = paths.relative(foldCase(paths.resolve(root), platform), foldCase(paths.resolve(path), platform))
@@ -222,10 +263,19 @@ export async function isAttachment(path: string, home: string = resolveDshHome()
   return below(...real)
 }
 
-/** The message of a thrown value, whatever was thrown. */
+/**
+ * The message of a thrown value, whatever was thrown.
+ * @param error - caught value, including non-Error throws.
+ * @returns Error.message or the value's string representation.
+ */
 export function errorText(error: unknown): string { return error instanceof Error ? error.message : String(error) }
 
-/** Truncate text to a byte budget without splitting a multibyte character. */
+/**
+ * Truncate text to a byte budget without splitting a multibyte character.
+ * @param text - text encoded as UTF-8 for budgeting.
+ * @param limit - nonnegative maximum output size in bytes.
+ * @returns the original text when it fits, otherwise the longest complete UTF-8 prefix within the limit.
+ */
 export function truncateBytes(text: string, limit: number): string {
   const bytes = Buffer.from(text, 'utf8')
   if (bytes.length <= limit) return text

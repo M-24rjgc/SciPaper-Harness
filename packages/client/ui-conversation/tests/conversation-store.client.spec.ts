@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { createConversationStore, readConversationViewPreference } from '../src/client/stores.ts'
+import { createConversationStore, readConversationDraft, readConversationViewPreference } from '../src/client/stores.ts'
 
 const KEY = 'dsh.conversation'
 
@@ -34,6 +34,8 @@ describe('createConversationStore', () => {
   it('persists per Session scope and clears the persisted value', () => {
     const first = createConversationStore().create('sess-1')
     first.actions.setDraft('draft for one')
+    expect(readConversationDraft('sess-1' as SessionId)).toBe('draft for one')
+    expect(readConversationDraft('sess-2' as SessionId)).toBe('')
     first.actions.setView('chat')
     expect(localStorage.getItem(`${KEY}.sess-1`)).not.toBeNull()
     expect(localStorage.getItem(`${KEY}.sess-2`)).toBeNull()
@@ -64,5 +66,6 @@ describe('createConversationStore', () => {
 
     localStorage.setItem(`${KEY}.${sessionId}`, '{invalid')
     expect(readConversationViewPreference(sessionId)).toBeNull()
+    expect(readConversationDraft(sessionId)).toBe('')
   })
 })

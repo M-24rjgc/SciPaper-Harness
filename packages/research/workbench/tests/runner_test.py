@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 RUNNER = Path(__file__).resolve().parents[1] / 'runtime' / 'experiment_runner.py'
 
@@ -77,6 +78,32 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(self.call('status')['status'], 'interrupted')
         (self.root / 'state.json').write_text(json.dumps(dict(status='queued', updatedAt=time.time()-60)))
         self.assertEqual(self.call('status')['status'], 'interrupted')
+
+    def test_status_preserves_a_supervisor_result_committed_during_identity_lookup(self):
+        module_spec = importlib.util.spec_from_file_location('experiment_runner', RUNNER)
+        runner = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(runner)
+        self.setup_script("import time,os,json,pathlib\n"
+                          "while not pathlib.Path('finish.request').exists(): time.sleep(.01)\n"
+                          "pathlib.Path(os.environ['RESEARCH_METRICS_PATH']).write_text(json.dumps({'score': .91}))\n")
+        launched = self.call('launch')
+        original_identity = runner.identity
+
+        def wait_for_completion(pid):
+            (self.root / 'finish.request').touch()
+            self.assertEqual(self.wait()['status'], 'completed')
+            for _ in range(100):
+                birth = original_identity(pid)
+                if birth != launched['runnerIdentity']:
+                    return birth
+                time.sleep(.01)
+            self.fail('Supervisor did not exit')
+
+        with mock.patch.object(runner, 'identity', side_effect=wait_for_completion):
+            observed = runner.inspect(self.root)
+        self.assertEqual(observed['status'], 'completed')
+        self.assertEqual(observed['metrics'], {'score': .91})
+        self.assertEqual(json.loads((self.root / 'state.json').read_text(encoding='utf8')), observed)
 
     def test_status_reports_the_last_complete_progress_line(self):
         self.setup_script("import json,os,pathlib\n"

@@ -17,7 +17,12 @@ const mime: Record<string, string> = {
     .map(extension => [extension, 'text/plain; charset=utf-8'])),
 }
 
-/** Register authenticated resources; refresh editor routes after a component installation. */
+/**
+ * Register authenticated resources; refresh editor routes after a component installation.
+ * @param ctx - plugin context owning connection injection and route disposal.
+ * @param service - workbench supplying project resources and managed editor components.
+ * @returns callback that discovers newly installed editor resources and registers their routes.
+ */
 export function registerResearchRoutes(ctx: Context, service: ResearchWorkbench): () => Promise<void> {
   let refresh = async (): Promise<void> => {}
   ctx.inject(['connection'], async (carrier) => {

@@ -363,6 +363,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns WorkspaceId-branded records over the domain facility; stable sessionIds accounts drive Host RPC and GUI projections.',
   },
   {
+    key: 'research',
+    pkg: 'research-workbench',
+    title: 'Research project ledger and operations',
+    mode: 'core',
+    consumers: ['research-workbench', 'client-ui-research'],
+    note: 'Owns durable research projects, evidence, artifact revisions, decisions, experiment records, and checks. Its agent-tools entry consumes the host-wide service in research agents; the research UI calls its generated Remote methods.',
+  },
+  {
     key: 'sessionQuery',
     pkg: 'session-query',
     title: 'Session reads, traces, filters, and search',

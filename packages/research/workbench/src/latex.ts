@@ -1,7 +1,7 @@
 /** Read-only structure of a LaTeX paper as it exists on disk, shared by compilation and checks. */
 import { existsSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
-import { extname, join, posix, relative } from 'node:path'
+import { extname, join, posix, relative, win32 } from 'node:path'
 import { hashBytes, hashFile, isMetadataPath, projectPath, readText } from './files.ts'
 import type { ResearchProject } from './types.ts'
 
@@ -21,7 +21,11 @@ export interface FlatPaper {
   missingInputs: { name: string; origin: SourceOrigin }[]
 }
 
-/** Remove LaTeX comments from one line, keeping escaped percent signs. */
+/**
+ * Remove LaTeX comments from one line, keeping escaped percent signs.
+ * @param line - source line without its newline separator.
+ * @returns the prefix before the first unescaped percent sign, or the complete line.
+ */
 export function stripComment(line: string): string {
   for (let index = 0; index < line.length; index++) {
     if (line[index] !== '%') continue
@@ -32,7 +36,12 @@ export function stripComment(line: string): string {
   return line
 }
 
-/** Project-relative path with forward slashes. */
+/**
+ * Project-relative path with forward slashes.
+ * @param root - project directory used as the relative base.
+ * @param absolute - absolute file path; containment must be checked separately.
+ * @returns relative path using portable separators.
+ */
 export function toProjectPath(root: string, absolute: string): string {
   return relative(root, absolute).replaceAll('\\', '/')
 }
@@ -43,6 +52,7 @@ export function toProjectPath(root: string, absolute: string): string {
  * @param root - canonical project root.
  * @param accept - predicate over the project-relative path.
  * @param depth - directory levels below the root to visit.
+ * @returns sorted matching paths; unreadable directories and symlinks are skipped.
  */
 export async function listProjectFiles(root: string, accept: (path: string) => boolean, depth = 4): Promise<string[]> {
   const found: string[] = []
@@ -97,6 +107,7 @@ const INPUT = /\\(?:input|include|subfile)\s*\{([^}]+)\}/g
  * @param root - canonical project root.
  * @param main - project-relative main file.
  * @param limit - byte ceiling for each file and four times it in total.
+ * @returns expanded text with source origins, source paths and unresolved input references.
  */
 export async function flattenPaper(root: string, main: string, limit: number): Promise<FlatPaper> {
   const lines: string[] = []
@@ -144,7 +155,12 @@ export async function flattenPaper(root: string, main: string, limit: number): P
   return { main, text: lines.join('\n'), origins, files, missingInputs }
 }
 
-/** Origin of a character offset in a flattened paper. */
+/**
+ * Origin of a character offset in a flattened paper.
+ * @param paper - flattened manuscript with per-line origins.
+ * @param offset - zero-based character offset in the flattened text.
+ * @returns the source file and one-based line, defaulting to the main file's first line without an origin.
+ */
 export function originAt(paper: FlatPaper, offset: number): SourceOrigin {
   let line = 0
   for (let index = 0; index < offset && index < paper.text.length; index++) if (paper.text[index] === '\n') line++
@@ -155,6 +171,9 @@ export function originAt(paper: FlatPaper, offset: number): SourceOrigin {
  * Bibliography files named by `\bibliography`/`\addbibresource`, resolved
  * beside the main file and then, as BibTeX's search path allows, anywhere
  * under the project's source directories.
+ * @param root - canonical project directory.
+ * @param paper - flattened manuscript containing bibliography commands.
+ * @returns unique existing project-relative bibliography paths that stay inside the project.
  */
 export async function bibliographyFiles(root: string, paper: FlatPaper): Promise<string[]> {
   const names: string[] = []
@@ -168,10 +187,11 @@ export async function bibliographyFiles(root: string, paper: FlatPaper): Promise
   }
   const wanted = names.map(name => name.trim()).filter(Boolean)
     .map(name => posix.normalize(name.endsWith('.bib') ? name : `${name}.bib`))
-    .filter(name => !name.startsWith('../'))
   const resolved = await Promise.all(wanted.map(async (name) => {
+    if (posix.isAbsolute(name) || win32.isAbsolute(name)) return undefined
     const beside = posix.normalize(posix.join(posix.dirname(paper.main), name))
-    return existsSync(join(root, beside)) ? beside : elsewhere(name)
+    if (beside.startsWith('../') || isMetadataPath(beside)) return undefined
+    return existsSync(await projectPath(root, beside)) ? beside : name.startsWith('../') ? undefined : elsewhere(name)
   }))
   return [...new Set(resolved.filter((path): path is string => path !== undefined))]
 }
@@ -183,6 +203,9 @@ export interface GraphicReference { name: string; resolved?: string | undefined;
  * Resolve every graphic the paper includes the way the compile will: against
  * the main directory and `\graphicspath` first, then anywhere under the
  * project's source directories, which the compile puts on TeX's search path.
+ * @param root - project directory whose source files may be searched.
+ * @param paper - flattened manuscript containing graphics commands.
+ * @returns references with flattened-text offsets and resolved paths when a file was found.
  */
 export async function graphicReferences(root: string, paper: FlatPaper): Promise<GraphicReference[]> {
   const base = posix.dirname(paper.main)
@@ -215,7 +238,11 @@ export async function graphicReferences(root: string, paper: FlatPaper): Promise
 /** A heading and the text range it governs. */
 export interface Section { title: string; start: number; end: number }
 
-/** Top-level sections (`\section`/`\chapter`) with the offsets each one spans. */
+/**
+ * Top-level sections (`\section`/`\chapter`) with the offsets each one spans.
+ * @param paper - flattened manuscript to scan.
+ * @returns section titles and half-open character ranges in source order.
+ */
 export function sections(paper: FlatPaper): Section[] {
   const headings = [...paper.text.matchAll(/\\(?:section|chapter)\*?\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g)]
   return headings.map((match, index) => ({
@@ -229,6 +256,9 @@ export function sections(paper: FlatPaper): Section[] {
  * Digest of every file the compiled paper depends on: the main file, its
  * inputs, bibliographies and included graphics. A compile is current exactly
  * when this digest matches the one recorded with it.
+ * @param root - project directory containing the paper's dependencies.
+ * @param paper - flattened manuscript identifying source files and references.
+ * @returns SHA-256 digest of sorted dependency paths and file hashes.
  */
 export async function paperDigest(root: string, paper: FlatPaper): Promise<string> {
   const graphics = (await graphicReferences(root, paper)).flatMap(ref => ref.resolved ? [ref.resolved] : [])
@@ -238,7 +268,12 @@ export async function paperDigest(root: string, paper: FlatPaper): Promise<strin
   return hashBytes(JSON.stringify(entries))
 }
 
-/** Latest modification time across the paper's own sources, in epoch milliseconds. */
+/**
+ * Latest modification time across the paper's own sources, in epoch milliseconds.
+ * @param root - project directory containing the sources.
+ * @param paper - flattened manuscript whose source files are inspected.
+ * @returns latest source mtime, or zero when no sources are recorded.
+ */
 export async function paperModifiedAt(root: string, paper: FlatPaper): Promise<number> {
   let latest = 0
   for (const file of paper.files) latest = Math.max(latest, (await stat(join(root, file))).mtimeMs)
@@ -257,7 +292,12 @@ export interface BibEntry {
   line: number
 }
 
-/** Parse BibTeX entries by brace matching; `@string`, `@comment` and `@preamble` are skipped. */
+/**
+ * Parse BibTeX entries by brace matching; `@string`, `@comment` and `@preamble` are skipped.
+ * @param text - bibliography file contents.
+ * @param file - source path attached to each entry's location.
+ * @returns entries with raw source, identifiers, field names and one-based line numbers.
+ */
 export function parseBibliography(text: string, file: string): BibEntry[] {
   const entries: BibEntry[] = []
   const start = /@([A-Za-z]+)\s*[{(]/g
@@ -287,7 +327,11 @@ export function parseBibliography(text: string, file: string): BibEntry[] {
   return entries
 }
 
-/** Every citation key with the offset of the command that cites it. */
+/**
+ * Every citation key with the offset of the command that cites it.
+ * @param paper - flattened manuscript containing citation commands.
+ * @returns citation occurrences in source order, excluding wildcard nocite entries.
+ */
 export function citations(paper: FlatPaper): { key: string; offset: number }[] {
   const found: { key: string; offset: number }[] = []
   const command = /\\(?:[A-Za-z]*cite[A-Za-z]*|nocite)\*?\s*(?:\[[^\]]*\]\s*)*\{([^}]+)\}/g
@@ -299,7 +343,11 @@ export function citations(paper: FlatPaper): { key: string; offset: number }[] {
   return found
 }
 
-/** Declared document class, used to tell a venue template from the generic classes. */
+/**
+ * Declared document class, used to tell a venue template from the generic classes.
+ * @param paper - flattened manuscript to scan.
+ * @returns first declared class name, or undefined when no declaration is present.
+ */
 export function documentClass(paper: FlatPaper): string | undefined {
   return /\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]+)\}/.exec(paper.text)?.[1]?.trim()
 }

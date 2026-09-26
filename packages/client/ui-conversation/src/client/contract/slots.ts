@@ -290,13 +290,13 @@ export interface ConversationSessionHeaderInjected {
   selectView: (view: string) => void
 }
 
-/** Owner share of the resident composer bar. */
 /** Owner share of the ambient region under the composer card. */
 export interface ComposerDockOwnerProps {
   /** The posture the composer is drawn in, so an entry can address one of them. */
   variant: 'hero' | 'composer'
 }
 
+/** Composer placement and interaction restrictions supplied by the owning conversation view. */
 export interface ComposerBarOwnerProps {
   /** Hero uses centered placement; composer uses the active bottom placement. */
   variant: 'hero' | 'composer'

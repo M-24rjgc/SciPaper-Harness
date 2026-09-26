@@ -14,7 +14,7 @@ import type {
   StandingPhase,
 } from './types.ts'
 
-/** How long one listing of a project's file times is reused. */
+/** How long one listing of a project's file and directory times is reused. */
 const FILE_TIMES_TTL_MS = 30_000
 /** The most files listed for a project's newest file time; past it the time is unknown. */
 const FILE_LISTING_CAP = 5000
@@ -103,7 +103,7 @@ function legacyKeys(phase: ModePhase | undefined, missing: string[]): string[] {
 
 /** What `standing` reads of the project's files. */
 export interface ProjectFiles {
-  /** The newest modification time of the person's files, in epoch milliseconds, or `unknown` past the listing cap. */
+  /** The newest file or directory modification time, in epoch milliseconds, or `unknown` when a complete listing is unavailable. */
   newest(): Promise<number | 'unknown'>
   /** Whether a project-relative (or absolute) file exists now. */
   exists(path: string): boolean
@@ -192,19 +192,23 @@ function issuesOf(progress: ResearchProgress, mode: ResolvedMode, files: Project
 }
 
 /**
- * The newest modification time of a project's own files: everything outside
+ * The newest modification time of a project's own files and directories: everything outside
  * `.research` and `exports` at its top and `.git` and `node_modules` anywhere.
- * An unreadable directory is skipped.
+ * Directory times include file additions, removals and renames. An incomplete
+ * listing cannot establish that the last check is still current.
  * @param root - the project root.
  * @param cap - the most files to list.
- * @returns epoch milliseconds (zero for an empty project), or `unknown` when it holds more than `cap` files.
+ * @returns epoch milliseconds, or `unknown` when a read fails or the project holds more than `cap` files.
  */
 export async function newestFileTime(root: string, cap: number = FILE_LISTING_CAP): Promise<number | 'unknown'> {
   let newest = 0
   let count = 0
   const walk = async (directory: string, top: boolean): Promise<boolean> => {
     let entries
-    try { entries = await readdir(directory, { withFileTypes: true }) } catch { return true }
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+      newest = Math.max(newest, (await stat(directory)).mtimeMs)
+    } catch { return false }
     for (const entry of entries) {
       const path = join(directory, entry.name)
       if (entry.isDirectory()) {
@@ -212,7 +216,7 @@ export async function newestFileTime(root: string, cap: number = FILE_LISTING_CA
         if (!await walk(path, false)) return false
       } else if (entry.isFile()) {
         if (++count > cap) return false
-        try { newest = Math.max(newest, (await stat(path)).mtimeMs) } catch { /* a file removed while listing has no time to report */ }
+        try { newest = Math.max(newest, (await stat(path)).mtimeMs) } catch { return false }
       }
     }
     return true

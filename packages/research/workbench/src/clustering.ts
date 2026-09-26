@@ -145,7 +145,11 @@ export function fuse(rankings: readonly (readonly string[])[]): Map<string, numb
   return scores
 }
 
-/** Pairwise cosine similarities, row-major. */
+/**
+ * Pairwise cosine similarities, row-major.
+ * @param vectors - vectors in the row and column order of the result.
+ * @returns a symmetric flattened square matrix with a unit diagonal.
+ */
 export function similarityMatrix(vectors: readonly Vector[]): Float32Array {
   const n = vectors.length
   const matrix = new Float32Array(n * n)

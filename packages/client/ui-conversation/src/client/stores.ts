@@ -39,13 +39,27 @@ export function createConversationStore(): EngineStoreHandle<ConversationStoreSt
  * @returns the preferred View id, or null when storage has no usable value.
  */
 export function readConversationViewPreference(sessionId: SessionId): string | null {
+  return readPersistedString(sessionId, 'view')
+}
+
+/**
+ * Read a saved draft before its Conversation view mounts and seeds the editor.
+ * @param sessionId - Session-scoped persistence suffix.
+ * @returns the saved text, or an empty draft when storage has no usable value.
+ */
+export function readConversationDraft(sessionId: SessionId): string {
+  return readPersistedString(sessionId, 'draft') ?? ''
+}
+
+function readPersistedString(sessionId: SessionId, key: 'view' | 'draft'): string | null {
   if (typeof localStorage === 'undefined') return null
   try {
     const raw = localStorage.getItem(`${CONVERSATION_STORE_KEY}.${sessionId}`)
     if (raw === null) return null
     const stored: unknown = JSON.parse(raw)
-    if (typeof stored !== 'object' || stored === null || !('view' in stored)) return null
-    return typeof stored.view === 'string' ? stored.view : null
+    if (typeof stored !== 'object' || stored === null || !(key in stored)) return null
+    const value: unknown = (stored as Record<string, unknown>)[key]
+    return typeof value === 'string' ? value : null
   } catch {
     return null
   }

@@ -132,6 +132,7 @@ interface Context {
  * @param scope - `all` (default), a phase of the mode, a base check or one of the mode's gates.
  * @param mode - the mode in effect, as the registry resolved it.
  * @param runGate - executes the mode's gates; without one, gates are reported as not run.
+ * @returns findings, phase completion and a clean flag for the inspected project revision.
  */
 export async function runChecks(
   project: ResearchProject, limit: number, scope: string | undefined, mode: ResolvedMode, runGate?: GateRunner,

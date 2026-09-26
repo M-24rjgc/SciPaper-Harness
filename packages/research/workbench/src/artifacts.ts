@@ -7,6 +7,7 @@ import { zipSync, strToU8 } from 'fflate'
 import { z } from 'zod'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { ComponentManager, runtimeAsset } from './components.ts'
+import { canonicalPath } from './drafts.ts'
 import { atomicWrite, errorText, hashFile, isAttachment, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
 import { bibliographyFiles, findMainManuscript, flattenPaper, graphicReferences, listProjectFiles, paperDigest } from './latex.ts'
 import { checked, runProcess } from './process.ts'
@@ -26,6 +27,9 @@ const TEX_SUPPORT = /\.(?:cls|sty|bst|bbx|cbx|clo|cfg|def)$/i
 /** Top-level directories kept out of TeX's search path. */
 const NON_SOURCE_DIRECTORIES = new Set(['.research', 'exports', 'node_modules', '.git', '.venv', 'venv', '__pycache__'])
 
+/** A refused editor save whose preceding adoption must be committed so its current revision stays readable. */
+export class ArtifactRevisionConflict extends Error {}
+
 /**
  * Refuse sources inside credential and key directories, whoever asks, except
  * the files the person attached to the conversation, which the attachment
@@ -36,22 +40,36 @@ const NON_SOURCE_DIRECTORIES = new Set(['.research', 'exports', 'node_modules', 
 async function assertImportable(source: string): Promise<void> {
   const home = resolveDshHome()
   if (await isAttachment(source, home)) return
-  if (protectedDirectories(home).some(directory => isInside(directory, source))) {
+  const canonical = await canonicalPath(source)
+  const directories = protectedDirectories(home)
+  const resolved = await Promise.all(directories.map(canonicalPath))
+  if (directories.some(directory => isInside(directory, source)) || resolved.some(directory => isInside(directory, canonical))) {
     throw new Error(`Refusing to import from a credential or key directory: ${source}`)
   }
 }
 
-/** Resolve an import source: relative paths are the project's, absolute paths are taken as given. */
+/** Resolve links before reading an import; both its named and actual locations must be importable. */
 async function importSource(project: ResearchProject, raw: string): Promise<string> {
   const source = resolve(isAbsolute(raw) ? raw : join(project.root, raw))
   await assertImportable(source)
-  if (isInside(project.root, source) && isMetadataPath(relative(project.root, source))) {
+  const canonical = await canonicalPath(source)
+  const root = await canonicalPath(project.root)
+  if ([source, canonical].some(path => isInside(root, path) && isMetadataPath(relative(root, path)))) {
     throw new Error('Import from the project files, not the platform metadata directory')
   }
-  return source
+  return canonical
 }
 
-/** Extract a source into immutable evidence, retaining its original location. */
+/**
+ * Extract a source into immutable evidence, retaining its original location.
+ * @param project - project receiving the source snapshot.
+ * @param rawSource - absolute source path or path relative to the project.
+ * @param components - provider of document extraction runtimes.
+ * @param signal - cancellation for extraction and runtime preparation.
+ * @param limit - maximum source and extracted-text size in bytes.
+ * @param previous - earlier evidence record whose identity is retained on reimport.
+ * @returns the previous record when its hash matches, otherwise a new immutable revision.
+ */
 export async function importEvidence(
   project: ResearchProject,
   rawSource: string,
@@ -83,6 +101,11 @@ export async function importEvidence(
 /**
  * Extract a snapshot's text with locators a quote can be checked against:
  * pages and paragraphs for documents, keys for data, lines for plain text.
+ * @param target - absolute snapshot file to extract.
+ * @param components - provider of document extraction runtimes.
+ * @param signal - cancellation for extraction and runtime preparation.
+ * @param limit - maximum extracted text size in bytes.
+ * @returns extracted chunks with source locators; rejects oversized output.
  */
 export async function extractText(target: string, components: ComponentManager, signal: AbortSignal, limit: number): Promise<EvidenceRecord['chunks']> {
   let chunks: EvidenceRecord['chunks']
@@ -104,8 +127,12 @@ export async function extractText(target: string, components: ComponentManager, 
 /**
  * Copy journal or conference template files into the project's `template/`
  * directory. Directories are copied recursively with their inner structure;
- * hidden entries, file types a template never ships, and trees beyond the
+ * hidden entries and unsupported file types are skipped. Trees beyond the
  * file-count and size ceilings are refused before anything is written.
+ * @param project - project receiving the template files.
+ * @param paths - source files or directories, absolute or relative to the project.
+ * @param limit - per-file byte limit; the combined limit is eight times this value.
+ * @returns project-relative paths of copied files.
  */
 export async function importTemplate(project: ResearchProject, paths: string[], limit: number): Promise<string[]> {
   const plan: { source: string; name: string }[] = []
@@ -156,6 +183,8 @@ async function artifactPath(project: ResearchProject, path: string): Promise<{ t
  * registered ones — someone (the user, or the agent through ordinary file
  * tools) edited it outside the research tools. The previous revision stays in
  * `.research/history`, and dependents are marked out of date.
+ * @param project - mutable project record whose dependencies are invalidated.
+ * @param artifact - registered artifact updated in place; the caller persists the record.
  * @returns true when a new revision was recorded.
  */
 export async function adoptExternalEdit(project: ResearchProject, artifact: ArtifactRecord): Promise<boolean> {
@@ -163,8 +192,7 @@ export async function adoptExternalEdit(project: ResearchProject, artifact: Arti
   if (!existsSync(target)) return false
   const sha256 = await hashFile(target)
   if (sha256 === artifact.sha256) return false
-  const revision = artifact.revision + 1
-  await keepRevision(target, await projectPath(project.root, `.research/history/${artifact.id}/${revision}${extname(target)}`))
+  const revision = await keepArtifactRevision(project, target, artifact.id, artifact.revision + 1)
   Object.assign(artifact, { revision, sha256, updatedAt: new Date().toISOString(), author: 'user', stale: false })
   invalidate(project, { artifactId: artifact.id })
   return true
@@ -177,6 +205,12 @@ export async function adoptExternalEdit(project: ResearchProject, artifact: Arti
  * says which revision is current so the caller can re-read and merge. Saving
  * text over a binary file ({@link isBinaryFile}) is refused before anything
  * is read or written, whoever asks.
+ * @param project - mutable project record; the caller persists successful changes and adopted conflict revisions.
+ * @param request - save or registration request, including dependency links and optional expected revision.
+ * @param author - author recorded for newly registered or saved content.
+ * @param limit - maximum saved text size in bytes.
+ * @returns the registered revision, reusing it when the file content is unchanged.
+ * @throws ArtifactRevisionConflict when a newly adopted revision makes the editor's expected revision stale.
  */
 export async function writeArtifact(
   project: ResearchProject,
@@ -196,13 +230,16 @@ export async function writeArtifact(
   for (const claimId of request.claimIds) if (!project.claims.some(c => c.id === claimId)) throw new Error(`Unknown claim: ${claimId}`)
   if (request.action === 'save-artifact') {
     if (Buffer.byteLength(request.content) > limit) throw new Error('Artifact text exceeds the configured limit')
-    if (previous) await adoptExternalEdit(project, previous)
+    let adopted = false
+    if (previous) adopted = await adoptExternalEdit(project, previous)
     else if (existsSync(target)) {
       // An existing unregistered file becomes revision 1 before it is replaced.
       previous = await recordRevision(project, normalized, request.kind, [], [], [], author, target, undefined)
+      adopted = true
     }
     if (request.expectedRevision !== undefined && request.expectedRevision !== (previous?.revision ?? 0)) {
-      throw new Error(`Revision conflict: the file is at revision ${previous?.revision ?? 0}, not ${request.expectedRevision}. Read it again and merge your changes`)
+      const Conflict = adopted ? ArtifactRevisionConflict : Error
+      throw new Conflict(`Revision conflict: the file is at revision ${previous?.revision ?? 0}, not ${request.expectedRevision}. Read it again and merge your changes`)
     }
     await atomicWrite(target, request.content)
   } else if (!existsSync(target)) {
@@ -232,10 +269,23 @@ async function recordRevision(
     id, path, kind, revision: (previous?.revision ?? 0) + 1, sha256: await hashFile(target),
     evidence, claimIds, inputArtifacts, stale: false, updatedAt: new Date().toISOString(), author,
   }
-  await keepRevision(target, await projectPath(project.root, `.research/history/${id}/${result.revision}${extname(target)}`))
+  result.revision = await keepArtifactRevision(project, target, id, result.revision)
   if (previous) invalidate(project, { artifactId: id })
   project.artifacts = [...project.artifacts.filter(a => a.id !== id), result]
   return result
+}
+
+/** Retain orphaned history from an interrupted save and allocate the next available revision. */
+async function keepArtifactRevision(project: ResearchProject, target: string, id: ArtifactId, first: number): Promise<number> {
+  for (let revision = first; ; revision++) {
+    const path = await projectPath(project.root, `.research/history/${id}/${revision}${extname(target)}`)
+    try {
+      await keepRevision(target, path)
+      return revision
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+  }
 }
 
 /** What to compile: a registered artifact, a path, or (neither) the paper's main file. */
@@ -261,6 +311,9 @@ async function manuscriptFor(project: ResearchProject, target: CompileTarget, li
  * Record what a compile is about to read: the manuscript (registered if it
  * was not) and every edit made outside the research tools. This is the only
  * part of a compile that changes the project record.
+ * @param project - mutable project record; the caller persists adopted revisions.
+ * @param target - registered artifact or source path; omission selects the main manuscript.
+ * @param limit - per-file byte ceiling used when discovering the main manuscript.
  * @returns the manuscript to build.
  */
 export async function compileTarget(project: ResearchProject, target: CompileTarget, limit: number): Promise<ArtifactRecord> {
@@ -270,7 +323,13 @@ export async function compileTarget(project: ResearchProject, target: CompileTar
   return structuredClone(artifact)
 }
 
-/** A TeX program in a distribution's binary directory; Windows names carry .exe. */
+/**
+ * A TeX program in a distribution's binary directory; Windows names carry .exe.
+ * @param bin - distribution binary directory.
+ * @param name - executable name without a platform suffix.
+ * @param platform - target operating system, defaulting to the host.
+ * @returns path to the platform-specific executable.
+ */
 export function texExecutable(bin: string, name: string, platform: NodeJS.Platform = process.platform): string {
   return join(bin, platform === 'win32' ? `${name}.exe` : name)
 }
@@ -311,8 +370,15 @@ async function searchPath(project: ResearchProject, from: string): Promise<strin
 /**
  * Compile a manuscript and its bibliography in an isolated build directory.
  * The compile succeeded when it produced a PDF; unresolved references and
- * citations are reported in its diagnostics and by the checks. Reads the
- * project and changes nothing in it, so it runs without holding the project.
+ * citations are reported in its diagnostics and by the checks. Writes build
+ * files without mutating the project record, so it runs without holding the project lock.
+ * @param project - project snapshot locating the sources and private build directory.
+ * @param artifact - manuscript revision selected by compileTarget.
+ * @param engine - TeX engine to invoke.
+ * @param components - provider of the managed TeX distribution.
+ * @param signal - cancellation for compilation and dependency installation.
+ * @param limit - per-source byte ceiling used when flattening the manuscript.
+ * @returns compile result and diagnostics for the source digest observed at launch.
  */
 export async function compilePaper(
   project: ResearchProject,
@@ -402,6 +468,12 @@ export async function compilePaper(
  * look at them with its own image reader. The returned review records the
  * render against the compiled source digest, which is what the `visual` check
  * asks for; the caller stores it.
+ * @param project - project snapshot containing completed compilations.
+ * @param artifactId - manuscript identity to select, or undefined for the latest successful compilation.
+ * @param maxPages - maximum number of PDF pages to render.
+ * @param components - provider of the PDF rendering runtime.
+ * @param signal - cancellation for runtime preparation and page rendering.
+ * @returns rendered image paths and the visual-review record for the caller to persist.
  */
 export async function renderPages(
   project: ResearchProject,
@@ -435,6 +507,10 @@ export async function renderPages(
  * Export portable paper sources and reproducibility files. Export always
  * runs; the check report travels inside the archive, and the archive is named
  * a submission only when that report is clean.
+ * @param project - project snapshot supplying sources, dependencies and reproducibility records.
+ * @param limit - source-read byte ceiling; gathered source files may total at most eight times this value.
+ * @param report - check report included in the reproducibility manifest.
+ * @returns archive path and whether a clean report and current successful compilation qualify it as a submission.
  */
 export async function exportPaper(project: ResearchProject, limit: number, report: CheckReport): Promise<{ path: string; final: boolean }> {
   const files: Record<string, Uint8Array> = {}

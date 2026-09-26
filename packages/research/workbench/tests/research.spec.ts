@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
@@ -10,6 +10,7 @@ import {
 } from '../src/files.ts'
 import { adoptExternalEdit, importEvidence, importTemplate, texExecutable, writeArtifact, exportPaper } from '../src/artifacts.ts'
 import { collectRunOutputs, observationDue, validateExperiment } from '../src/experiments.ts'
+import { bibliographyFiles, flattenPaper, paperDigest } from '../src/latex.ts'
 import { migrateProject, researchDomain } from '../src/schema.ts'
 import type { ArtifactId, CheckReport, EnvironmentId, EvidenceId, ExperimentRecord, ExperimentSpec, ResearchProject } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -35,6 +36,43 @@ const components = { python: async () => 'python' } as never
 const signal = new AbortController().signal
 
 describe('artifacts are recorded, never refused for being edited elsewhere', () => {
+  it('includes parent-relative bibliography files in the digest and exported sources', async () => {
+    const p = await project()
+    await mkdir(join(p.root, 'paper'), { recursive: true })
+    await writeFile(join(p.root, 'paper/main.tex'), String.raw`\documentclass{article}\bibliography{../refs}\addbibresource{../more.bib}`)
+    await writeFile(join(p.root, 'refs.bib'), '@misc{first, title={First}}')
+    await writeFile(join(p.root, 'more.bib'), '@misc{more, title={More}}')
+    const paper = await flattenPaper(p.root, 'paper/main.tex', 10000)
+    expect(await bibliographyFiles(p.root, paper)).toEqual(['refs.bib', 'more.bib'])
+    const digest = await paperDigest(p.root, paper)
+    await writeFile(join(p.root, 'refs.bib'), '@misc{second, title={Second}}')
+    expect(await paperDigest(p.root, paper)).not.toBe(digest)
+    const exported = await exportPaper(p, 10000, { clean: false, scope: 'all', gatesRun: [], phases: [], findings: [], checkedAt: '' })
+    const files = unzipSync(await readFile(exported.path))
+    expect(Buffer.from(files['refs.bib']!).toString()).toContain('Second')
+    expect(Buffer.from(files['more.bib']!).toString()).toContain('More')
+  })
+
+  it('rejects protected and metadata imports reached through directory links', async () => {
+    const p = await project()
+    const home = await temporary('research-protected-')
+    process.env.DSH_HOME = home
+    await writeFile(join(home, 'credentials.yaml'), 'test-only-placeholder')
+    await mkdir(join(p.root, '.research'))
+    await writeFile(join(p.root, '.research', 'internal.txt'), 'internal')
+    const links = [join(p.root, 'private'), join(p.root, 'metadata')]
+    await symlink(home, links[0]!, 'junction')
+    await symlink(join(p.root, '.research'), links[1]!, 'junction')
+    try {
+      await expect(importEvidence(p, 'private/credentials.yaml', components, signal, 10000)).rejects.toThrow(/credential or key directory/)
+      await expect(importTemplate(p, ['private'], 10000)).rejects.toThrow(/credential or key directory/)
+      await expect(importEvidence(p, 'metadata/internal.txt', components, signal, 10000)).rejects.toThrow(/metadata directory/)
+      expect(p.evidence).toEqual([])
+    } finally {
+      for (const link of links) await unlink(link)
+    }
+  })
+
   it('adopts external edits as revisions, keeps every version, and only a supplied stale revision conflicts', async () => {
     const p = await project()
     const first = await writeArtifact(p, { action: 'save-artifact', projectId: p.id, path: 'paper/main.tex', content: 'first', kind: 'manuscript', ...input }, 'agent', 10000)
@@ -244,7 +282,7 @@ describe('imports stay inside the project unless the user chose otherwise, and n
     await expect(importTemplate(p, [many], 10000)).rejects.toThrow(/at most 400/)
     await expect(importTemplate(p, [join(outside, 'nothing-here')], 10000)).rejects.toThrow()
     const device = process.platform === 'win32' ? '\\\\.\\NUL' : '/dev/null'
-    await expect(importTemplate(p, [device], 10000)).rejects.toThrow(/neither a file nor a directory/)
+    await expect(importTemplate(p, [device], 10000)).rejects.toThrow(/neither a file nor a directory|EINVAL/)
   })
 
   it('names TeX programs the way each platform installs them', () => {

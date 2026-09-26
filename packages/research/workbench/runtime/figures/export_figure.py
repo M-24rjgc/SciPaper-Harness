@@ -24,6 +24,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from urllib.parse import urlsplit
 
 SVG = "http://www.w3.org/2000/svg"
 XLINK = "http://www.w3.org/1999/xlink"
@@ -194,7 +195,7 @@ def expand_markers(root) -> int:
                 ratio = min(width / view[2], height / view[3])
                 fit = f"scale({scale * ratio}) translate({-view[0]} {-view[1]})"
             group = ET.Element(f"{{{SVG}}}g", {
-                "transform": f"translate({point[0]} {point[1]}) rotate({turn}) {fit} "
+                "transform": f"{element.get('transform', '')} translate({point[0]} {point[1]}) rotate({turn}) {fit} "
                              f"translate({-number(marker.get('refX'))} {-number(marker.get('refY'))})",
             })
             for attribute in ("fill", "stroke", "stroke-width"):
@@ -232,6 +233,12 @@ def main(argv: list[str]) -> int:
         print(json.dumps({"error": f"{svg.name} is not well-formed XML: {error}"}))
         return 1
     markers = expand_markers(tree.getroot())
+    # The temporary SVG must resolve local images against the original file.
+    for element in tree.getroot().iter(f"{{{SVG}}}image"):
+        for attribute in ("href", f"{{{XLINK}}}href"):
+            href = element.get(attribute)
+            if href and not href.startswith('#') and not urlsplit(href).scheme:
+                element.set(attribute, str((svg.resolve().parent / href).resolve()))
     with tempfile.TemporaryDirectory() as scratch:
         expanded = Path(scratch) / svg.name
         tree.write(expanded, encoding="utf-8", xml_declaration=True)

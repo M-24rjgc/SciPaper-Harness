@@ -15,6 +15,7 @@ const harness = await vi.hoisted(async () => {
   const hosts: FakeHost[] = []
   const managerRuntimes: unknown[] = []
   const handlers = new Map<string, (event: { senderFrame: { url: string } }) => unknown>()
+  let updateConfigurationPresent = true
   let pluginsEnabled = false
   let preparing = deferred()
   let prepared = deferred()
@@ -80,6 +81,15 @@ const harness = await vi.hoisted(async () => {
   return {
     windows, hosts, managerRuntimes, handlers, app, FakeWindow, FakeHost,
     dialog: { showErrorBox: vi.fn(), showMessageBox: vi.fn() },
+    updater: {
+      autoDownload: true,
+      autoInstallOnAppQuit: true,
+      checkForUpdates: vi.fn(async () => ({ isUpdateAvailable: false, updateInfo: { version: '1.0.0' } })),
+      downloadUpdate: vi.fn(async () => []),
+      quitAndInstall: vi.fn(),
+    },
+    get updateConfigurationPresent() { return updateConfigurationPresent },
+    set updateConfigurationPresent(value: boolean) { updateConfigurationPresent = value },
     applyRelease: vi.fn(() => { preparing.resolve(); return prepared.promise }),
     assertProfileRuntime: vi.fn(),
     canRecoverProfile: vi.fn(() => true),
@@ -92,6 +102,7 @@ const harness = await vi.hoisted(async () => {
     reset() {
       windows.length = 0; hosts.length = 0; managerRuntimes.length = 0; handlers.clear(); app.removeAllListeners()
       app.isPackaged = true
+      updateConfigurationPresent = true
       pluginsEnabled = false
       preparing = deferred(); prepared = deferred(); hostStarted = deferred()
       navigated = deferred(); errorPublished = deferred(); quitCompleted = deferred()
@@ -127,7 +138,16 @@ vi.mock('../src/project-manager.ts', () => ({
   },
 }))
 vi.mock('../src/host-process.ts', () => ({ DesktopHostProcess: harness.FakeHost }))
-vi.mock('../src/update-coordinator.ts', () => ({ DesktopUpdateCoordinator: vi.fn() }))
+vi.mock('node:fs', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...original,
+    existsSync: (path: Parameters<typeof original.existsSync>[0]) => path === join('desktop-test-resources', 'app-update.yml')
+      ? harness.updateConfigurationPresent
+      : original.existsSync(path),
+  }
+})
+vi.mock('electron-updater', () => ({ default: { autoUpdater: harness.updater } }))
 
 function invoke(channel: string): unknown {
   const handler = harness.handlers.get(channel)
@@ -164,6 +184,32 @@ afterEach(async () => {
 })
 
 describe('desktop main startup', () => {
+  it.each([
+    { packaged: true, configured: true, checks: 1 },
+    { packaged: true, configured: false, checks: 0 },
+    { packaged: false, configured: true, checks: 0 },
+  ])('checks updates after startup only with packaged release configuration ($packaged/$configured)', async ({
+    packaged, configured, checks,
+  }) => {
+    harness.app.isPackaged = packaged
+    harness.updateConfigurationPresent = configured
+    await import('../src/main.ts')
+    harness.prepared.resolve()
+    await harness.hostStarted.promise
+    harness.hosts[0]!.ready.resolve()
+    await harness.navigated.promise
+    await vi.advanceTimersByTimeAsync(9_999)
+    expect(harness.updater.checkForUpdates).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(harness.updater.checkForUpdates).toHaveBeenCalledTimes(checks)
+    await expect(Promise.resolve(invoke(DESKTOP_IPC.updatesCheck))).resolves.toEqual({ phase: 'idle' })
+    expect(harness.updater.checkForUpdates).toHaveBeenCalledTimes(checks * 2)
+    expect(harness.updater.autoDownload).toBe(false)
+    expect(harness.updater.autoInstallOnAppQuit).toBe(false)
+    expect(harness.updater.downloadUpdate).not.toHaveBeenCalled()
+    expect(harness.updater.quitAndInstall).not.toHaveBeenCalled()
+  })
+
   it('exits with a diagnostic when both initialization and emergency navigation fail', async () => {
     const exited = Promise.withResolvers<undefined>()
     vi.spyOn(harness.app, 'getLocale').mockImplementationOnce(() => { throw new Error('locale unavailable') })
@@ -312,7 +358,11 @@ describe('desktop main startup', () => {
       runtime: join(harness.app.getAppPath(), 'dsh'),
       profile: 'desktop-test-profile',
     })
-    expect(harness.managerRuntimes[0]).toMatchObject({ profileResolution: 'runtime' })
+    expect(harness.managerRuntimes[0]).toMatchObject({
+      node: join('desktop-test-resources', 'runtime', 'node', process.platform === 'win32' ? 'node.exe' : 'node'),
+      pnpm: join('desktop-test-resources', 'runtime', 'pnpm', 'bin', 'pnpm.mjs'),
+      profileResolution: 'runtime',
+    })
     expect(harness.hosts[0]!.start).toHaveBeenCalledTimes(1)
     expect(harness.windows).toHaveLength(1)
     expect(window.urls).toEqual(['dsh-app://shell/startup.html', 'dsh-app://app/index.html'])

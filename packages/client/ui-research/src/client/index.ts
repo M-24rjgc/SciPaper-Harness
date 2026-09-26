@@ -7,7 +7,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ConversationDrafts } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -323,8 +324,8 @@ export function apply(ctx: Context): void {
     },
     showProgress,
   })
-  const treeInjected = (): ResearchTreeInjected => ({
-    hooks: { research: state, directories, canReveal },
+  const treeInjected = (drafts: ObservableSnapshot<ConversationDrafts>): ResearchTreeInjected => ({
+    hooks: { research: state, directories, canReveal, drafts },
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
     startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
@@ -392,9 +393,10 @@ export function apply(ctx: Context): void {
     ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register({ name: 'conversation.hero.workspace', priority: -1, locale: 'research', inject: entryInjected }, ResearchFolderMenu))
     // The sidebar lists researches and their conversations in place of the shell's workspace browser, which
     // stays registered underneath and keeps declaring its directory-flow child for the folder pickers.
-    ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register({
-      name: 'sidebar.workspaces', priority: -1, locale: 'research', store: createResearchTreeStore(), inject: treeInjected,
-    }, ResearchTree))
+    ctx.inject(['conversation'], scope => scope.slots.inject('sidebar.workspaces', () => scope.slots.register({
+      name: 'sidebar.workspaces', priority: -1, locale: 'research', store: createResearchTreeStore(),
+      inject: () => treeInjected(scope.conversation.input.drafts),
+    }, ResearchTree)))
   }
   // Beside the conversation: the research record, which reports read-only, and the secondary tools as tabs
   // of their own, opened only from the record, a run card or the entry line. The guide page lists the record

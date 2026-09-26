@@ -77,6 +77,7 @@ const WORKSPACES: WorkspaceView[] = [
 
 /** What the tree reads, which a test may change between renders. */
 interface World {
+  drafts?: Record<string, { text: string; attachmentCount: number }>
   projects?: ResearchProject[] | null
   sessions?: SessionSummary[]
   current?: string | undefined
@@ -111,6 +112,7 @@ function propsOf(w: World, face: ReturnType<typeof faceOf>, store: ReturnType<Re
     useSessionPendingInteraction: (select: (value: unknown) => unknown) => select(pending),
     usePanelInfo: (select: (value: { activePanelId: string | null }) => unknown) => select({ activePanelId: w.panel ?? null }),
     useResearch: (select: (value: ResearchView) => unknown) => select(view),
+    useDrafts: (select: (value: NonNullable<World['drafts']>) => unknown) => select(w.drafts ?? {}),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select({}),
     useCanReveal: (select: (value: boolean) => unknown) => select(w.canReveal ?? true),
     useStore: function useStore(select: (value: { expanded: Record<string, boolean> }) => unknown) {
@@ -187,6 +189,40 @@ async function settle(): Promise<void> {
 const R = (project: ResearchProject): string => `research:${project.id}`
 
 describe('what the tree lists', () => {
+  it('keeps text and attachment drafts reachable while hiding empty non-current conversations', async () => {
+    const world: World = {
+      projects: [draft, sparse], current: 'new-draft', workspaces: WORKSPACES,
+      sessions: [
+        session('old-draft', '/r/sparse', { blank: true }),
+        session('new-draft', '/r/sparse', { blank: true }),
+        session('file-draft', '/r/sparse', { blank: true }),
+        session('empty', '/r/sparse', { blank: true }),
+      ],
+      drafts: {
+        'old-draft': { text: 'X saved before switching\nmore text', attachmentCount: 0 },
+        'new-draft': { text: 'Y carried here', attachmentCount: 0 },
+        'file-draft': { text: '', attachmentCount: 2 },
+      },
+    }
+    const tree = mount(world)
+    expect(row('conversation:old-draft').textContent).toContain('草稿 · X saved before switching')
+    expect(row('conversation:new-draft').textContent).toContain('草稿 · Y carried here')
+    expect(row('conversation:file-draft').textContent).toContain('草稿 · 2 个附件')
+    expect(keys()).not.toContain('conversation:empty')
+    expect(row(R(draft)).getAttribute('aria-expanded')).toBeNull()
+    fireEvent.click(row('conversation:old-draft'))
+    await settle()
+    expect(tree.face.openSession).toHaveBeenCalledWith('old-draft')
+    tree.update({ ...world, current: 'old-draft' })
+    fireEvent.click(row('conversation:new-draft'))
+    await settle()
+    expect(tree.face.openSession).toHaveBeenLastCalledWith('new-draft')
+    const remaining = { ...world.drafts }
+    delete remaining['old-draft']
+    tree.update({ ...world, drafts: remaining })
+    expect(keys()).not.toContain('conversation:old-draft')
+  })
+
   it('lists the draft, the person\'s researches with their standing and dots, then the examples and other folders', () => {
     const tree = mount({ current: 's-cite', pending: [['s-plan', 'question']] })
     expect(tree.getByRole('tree', { name: zh.treeTitle })).toBeTruthy()

@@ -2,27 +2,27 @@
 
 English | [中文](README.zh.md)
 
-The desktop application is an Electron shell around the dsh Web UI. It opens no listening port: a bundled upstream Node.js child boots the installed dsh project, versioned framed byte pipes carry Fetch requests and streaming responses without an outer Base64 envelope, Node IPC carries lifecycle control, and `dsh-app://` serves the matching client assets.
+The desktop application is an Electron shell around the dsh Web UI. It opens no listening port: an Electron child in Node mode boots the installed dsh project from ASAR, versioned framed byte pipes carry Fetch requests and streaming responses without an outer Base64 envelope, Node IPC carries lifecycle control, and `dsh-app://` serves the matching client assets.
 
 ## Key technical decisions
 
 | Decision | Why | Direct consequence |
 |---|---|---|
 | Release identity | The shell API, Web client, backend, and plugin graph are qualified as one combination; independent versions would create untested combinations and ambiguous update availability. | Electron and `@deepseek-ai/dsh` always have the same exact version. A dsh upgrade is a Desktop release, even when the shell code is unchanged. |
-| Runtime | Electron's Node.js carries Electron patches, fuses, ABI, and lifecycle constraints, while system runtimes and package-manager state are uncontrolled. | dsh runs under the bundled upstream Node.js and every package operation uses the bundled pnpm. Electron's Node.js, system Node.js, system pnpm, and user package-manager configuration are outside the execution path. |
+| Runtime | The packaged Host reads ASAR resources through Electron, while plugin installation requires the Node version recorded by the release. | The Host runs in Electron's Node mode. Package operations and plugin build scripts use the bundled upstream Node.js and pnpm, with Desktop-owned package-manager state. |
 | Package sources | Core installation at startup adds work even when offline. | `extraResources/dsh` carries a complete production dependency tree; the profile installs only external plugins. |
 | Shared modules | Host APIs can depend on module identity. | Desktop links every bundled first-party package into the profile using directory symlinks, or Windows junctions; ordinary plugin dependencies remain local. |
 | State ownership | Sharing executable dependency graphs would let CLI and Desktop change each other's dsh, Cordis, plugin, or native-module versions, while two desktop processes could race on the same profile. | Electron acquires its process-lifetime single-instance lock before any profile access and exclusively owns `$DSH_HOME/profiles/desktop` plus its package-manager state. CLI and Desktop share supported product data under `$DSH_HOME`, but never executable packages, plugin activation, lockfiles, or `node_modules`. |
 | Transport | A listening Web service adds port ownership, authentication, CORS, and exposure concerns; Electron and upstream Node.js also need an explicit cross-process protocol. | The application opens no Web port. `dsh-app://` carries Web assets and Fetch traffic; framed byte pipes carry bounded request and response chunks with backpressure, while Node IPC carries only child lifecycle control. |
 | Plugin changes | Package installation and Host startup can fail. | Desktop stops the Host and modifies the current profile directly. Failures retain partial changes for explicit repair; there is no automatic profile rollback. |
-| Updates | Independent shell and dsh updates would recreate version splits, while unchanged shell blocks should not require a complete transfer. | The Electron shell, matching dsh runtime, Node.js, and pnpm form one signed update unit. Platform update artifacts may reuse unchanged blocks, but runtime version selection never splits from the Desktop release. |
+| Updates | Independent shell and dsh updates would recreate version splits, while unchanged shell blocks should not require a complete transfer. | The Electron shell, matching dsh runtime, Node.js, and pnpm form one update unit. Platform update artifacts may reuse unchanged blocks, but runtime version selection never splits from the Desktop release. |
 | Telemetry | The application sends no telemetry, and a plugin bundle or a profile patch must not be able to turn it back on. | The Web bundle ships the telemetry and feedback rows disabled. The shell always starts the Host with `DSH_TELEMETRY_DISABLED=1`, and the Host then disables the telemetry row after every other layer, as the `dsh` launcher does; processes the agent starts inherit the variable. |
 
 The [Electron packaging and update Agent Note](../../.agents/notes/implemented/architecture/2026-08-25-electron-desktop-packaging-and-updates.md) owns the rationale, alternatives, security constraints, and release qualification requirements behind these decisions.
 
 ## Installation ownership
 
-Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains only installed external plugins at exact versions; `dsh.profile.bundles` contains the built-in bundles followed by enabled plugins. The signed application supplies dsh, the private Desktop Host, and their production packages from `resources/dsh`. Shared package links resolve to those actual directories. Both host and plugins execute in the same bundled upstream Node process, with normal realpath resolution; Desktop does not enable `--preserve-symlinks`. The CLI cannot boot or mutate this profile.
+Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains only installed external plugins at exact versions; `dsh.profile.bundles` contains the built-in bundles followed by enabled plugins. The application supplies dsh, the private Desktop Host, and their production packages from `app.asar/dsh`. Both host and plugins execute in the same Electron Node-mode child, with runtime-owned package resolution; Desktop does not enable `--preserve-symlinks`. The CLI cannot boot or mutate this profile.
 
 The local startup page exposes startup status and available recovery actions; the loaded dsh renderer receives only the desktop protocol marker. The separate plugin window receives structured list, install, remove, update, and update-check operations; neither renderer receives filesystem access, raw Electron IPC, a shell, or arbitrary pnpm arguments.
 
@@ -30,7 +30,7 @@ Electron chooses typed English or Chinese shell copy from its application locale
 
 ### Runtime and plugin activation
 
-The signed `resources/dsh/desktop-runtime.json` binds the shell version, bundled Node version, platform, architecture, shared package versions, and final file inventory. Startup reads the metadata and checks shared package records. Release schema, shell version, target compatibility, and file integrity are verified during packaging. Core packages are never copied into profile storage or installed by pnpm at first launch.
+The `app.asar/dsh/desktop-runtime.json` binds the shell version, bundled Node version, platform, architecture, shared package versions, and final file inventory. Startup reads the metadata and checks shared package records. Release schema, shell version, target compatibility, and file integrity are verified during packaging. Core packages are never copied into profile storage or installed by pnpm at first launch.
 
 1. The main window displays a local loading page before profile preparation or backend startup. A fresh profile creates its manifest and shared package links while preserving unrelated files, then starts the actual backend once. Unchanged startups reuse the profile without scanning installed plugin manifests.
 2. A compatible application upgrade refreshes shared links in the current profile and checks enabled plugins’ peer requirements. Plugin files, configuration, versions, and lockfile remain in place; pnpm does not run.
@@ -64,10 +64,9 @@ Workspace development runs the current CLI and private Desktop Host packages und
 
 ## Package
 
-The normal packaging path is one complete command. It performs release preparation before creating the host platform's installers and update metadata. Every target requires a reverse-DNS `DSH_DESKTOP_APP_ID`. macOS targets additionally require the electron-builder certificate qualifier in `DSH_DESKTOP_MACOS_SIGNING_IDENTITY`, its 10-character Apple Team ID in `DSH_DESKTOP_MACOS_TEAM_ID`, and one complete notarytool credential strategy. The App Store Connect API-key strategy uses these variables:
+The normal packaging path is one complete command. It performs release preparation before creating the host platform's installers and update metadata. The application ID defaults to `io.github.m-24rjgc.scipaper-harness`; `RESEARCH_WORKBENCH_APP_ID` selects a separate reverse-DNS identity. macOS targets additionally require the electron-builder certificate qualifier in `DSH_DESKTOP_MACOS_SIGNING_IDENTITY`, its 10-character Apple Team ID in `DSH_DESKTOP_MACOS_TEAM_ID`, and one complete notarytool credential strategy. The App Store Connect API-key strategy uses these variables:
 
 ```sh
-export DSH_DESKTOP_APP_ID='<reverse-DNS application ID>'
 export DSH_DESKTOP_MACOS_SIGNING_IDENTITY='<certificate name without the Developer ID Application prefix>'
 export DSH_DESKTOP_MACOS_TEAM_ID='<10-character Apple Team ID>'
 export APPLE_API_KEY='<absolute path to the .p8 file>'
@@ -105,30 +104,7 @@ Windows release qualification also runs [native cleanup and replacement checks](
 pwsh -NoProfile -File apps/desktop/scripts/smoke-windows.ps1 -Electron $Electron -Makensis $Makensis -SevenZip $SevenZip -PluginDir $PluginDir
 ```
 
-### Upload updates
-
-`DSH_DESKTOP_AUTO_UPDATE_ENV` selects `test` or `production` for both the URL embedded during packaging and the later COS upload; an absent value selects `test`. Test packaging requires its HTTPS origin in `DOWNLOAD_TEST_ORIGIN`, while the production origin remains `https://download.deepseek.com`. Upload additionally requires the selected deployment's COS bucket in `DOWNLOAD_TEST_COS_BUCKET` or `DOWNLOAD_PROD_COS_BUCKET`. The target path is `_/harness/desktop/stable/<target>/`, where `target` is `mac-arm64`, `mac-x64`, or `win-x64`.
-
-The update destination and upload credentials follow the selected deployment:
-
-| Environment | Public origin | COS bucket | COS credentials |
-|---|---|---|---|
-| `test` or unset | `DOWNLOAD_TEST_ORIGIN` | `DOWNLOAD_TEST_COS_BUCKET` | `DOWNLOAD_TEST_COS_SECRET_ID`, `DOWNLOAD_TEST_COS_SECRET_KEY` |
-| `production` | `https://download.deepseek.com` | `DOWNLOAD_PROD_COS_BUCKET` | `DOWNLOAD_PROD_COS_SECRET_ID`, `DOWNLOAD_PROD_COS_SECRET_KEY` |
-
-Package and upload one target under the same environment. For example, the default test deployment uses:
-
-```sh
-export DOWNLOAD_TEST_ORIGIN='https://desktop-updates.example.com'
-pnpm run package:desktop:mac:arm64
-
-export DOWNLOAD_TEST_COS_BUCKET='<test COS bucket>'
-export DOWNLOAD_TEST_COS_SECRET_ID='<test COS SecretId>'
-export DOWNLOAD_TEST_COS_SECRET_KEY='<test COS SecretKey>'
-pnpm run upload:mac:arm64
-```
-
-Set `DSH_DESKTOP_AUTO_UPDATE_ENV=production` before packaging, then provide `DOWNLOAD_PROD_COS_BUCKET` and the production credential pair before running `upload:mac:arm64`, `upload:mac:x64`, or `upload:win:x64`. Packaging does not require a COS bucket or credentials. It explicitly disables electron-builder publishing, strips all four COS credential fields from its subprocesses, and writes a target completion record only after electron-builder and every signing or notarization hook succeeds. Upload requires that record to match the selected environment, target, public URL, and current dsh version; it also requires the root dsh version, Desktop version, channel metadata version, artifact names, sizes, and SHA-512 values to agree before it reads the selected COS credential pair. It uploads only that target's immutable versioned artifacts, uploads the version-derived channel metadata last with `no-cache`, and never deletes historical objects. Stable releases use `latest-mac.yml` or `latest.yml`; a prerelease such as `alpha` uses `alpha-mac.yml` or `alpha.yml`, matching electron-builder's emitted filename.
+### macOS signing and notarization
 
 The macOS configuration uses the required release environment instead of accepting whichever certificate appears first in a keychain. It rejects empty values, a malformed Team ID, a signing identity that includes electron-builder's unsupported `Developer ID Application:` prefix, and incomplete notarization credentials. macOS packaging requires the configured identity and its private key. Runtime preparation applies that identity, a secure timestamp, and hardened runtime to every embedded Mach-O file; after signing the application, a deep strict check rejects any other leaf authority or Team ID before artifact creation. The fixed-target macOS installer commands create separate copies of the signed application and run two artifact lanes concurrently. One lane notarizes and staples the App before generating the ZIP and its update metadata. The other encloses its signed App copy in a signed DMG, then notarizes, staples, and verifies the DMG; its inner App has no individually stapled ticket. Both lanes must finish successfully before their artifacts reach the final directory and the release completion record is written. Directory-only commands also require notarization credentials and wait for Apple notarization and App stapling. The [parallel notarization decision](../../.agents/notes/implemented/process/2026-09-09-parallel-macos-notarization.md) owns copy isolation and container ticket semantics. The private key can come from the login keychain or electron-builder's standard `CSC_LINK` input; ambient `CSC_NAME` and certificate discovery order do not select the release owner. Notary credentials may instead use electron-builder's complete Apple ID or keychain-profile strategy. The two macOS identity variables are also required when repeating the application check manually with `pnpm --dir apps/desktop run verify:mac-signature -- <path-to-app>`.
 
@@ -144,7 +120,7 @@ On Windows x64, use the complete unsigned packaging command for local installati
 pnpm run package:desktop:win:x64:unsigned
 ```
 
-The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, omits automatic-update configuration, strips signing credentials, and creates no release completion record. It does not require EV credentials or an update origin. The signed packaging and upload commands retain their release requirements.
+The command uses the default SciPaper Harness application ID and requires the normal build dependencies, including Python and Visual C++ build tools for native modules. Set `PYTHON` to the Python executable when it is absent from `PATH`. It writes the installer to `.desktop-build/targets/win-x64/unsigned-artifacts/`, includes the GitHub automatic-update configuration, strips signing credentials, and creates no signed-release completion record. It does not require EV credentials or an update origin. Signed packaging retains its certificate requirements.
 
 ### Windows EV signing
 
@@ -187,19 +163,23 @@ An unpacked artifact contains Electron, the materialized dsh production tree, up
 
 ## Updates
 
-SciPaper Harness reads its update feed from the GitHub Releases of `M-24rjgc/SciPaper-Harness`: the `publish` entry of `electron-builder.config.mjs` names the repository, so every build, signed or not, carries `app-update.yml`, and a prerelease version such as `0.2.0-alpha.1` publishes on the `alpha` channel (`alpha.yml`). After `package:win:x64:unsigned`, `pnpm run release:github [--notes-file <file>]` checks that the installer, its blockmap and each channel file agree on the version and the installer's SHA-512, then creates the release through the logged-in GitHub CLI. electron-updater verifies every download against that SHA-512; an unsigned installer carries no publisher name, so no signature check applies until the installer is signed.
+SciPaper Harness reads its update feed from the GitHub Releases of `M-24rjgc/SciPaper-Harness`: the `publish` entry of `electron-builder.config.mjs` names the repository, so every build, signed or not, carries `app-update.yml`, and prerelease versions publish on their named channel, such as `alpha.yml`. electron-updater verifies every download against its SHA-512; an unsigned installer carries no publisher name, so no signature check applies until the installer is signed.
 
-A packaged application checks its target-specific release stream ten seconds after the main window opens; the localized **Check for Updates…** menu item triggers the same check manually. An available release opens one native confirmation dialog. Accepting it waits for an in-flight check, downloads and verifies the signed Desktop release, stops the dsh child, and hands installation plus restart to electron-updater. The next launch displays the local loading page while reconciling the version-bound runtime.
+After `package:win:x64:unsigned`, push the matching `v<version>` tag pointing to the commit used for the build, then run `pnpm --dir apps/desktop run release:github [--notes-file <file>]`. The script requires the installer and its blockmap, validates the channel metadata's version, installer path, URL, size, and SHA-512, and copies the validated `latest.yml` to the prerelease channel file. It creates the release through the logged-in GitHub CLI with `--verify-tag`, which requires the tag to exist remotely.
 
-Signed packaging emits generic-provider channel metadata for the deployment selected by `DSH_DESKTOP_AUTO_UPDATE_ENV`. NSIS differential packages and the macOS ZIP target allow electron-updater to reuse unchanged blocks; the manually installed DMG is notarized without a blockmap because it is not a macOS updater payload. The runtime and shell still form one signed Desktop release. macOS signing and notarization credentials use electron-builder's standard environment; Windows EV signing uses the public certificate, validated SignTool, SafeNet container, and runner PIN described above. The required Desktop release environment selects the application and platform signature identities that the build verifies.
+Version `0.2.0-alpha.2` has update checks disabled. Its users must manually install `0.2.0-alpha.3` once; that version enables startup checks and the **Check for Updates…** menu for subsequent releases.
+
+A packaged application checks its GitHub release stream ten seconds after the main window opens; the localized **Check for Updates…** menu item triggers the same check manually. An available release opens one native confirmation dialog. Accepting it waits for an in-flight check, downloads and verifies the Desktop release, stops the dsh child, and hands installation plus restart to electron-updater. The next launch displays the local loading page while reconciling the version-bound runtime.
+
+NSIS differential packages and the macOS ZIP target allow electron-updater to reuse unchanged blocks; the manually installed DMG is notarized without a blockmap because it is not a macOS updater payload. The runtime and shell remain one Desktop release; signing is required by the signed packaging commands and omitted by the Windows unsigned command. macOS signing and notarization credentials use electron-builder's standard environment; Windows EV signing uses the public certificate, validated SignTool, SafeNet container, and runner PIN described above. The required Desktop release environment selects the application and platform signature identities that the build verifies.
 
 ## Low-level development overrides
 
-An unpackaged Electron process uses `.desktop-build/development/project` under its application directory as its development project. `DSH_DESKTOP_NODE_BINARY`, `DSH_DESKTOP_PNPM_ENTRY`, and `DSH_DESKTOP_DSH_DIR` select explicit runtime resources. Packaged applications ignore these variables, resolve signed resources from `process.resourcesPath`, and use the managed Desktop profile.
+An unpackaged Electron process uses `.desktop-build/development/project` under its application directory as its development project. `DSH_DESKTOP_NODE_BINARY`, `DSH_DESKTOP_PNPM_ENTRY`, and `DSH_DESKTOP_DSH_DIR` select explicit runtime resources. Packaged applications ignore these variables, resolve bundled resources from `process.resourcesPath`, and use the managed Desktop profile.
 
 ## Known limitations
 
 - The Web "Open In..." action is disabled in Desktop because its host plugin requires HTTP routes; Desktop does not provide a `webServer`.
-- Release signing, notarization, update hosting, and previous-version installed-artifact qualification require the production release environment.
+- Signed releases require platform certificates and, on macOS, notarization credentials. GitHub publication requires repository write access; installed upgrades require testing the previous release against the published update feed.
 - Desktop plugins with dependency lifecycle scripts are rejected unless their package appears in the desktop project's reviewed `allowBuilds` policy.
 - The desktop shell shares sessions, settings, credentials, workspaces, and storage under `$DSH_HOME` with CLI dsh, while executable packages, plugin activation, lockfiles, and package-manager state remain separate.

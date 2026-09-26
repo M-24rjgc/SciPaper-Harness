@@ -14,7 +14,9 @@ import type { ImageBinding } from './types.ts'
 
 /** What a fresh image configuration starts from; the person only adds the key. */
 export const IMAGE_DEFAULTS = { baseUrl: 'https://api.openai.com/v1', model: 'gpt-image-2', size: '1536x1024', quality: 'high' } as const
+/** Quality choices accepted by image generation requests and preferences. */
 export const imageQualities = ['low', 'medium', 'high', 'auto'] as const
+/** Background choices accepted by image generation requests. */
 export const imageBackgrounds = ['transparent', 'opaque', 'auto'] as const
 const GENERATION_TIMEOUT_MS = 300_000
 const DOWNLOAD_TIMEOUT_MS = 120_000

@@ -8,6 +8,7 @@
 
 import { globSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
+import { fromMarkdown } from 'mdast-util-from-markdown'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
@@ -74,6 +75,7 @@ import type { WorkflowRun, WorkflowStartRequest } from '@deepseek-ai/dsh-workflo
 import * as ToolRalph from '@deepseek-ai/dsh-tool-ralph'
 import * as ToolWorkflow from '@deepseek-ai/dsh-tool-workflow'
 import { githubSlug } from './verify-md-links.ts'
+import { visitMarkdown } from './markdown.ts'
 
 /** Attachment seam marker that makes the attachments-conditional `read_image` schema harvestable. */
 class CatalogAttachmentStore extends AttachmentStore {
@@ -767,10 +769,27 @@ function toolSource(entry: ToolPackage, toolName: string): string {
   return source
 }
 
+/** Preserve Markdown while treating description text, including angle placeholders, as text. */
+function descriptionMarkdown(source: string): string {
+  const tree = fromMarkdown(source, { extensions: [{ disable: { null: ['htmlFlow', 'htmlText'] } }] })
+  let rendered = ''
+  let offset = 0
+  visitMarkdown(tree, (node) => {
+    if (node.type !== 'text') return
+    const start = node.position?.start.offset
+    const end = node.position?.end.offset
+    if (start === undefined || end === undefined) throw new Error('tool description text has no source offsets')
+    rendered += source.slice(offset, start) + source.slice(start, end).replace(/\\[\\<>]|[<>]/gu, token =>
+      token === '<' ? '&lt;' : token === '>' ? '&gt;' : token)
+    offset = end
+  })
+  return rendered + source.slice(offset)
+}
+
 /** Render one tool's entry: name, description, JSON-Schema parameters, source. */
 function renderTool(schema: ToolSchema, source: string): string[] {
   const out = [`### \`${schema.name}\``, '']
-  if (schema.description) out.push(schema.description, '')
+  if (schema.description) out.push(descriptionMarkdown(schema.description), '')
   out.push('```json', JSON.stringify(schema.parameters, null, 2), '```', '')
   out.push(`Source: [\`${source}\`](../${source})`, '')
   return out

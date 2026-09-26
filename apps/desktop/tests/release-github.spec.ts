@@ -18,7 +18,10 @@ function build(version: string, channels: Record<string, string>): string {
   return dir
 }
 
-const metadata = (version: string): string => `version: ${version}\nfiles:\n  - url: scipaper-harness-${version}-win-x64.exe\n    sha512: <sha512>\npath: x\nsha512: <sha512>\n`
+const metadata = (version: string): string => [
+  `version: ${version}`, 'files:', `  - url: scipaper-harness-${version}-win-x64.exe`,
+  '    sha512: <sha512>', '    size: 15', `path: scipaper-harness-${version}-win-x64.exe`, 'sha512: <sha512>', '',
+].join('\n')
 
 describe('the GitHub release of a Windows build', () => {
   it('reads the channel from the prerelease name', () => {
@@ -35,7 +38,7 @@ describe('the GitHub release of a Windows build', () => {
     ])
     expect(ghReleaseArguments(plan, 'notes.md')).toEqual([
       'release', 'create', 'v0.2.0-alpha.1', ...plan.files, '--repo', 'M-24rjgc/SciPaper-Harness',
-      '--title', 'SciPaper Harness 0.2.0-alpha.1', '--notes-file', 'notes.md', '--prerelease',
+      '--title', 'SciPaper Harness 0.2.0-alpha.1', '--verify-tag', '--notes-file', 'notes.md', '--prerelease',
     ])
   })
 
@@ -55,7 +58,25 @@ describe('the GitHub release of a Windows build', () => {
   it('publishes a stable version as a full release with generated notes', () => {
     const plan = planGitHubRelease(build('1.0.0', { latest: metadata('1.0.0') }), '1.0.0')
     expect(plan.prerelease).toBe(false)
-    expect(ghReleaseArguments(plan, undefined).slice(-3)).toEqual(['--title', 'SciPaper Harness 1.0.0', '--generate-notes'])
+    expect(ghReleaseArguments(plan, undefined).slice(-2)).toEqual(['--verify-tag', '--generate-notes'])
+  })
+
+  it.each([
+    ['path: scipaper-harness-1.0.0-win-x64.exe', 'path: another.exe', /installer path/],
+    ['url: scipaper-harness-1.0.0-win-x64.exe', 'url: another.exe', /installer URL/],
+    ['    sha512: <sha512>', '    sha512: wrong', /entry SHA-512/],
+    ['    size: 15', '    size: 14', /installer size/],
+  ])('refuses incorrect download metadata: %s', (before, after, error) => {
+    const artifacts = build('1.0.0', { latest: metadata('1.0.0').replace(before, after) })
+    expect(() => planGitHubRelease(artifacts, '1.0.0')).toThrow(error)
+  })
+
+  it('does not replace a prior channel when the newly packaged metadata is invalid', () => {
+    const old = metadata('0.2.0-alpha.1')
+    const artifacts = build('0.2.0-alpha.2', { alpha: old, latest: metadata('0.2.0-alpha.2').replace('size: 15', 'size: 0') })
+    const previous = readFileSync(join(artifacts, 'alpha.yml'), 'utf8')
+    expect(() => planGitHubRelease(artifacts, '0.2.0-alpha.2')).toThrow(/installer size/)
+    expect(readFileSync(join(artifacts, 'alpha.yml'), 'utf8')).toBe(previous)
   })
 
   it('refuses a build that is missing a file or describes another installer', () => {

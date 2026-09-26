@@ -203,9 +203,14 @@ export interface SessionInput extends InputTarget {
 
 /** Session-addressed access to the per-session input facade. */
 export interface SessionInputResolver {
+  /** Unsent text and attachment counts, including saved text from unmounted conversations. */
+  readonly drafts: ObservableSnapshot<ConversationDrafts>
   /** Resolve the facade for one session-scope ctx. */
   for(actx: Context): SessionInput
 }
+
+/** Browser-owned drafts keyed by Session id; empty composers have no entry. */
+export type ConversationDrafts = Readonly<Record<string, { readonly text: string; readonly attachmentCount: number }>>
 
 /**
  * The public input action face provided to every session-scope slot

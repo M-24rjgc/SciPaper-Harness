@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -211,6 +211,25 @@ describe('reaching outside the project asks the user through DSH approval', () =
     const exec = { ...h.exec(cwd ?? undefined, name), arguments: args } as unknown as ToolExecution
     return h.hook()(exec, async () => ({ kind: 'allow' }))
   }
+  it('asks for a link whose target is outside the project, for both evidence and template imports', async () => {
+    const h = harness()
+    const folder = await mkdtemp(join(tmpdir(), 'research-import-links-'))
+    const link = join(folder, 'project', 'linked')
+    try {
+      await mkdir(join(folder, 'project'))
+      await mkdir(join(folder, 'outside'))
+      await writeFile(join(folder, 'outside', 'notes.md'), 'external')
+      await symlink(join(folder, 'outside'), link, 'junction')
+      h.project.root = join(folder, 'project')
+      for (const [name, action] of [['research_evidence', 'import'], ['research_artifact', 'import-template']]) {
+        expect(await decide(h, name!, { action, paths: ['linked/notes.md'] })).toMatchObject({ kind: 'ask' })
+        expect(await decide(h, name!, { action, paths: ['notes.md'] })).toEqual({ kind: 'allow' })
+      }
+    } finally {
+      await unlink(link)
+      await rm(folder, { recursive: true })
+    }
+  })
   it('asks before importing files or templates from outside the project, and before binding a local interpreter', async () => {
     const h = harness()
     expect(await decide(h, 'research_evidence', { action: 'import', paths: ['data/a.csv', `${root}/b.csv`] })).toEqual({ kind: 'allow' })

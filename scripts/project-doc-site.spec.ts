@@ -156,11 +156,21 @@ describe('publishableImage', () => {
     const { root } = fixture()
     const outside = mkdtempSync(join(tmpdir(), 'dsh-doc-site-outside-'))
     roots.push(outside)
-    writeFileSync(join(outside, 'secret.png'), 'not really a png\n')
-    symlinkSync(join(outside, 'secret.png'), join(root, 'packages/linked.png'))
-
-    expect(publishableImage(join(root, 'packages/linked.png'), realpathSync(root))).toBeUndefined()
-    expect(publishableImage(join(outside, 'secret.png'), realpathSync(root))).toBeUndefined()
+    const secret = join(outside, 'secret.png')
+    const link = join(root, 'packages/linked')
+    writeFileSync(secret, 'not really a png\n')
+    // A Windows file symlink needs a privilege the build does not require.
+    // A directory junction exercises the same realpath escape with a real file.
+    const directoryLink = process.platform === 'win32'
+    symlinkSync(directoryLink ? outside : secret, link, directoryLink ? 'junction' : 'file')
+    try {
+      const linkedImage = directoryLink ? join(link, 'secret.png') : link
+      expect(readFileSync(linkedImage, 'utf8')).toBe('not really a png\n')
+      expect(publishableImage(linkedImage, realpathSync(root))).toBeUndefined()
+      expect(publishableImage(secret, realpathSync(root))).toBeUndefined()
+    } finally {
+      unlinkSync(link)
+    }
   })
 
   it('refuses a directory', () => {
@@ -678,6 +688,28 @@ describe('emitRawMarkdownPages', () => {
     expect(readFileSync(join(out, 'reference-root/b.md'), 'utf8')).toBe('# B\n')
     expect(existsSync(join(out, 'logo.svg'))).toBe(true)
     expect(existsSync(join(out, 'en/logo.svg'))).toBe(true)
+  })
+
+  it('refuses to publish an image reached through a directory link outside the repository', () => {
+    const { root, pages } = fixture()
+    const outside = mkdtempSync(join(tmpdir(), 'dsh-doc-mirror-outside-'))
+    roots.push(outside)
+    const secret = join(outside, 'secret.png')
+    const link = join(root, 'packages/linked')
+    writeFileSync(secret, 'outside image bytes\n')
+    symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
+    try {
+      writeFileSync(join(root, 'docs/a.md'), '![secret](../packages/linked/secret.png)\n')
+      const out = mirrorDir()
+
+      expect(() => {
+        emitRawMarkdownPages(out, { pages, repoRoot: realpathSync(root), repositoryRef: 'abc123' })
+      }).toThrow('which is not a regular file inside the repository')
+      expect(globSync('**/*', { cwd: out })).toEqual([])
+      expect(readFileSync(secret, 'utf8')).toBe('outside image bytes\n')
+    } finally {
+      unlinkSync(link)
+    }
   })
 
   it('emits the full body of a locale home page', () => {

@@ -69,7 +69,9 @@ function dangling(graph: { domains: string[]; patterns: GraphPattern[]; papers: 
 
 /** A research-pattern graph as stored: patterns and papers point at each other by index. */
 export type GraphFile = z.infer<typeof graphSchema>
+/** A named research pattern with domain references and exemplar-paper indices into its graph. */
 export type GraphPattern = z.infer<typeof patternSchema>
+/** An indexed paper and its story fields; pattern -1 denotes a paper assigned to no pattern. */
 export type GraphPaper = z.infer<typeof paperSchema>
 
 /** Turns texts into embeddings with the configured endpoint; `model` keys the cached vectors. */
@@ -80,6 +82,7 @@ export interface Embedder {
 
 /** Where a project keeps the graph it builds. */
 export const PROJECT_GRAPH = '.research/kg/graph.json'
+/** Project-relative clustering output that name-patterns reads to construct the project graph. */
 export const PROJECT_CLUSTERS = '.research/kg/clusters.json'
 /** Cosine distance under which embedded papers join a cluster (spark-to-paper's cluster.py). */
 const CLUSTER_THRESHOLD = 0.45
@@ -87,6 +90,7 @@ const CLUSTER_THRESHOLD = 0.45
 export const MAX_CORPUS = 2000
 /** Story similarity bands, from the upstream novelty check. */
 export const NOVELTY_HIGH = 0.88
+/** Minimum embedding cosine similarity for medium novelty risk; lexical comparisons do not use this threshold. */
 export const NOVELTY_MEDIUM = 0.82
 /** Pattern names that describe architecture instead of a story angle (spark-to-paper's ts-kg-build). */
 const BANNED_NAME_WORDS = ['method', 'framework', 'model', 'approach', 'network', 'system', 'technique', 'learning', 'based', 'novel', 'general']
@@ -187,6 +191,7 @@ export interface ClosePaper {
   score: number | null
 }
 
+/** Ranked patterns and nearby papers with the ranking method and any embedding-fallback explanation. */
 export interface RecallResult {
   basis: 'lexical' | 'semantic+lexical'
   note: string
@@ -197,6 +202,7 @@ export interface RecallResult {
 /** Story fields the novelty check compares, in upstream order. */
 const STORY_FIELDS = ['title', 'abstract', 'problem_framing', 'gap_pattern', 'solution', 'method_skeleton', 'experiments_plan'] as const
 
+/** Story-similarity report; risk remains unknown when only lexical comparison or no comparison is available. */
 export interface NoveltyReport {
   ok: true
   basis: string

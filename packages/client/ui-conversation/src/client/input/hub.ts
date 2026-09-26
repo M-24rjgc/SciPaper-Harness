@@ -13,9 +13,10 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { queueReadFaceOf } from './queue-store.ts'
 import type {
-  DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController,
+  ConversationDrafts, DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController, InputState,
   SessionInputResolver, SessionInput, SubmitOutcome,
 } from '../contract/input.ts'
 import type { ComposerKeyboard } from '../contract/draft-editor.ts'
@@ -50,6 +51,8 @@ interface ConversationAttachmentFace {
 /** Session-addressed input facade registry (SessionInputResolver face + composer-layer extras). */
 export class InputHub implements SessionInputResolver {
   private readonly shells = new Map<SessionId, SessionInputShell>()
+  readonly drafts = createSnapshotStore<Record<string, ConversationDrafts[string]>>({})
+  private readSavedDraft: ((id: SessionId) => string) | undefined
 
   /**
    * @param ctx - client root context (services resolved lazily per call — boot order stays free).
@@ -59,6 +62,41 @@ export class InputHub implements SessionInputResolver {
     private readonly rootCtx: Context,
     private readonly t: TranslateNS<'conversation'>,
   ) {}
+
+  /**
+   * Publish saved and live drafts for navigation without mounting their composers.
+   * @param readSaved - reads persisted text for one listed Session.
+   * @returns disposer for the Session-list subscription.
+   */
+  watchDrafts(readSaved: (id: SessionId) => string): () => void {
+    this.readSavedDraft = readSaved
+    const reconcile = (): void => {
+      const ids = this.sessions().list.getSnapshot().ids
+      const listed = new Set<string>(ids)
+      for (const id of ids) {
+        const live = this.shells.get(id)?.snapshot
+        this.publishDraft(id, live ?? { draft: readSaved(id), attachmentIds: [] })
+      }
+      const drafts = this.drafts.getSnapshot()
+      if (Object.keys(drafts).some(id => !listed.has(id))) {
+        this.drafts.set(Object.fromEntries(Object.entries(drafts).filter(([id]) => listed.has(id))))
+      }
+    }
+    reconcile()
+    const stop = this.sessions().list.subscribe(reconcile)
+    return () => { stop(); this.readSavedDraft = undefined }
+  }
+
+  private publishDraft(id: SessionId, input: Pick<InputState, 'draft' | 'attachmentIds'>): void {
+    const previous = this.drafts.getSnapshot()[id]
+    if (input.draft === '' && input.attachmentIds.length === 0) {
+      if (previous !== undefined) {
+        this.drafts.set(Object.fromEntries(Object.entries(this.drafts.getSnapshot()).filter(([key]) => key !== id)))
+      }
+    } else if (previous?.text !== input.draft || previous.attachmentCount !== input.attachmentIds.length) {
+      this.drafts.update((drafts) => { drafts[id] = { text: input.draft, attachmentCount: input.attachmentIds.length } })
+    }
+  }
 
   /**
    * Resolve the facade for one session-scope ctx (SessionInputResolver face).
@@ -109,11 +147,14 @@ export class InputHub implements SessionInputResolver {
         }),
       },
     })
+    if (this.readSavedDraft !== undefined) shell.setDraft(this.readSavedDraft(id))
     this.shells.set(id, shell)
+    this.publishDraft(id, shell.snapshot)
     // The one teardown axis: listeners, shell, and map entries all ride the
     // scope fiber (nothing here outlives the scope).
     actx.effect(() => {
       const offs = [
+        shell.state.subscribe(() => { this.publishDraft(id, shell.snapshot) }),
         actx.on('slash/input-begin-command', req =>
           shell.beginCommand(req.claim, req.span) ? true : undefined),
         actx.on('slash/input-insert-reference', req =>
@@ -127,6 +168,7 @@ export class InputHub implements SessionInputResolver {
         for (const off of offs) off()
         const drafts = shell.dispose()
         this.shells.delete(id)
+        this.publishDraft(id, { draft: this.readSavedDraft?.(id) ?? '', attachmentIds: [] })
         const conversation = this.rootCtx.get('conversation') as ConversationAttachmentFace | undefined
         for (const attachmentId of drafts) conversation?.releaseDraftAttachment(attachmentId)
       }

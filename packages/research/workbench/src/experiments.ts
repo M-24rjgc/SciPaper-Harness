@@ -67,6 +67,9 @@ const MAX_SNAPSHOT_BYTES = 512 * 1024 * 1024
  * Validate that a run can be described precisely. This is shape validation
  * only: whether and how much to run is the agent's and the user's judgement,
  * not the program's.
+ * @param project - project whose environment and input records are referenced.
+ * @param spec - requested argument vector, inputs and output locations.
+ * @returns the ready environment; rejects missing inputs or paths outside the project.
  */
 export function validateExperiment(project: ResearchProject, spec: ExperimentSpec): EnvironmentRecord {
   if (spec.argv[0] !== '{python}') {
@@ -113,7 +116,13 @@ async function snapshotFiles(project: ResearchProject, paths: string[]): Promise
   return [...new Set(files)]
 }
 
-/** Prepare a durable run before any launch can cross a transport boundary. */
+/**
+ * Prepare a durable run before any launch can cross a transport boundary.
+ * @param project - project snapshot supplying input revisions and environments.
+ * @param spec - validated experiment specification.
+ * @param requestId - stable submission identity used as the run ID for retries.
+ * @returns a queued record for the caller to persist before invoking launchExperiment.
+ */
 export function newExperiment(project: ResearchProject, spec: ExperimentSpec, requestId: string): ExperimentRecord {
   const environment = validateExperiment(project, spec)
   const id = requestId as ExperimentId
@@ -143,6 +152,8 @@ function sshHostOf(environment: EnvironmentRecord): string {
 /**
  * Record edits made outside the research tools to the run's registered code,
  * so its input snapshot names the revisions it actually ran.
+ * @param project - mutable project record; the caller persists adopted code revisions.
+ * @param run - run whose registered code artifacts are inspected.
  */
 export async function adoptRunCode(project: ResearchProject, run: ExperimentRecord): Promise<void> {
   for (const artifact of project.artifacts.filter(a => run.spec.codeArtifactIds.includes(a.id))) await adoptExternalEdit(project, artifact)
@@ -152,6 +163,10 @@ export async function adoptRunCode(project: ResearchProject, run: ExperimentReco
  * Copy selected code/data, snapshot the interpreter, and submit exactly one
  * supervisor. Reads the project without changing it; adopt the run's code
  * edits first with {@link adoptRunCode}.
+ * @param project - project snapshot supplying code, data and environment records.
+ * @param run - durably queued run with a stable supervisor directory.
+ * @param signal - cancellation for preparation and submission, not the detached experiment's lifetime.
+ * @returns observed launch state, with terminal remote results cached locally; the caller persists it.
  */
 export async function launchExperiment(project: ResearchProject, run: ExperimentRecord, signal: AbortSignal): Promise<ExperimentRecord> {
   const environment = project.environments.find(e => e.id === run.spec.environmentId)
@@ -241,13 +256,37 @@ export async function launchExperiment(project: ResearchProject, run: Experiment
     )
   }
   const state = stateSchema.parse(JSON.parse(output))
-  return applyState(run, state, state.metrics ?? {})
+  const launched = applyState(run, state, state.metrics ?? {})
+  await cacheRemoteResult(project, environment, launched, signal)
+  return launched
+}
+
+/** Cache a settled remote run's logs and progress so the board remains readable offline. */
+async function cacheRemoteResult(
+  project: ResearchProject, environment: EnvironmentRecord, run: ExperimentRecord, signal: AbortSignal,
+): Promise<void> {
+  if (environment.target !== 'ssh' || !['completed', 'failed', 'cancelled', 'interrupted'].includes(run.status)) return
+  const local = await projectPath(project.root, `.research/runs/${run.id}`)
+  for (const name of ['metrics.json', 'stdout.log', 'stderr.log', 'state.json', 'progress.jsonl']) {
+    const empty = name.endsWith('.jsonl') ? 'b""' : 'b"{}"'
+    const code = `import pathlib,sys; p=pathlib.Path(sys.argv[1]); sys.stdout.buffer.write(p.read_bytes()[-8388608:] if p.exists() else ${empty})`
+    const content = checked(
+      await ssh(sshHostOf(environment), [environment.python, '-c', code, `${run.directory}/${name}`], { signal, maxBytes: 9 * 1024 * 1024 }),
+      'Remote result collection',
+    )
+    await atomicWrite(join(local, name), content)
+  }
 }
 
 /**
  * Query or cancel an existing supervisor; transport failure never relaunches it.
  * Repeated failures back off exponentially so a dead remote does not occupy
  * every poll interval, and any successful read resets the backoff.
+ * @param project - project snapshot containing the run's environment.
+ * @param run - previously persisted state used when scheduling observation retries.
+ * @param action - read status or request cancellation of the existing supervisor.
+ * @param signal - cancellation for the observation request; aborts reject instead of scheduling retry.
+ * @returns updated state, or unknown with a retry deadline after an observation or cache failure.
  */
 export async function observeExperiment(
   project: ResearchProject,
@@ -263,19 +302,7 @@ export async function observeExperiment(
       : await runProcess(environment.python, [`${run.directory}/experiment_runner.py`, action, run.directory], { signal })
     const state = stateSchema.parse(JSON.parse(checked(result, 'Experiment observation')))
     const updated = applyState(run, state, state.metrics ?? run.metrics)
-    if (environment.target === 'ssh' && ['completed', 'failed', 'cancelled', 'interrupted'].includes(updated.status)) {
-      const local = await projectPath(project.root, `.research/runs/${run.id}`)
-      // The progress lines come along too, so the board draws a finished remote run's curves without the host.
-      for (const name of ['metrics.json', 'stdout.log', 'stderr.log', 'state.json', 'progress.jsonl']) {
-        const empty = name.endsWith('.jsonl') ? 'b""' : 'b"{}"'
-        const code = `import pathlib,sys; p=pathlib.Path(sys.argv[1]); sys.stdout.buffer.write(p.read_bytes()[-8388608:] if p.exists() else ${empty})`
-        const content = checked(
-          await ssh(sshHostOf(environment), [environment.python, '-c', code, `${run.directory}/${name}`], { signal, maxBytes: 9 * 1024 * 1024 }),
-          'Remote result collection',
-        )
-        await atomicWrite(join(local, name), content)
-      }
-    }
+    await cacheRemoteResult(project, environment, updated, signal)
     return updated
   } catch (error) {
     if (signal.aborted) throw error
@@ -292,7 +319,12 @@ export async function observeExperiment(
   }
 }
 
-/** Whether a run in 'unknown' is due for another observation at this instant. */
+/**
+ * Whether a run in 'unknown' is due for another observation at this instant.
+ * @param run - record carrying an optional observation retry deadline.
+ * @param now - current time in epoch milliseconds.
+ * @returns true when no retry deadline exists or it has been reached.
+ */
 export function observationDue(run: ExperimentRecord, now: number): boolean {
   return run.nextObserveAt === undefined || run.nextObserveAt <= now
 }
@@ -339,6 +371,11 @@ async function listRunOutputs(
  * file the experiment wrote under `outputs/` becomes its own record that
  * claims and figures can cite. Remote outputs are pulled into the local run
  * directory first so every cited path exists under the project.
+ * @param project - project snapshot used to resolve environments and determine whether returned output evidence is stale.
+ * @param run - completed run whose outputs are collected.
+ * @param limit - per-file byte ceiling, additionally capped at 256 KiB; larger outputs are skipped.
+ * @param signal - cancellation for remote listing and transfer.
+ * @returns new evidence records for eligible output files; the caller persists and deduplicates collection.
  */
 export async function collectRunOutputs(
   project: ResearchProject,
@@ -383,7 +420,13 @@ export async function collectRunOutputs(
   return records
 }
 
-/** Read bounded stdout and stderr without consuming or modifying training output. */
+/**
+ * Read bounded stdout and stderr without consuming or modifying training output.
+ * @param project - project snapshot locating the execution environment.
+ * @param run - local or remote run whose logs are requested.
+ * @param signal - cancellation for the log-reading process.
+ * @returns labeled tails of stdout, stderr and supervisor logs, with at most 32,000 characters from each.
+ */
 export async function experimentLogs(project: ResearchProject, run: ExperimentRecord, signal: AbortSignal): Promise<string> {
   const environment = project.environments.find(e => e.id === run.spec.environmentId)
   if (!environment) throw new Error('Experiment environment is missing')

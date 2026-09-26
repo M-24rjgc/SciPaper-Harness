@@ -79,6 +79,8 @@ The registry loads and validates it at start and skips it with a warning when it
 
 One service owns every project record in the `research_workbench` storage domain; each project's changes are applied one at a time. Slow work (compiles, page renders, imports, environment builds, experiment launches and observations) runs on a detached copy outside that queue and only its result is recorded, so a save never waits for a compile. Evidence text lives in per-revision files under `.research/chunks`, keeping each record write small. The files themselves stay in the project, with immutable snapshots under `.research`. The [research subsystem page](../../../docs/subsystems/research.md) covers the record, modes, checks and refusals.
 
+A stale editor save commits the revision adopted from disk before reporting the conflict; rereading returns that revision, and interrupted history files stay intact. Completed experiments collect evidence even when submission already returns a final result; waits and background observation also recover completed runs whose evidence was not collected.
+
 | Source | What it holds |
 |---|---|
 | [`src/index.ts`](src/index.ts) | The service: project lifecycle, the new-research draft, removal from the list, command dispatch, the per-project queue, run observation, and each conversation's permission preset |

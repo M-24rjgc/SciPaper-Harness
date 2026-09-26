@@ -517,3 +517,60 @@ it('speaks Chinese on the entry screen of a new research', async () => {
     await zhPage.close()
   }
 })
+
+it('moves a draft to another research without replacing its existing unsent draft', async () => {
+  const input = page.locator('[data-composer-input][contenteditable="true"]').first()
+  await input.waitFor({ timeout: 30000 })
+  const first = await scaffold.ctx.research.create({
+    title: 'Draft destination', root: join(scaffold.workspaceCwd, 'draft-destination'), brief: 'Keep the first question',
+  })
+  const second = await scaffold.ctx.research.create({
+    title: 'Draft source', root: join(scaffold.workspaceCwd, 'draft-source'), brief: 'Move the second question',
+  })
+  const tree = page.getByRole('tree', { name: 'Researches', exact: true })
+  const chip = page.getByRole('button', { name: 'Choose research', exact: true }).first()
+  const firstDraft = 'X: preserve this unfinished research question'
+  const carriedDraft = 'Y: move this question into the destination research'
+  const firstSessions = () => scaffold.ctx.workspaceRegistry.get(first.workspaceId)!.sessionIds
+
+  // Both host sessions are blank: only the browser knows about the unsent text.
+  await tree.locator(`[data-key="research:${first.id}"]`).click({ timeout: 15000 })
+  await chip.filter({ hasText: first.title }).waitFor({ timeout: 15000 })
+  await writeComposerDraft(page, input, firstDraft)
+  await expect.poll(() => input.innerText()).toBe(firstDraft)
+  expect(firstSessions()).toEqual([first.sessionId])
+
+  await tree.locator(`[data-key="research:${second.id}"]`).click({ timeout: 15000 })
+  await chip.filter({ hasText: second.title }).waitFor({ timeout: 15000 })
+  await writeComposerDraft(page, input, carriedDraft)
+  await expect.poll(() => input.innerText()).toBe(carriedDraft)
+  await chip.click()
+  await page.getByRole('menuitem', { name: 'Move to another research', exact: true }).hover()
+  await page.getByRole('menuitem', { name: first.title, exact: true }).click()
+
+  // Carrying Y needs a fresh session in A, since A's original blank session owns X.
+  await chip.filter({ hasText: first.title }).waitFor({ timeout: 15000 })
+  await expect.poll(() => input.innerText()).toBe(carriedDraft)
+  await expect.poll(() => firstSessions().length, { timeout: 15000 }).toBe(2)
+  const carriedSession = firstSessions().find(id => id !== first.sessionId)!
+  await expect.poll(() => tree.locator(`[data-key="conversation:${carriedSession}"]`).getAttribute('aria-selected'))
+    .toBe('true')
+
+  await tree.locator(`[data-key="conversation:${first.sessionId}"]`).click()
+  await expect.poll(() => input.innerText()).toBe(firstDraft)
+  await tree.locator(`[data-key="conversation:${carriedSession}"]`).click()
+  await expect.poll(() => input.innerText()).toBe(carriedDraft)
+  await tree.locator(`[data-key="research:${second.id}"]`).click()
+  await chip.filter({ hasText: second.title }).waitFor({ timeout: 15000 })
+  await expect.poll(async () => (await input.innerText()).trim()).toBe('')
+  // The destination's independent drafts also survive a real browser reload.
+  await page.reload({ waitUntil: 'load' })
+  const firstRow = tree.locator(`[data-key="research:${first.id}"]`)
+  await firstRow.waitFor({ timeout: 15000 })
+  if (await firstRow.getAttribute('aria-expanded') !== 'true') await firstRow.press('ArrowRight')
+  await tree.locator(`[data-key="conversation:${first.sessionId}"]`).click({ timeout: 15000 })
+  await expect.poll(() => input.innerText()).toBe(firstDraft)
+  await tree.locator(`[data-key="conversation:${carriedSession}"]`).click()
+  await expect.poll(() => input.innerText()).toBe(carriedDraft)
+  expect(consoleState.pageErrors).toEqual([])
+})

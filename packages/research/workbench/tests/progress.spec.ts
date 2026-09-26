@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, rm, symlink, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { checkLabel, CHECK_LABELS, decidingChecks, explainsCondition, reportedChecks, resolveScope } from '../src/checks.ts'
@@ -9,12 +9,15 @@ import { newProject } from '../src/project.ts'
 import type { CheckFinding, CheckReport, PhaseStatus, ResearchProgress, ResearchProject } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
-/** A file whose stat fails as if it vanished between listing and reading its time. */
-const vanishing = vi.hoisted(() => ({ name: '\0' }))
+/** Filesystem failures while observing a project's files. */
+const vanishing = vi.hoisted(() => ({ name: '\0', directory: '\0' }))
 vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>()
   return {
     ...actual,
+    readdir: (path: Parameters<typeof actual.readdir>[0], ...rest: unknown[]) => String(path).endsWith(vanishing.directory)
+      ? Promise.reject(Object.assign(new Error('EACCES: unreadable'), { code: 'EACCES' }))
+      : (actual.readdir as (...args: unknown[]) => ReturnType<typeof actual.readdir>)(path, ...rest),
     stat: (path: Parameters<typeof actual.stat>[0], ...rest: unknown[]) => String(path).endsWith(vanishing.name)
       ? Promise.reject(Object.assign(new Error('ENOENT: gone'), { code: 'ENOENT' }))
       : (actual.stat as (...args: unknown[]) => ReturnType<typeof actual.stat>)(path, ...rest),
@@ -302,11 +305,14 @@ describe('the newest file time of a project', () => {
   async function tree(paths: Record<string, number>): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), 'research-times-'))
     roots.push(root)
+    const directories = new Set([root])
     for (const [path, seconds] of Object.entries(paths)) {
       await mkdir(dirname(join(root, path)), { recursive: true })
       await writeFile(join(root, path), path)
       await utimes(join(root, path), seconds, seconds)
+      for (let directory = dirname(join(root, path)); directory !== root; directory = dirname(directory)) directories.add(directory)
     }
+    for (const directory of directories) await utimes(directory, 0, 0)
     return root
   }
 
@@ -318,14 +324,53 @@ describe('the newest file time of a project', () => {
     expect(await newestFileTime(root)).toBe(2000 * 1000)
     // A link is neither a file nor a folder to the listing.
     await symlink(await tree({ 'far.txt': 9000 }), join(root, 'linked'), 'junction')
+    await utimes(root, 0, 0)
     expect(await newestFileTime(root)).toBe(2000 * 1000)
-    // A file that is gone before its time is read counts for nothing; an unreadable root has no files.
+    // Files and directories changed inside skipped trees leave the research current.
+    for (const path of ['.research/runs/new.json', 'exports/new.zip', '.git/new-index', 'code/node_modules/x/new.js']) {
+      await writeFile(join(root, path), 'new')
+    }
+    expect(await newestFileTime(root)).toBe(2000 * 1000)
+    // A file that vanishes during the listing makes the observation incomplete.
     vanishing.name = 'vanishing.txt'
     try {
       await writeFile(join(root, 'vanishing.txt'), 'x')
-      expect(await newestFileTime(root)).toBe(2000 * 1000)
+      expect(await newestFileTime(root)).toBe('unknown')
     } finally { vanishing.name = '\0' }
-    expect(await newestFileTime(join(root, 'missing'))).toBe(0)
+    expect(await newestFileTime(join(root, 'missing'))).toBe('unknown')
+  })
+
+  it.each([
+    { name: 'deleting a root file', file: 'main.tex', change: async (root: string) => rm(join(root, 'main.tex')) },
+    { name: 'deleting a nested file', file: 'paper/main.tex', change: async (root: string) => rm(join(root, 'paper/main.tex')) },
+    { name: 'deleting a directory tree', file: 'paper/sections/intro.tex', change: async (root: string) => rm(join(root, 'paper'), { recursive: true }) },
+    { name: 'renaming a file with an old modification time', file: 'paper/old.tex', change: async (root: string) => rename(join(root, 'paper/old.tex'), join(root, 'paper/new.tex')) },
+  ])('marks a clean project unfinished after $name once the cached listing expires', async ({ file, change }) => {
+    const root = await tree({ [file]: 1000, 'keep.txt': 1000 })
+    const p = project('general')
+    p.root = root
+    p.progress = { mode: 'general', phases: {}, findings: {}, full: { clean: true, errors: 0, warnings: 0, checkedAt: new Date(2000 * 1000).toISOString() } }
+    let now = 0
+    const times = new FileTimes(() => now)
+    const standing = () => projectStanding(p, shipped.resolve(p), { newest: () => times.newest(root), exists: () => true })
+    expect(await standing()).toMatchObject({ finished: true, changedSinceCheck: false })
+
+    await change(root)
+    now = 29_999
+    expect(await standing()).toMatchObject({ finished: true, changedSinceCheck: false })
+    now = 30_000
+    expect(await standing()).toMatchObject({ finished: false, changedSinceCheck: true })
+  })
+
+  it('does not report a clean project finished when a directory cannot be read', async () => {
+    const root = await tree({ 'paper/main.tex': 1000 })
+    const p = project('general')
+    p.progress = { mode: 'general', phases: {}, findings: {}, full: { clean: true, errors: 0, warnings: 0, checkedAt: new Date(2000 * 1000).toISOString() } }
+    vanishing.directory = 'paper'
+    try {
+      expect(await projectStanding(p, shipped.resolve(p), { newest: () => newestFileTime(root), exists: () => true }))
+        .toMatchObject({ finished: false, changedSinceCheck: 'unknown' })
+    } finally { vanishing.directory = '\0' }
   })
 
   it('stops listing past its cap, however deep the extra file lies', async () => {
@@ -347,6 +392,6 @@ describe('the newest file time of a project', () => {
     now = 30_000
     expect(await times.newest('a')).toBe(3)
     expect(listed).toEqual(['a', 'b', 'a'])
-    expect(await new FileTimes().newest(join(tmpdir(), 'research-times-none'))).toBe(0)
+    expect(await new FileTimes().newest(join(tmpdir(), 'research-times-none'))).toBe('unknown')
   })
 })

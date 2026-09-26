@@ -23,6 +23,7 @@ import { draftFolderName } from '../src/drafts.ts'
 const processes = vi.hoisted(() => ({
   calls: [] as { command: string; args: string[]; options?: unknown }[],
   runner: { status: 'completed', metrics: { accuracy: 0.8123 } } as Record<string, unknown>,
+  launch: { status: 'running' } as Record<string, unknown>,
   compileFails: false,
   launchFails: false,
   /** Compile variants: a missing style on the first pass, a pass that fails, no final log. */
@@ -56,7 +57,7 @@ vi.mock('../src/process.ts', async (original) => {
       if (joined.includes('experiment_runner.py')) {
         await processes.holds.get(String(args[1]))
         if (args[1] === 'launch' && processes.launchFails) throw new Error('spawn failed')
-        const state = args[1] === 'launch' ? { status: 'running' } : processes.runner
+        const state = args[1] === 'launch' ? processes.launch : processes.runner
         return ok(JSON.stringify(state))
       }
       if (joined.includes('documents.py') && args[1] === 'render') {
@@ -129,6 +130,7 @@ let root: string | undefined
 const signal = new AbortController().signal
 beforeEach(() => {
   processes.calls.length = 0; processes.runner = { status: 'completed', metrics: { accuracy: 0.8123 } }
+  processes.launch = { status: 'running' }
   processes.compileFails = false; processes.launchFails = false; processes.holds.clear()
   processes.missingSty = false; processes.passesBeforeFailure = undefined; processes.noLog = false
   processes.latexFailures.length = 0; processes.bibtexOutputs.length = 0
@@ -949,6 +951,81 @@ describe('the research service records; it never drives the agent', () => {
     await vi.waitFor(() => { expect(service.tasks().find(task => task.id === job.jobId)?.status).toBe('completed') })
     const failed = await run({ action: 'import', paths: ['missing.md'] }, 'user')
     await vi.waitFor(() => { expect(service.tasks().find(task => task.id === failed.jobId)?.status).toBe('failed') })
+  })
+
+  it('commits external revisions despite a refused editor save and recovers orphaned history after restart', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-revision-recovery-'))
+    const pool = new MemoryMediaPool()
+    let { service } = await boot(pool)
+    const p = await service.create({ title: 'Revisions', root: join(root, 'p'), brief: '' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'user')
+    const save = { action: 'save-artifact', path: 'paper/main.tex', kind: 'manuscript' }
+    await run({ ...save, content: 'first' })
+    const artifactId = service.getProject(p.id).artifacts[0]!.id
+    await writeFile(join(p.root, 'paper/main.tex'), 'external second')
+    await expect(run({ ...save, content: 'stale editor', expectedRevision: 1 })).rejects.toThrow(/revision 2, not 1/)
+    expect(service.getProject(p.id).artifacts[0]?.revision).toBe(2)
+    const adopted = service.getProject(p.id)
+    await expect(run({ ...save, content: 'same stale editor', expectedRevision: 1 })).rejects.toThrow(/revision 2, not 1/)
+    expect(service.getProject(p.id)).toEqual(adopted)
+    await ctx!.fiber.dispose(); ctx = undefined
+    service = (await boot(pool)).service
+    expect(await run({ action: 'read-artifact', artifactId })).toMatchObject({ message: 'Revision 2', content: 'external second' })
+    await run({ ...save, content: 'merged third', expectedRevision: 2 })
+    // A history file from an earlier interrupted write stays immutable and cannot strand future saves.
+    await writeFile(join(p.root, `.research/history/${artifactId}/4.tex`), 'orphaned fourth')
+    await writeFile(join(p.root, 'paper/main.tex'), 'external fifth')
+    await expect(run({ ...save, content: 'old editor', expectedRevision: 3 })).rejects.toThrow(/revision 5, not 3/)
+    expect(await run({ action: 'read-artifact', artifactId })).toMatchObject({ message: 'Revision 5', content: 'external fifth' })
+    await run({ ...save, content: 'merged sixth', expectedRevision: 5 })
+    await writeFile(join(p.root, 'paper/main.tex'), 'registered seventh')
+    await run({ action: 'register-artifact', path: 'paper/main.tex', kind: 'manuscript' })
+    expect(service.getProject(p.id).artifacts[0]?.revision).toBe(7)
+    for (const [revision, text] of [[1, 'first'], [2, 'external second'], [3, 'merged third'], [4, 'orphaned fourth'], [5, 'external fifth'], [6, 'merged sixth'], [7, 'registered seventh']] as const) {
+      expect(await readFile(join(p.root, `.research/history/${artifactId}/${revision}.tex`), 'utf8')).toBe(text)
+    }
+  })
+
+  it('collects a run that completed before submission returned, exactly once across waits, refreshes and restart', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-fast-runs-'))
+    const pool = new MemoryMediaPool()
+    let { service } = await boot(pool)
+    await service.configure({ python: 'python', uv: 'uv' })
+    const p = await service.create({ title: 'Fast run', root: join(root, 'p'), brief: '' })
+    const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
+    await run({ action: 'environment', environment: { name: 'env', kind: 'uv', target: 'local', python: '', requirements: [], isDefault: true } })
+    await write(join(p.root, 'code/train.py'), 'print(1)')
+    const environmentId = service.getProject(p.id).environments[0]!.id
+    const requestId = '44444444-4444-4444-8444-444444444444'
+    const spec = { environmentId, name: 'fast', argv: ['{python}', 'code/train.py'], cwd: '.', seed: 0, maxSeconds: 5, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], metricsPath: 'metrics.json' }
+    processes.launch = { status: 'completed', metrics: { accuracy: 0.8123 } }
+    expect((await run({ action: 'experiment', requestId, spec })).runs?.[0]).toMatchObject(processes.launch)
+    expect(service.getProject(p.id).experiments[0]?.collected).toBe(true)
+    expect(service.getProject(p.id).evidence).toHaveLength(1)
+    await run({ action: 'experiment-wait', runIds: [requestId], timeoutSeconds: 1 })
+    await run({ action: 'experiment-refresh', runId: requestId })
+    await ctx!.fiber.dispose(); ctx = undefined
+    service = (await boot(pool)).service
+    await run({ action: 'experiment', requestId, spec })
+    await run({ action: 'experiment-refresh', runId: requestId })
+    const evidence = service.getProject(p.id).evidence
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({ kind: 'experiment', coverage: 'data', verified: true, chunks: [{ text: '0.8123', locator: { key: 'accuracy' } }] })
+    expect(JSON.parse(await readFile(join(p.root, evidence[0]!.path), 'utf8'))).toEqual({ accuracy: 0.8123 })
+    await ctx!.fiber.dispose(); ctx = undefined
+    // A completed record written before result collection was fixed can be recovered without relaunching it.
+    for (const medium of pool.media.values()) {
+      const projects = medium.tables.get('projects')
+      const stored = projects?.get(p.id) as ResearchProject | undefined
+      if (projects && stored) projects.set(p.id, {
+        ...stored, evidence: [], experiments: stored.experiments.map(item => ({ ...item, collected: false })),
+      })
+    }
+    service = (await boot(pool)).service
+    await run({ action: 'experiment-wait', runIds: [requestId], timeoutSeconds: 1 })
+    expect(service.getProject(p.id).experiments[0]?.collected).toBe(true)
+    expect(service.getProject(p.id).evidence).toHaveLength(1)
+    expect(processes.calls.filter(call => call.args[1] === 'launch')).toHaveLength(1)
   })
 
   it('creates environments, runs experiments to completion, collects results and waits without polling', async () => {

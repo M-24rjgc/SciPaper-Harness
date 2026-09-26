@@ -1,11 +1,13 @@
 /**
  * Process helpers shared by the release scripts: the release steps drive `git`,
  * `pnpm`, `npm`, and `tar`, and each needs one of three failure behaviours.
+ * `pnpm` uses the lifecycle entrypoint without a shell on every platform.
  */
 
 import { spawn, spawnSync } from 'node:child_process'
 import { realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { pnpmInvocation } from '../pnpm-invocation.ts'
 
 /** Where and with what environment a release step runs a command. */
 export interface RunOptions {
@@ -21,6 +23,12 @@ export interface CommandResult {
   readonly stderr: string
 }
 
+function invocation(command: string, args: readonly string[], options: RunOptions): { command: string; args: string[] } {
+  return command === 'pnpm'
+    ? pnpmInvocation(args, options.env ?? process.env)
+    : { command, args: [...args] }
+}
+
 /**
  * Run a command and capture its output without judging the exit status.
  * @param command - executable name.
@@ -29,7 +37,8 @@ export interface CommandResult {
  * @returns The exit status and captured streams.
  */
 export function attempt(command: string, args: readonly string[], options: RunOptions = {}): CommandResult {
-  const result = spawnSync(command, [...args], { cwd: options.cwd, env: options.env, encoding: 'utf8' })
+  const resolved = invocation(command, args, options)
+  const result = spawnSync(resolved.command, resolved.args, { cwd: options.cwd, env: options.env, encoding: 'utf8' })
   if (result.error !== undefined) throw result.error
   return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
@@ -43,7 +52,8 @@ export function attempt(command: string, args: readonly string[], options: RunOp
  * @returns The exit status and captured streams.
  */
 export function attemptEchoed(command: string, args: readonly string[], options: RunOptions = {}): CommandResult {
-  const result = spawnSync(command, [...args], {
+  const resolved = invocation(command, args, options)
+  const result = spawnSync(resolved.command, resolved.args, {
     cwd: options.cwd,
     env: options.env,
     encoding: 'utf8',
@@ -81,7 +91,8 @@ export function capture(command: string, args: readonly string[], options: RunOp
  */
 export function runConcurrent(command: string, args: readonly string[], options: RunOptions = {}): Promise<void> {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, [...args], { cwd: options.cwd, env: options.env, stdio: 'inherit' })
+    const resolved = invocation(command, args, options)
+    const child = spawn(resolved.command, resolved.args, { cwd: options.cwd, env: options.env, stdio: 'inherit' })
     child.once('error', rejectRun)
     child.once('close', (status, signal) => {
       if (status === 0) resolveRun()

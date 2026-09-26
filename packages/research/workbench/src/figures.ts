@@ -41,7 +41,11 @@ export type ExportedFigure = z.infer<typeof exportSchema>
 
 const SVG_FILE = /\.svg$/i
 
-/** Where an SVG's saved audit goes: the path spark-to-paper's figure gate reads. */
+/**
+ * Where an SVG's saved audit goes: the path spark-to-paper's figure gate reads.
+ * @param path - SVG source path whose basename identifies the audit.
+ * @returns project-relative JSON report path under figures/audit_logs.
+ */
 export function auditReportPath(path: string): string {
   return `figures/audit_logs/${basename(path).replace(SVG_FILE, '')}.audit.json`
 }

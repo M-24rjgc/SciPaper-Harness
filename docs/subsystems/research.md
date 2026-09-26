@@ -151,7 +151,7 @@ A scope names a phase before a base check or gate of the same id, and a phase sc
 - the phases of the mode on its route: `done`, `current` (the first that is neither done nor deferred), `pending` or `deferred`, each with its checkpoint flag and the pack's hints for what its last check found unmet;
 - the next phase and its first hint;
 - `checkedAt`, the time of the last check;
-- `changedSinceCheck`: whether a project file outside `.research`, `exports`, `.git` and `node_modules` is newer than that check, listed at most every 30 seconds per project and `unknown` past 5,000 files;
+- `changedSinceCheck`: whether a project file or directory outside `.research`, `exports`, `.git` and `node_modules` is newer than that check; directory times include deletions and renames. Times are listed at most every 30 seconds per project and are `unknown` past 5,000 files or when the listing cannot be completed;
 - `finished`: the full check is clean, every phase is done, and nothing changed since the full check;
 - the open issues: one group per check with findings, groups with errors first, named by the gate's `label` or the base check's built-in name, each with the first of its files that exists.
 

@@ -148,7 +148,13 @@ function fromArxiv(xml: string): LiteratureItem[] {
   })
 }
 
-/** Search one scholarly provider without requiring a paid search service. */
+/**
+ * Search one scholarly provider without requiring a paid search service.
+ * @param provider - scholarly index to query.
+ * @param query - bibliographic search text.
+ * @param signal - cancellation for the provider request.
+ * @returns provider records normalized as literature items; the request asks for at most ten results.
+ */
 export async function searchLiterature(provider: LiteratureItem['provider'], query: string, signal: AbortSignal): Promise<LiteratureItem[]> {
   if (provider === 'crossref') {
     const url = `https://api.crossref.org/works?query.bibliographic=${encodeURIComponent(query)}&rows=10`
@@ -169,6 +175,9 @@ export async function searchLiterature(provider: LiteratureItem['provider'], que
  * returned it; model-supplied metadata is not treated as verification. An
  * OpenAlex work is re-read from OpenAlex because its DOI may be one Crossref
  * does not hold (arXiv's DataCite DOIs).
+ * @param item - imported record carrying a provider identity or DOI.
+ * @param signal - cancellation for verification requests.
+ * @returns freshly retrieved provider metadata; unsupported or unresolvable identifiers reject.
  */
 export async function verifyLiterature(item: LiteratureItem, signal: AbortSignal): Promise<LiteratureItem> {
   if (item.provider === 'openalex' && /^(https:\/\/openalex.org\/)?W\d+$/.test(item.id)) {
@@ -192,6 +201,8 @@ export async function verifyLiterature(item: LiteratureItem, signal: AbortSignal
  * Locate an open-access PDF for a verified reference: arXiv's own, else the
  * best open location OpenAlex records for its DOI or work. No email-based
  * service is asked, so nothing identifying the user leaves the machine.
+ * @param item - verified literature record with a provider identity or DOI.
+ * @param signal - cancellation for the OpenAlex lookup when needed.
  * @returns the PDF's HTTPS URL, or undefined when no open copy is known.
  */
 export async function openAccessPdf(item: LiteratureItem, signal: AbortSignal): Promise<string | undefined> {
@@ -205,6 +216,10 @@ export async function openAccessPdf(item: LiteratureItem, signal: AbortSignal): 
 
 /**
  * Download an open-access PDF within the source size ceiling.
+ * @param url - open-access location to download.
+ * @param signal - cancellation for the request.
+ * @param limit - maximum permitted response size in bytes.
+ * @returns downloaded bytes after checking their size and PDF signature.
  * @throws when the response is too large or is not a PDF.
  */
 export async function downloadPdf(url: string, signal: AbortSignal, limit: number): Promise<Uint8Array> {

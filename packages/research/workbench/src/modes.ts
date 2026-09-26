@@ -76,9 +76,13 @@ const manifestSchema = z.strictObject({
   scripts: z.array(scriptSchema).default([]),
 })
 
+/** A project fact or minimum file/content count used to decide whether a phase requirement is met. */
 export type ModeCondition = z.infer<typeof conditionSchema>
+/** A phase requirement and its explanations; an array of conditions is satisfied by any one condition. */
 export type ModeRequirement = z.infer<typeof requirementSchema>
+/** A mode phase with route eligibility, skills, checks and the requirements that determine completion. */
 export type ModePhase = z.infer<typeof phaseSchema>
+/** A pack-owned Python script with arguments, eligible routes and a bounded execution timeout. */
 export type ModeScript = z.infer<typeof scriptSchema>
 /** A script research_check runs, with the name its findings are grouped under for the person. */
 export type ModeGate = z.infer<typeof gateSchema>
@@ -239,7 +243,10 @@ export class ModeRegistry {
     return new ModeRegistry(packs)
   }
 
-  /** Every pack, in display order. */
+  /**
+   * Every pack, in display order.
+   * @returns a new array sorted by declared order, then id; the pack objects are shared with the registry.
+   */
   list(): ModePack[] {
     return [...this.byId.values()]
   }
@@ -253,7 +260,10 @@ export class ModeRegistry {
     return this.byId.get(id)
   }
 
-  /** What the desktop shows for each mode: names, routes and phase labels, no file paths. */
+  /**
+   * What the desktop shows for each mode: names, routes and phase labels, no file paths.
+   * @returns the installed modes in display order, omitting local directories and executable check definitions.
+   */
   summaries(): ModeSummary[] {
     return this.list().map(pack => ({
       id: pack.id, order: pack.order, name: pack.name, summary: pack.summary,

@@ -14,6 +14,7 @@ import type { SessionListState, SessionSearchResultItem } from '@deepseek-ai/dsh
 import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ConversationDrafts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import { conversationSignal, goalSignal, strongestSignal, type ActivitySignal } from './activity.ts'
 import { projectAtPath, sessionProject } from './contract.ts'
@@ -24,9 +25,10 @@ export type TreeSignal = ActivitySignal
 /** One conversation row. */
 export interface TreeConversation {
   id: SessionId
-  /** The session's display title; empty for a blank conversation, whose row reads 新对话. */
+  /** The session's display title, or the unsent draft's first line. */
   title: string
   blank: boolean
+  draft?: ConversationDrafts[string] | undefined
   updatedAt: number
   signal: TreeSignal | undefined
 }
@@ -34,7 +36,7 @@ export interface TreeConversation {
 /** One research row and what its expansion lists. */
 export interface TreeResearch {
   project: ResearchProject
-  /** Its top-level conversations, newest first; a blank one only while it is current. */
+  /** Its top-level conversations, newest first; blank ones remain while current or holding a draft. */
   conversations: TreeConversation[]
   /** Its newest conversation that has started, which a click on the row opens. */
   latest: SessionId | undefined
@@ -75,6 +77,7 @@ export interface TreeModel {
 
 /** What the tree is derived from. */
 export interface TreeSources {
+  drafts: ConversationDrafts
   projects: readonly ResearchProject[]
   list: SessionListState
   workspaces: WorkspaceSnapshot
@@ -131,8 +134,10 @@ export function deriveTree(sources: TreeSources): TreeModel {
     const signal = conversationSignal(summary, pending)
     if (project !== undefined && signal !== undefined) push(signals, project.id, signal)
     const topLevel = summary.parentId === undefined && summary.origin !== 'subagent' && !reviewers.has(id)
-    if (!topLevel || (summary.blank && id !== current)) continue
-    const row: TreeConversation = { id, title: summary.blank ? '' : summary.displayTitle, blank: summary.blank, updatedAt: summary.updatedAt, signal }
+    const draft = sources.drafts[id]
+    if (!topLevel || (summary.blank && id !== current && draft === undefined)) continue
+    const title = summary.blank ? (draft?.text.trim().split(/\r?\n/u)[0] ?? '') : summary.displayTitle
+    const row: TreeConversation = { id, title, blank: summary.blank, updatedAt: summary.updatedAt, signal, ...(draft ? { draft } : {}) }
     if (project !== undefined) push(rows, project.id, row)
     else {
       const folder = listedBy.get(id)

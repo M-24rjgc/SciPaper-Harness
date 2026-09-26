@@ -21,7 +21,7 @@ import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ComponentManager, runtimeAsset } from './components.ts'
 import { AUTONOMY_PRESETS, autonomies, commandSchema, locatorSchema, MODE_DECISION_KEY, preferencesSchema, researchDomain } from './schema.ts'
 import { invalidate, newProject, putClaim, runView, searchEvidence } from './project.ts'
-import { compilePaper, compileTarget, exportPaper, extractText, importEvidence, importTemplate, renderPages, writeArtifact } from './artifacts.ts'
+import { ArtifactRevisionConflict, compilePaper, compileTarget, exportPaper, extractText, importEvidence, importTemplate, renderPages, writeArtifact } from './artifacts.ts'
 import { runChecks, type GateRunner } from './checks.ts'
 import { createGateRunner, runPackScript } from './gates.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
@@ -207,6 +207,7 @@ export class ResearchWorkbench extends TypertRemoteService {
    */
   private readonly evidenceText = new Map<string, EvidenceRecord['chunks']>()
   private readonly lifetime = new AbortController()
+  /** Product-owned document, drawing and TeX runtimes, separate from experiment environments. */
   readonly components: ComponentManager
   /** The research-pattern graphs: the built-in one and each project's own. */
   readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset('kg/ai-kg.json.gz'))
@@ -628,17 +629,21 @@ export class ResearchWorkbench extends TypertRemoteService {
     return result
   }
 
-  /** Serialize one complete graph transition and publish it only after durable storage. */
+  /** Serialize graph transitions; an editor conflict still commits adoption of the externally changed file. */
   private mutate<T>(id: ProjectId, work: (project: ResearchProject) => T | Promise<T>): Promise<T> {
     return this.queued(id, async () => {
       const project = this.getProject(id)
       // The last line of the example guard: whatever path reaches here, an example's record never changes.
       if (isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
-      const value = await work(project)
+      const result = await Promise.resolve().then(() => work(project)).then(value => ({ value }), (error: unknown) => {
+        if (error instanceof ArtifactRevisionConflict) return { error }
+        throw error
+      })
       project.revision++
       project.updatedAt = new Date().toISOString()
       await this.domain.table('projects').put(id, await this.withoutText(project))
-      return value
+      if ('error' in result) throw result.error
+      return result.value
     })
   }
 
@@ -1342,16 +1347,19 @@ export class ResearchWorkbench extends TypertRemoteService {
     } catch (error) {
       launched = { ...run, status: 'unknown', message: `Submission outcome requires inspection: ${String(error)}` }
     }
-    return (project) => {
+    return async (project) => {
       this.launching.delete(run.id)
-      project.experiments[runAt(project, run.id)] = launched
+      const index = runAt(project, run.id)
+      project.experiments[index] = launched
+      await this.collect(project, index)
       return { message: `Experiment ${run.id}: ${launched.status}. Use experiment-wait to wait for it.`, runs: [runView(launched)] }
     }
   }
 
   /** Whether a background observer or a wait should look at this run now. */
   private observable(run: ExperimentRecord): boolean {
-    return ACTIVE_RUN_STATES.has(run.status) && observationDue(run, Date.now()) && !this.launching.has(run.id)
+    return (ACTIVE_RUN_STATES.has(run.status) || (run.status === 'completed' && !run.collected))
+      && observationDue(run, Date.now()) && !this.launching.has(run.id)
   }
 
   /**
@@ -1368,11 +1376,14 @@ export class ResearchWorkbench extends TypertRemoteService {
     action: 'status' | 'cancel',
     signal: AbortSignal,
   ): Promise<ExperimentRecord> {
-    const observed = await observeExperiment(snapshot, run, action, signal)
+    const observed = ACTIVE_RUN_STATES.has(run.status) ? await observeExperiment(snapshot, run, action, signal) : run
     return this.mutate(id, async (project) => {
       const index = runAt(project, run.id)
       const current = project.experiments[index] as ExperimentRecord
-      if (!ACTIVE_RUN_STATES.has(current.status)) return current
+      if (!ACTIVE_RUN_STATES.has(current.status)) {
+        await this.collect(project, index)
+        return current
+      }
       project.experiments[index] = observed
       // Collecting marks the observed record itself.
       await this.collect(project, index)

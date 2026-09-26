@@ -37,6 +37,7 @@ function sources(parts: {
   pending?: [string, string][]
   showExamples?: boolean
   ghosts?: string[]
+  drafts?: TreeSources['drafts']
 }): TreeSources {
   const list: SessionListState = {
     ids: [...parts.sessions.map(item => item.id), ...(parts.ghosts ?? []) as SessionId[]],
@@ -52,7 +53,9 @@ function sources(parts: {
   ]))
   // The assembled client narrows pending interactions to its domains' kinds; the tree reads only `kind`.
   const narrowed = pending as unknown as TreeSources['pending']
-  return { projects: parts.projects, list, workspaces, pending: narrowed, showExamples: parts.showExamples ?? true }
+  return {
+    projects: parts.projects, list, workspaces, pending: narrowed, drafts: parts.drafts ?? {}, showExamples: parts.showExamples ?? true,
+  }
 }
 
 // The tree reads a run's status alone.

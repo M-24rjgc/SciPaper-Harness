@@ -12,6 +12,7 @@ import { z } from 'zod'
 import { atomicWrite, projectPath } from './files.ts'
 
 const stages = ['review', 'final'] as const
+/** Template stage selecting submission-time anonymity or camera-ready author and class options. */
 export type VenueStage = typeof stages[number]
 const staged = z.object({ review: z.string(), final: z.string() })
 
@@ -34,6 +35,7 @@ const kitSchema = z.object({
   missing: z.array(z.string()),
   notes: z.array(z.string()),
 })
+/** Loaded TeX style kit, including installed filenames, citation formatting and stage-specific template substitutions. */
 export type VenueKit = z.infer<typeof kitSchema>
 
 const venueSchema = z.object({
@@ -50,6 +52,7 @@ const venueSchema = z.object({
   notes: z.array(z.string()),
   classOptions: staged.optional(),
 })
+/** Venue metadata selecting a style kit, anonymity policy and any bundled guide or example. */
 export type Venue = z.infer<typeof venueSchema>
 const librarySchema = z.object({ version: z.literal(1), source: z.string(), venues: z.array(venueSchema) })
 
@@ -78,7 +81,11 @@ export async function loadVenues(root: string): Promise<VenueLibrary> {
   return { root, venues, kits }
 }
 
-/** The style files a kit puts beside a paper, under their installed names. */
+/**
+ * The style files a kit puts beside a paper, under their installed names.
+ * @param kit - the loaded style kit, including file renames and additional assets.
+ * @returns renamed primary files followed by the installed filenames of every additional asset.
+ */
 export function kitFiles(kit: VenueKit): string[] {
   return [...kit.files.map(name => kit.rename[name] ?? name), ...Object.values(kit.extra).flatMap(files => Object.values(files))]
 }

@@ -73,6 +73,10 @@ def inspect(directory):
         pid = state.get('runnerPid')
         birth = state.get('runnerIdentity')
         if pid and birth and identity(pid) != birth:
+            # The supervisor may have committed its final state before exiting.
+            latest = read_json(state_file)
+            if latest != state:
+                return latest
             state.update(status='interrupted', message='Experiment supervisor exited or the machine restarted', updatedAt=time.time())
             atomic_json(state_file, state)
         elif not pid and time.time() - state['updatedAt'] > 30:

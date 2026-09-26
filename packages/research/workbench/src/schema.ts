@@ -7,14 +7,18 @@ import type { Autonomy, CheckId, ProjectId, ResearchProject, ResearchPreferences
 const id = z.string().min(1)
 const integer = z.number().int().nonnegative()
 
+/** Accepted passage coordinates for an evidence source; numeric coordinates must be nonnegative integers. */
 export const locatorSchema = z.object({
   page: integer.optional(),
   paragraph: integer.optional(),
   line: integer.optional(),
   key: z.string().optional(),
 })
+/** Citation fields pinned to one evidence revision; source existence and quotation matching are checked by the service. */
 export const evidenceLinkSchema = z.object({ evidenceId: id, revision: integer, locator: locatorSchema, quote: z.string() })
+/** Artifact categories accepted by persisted records and file-registration commands. */
 export const artifactKinds = ['manuscript', 'diagram', 'figure', 'code', 'bibliography', 'supplement', 'image'] as const
+/** Research autonomy choices mapped to permission presets by AUTONOMY_PRESETS. */
 export const autonomies = ['checkpoints', 'automatic'] as const
 /**
  * The permission preset each autonomy selects for every conversation of a
@@ -31,6 +35,7 @@ export const galleryTiers = ['award', 'oral', 'spotlight'] as const
 export const GALLERY_ID = /^[a-z]+\d{4}-[A-Za-z0-9_.-]+$/
 const dependency = z.object({ id, revision: integer })
 
+/** Validated run inputs and limits; filesystem containment and referenced records are checked when a run is submitted. */
 export const experimentSpecSchema = z.object({
   environmentId: id,
   name: z.string().min(1),
@@ -44,6 +49,7 @@ export const experimentSpecSchema = z.object({
   codePaths: z.array(z.string().min(1)).max(50).optional(),
   metricsPath: z.string().min(1),
 })
+/** Environment configuration before the service assigns its identity, fingerprint and preparation status. */
 export const environmentSchema = z.object({
   name: z.string().min(1),
   kind: z.enum(['uv', 'existing', 'conda']),
@@ -54,6 +60,7 @@ export const environmentSchema = z.object({
   requirements: z.array(z.string()),
   isDefault: z.boolean(),
 })
+/** Claim text, support state and cited dependencies accepted by storage and claim commands. */
 export const claimSchema = z.object({
   id,
   text: z.string().min(1),
@@ -62,6 +69,7 @@ export const claimSchema = z.object({
   evidence: z.array(evidenceLinkSchema),
   artifactIds: z.array(id),
 })
+/** Bibliographic metadata accepted for literature import, with a valid source URL and a nonempty title. */
 export const literatureSchema = z.object({
   id,
   provider: z.enum(['crossref', 'openalex', 'arxiv']),
@@ -363,6 +371,7 @@ const artifact = {
 }
 const runRef = { ...base, runId: id }
 
+/** Action-specific research request validation; authorization and project-file checks remain the service's responsibility. */
 export const commandSchema = z.discriminatedUnion('action', [
   z.object({
     ...base, action: z.literal('set-mode'), mode: id, route: id.optional(), reason: z.string().optional(), decidedBy: z.enum(['user', 'agent']).optional(),

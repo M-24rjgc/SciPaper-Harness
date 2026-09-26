@@ -175,6 +175,52 @@ describe('the figure gallery panel', () => {
     expect(view.queryByRole('alert')).toBeNull()
   })
 
+  it('waits for the new query before loading more and drops an older query page that arrives late', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('old-a'), figure('old-b')], 4))
+    const more = view.getByRole('button', { name: zh.galleryMore })
+    fireEvent.click(more)
+    fireEvent.click(more)
+    expect(h.searches).toHaveLength(2)
+    expect(more).toHaveProperty('disabled', true)
+
+    fireEvent.change(view.getByRole('searchbox'), { target: { value: 'new query' } })
+    fireEvent.submit(view.getByRole('search'))
+    fireEvent.click(more)
+    expect(h.searches).toHaveLength(3)
+    await answer(h.searches[1], page([figure('old-c'), figure('old-d')], 4, 'browse', 2))
+    expect(more).toHaveProperty('disabled', true)
+
+    await answer(h.searches[2], page([figure('new-a'), figure('new-b')], 3, 'keyword'))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent)).toEqual([
+      'Figure new-aNeurIPS 2024', 'Figure new-bNeurIPS 2024',
+    ])
+    fireEvent.click(view.getByRole('button', { name: zh.galleryMore }))
+    expect(h.searches[3]?.request).toMatchObject({ query: 'new query', offset: 2 })
+    await answer(h.searches[3], page([figure('new-c')], 3, 'keyword', 2))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent)).toEqual([
+      'Figure new-aNeurIPS 2024', 'Figure new-bNeurIPS 2024', 'Figure new-cNeurIPS 2024',
+    ])
+    expect(view.queryByRole('button', { name: zh.galleryMore })).toBeNull()
+  })
+
+  it('continues the displayed query after a replacement search fails', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('old-a')], 2))
+    fireEvent.change(view.getByRole('searchbox'), { target: { value: 'failed query' } })
+    fireEvent.submit(view.getByRole('search'))
+    await act(async () => { h.searches[1]?.fail(new Error('offline')); await Promise.resolve() })
+    expect(view.getByRole('alert').textContent).toBe('offline')
+    fireEvent.click(view.getByRole('button', { name: zh.galleryMore }))
+    expect(h.searches[2]?.request).toEqual({ action: 'find-reference-figures', projectId: h.props.project.id, limit: 24, offset: 1 })
+    await answer(h.searches[2], page([figure('old-b')], 2, 'browse', 1))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent)).toEqual([
+      'Figure old-aNeurIPS 2024', 'Figure old-bNeurIPS 2024',
+    ])
+  })
+
   it('opens a figure with its paper, and saves it as a reference under the label given, saying so until the host job settles', async () => {
     const h = harness(project())
     const view = render(<Gallery {...h.props} />)

@@ -2,13 +2,19 @@
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
+/** Stable identity of a research record, separate from its folder's Workspace identity. */
 export type ProjectId = Branded<'ResearchProjectId'>
+/** Identity of an imported source whose revisions can be cited by claims and artifacts. */
 export type EvidenceId = Branded<'ResearchEvidenceId'>
+/** Identity of a tracked project artifact across its file revisions. */
 export type ArtifactId = Branded<'ResearchArtifactId'>
+/** Identity of one submitted experiment run and its recorded observations. */
 export type ExperimentId = Branded<'ResearchExperimentId'>
+/** Identity of a configured local or SSH execution environment. */
 export type EnvironmentId = Branded<'ResearchEnvironmentId'>
 /** Whether the agent stops at key decisions to ask, or decides and records its rationale. */
 export type Autonomy = 'checkpoints' | 'automatic'
+/** Observed experiment state; `unknown` means observation failed, not that the process has stopped. */
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'unknown'
 /** The checks every mode has; a mode pack may add gates of its own, reported under their own ids. */
 export type CheckId = 'cite' | 'numbers' | 'placeholders' | 'figures' | 'compile' | 'visual' | 'review' | 'stale' | 'claims' | 'structure' | 'prose'
@@ -39,16 +45,19 @@ export interface ModeSummary {
   phases: { id: string; label: LocalizedText; routes?: string[] | undefined; checkpoint: boolean; skills: string[] }[]
 }
 
+/** Position within an evidence source; the source format determines which fields identify the passage. */
 export interface SourceLocator {
   page?: number | undefined
   paragraph?: number | undefined
   line?: number | undefined
   key?: string | undefined
 }
+/** Extracted text paired with the location a citation can point back to. */
 export interface EvidenceChunk {
   text: string
   locator: SourceLocator
 }
+/** Imported source with revisioned content and extraction coverage, including whether it is verified or stale. */
 export interface EvidenceRecord {
   id: EvidenceId
   title: string
@@ -67,12 +76,14 @@ export interface EvidenceRecord {
   verified: boolean
   stale: boolean
 }
+/** A quotation tied to a specific source revision and passage, so later source changes can invalidate it. */
 export interface EvidenceLink {
   evidenceId: EvidenceId
   revision: number
   locator: SourceLocator
   quote: string
 }
+/** A research claim and its recorded support state, citing evidence passages and associated artifacts. */
 export interface ClaimRecord {
   id: string
   text: string
@@ -81,6 +92,7 @@ export interface ClaimRecord {
   evidence: EvidenceLink[]
   artifactIds: ArtifactId[]
 }
+/** A revisioned project file with the evidence, claims and input-artifact revisions it depends on. */
 export interface ArtifactRecord {
   id: ArtifactId
   path: string
@@ -109,6 +121,7 @@ export interface DecisionRecord {
    */
   key?: string | undefined
 }
+/** A configured Python environment, its execution target, and the result of preparing or inspecting it. */
 export interface EnvironmentRecord {
   id: EnvironmentId
   name: string
@@ -123,6 +136,7 @@ export interface EnvironmentRecord {
   details: string
   isDefault: boolean
 }
+/** Inputs and execution limits for one experiment, including the code and evidence copied into its run snapshot. */
 export interface ExperimentSpec {
   environmentId: EnvironmentId
   name: string
@@ -137,6 +151,7 @@ export interface ExperimentSpec {
   codePaths?: string[] | undefined
   metricsPath: string
 }
+/** A submitted run's frozen inputs and latest observation; `collected` separately records whether results became evidence. */
 export interface ExperimentRecord {
   id: ExperimentId
   spec: ExperimentSpec
@@ -178,6 +193,7 @@ export interface RunProgress {
   /** When the progress file last changed. */
   at: string
 }
+/** Outcome of compiling one manuscript revision, with the input digest, output paths and diagnostics. */
 export interface CompileRecord {
   artifactId: ArtifactId
   artifactRevision: number
@@ -189,6 +205,7 @@ export interface CompileRecord {
   diagnostics: string[]
   createdAt: string
 }
+/** Page-rendering or visual-review outcome for a manuscript revision; rendering alone does not mean the pages were reviewed. */
 export interface VisualReview {
   artifactId: ArtifactId
   artifactRevision: number
@@ -200,6 +217,7 @@ export interface VisualReview {
   findings: string
   createdAt: string
 }
+/** One actionable result from a base check or mode gate, with a source location when available. */
 export interface CheckFinding {
   /** A base {@link CheckId}, or the id of a gate the project's mode pack runs. */
   check: string
@@ -208,6 +226,7 @@ export interface CheckFinding {
   file?: string | undefined
   line?: number | undefined
 }
+/** A mode phase's completion result and unmet requirements in one check report. */
 export interface PhaseStatus {
   /** A phase id of the mode pack the check ran under. */
   id: string
@@ -341,6 +360,7 @@ export interface ResearchGoal {
   /** Epoch milliseconds of the goal's last change. */
   updatedAt: number
 }
+/** The durable research record together with optional derived fields that snapshots expose to clients. */
 export interface ResearchProject {
   id: ProjectId
   workspaceId: WorkspaceId
@@ -432,10 +452,12 @@ export interface ResearchProject {
   goals?: ResearchGoal[] | undefined
   sessionId?: string | undefined
 }
+/** A provider/model selection resolved through the harness's model registry. */
 export interface ModelBinding {
   provider: string
   model: string
 }
+/** Image-generation endpoint and request defaults; credentials are stored separately from these preferences. */
 export interface ImageBinding {
   baseUrl: string
   model: string
@@ -450,6 +472,7 @@ export interface EmbeddingBinding {
   baseUrl: string
   model: string
 }
+/** Saved model selections, tool paths and display preferences shared by the person's researches. */
 export interface ResearchPreferences {
   main?: ModelBinding | undefined
   vision?: ModelBinding | undefined
@@ -471,6 +494,7 @@ export interface ResearchPreferences {
    */
   showExamples?: boolean | undefined
 }
+/** Detected availability, executable path and version of one research runtime component. */
 export interface ComponentStatus {
   id: 'python' | 'uv' | 'latex' | 'drawio'
   installed: boolean
@@ -484,6 +508,7 @@ export interface ResearchModeEvent {
   mode: string
   route?: string | undefined
 }
+/** Client-facing view of the research records, configured tools, installed modes and effective research home. */
 export interface ResearchSnapshot {
   projects: ResearchProject[]
   preferences: ResearchPreferences
@@ -497,6 +522,7 @@ export interface ResearchSnapshot {
    */
   researchHome?: string | undefined
 }
+/** A provider's bibliographic search result; an abstract or citation does not establish full-text coverage. */
 export interface LiteratureItem {
   id: string
   provider: 'crossref' | 'openalex' | 'arxiv'
@@ -729,6 +755,7 @@ export interface BoardPatch {
   sections?: (BoardSection | { id: string; remove: true })[] | undefined
   collectors?: (BoardCollector | { id: string; remove: true })[] | undefined
 }
+/** Command result or acknowledgement; `jobId` identifies asynchronous work whose result appears in a ResearchTask. */
 export interface ResearchResponse {
   project?: ResearchProject | undefined
   jobId?: string | undefined
@@ -761,6 +788,7 @@ export interface ResearchResponse {
    */
   outcome?: 'moved' | 'existing' | 'needs-confirm' | 'nested' | 'example' | undefined
 }
+/** Settings for creating or reopening research at an absolute folder path; an omitted mode selects general research. */
 export interface CreateProjectRequest {
   title: string
   root: string
@@ -777,6 +805,7 @@ type ArtifactFields = {
   claimIds: string[]
   inputArtifacts: ArtifactRecord['inputArtifacts']
 }
+/** Research operations accepted by the service; individual variants identify actions restricted to the desktop. */
 export type ResearchCommand =
   /**
    * Switch the mode and route, and record the choice as a decision (key
@@ -919,6 +948,7 @@ export type ResearchCommand =
    */
   | { action: 'unarchive-project'; projectId: ProjectId }
 
+/** Progress and eventual result of an asynchronous research command, addressed by the response's jobId. */
 export interface ResearchTask {
   id: string
   kind: string

@@ -260,6 +260,51 @@ describe('experiment runs are described precisely and never guessed', () => {
     await expect(observeExperiment({ ...p, environments: [] }, run, 'status', signal)).rejects.toThrow(/environment is missing/)
   })
 
+  it.each(['completed', 'failed', 'cancelled', 'interrupted'])('caches remote logs and curves when submission already reports %s', async (status) => {
+    const p = await project()
+    const remote = environment('ssh')
+    p.environments.push(remote)
+    const run = newExperiment(p, spec(remote.id), 'settled-on-submit')
+    const files: Record<string, string> = {
+      'metrics.json': '{"acc":0.9}', 'stdout.log': 'training finished\n', 'stderr.log': '',
+      'state.json': JSON.stringify({ status, metrics: { acc: 0.9 } }),
+      'progress.jsonl': '{"epoch":1,"acc":0.9,"progress":1}\n',
+    }
+    const answer = runner({ launch: files['state.json']! })
+    scripted.answer = (where, args) => {
+      const file = Object.keys(files).find(name => args.at(-1) === `${run.directory}/${name}`)
+      return file ? ok(files[file]!) : answer(where, args)
+    }
+    expect(await launchExperiment(p, run, signal)).toMatchObject({ status, metrics: { acc: 0.9 } })
+    for (const [name, content] of Object.entries(files)) {
+      expect(await readFile(join(p.root, '.research/runs', run.id, name), 'utf8')).toBe(content.trim())
+    }
+    expect(scripted.remote.filter(call => call.args.includes('launch'))).toHaveLength(1)
+  })
+
+  it('retries a failed terminal submission cache through observation without relaunching', async () => {
+    const p = await project()
+    const remote = environment('ssh')
+    p.environments.push(remote)
+    const run = newExperiment(p, spec(remote.id), 'cache-retry')
+    const state = '{"status":"completed","metrics":{"acc":0.9}}'
+    const answer = runner({ launch: state, status: state })
+    let unavailable = true
+    scripted.answer = (where, args) => {
+      if (args.at(-1) === `${run.directory}/progress.jsonl`) {
+        return unavailable ? { code: 255, stdout: '', stderr: 'Connection lost' } : ok('{"epoch":1}\n')
+      }
+      return answer(where, args)
+    }
+    await expect(launchExperiment(p, run, signal)).rejects.toThrow(/Remote result collection/)
+    const lost = await observeExperiment(p, { ...run, status: 'unknown' }, 'status', signal)
+    expect(lost).toMatchObject({ status: 'unknown', observeFailures: 1 })
+    unavailable = false
+    expect(await observeExperiment(p, lost, 'status', signal)).toMatchObject({ status: 'completed', metrics: { acc: 0.9 }, observeFailures: 0 })
+    expect(await readFile(join(p.root, '.research/runs', run.id, 'progress.jsonl'), 'utf8')).toBe('{"epoch":1}')
+    expect(scripted.remote.filter(call => call.args.includes('launch'))).toHaveLength(1)
+  })
+
   it('turns local and remote outputs into data evidence and reads logs', async () => {
     const p = await project()
     const remote = environment('ssh')

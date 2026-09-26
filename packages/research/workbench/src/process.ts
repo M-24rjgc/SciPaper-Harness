@@ -1,8 +1,10 @@
 /** Bounded process calls and OpenSSH transport. Long experiments have independent supervisors. */
 import { spawn } from 'node:child_process'
 
+/** Closed process result with UTF-8 output and exit code; a missing exit code is represented by -1. */
 export interface ProcessResult { code: number; stdout: string; stderr: string }
 
+/** Process input, environment overrides, cancellation and limits; output defaults to 8 MiB and timeout to 120 seconds. */
 export interface ProcessOptions {
   cwd?: string
   signal?: AbortSignal
@@ -14,7 +16,13 @@ export interface ProcessOptions {
   platform?: NodeJS.Platform
 }
 
-/** Run an argument-vector command without a command shell or model credentials. */
+/**
+ * Run an argument-vector command without a command shell or inherited model credentials.
+ * @param command - executable path or name resolved on PATH.
+ * @param args - arguments passed directly to the executable.
+ * @param options - process limits and overrides; stdout and stderr share one byte ceiling.
+ * @returns captured output after close, including nonzero exits; spawn, timeout, output-limit and cancellation failures reject.
+ */
 export function runProcess(command: string, args: readonly string[], options: ProcessOptions = {}): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
     options.signal?.throwIfAborted()
@@ -74,16 +82,31 @@ export function runProcess(command: string, args: readonly string[], options: Pr
   })
 }
 
-/** Quote one argument for the POSIX login shell used by OpenSSH exec. */
+/**
+ * Quote one argument for the POSIX login shell used by OpenSSH exec.
+ * @param value - literal argument, including any shell metacharacters.
+ * @returns a single-quoted shell word with embedded apostrophes escaped.
+ */
 export function shQuote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'` }
 
-/** Execute on an explicitly configured OpenSSH alias or ssh:// URI. */
+/**
+ * Execute on an explicitly configured OpenSSH alias or ssh:// URI.
+ * @param host - destination without leading options, whitespace or control characters.
+ * @param args - remote argument vector quoted for the POSIX login shell.
+ * @param options - limits, cancellation and input for the local SSH process.
+ * @returns SSH exit status and captured output; authentication is noninteractive.
+ */
 export function ssh(host: string, args: readonly string[], options: ProcessOptions = {}): Promise<ProcessResult> {
   if (!host || host.startsWith('-') || /[\x00-\x20]/.test(host)) throw new Error('Use an OpenSSH host alias or ssh://user@host:port URI')
   return runProcess('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', host, args.map(shQuote).join(' ')], options)
 }
 
-/** Raise a process failure with bounded diagnostic output. */
+/**
+ * Raise a process failure with bounded diagnostic output.
+ * @param result - completed process result.
+ * @param operation - operation name included in failure diagnostics.
+ * @returns trimmed stdout for a zero exit code; nonzero exits throw with output tails.
+ */
 export function checked(result: ProcessResult, operation: string): string {
   if (result.code !== 0) throw new Error(`${operation} failed (${result.code}): ${result.stderr.slice(-6000)} ${result.stdout.slice(-2000)}`)
   return result.stdout.trim()

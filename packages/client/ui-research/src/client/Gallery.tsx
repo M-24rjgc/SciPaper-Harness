@@ -59,20 +59,25 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
   const [active, setActive] = useState(NO_FILTERS)
   const [page, setPage] = useState<GalleryPage | null>(null)
   const [figures, setFigures] = useState<GalleryFigure[]>([])
+  const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const [open, setOpen] = useState<GalleryFigure | null>(null)
   // Only the latest search may fill the grid: an earlier one that answers late is dropped.
   const latest = useRef(0)
   const load = (filters: Filters, offset: number): void => {
     const ticket = ++latest.current
-    setActive(filters)
+    setPending(true)
     props.searchFigures(searchRequest(project.id, filters, offset)).then((result) => {
       if (ticket !== latest.current) return
+      setActive(filters)
       setPage(result)
       setError('')
       setFigures(previous => offset === 0 ? result.figures : [...previous, ...result.figures])
+      setPending(false)
     }, (reason: unknown) => {
-      if (ticket === latest.current) setError(reason instanceof Error ? reason.message : String(reason))
+      if (ticket !== latest.current) return
+      setError(reason instanceof Error ? reason.message : String(reason))
+      setPending(false)
     })
   }
   useEffect(() => { load(NO_FILTERS, 0) }, [project.id])
@@ -131,7 +136,7 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
         </button>
       </li>
     })}</ul>
-    {page && figures.length < page.total && <button type="button" className={styles.more} onClick={() => { load(active, figures.length) }}>{t('galleryMore')}</button>}
+    {page && figures.length < page.total && <button type="button" className={styles.more} disabled={pending} onClick={() => { load(active, figures.length) }}>{t('galleryMore')}</button>}
     {page && <p className={styles.status}><a href={page.source.repository} target="_blank" rel="noreferrer">{t('gallerySource', { name: page.source.name })}</a></p>}
   </section>
 }

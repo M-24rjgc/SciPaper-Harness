@@ -1433,6 +1433,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'One durable owner for each project\'s evidence, files, decisions and execution records.',
     methods: [
       {
+        signature: 'readonly components: ComponentManager',
+        description: 'Product-owned document, drawing and TeX runtimes, separate from experiment environments.',
+        parameters: [],
+      },
+      {
         signature: 'readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset(\'kg/ai-kg.json.gz\'))',
         description: 'The research-pattern graphs: the built-in one and each project\'s own.',
         parameters: [],
@@ -4265,6 +4270,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CompileRecord',
     declaration: 'export interface CompileRecord {\n    artifactId: ArtifactId;\n    artifactRevision: number;\n    inputDigest: string;\n    engine: \'pdflatex\' | \'xelatex\' | \'lualatex\';\n    status: \'completed\' | \'failed\';\n    pdfPath: string;\n    logPath: string;\n    diagnostics: string[];\n    createdAt: string;\n}',
+  },
+  {
+    name: 'ComponentHost',
+    declaration: 'export interface ComponentHost {\n    platform: NodeJS.Platform;\n    arch: string;\n    asset: (name: string) => string;\n    releases: Record<\'uv\' | \'drawio\' | \'latex\', ComponentRelease>;\n}',
+  },
+  {
+    name: 'ComponentManager',
+    declaration: 'export class ComponentManager {\n    constructor(readonly root: string, private readonly preferences: () => ResearchPreferences, private readonly host: ComponentHost = {\n        platform: process.platform, arch: process.arch, asset: runtimeAsset, releases: COMPONENT_RELEASES,\n    });\n    venvPython(directory: string): string;\n    async status(): Promise<ComponentStatus[]>;\n    async installedPython(): Promise<string | undefined>;\n    async uv(signal: AbortSignal): Promise<string>;\n    async python(signal: AbortSignal): Promise<string>;\n    async drawio(signal: AbortSignal): Promise<string>;\n    async latex(signal: AbortSignal): Promise<string>;\n    async installTexPackage(file: string, signal: AbortSignal, guess: boolean = true): Promise<boolean>;\n}',
+  },
+  {
+    name: 'ComponentRelease',
+    declaration: 'export interface ComponentRelease {\n    version: string;\n    url: string;\n    sha256: string;\n}',
   },
   {
     name: 'ComponentStatus',

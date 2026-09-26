@@ -332,9 +332,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'sessionId', description: 'listed or retained Session to display.' }],
       },
       {
-        signature: 'openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>',
+        signature: 'openWorkspace( workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void, canReuse?: (sessionId: SessionId) => boolean, ): Promise<void>',
         description: 'Connect a Workspace and open its Session unless a later navigation supersedes it.',
-        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'beforeOpen', description: 'optional synchronous preparation for the selected Session, skipped after supersession.' }],
+        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'beforeOpen', description: 'optional synchronous preparation for the selected Session, skipped after supersession.' }, { name: 'canReuse', description: 'optional check before preparation; false keeps the candidate intact and creates a new Session instead.' }],
         returns: 'completion; a superseded request may create a Session but does not open it.',
       },
       {

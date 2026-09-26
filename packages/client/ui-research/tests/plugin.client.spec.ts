@@ -26,6 +26,7 @@ import type {
   CreateProjectRequest, EvidenceRecord, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { ComposerBlockRegistry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/input/blocks.ts'
 import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { ResearchBrand, ResearchMark } from '../src/client/Brand.tsx'
@@ -167,7 +168,11 @@ interface BenchServices {
 async function bench(services: BenchServices = {}) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
-  if (services.conversation !== undefined) ctx.provide('conversation', services.conversation as never)
+  const page = globalThis as { __DSH_RESEARCH__?: { hideDeveloperCells?: boolean } }
+  const conversation = services.conversation ?? (page.__DSH_RESEARCH__?.hideDeveloperCells === true
+    ? { input: { drafts: createSnapshotStore({}) }, blocks: new ComposerBlockRegistry() }
+    : undefined)
+  if (conversation !== undefined) ctx.provide('conversation', conversation as never)
   // The frame this plugin registers into: every seat it takes has to be
   // declared by somebody, and the declaration is what authorizes the entry.
   ctx.slots.register({

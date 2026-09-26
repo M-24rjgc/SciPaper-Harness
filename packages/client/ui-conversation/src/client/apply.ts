@@ -18,7 +18,7 @@ import type {
   ConversationSessionInjected, DraftFileUploads,
 } from './contract/slots.ts'
 import type { InputNotice } from './contract/input.ts'
-import { createConversationStore, readConversationViewPreference } from './stores.ts'
+import { createConversationStore, readConversationDraft, readConversationViewPreference } from './stores.ts'
 import { ConversationController, UnsupportedImageMediaTypeError } from './service.ts'
 import type { IConversation } from './service.ts'
 import { ComposerBlockRegistry } from './input/blocks.ts'
@@ -90,6 +90,7 @@ interface WorkspaceNavigation {
   openWorkspace(
     workspaceId: Parameters<ConversationInjected['selectWorkspace']>[0],
     beforeOpen: (sessionId: SessionId) => void,
+    canReuse: (sessionId: SessionId) => boolean,
   ): Promise<void>
 }
 
@@ -207,6 +208,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   }, 'ui-conversation: View selection')
 
   const inputHub = new InputHub(ctx, t)
+  ctx.effect(() => inputHub.watchDrafts(readConversationDraft), 'conversation.input: draft navigation')
   const composerBlocks = new ComposerBlockRegistry()
 
   ctx.inject(['commandUi'], (scope) => {
@@ -261,6 +263,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       selectWorkspace: workspaceId => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
         if (sessionId !== undefined && nextId !== sessionId) {
           const from = inputHub.shell(sessionId)
+          if (from.snapshot.phase === 'adjudicating' || from.snapshot.phase === 'submitting') return
           const draft = from.snapshot.draft
           const attachmentIds = from.snapshot.attachmentIds
           const next = inputHub.shell(nextId)
@@ -278,6 +281,15 @@ export function apply(ctx: Context, config: Config = Config({})): void {
             }
           }
         }
+      }, (nextId) => {
+        if (sessionId === undefined || nextId === sessionId) return true
+        const from = inputHub.shell(sessionId).snapshot
+        if (from.phase === 'adjudicating' || from.phase === 'submitting'
+          || (from.draft === '' && from.attachmentIds.length === 0)) return true
+        const next = inputHub.shell(nextId).snapshot
+        // A blank host Session may still contain an unsent or not-yet-mounted draft.
+        return next.draft === '' && next.attachmentIds.length === 0 && readConversationDraft(nextId) === ''
+          && next.phase !== 'adjudicating' && next.phase !== 'submitting'
       }),
     }),
   }, ConversationRoot)

@@ -1,4 +1,5 @@
 /** Browser presentation inputs; the owning plugin supplies all remote callbacks. */
+import type { ConversationDrafts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -252,6 +253,7 @@ export interface SessionSeatProps {
  */
 export interface ResearchTreeInjected {
   hooks: {
+    drafts: ObservableSnapshot<ConversationDrafts>
     research: ObservableSnapshot<ResearchView>
     directories: ObservableSnapshot<SessionDirectories>
     /** Whether the host can show a folder in the desktop's file manager. */

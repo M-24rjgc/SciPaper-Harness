@@ -44,6 +44,8 @@ Claimed commands retain their identity and highlight when only their arguments a
 
 Workspace selection uses `uiWorkspace.openWorkspace` to prepare the target and commit navigation. Draft text and attachments move in its synchronous preparation callback only while that request is current; later navigation or owner disposal leaves the original draft intact.
 
+If the target's blank Session already holds text or attachments, the carried draft enters a new Session in that Workspace. The input registry publishes draft text and attachment counts for navigation, including saved text before a view mounts. A new input restores that saved text once; live edits and clearing then determine its draft. Binding the view's persistence mirror immediately saves the current text, including a draft carried before mounting.
+
 The package occupies the root-scoped `main` key `conversation`, whose wrapper declares the optional-Session `main.conversation` shell. It registers strict Session header/body entries, View list, composer chain and bar, input regions, Hero regions, queue dock, draft persistence, and phase calculation. `ctx.uiSession.provide()` materializes the Conversation and input sources from the same Session binding and supplies `inputActions` as a stable standard prop.
 
 View selection is deterministic: a registered persisted selection wins, otherwise registered `chat` wins, otherwise no View renders. It never chooses the first registered View. Shell phase combines Session lifecycle with the active-target set; no target-specific snapshot is read by the shell.

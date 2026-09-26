@@ -11,9 +11,10 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs'
+import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { load } from 'js-yaml'
 import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { SCIPAPER_RELEASES, scipaperInstallerName } from './scipaper-identity.mjs'
 
@@ -35,6 +36,24 @@ export function updateChannel(version: string): string {
   return /^\d+\.\d+\.\d+-([0-9A-Za-z-]+)/u.exec(version)?.[1] ?? 'latest'
 }
 
+/** Verify the fields the updater actually consumes, including both modern and legacy download entries. */
+function validateChannel(file: string, version: string, installer: string, sha512: string): void {
+  const value: unknown = load(readFileSync(file, 'utf8'))
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`release: invalid metadata in ${file}`)
+  const metadata = value as Record<string, unknown>
+  if (metadata.version !== version) throw new Error(`release: ${file} does not describe version ${version}`)
+  if (metadata.sha512 !== sha512) throw new Error(`release: ${file} does not match the installer's SHA-512`)
+  if (metadata.path !== basename(installer)) throw new Error(`release: ${file} has an incorrect installer path`)
+  const files = metadata.files
+  if (!Array.isArray(files) || files.length !== 1 || files[0] === null || typeof files[0] !== 'object') {
+    throw new Error(`release: ${file} must describe exactly one Windows installer`)
+  }
+  const entry = files[0] as Record<string, unknown>
+  if (entry.url !== basename(installer)) throw new Error(`release: ${file} has an incorrect installer URL`)
+  if (entry.sha512 !== sha512) throw new Error(`release: ${file} has an incorrect installer entry SHA-512`)
+  if (entry.size !== statSync(installer).size) throw new Error(`release: ${file} has an incorrect installer size`)
+}
+
 /**
  * Check that a packaged build is complete and consistent, and list what to upload.
  * @param artifactsDir - The directory electron-builder wrote the Windows installer to.
@@ -47,26 +66,22 @@ export function planGitHubRelease(artifactsDir: string, version: string): GitHub
   const channel = updateChannel(version)
   const channelFile = join(artifactsDir, `${channel}.yml`)
   const latest = join(artifactsDir, 'latest.yml')
-  // electron-builder writes latest.yml for the GitHub provider; the updater of a prerelease
-  // reads `<channel>.yml` first, so the channel file is written beside it with the same content.
-  // Any channel file already there was written by an earlier release from an earlier build.
-  if (channelFile !== latest && existsSync(latest)) copyFileSync(latest, channelFile)
-  for (const file of [installer, blockmap, channelFile]) {
+  const sourceChannel = existsSync(latest) ? latest : channelFile
+  for (const file of [installer, blockmap, sourceChannel]) {
     if (!existsSync(file)) throw new Error(`release: ${file} is missing; package the Windows installer for ${version} first`)
+    if (!statSync(file).isFile() || statSync(file).size === 0) throw new Error(`release: ${file} must be a nonempty regular file`)
   }
-  // The updater reads the prerelease channel and falls back to `latest`; both describe this installer.
-  const channelFiles = [...new Set([channel, 'latest'])].map(name => join(artifactsDir, `${name}.yml`)).filter(file => existsSync(file))
   const sha512 = createHash('sha512').update(readFileSync(installer)).digest('base64')
-  for (const file of channelFiles) {
-    const metadata = readFileSync(file, 'utf8')
-    if (!metadata.split(/\r?\n/u).includes(`version: ${version}`)) throw new Error(`release: ${file} does not describe version ${version}`)
-    if (!metadata.includes(`sha512: ${sha512}`)) throw new Error(`release: ${file} does not match the installer's SHA-512`)
-  }
+  validateChannel(sourceChannel, version, installer, sha512)
+  // GitHub packaging writes latest.yml; prerelease clients request their named channel first.
+  // Replace an older channel only after validating the newly packaged metadata.
+  if (channelFile !== sourceChannel) copyFileSync(sourceChannel, channelFile)
+  const channelFiles = [...new Set([channelFile, latest])].filter(file => existsSync(file))
   return { tag: `v${version}`, title: `SciPaper Harness ${version}`, prerelease: channel !== 'latest', files: [installer, blockmap, ...channelFiles] }
 }
 
 /**
- * The GitHub CLI arguments that create the release with its files.
+ * The GitHub CLI arguments that create a release with its files against an existing remote tag.
  * @param plan - The checked release.
  * @param notesFile - Release notes in Markdown, or undefined to let GitHub list the changes.
  * @returns Arguments for `gh`.
@@ -75,7 +90,7 @@ export function ghReleaseArguments(plan: GitHubReleasePlan, notesFile: string | 
   return [
     'release', 'create', plan.tag, ...plan.files,
     '--repo', `${SCIPAPER_RELEASES.owner}/${SCIPAPER_RELEASES.repo}`,
-    '--title', plan.title,
+    '--title', plan.title, '--verify-tag',
     ...notesFile === undefined ? ['--generate-notes'] : ['--notes-file', notesFile],
     ...plan.prerelease ? ['--prerelease'] : [],
   ]

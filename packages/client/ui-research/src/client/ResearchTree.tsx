@@ -70,8 +70,12 @@ function researchName(project: ResearchProject, t: Translate): string {
   return project.untitled === true ? t('treeUntitled') : project.title
 }
 
-/** A conversation row's label: 新对话 for the blank one. */
+/** Started conversations use their title; unsent drafts show their text or attachment count. */
 function conversationName(conversation: TreeConversation, t: Translate): string {
+  if (conversation.blank && conversation.draft !== undefined) {
+    const preview = conversation.title || (conversation.draft.attachmentCount > 0 ? t('treeDraftAttachments', { n: conversation.draft.attachmentCount }) : '')
+    return preview === '' ? t('treeDraftConversation') : `${t('treeDraftConversation')} · ${preview}`
+  }
   return conversation.blank ? t('treeBlankConversation') : conversation.title
 }
 
@@ -576,13 +580,14 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
   const list = props.useSessions(state => state)
   const workspaces = props.useWorkspaces(state => state)
   const pending = props.useSessionPendingInteraction(state => state)
+  const drafts = props.useDrafts(state => state)
   const panelActive = props.usePanelInfo(info => info.activePanelId !== null)
   const snapshot = props.useResearch(state => state.snapshot)
   const canReveal = props.useCanReveal(state => state)
   const chosen = props.useStore(state => state.expanded)
   const model = useMemo(() => deriveTree({
-    projects: snapshot?.projects ?? [], list, workspaces, pending, showExamples: snapshot?.preferences.showExamples !== false,
-  }), [snapshot, list, workspaces, pending])
+    projects: snapshot?.projects ?? [], list, workspaces, pending, drafts, showExamples: snapshot?.preferences.showExamples !== false,
+  }), [snapshot, list, workspaces, pending, drafts])
   const rows = useMemo(() => flattenTree(model, chosen), [model, chosen])
   const selectedId = panelActive ? undefined : list.current
 
