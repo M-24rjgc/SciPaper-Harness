@@ -311,6 +311,14 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
   - New specs: `activity` and `presets`. `rail` is rewritten. `header`, `run-panel`, `board`, `tree-values` and `plugin` are extended; `plugin` covers `toggleProgress`, `reveal`, the presets scope and the reset. The host `loader` spec covers the snapshot's goals.
   - The research Web e2e reads the mode line and the 现在 line after a check. It adds the suggested sentence to the draft, closes the panel with the chip while the record shows and opens it again, opens 资料 from its count, and submits a run as the assistant from the conversation on screen, so its card shows there.
 
+### Final sweep: the inherited lanes keep upstream onboarding, and no test writes the real home
+
+- **The first-run notice.** ui-research's shadow of the harness's first-run notice now sits behind `hideDeveloperCells`, beside the other product-only shadows. The shipped edition still skips the notice. The inherited Web lanes show it again, so `onboarding-deepseek-config` passes and compares its key-dialog golden once more, and so do `remote-welcome` and `submission-echo`.
+- **Settings order.** The 科研 settings section takes order 24, one before 已归档会话 (25). Both used to share 25, so the order of the settings nav depended on which plugin loaded first.
+- **The 全自动 preset.** Its description is one Chinese sentence, like Auto review's, so the `/permission` picker stays narrower than the composer. `access-confirmation` expects it beside the three standard presets.
+- **Tests stay out of the real home.** `default-web-process`, `hmr-live` and `smoke-real` boot the shipped Web profile outside the scaffold. They now root `USERPROFILE` and `HOME` in their temp world, because the entry policy's 新研究 is created under `homedir()`. `default-product-isolation` waits for the research tree, which is the shipped sidebar now.
+- **The inherited Web e2e on Windows.** A run of every Web e2e file, compared with the same files at the commit before step 1, finds no other failure that the redesign caused. The remaining failures fail the same way before step 1: the `bash` tool and POSIX paths in replayed logs and goldens, the research preset in the preset lists, and the client build record.
+
 ## Alternatives considered
 
 **Remove the rows instead of disabling them.** The telemetry and `/feedback` rows belong to the base bundle, which the headless, ACP and SDK profiles share, so removing them there would change those profiles too. The Web rows could be dropped from the insert list, but a disabled row keeps the choice visible in place and is one line for a deployment to turn back on, the same reason the Web patch disables the agent-plane rows instead of dropping them.
@@ -471,6 +479,10 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 
 **Keep the tab name 研究进展 (step 11).** The spec and the entry line call the panel 研究记录. One name for one panel.
 
+**Refresh the inherited goldens without the notice (final sweep).** The inherited lanes exist to exercise the upstream plugins as shipped upstream. Shadowing their first step there would hide upstream onboarding from every test that checks it.
+
+**Give the research host an environment override for its home (final sweep).** That is a product setting added only for tests. The launchers already own their temp world, and `homedir()` follows it.
+
 ## Consequences
 
 - The Web and Desktop compositions reach a DeepSeek service only when the person configures a DeepSeek model or stores a DeepSeek key, which also enables the DeepSeek web-search provider behind `web_search`; nothing they run creates `.anonymous-user-id`. With the plugin settings page disabled, the GUI has no switch for web search.
@@ -546,3 +558,4 @@ Two shell packages each gain one configuration field (S1, S2). Both default to t
 - An example's board with no stored read reads 尚未读取 and offers no way to read it.
 - An older untouched research beside the draft is listed as 新研究 in upright type, and is removed from the list like any research.
 - The chip closes the panel only while the research tab is the active tab of the active pane. With another tab in front, it opens the record, suggesting 320 px only while the panel has no width yet.
+- The Web e2e files that fail on Windows fail as they did before step 1, apart from those this sweep fixed. Preview-boot and the real-key smoke were not compared.

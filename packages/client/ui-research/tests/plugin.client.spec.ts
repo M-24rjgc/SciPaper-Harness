@@ -529,8 +529,8 @@ describe('the research plugin', () => {
     expect(settings).toMatchObject({ locale: 'research', component: ResearchSettingsSection, options: { order: 24 } })
     expect((settings.options.label as () => string)()).toBe(en.settingsSection)
 
-    // The harness's own first-run notice is shadowed: a lower priority renders instead of it.
-    expect(b.seat('settings.onboarding', 'welcome-notice')).toMatchObject({ component: SkipHarnessNotice, options: { priority: -1 } })
+    // Without the edition's setting the harness's own first-run notice keeps its seat.
+    expect(b.ctx.slots.entries('settings.onboarding')).toHaveLength(0)
 
     // The record and the secondary tools are builtin tab types; only the record is offered on the guide page.
     expect(b.tabs.map(type => [type.id, type.kind, type.priority, type.title('sidebar://page'), type.guide !== undefined])).toEqual([
@@ -609,6 +609,8 @@ describe('the research plugin', () => {
 
       expect(winners(b.ctx)).toEqual([[['stats', EmptyCell]], [['permission', EmptyCell]], [['open-document', EmptyCell]]])
       expect(render(createElement(EmptyCell)).container.innerHTML).toBe('')
+      // The harness's own first-run notice is shadowed: a lower priority renders instead of it.
+      expect(b.seat('settings.onboarding', 'welcome-notice')).toMatchObject({ component: SkipHarnessNotice, options: { priority: -1 } })
       // The research's autonomy takes the access chip's seat, with the same face every research seat gets.
       const chip = accessWinner(b.ctx)!
       expect(chip).toMatchObject({ locale: 'research', component: AutonomyChip, options: { priority: -1 } })

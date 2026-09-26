@@ -118,6 +118,9 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
       {
         DEEPSEEK_API_KEY: 'keyless-hmr-no-call',
         DSH_HOME: join(world, '.dsh'),
+        // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+        USERPROFILE: world,
+        HOME: world,
       },
     ))
     const baseUrl = await waitForOutput(host, /dsh web: (http:\/\/[^\s]+)/, 'built dsh web')

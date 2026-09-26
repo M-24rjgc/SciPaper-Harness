@@ -378,15 +378,16 @@ export function apply(ctx: Context): void {
   // Configuration lives in settings; the main surface stays free of it.
   // Just before 已归档会话 (25), so the section order never depends on which plugin loaded first.
   ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'research', order: 24, label: () => ctx.locale.bind('research')('settingsSection'), locale: 'research', inject: injected }, ResearchSettingsSection))
-  // The harness's internal-testing notice is not this product's; shadowing it (lower priority renders) skips it. The API-key step stays.
-  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({ name: 'settings.onboarding', id: 'welcome-notice', priority: -1 }, SkipHarnessNotice))
   // Shell cells that are developer surfaces here, each shadowed (the host half's `Config`): three by an empty
-  // cell, the composer's access chip by the research's autonomy, which decides every conversation's preset,
-  // and the blank conversation's folder menu by the research's, which offers no folder that is not a research.
+  // cell, the harness's first-run notice by a step that completes at once, the composer's access chip by the
+  // research's autonomy, which decides every conversation's preset, and the blank conversation's folder menu
+  // by the research's, which offers no folder that is not a research.
   if (hideDeveloperCells) {
     ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({ name: 'conversation.composer.dock', id: 'stats', priority: -1 }, EmptyCell))
     ctx.slots.inject('settings.general.item', () => ctx.slots.register({ name: 'settings.general.item', id: 'permission', priority: -1 }, EmptyCell))
     ctx.slots.inject('settings.action', () => ctx.slots.register({ name: 'settings.action', id: 'open-document', priority: -1 }, EmptyCell))
+    // The harness's internal-testing notice is not this product's; the API-key step stays.
+    ctx.slots.inject('settings.onboarding', () => ctx.slots.register({ name: 'settings.onboarding', id: 'welcome-notice', priority: -1 }, SkipHarnessNotice))
     ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1, locale: 'research', inject: injected }, AutonomyChip))
     ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register({ name: 'conversation.hero.workspace', priority: -1, locale: 'research', inject: entryInjected }, ResearchFolderMenu))
     // The sidebar lists researches and their conversations in place of the shell's workspace browser, which

@@ -59,6 +59,9 @@ export async function withDefaultWeb(test: TestContext, inspect: (app: DefaultWe
         NODE_PATH: undefined,
         TSX_TSCONFIG_PATH: undefined,
         DSH_HOME: join(root, 'home'),
+        // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+        USERPROFILE: join(root, 'user'),
+        HOME: join(root, 'user'),
         DSH_AGENTS_HOME: join(root, '.agents'),
         DSH_TELEMETRY_DISABLED: '1',
         DEEPSEEK_API_KEY: 'keyless-default-web-no-call',

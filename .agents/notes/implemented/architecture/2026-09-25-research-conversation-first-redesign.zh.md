@@ -311,6 +311,14 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
   - 新增 spec：`activity`、`presets`。`rail` 重写。`header`、`run-panel`、`board`、`tree-values`、`plugin` 有扩充，其中 `plugin` 覆盖 `toggleProgress`、`reveal`、预设 scope 和清除。宿主 `loader` spec 覆盖快照里的目标。
   - 科研 Web e2e 在检查后读取模式一行和「现在」一行，把建议的那句话加进草稿；研究记录显示时用标题栏状态标签收起面板再打开，从计数打开「资料」；并以助手身份从当前对话提交一次运行，运行卡片随之出现在这段对话里。
 
+### 收尾：继承的测试通道保留上游的首次运行流程，测试不再写入真实的用户目录
+
+- **首次运行声明。** ui-research 对 harness 首次运行声明的遮蔽，现在和其他只属于本产品的遮蔽一样受 `hideDeveloperCells` 控制。发行版仍然跳过这条声明；继承的 Web 通道重新显示它，因此 `onboarding-deepseek-config` 通过，并重新比对它的密钥对话框 golden，`remote-welcome` 和 `submission-echo` 也通过。
+- **设置顺序。** 「科研」设置分区取 order 24，排在「已归档会话」（25）前一位。两者原来都是 25，设置导航的顺序取决于哪个插件先载入。
+- **「全自动」预设。** 它的说明改为一句中文，与 Auto review 一致，`/permission` 选择器因此仍比输入框窄。`access-confirmation` 把它和三个标准预设一起列为预期。
+- **测试不写入真实的用户目录。** `default-web-process`、`hmr-live` 和 `smoke-real` 在 scaffold 之外启动发行版的 Web 配置。入口规则的「新研究」建在 `homedir()` 下，所以它们现在把 `USERPROFILE` 和 `HOME` 设在自己的临时目录里。`default-product-isolation` 等待研究树，因为它现在就是发行版的侧栏。
+- **Windows 上继承的 Web e2e。** 跑了全部 Web e2e 文件，并与第 1 步之前那次提交上的同一批文件对比，没有发现别的由这次改版造成的失败。其余失败在第 1 步之前就以同样的方式失败：回放日志和 golden 里的 `bash` 工具与 POSIX 路径、预设列表里的科研预设，以及客户端构建记录。
+
 ## 考虑过的其他方案
 
 **直接移除这些行，而不是禁用。** 遥测和 `/feedback` 行属于 base 组合包，headless、ACP 和 SDK profile 都共用它，在那里移除会一并改变这些 profile。Web 的行本可以从 insert 列表中删掉，但禁用的行把这个选择原地写明，部署方也只需一行就能重新打开；这与 Web patch 禁用而不是删掉 agent 层各行的理由相同。
@@ -471,6 +479,10 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 
 **保留「研究进展」这个标签名（第 11 步）。** 规格和入口行都把这块面板叫作「研究记录」。一块面板只用一个名字。
 
+**重新生成不含声明的继承 golden（收尾）。** 继承通道的用途是按上游的发行方式检验上游插件。在那里遮蔽它们的第一步，会让所有检查上游首次运行流程的测试都看不到它。
+
+**给研究宿主加一个指定存放位置的环境变量（收尾）。** 那是只为测试添加的产品设置。启动器本来就拥有自己的临时目录，`homedir()` 会随之改变。
+
 ## 影响
 
 - 只有当用户配置了 DeepSeek 模型，或存入 DeepSeek 密钥时，Web 与 Desktop 组合才会连接 DeepSeek 服务；存入密钥也会启用 `web_search` 背后的 DeepSeek 网页搜索服务。它们运行的任何部分都不会创建 `.anonymous-user-id`。插件设置页已禁用，GUI 中没有网页搜索的开关。
@@ -546,3 +558,4 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - 没有保存过读取结果的示例看板显示「尚未读取」，且无法读取。
 - 草稿旁边较早的未动过的研究，以正体的「新研究」列出，和其他研究一样可以移出列表。
 - 只有科研标签页是当前窗格的当前标签页时，状态标签才会收起面板。前面是别的标签页时，它打开研究记录，并只在面板还没有宽度时建议 320 px。
+- 在 Windows 上失败的 Web e2e 文件，除了这次收尾修好的，都和第 1 步之前一样失败。preview-boot 和使用真实密钥的冒烟测试没有做对比。

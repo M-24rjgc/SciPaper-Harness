@@ -322,6 +322,9 @@ describe('dsh web keyless CLI smoke', () => {
           ...process.env,
           DEEPSEEK_API_KEY: 'keyless-web-no-call',
           DSH_HOME: join(sessionsDir, '.dsh'),
+          // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+          USERPROFILE: sessionsDir,
+          HOME: sessionsDir,
           DSH_AGENTS_HOME: join(sessionsDir, '.agents'),
           TSX_TSCONFIG_PATH: join(REPO_ROOT, 'tsconfig.json'),
         },
@@ -441,6 +444,9 @@ describe('dsh web keyless CLI smoke', () => {
           DEEPSEEK_API_KEY: 'keyless-web-workspace',
           DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}`,
           DSH_HOME: join(workspace, '.dsh'),
+          // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+          USERPROFILE: workspace,
+          HOME: workspace,
           DSH_AGENTS_HOME: join(workspace, '.agents'),
           TSX_TSCONFIG_PATH: join(REPO_ROOT, 'tsconfig.json'),
         },
@@ -546,6 +552,9 @@ describe('dsh web keyless CLI smoke', () => {
           DEEPSEEK_API_KEY: 'keyless-web-retry',
           DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}`,
           DSH_HOME: join(workspace, '.dsh'),
+          // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+          USERPROFILE: workspace,
+          HOME: workspace,
           TSX_TSCONFIG_PATH: join(REPO_ROOT, 'tsconfig.json'),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -627,6 +636,9 @@ describe('dsh web keyless CLI smoke', () => {
           DEEPSEEK_BASE_URL: `http://127.0.0.1:${address.port}`,
           DSH_TOOLS_MODE: 'ptc',
           DSH_HOME: join(workspace, '.dsh'),
+          // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+          USERPROFILE: workspace,
+          HOME: workspace,
           DSH_AGENTS_HOME: join(workspace, '.agents'),
           TSX_TSCONFIG_PATH: join(REPO_ROOT, 'tsconfig.json'),
         },
@@ -696,6 +708,9 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY || notReady.length > 0)('web smoke
         env: {
           ...process.env,
           DSH_HOME: join(sessionsDir, '.dsh'),
+          // homedir() reads USERPROFILE on Windows and HOME elsewhere; the research edition opens 新研究 under it.
+          USERPROFILE: sessionsDir,
+          HOME: sessionsDir,
           DSH_AGENTS_HOME: join(sessionsDir, '.agents'),
           TSX_TSCONFIG_PATH: join(REPO_ROOT, 'tsconfig.json'),
         },
