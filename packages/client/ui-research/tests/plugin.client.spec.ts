@@ -526,7 +526,7 @@ describe('the research plugin', () => {
 
     // The settings row names itself through the dictionary, at read time.
     const settings = b.seat('settings.section', 'research')
-    expect(settings).toMatchObject({ locale: 'research', component: ResearchSettingsSection, options: { order: 25 } })
+    expect(settings).toMatchObject({ locale: 'research', component: ResearchSettingsSection, options: { order: 24 } })
     expect((settings.options.label as () => string)()).toBe(en.settingsSection)
 
     // The harness's own first-run notice is shadowed: a lower priority renders instead of it.

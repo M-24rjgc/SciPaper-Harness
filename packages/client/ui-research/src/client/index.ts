@@ -376,7 +376,8 @@ export function apply(ctx: Context): void {
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_task', locale: 'research', inject: toolInjected }, ResearchToolCard)
   })
   // Configuration lives in settings; the main surface stays free of it.
-  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'research', order: 25, label: () => ctx.locale.bind('research')('settingsSection'), locale: 'research', inject: injected }, ResearchSettingsSection))
+  // Just before 已归档会话 (25), so the section order never depends on which plugin loaded first.
+  ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'research', order: 24, label: () => ctx.locale.bind('research')('settingsSection'), locale: 'research', inject: injected }, ResearchSettingsSection))
   // The harness's internal-testing notice is not this product's; shadowing it (lower priority renders) skips it. The API-key step stays.
   ctx.slots.inject('settings.onboarding', () => ctx.slots.register({ name: 'settings.onboarding', id: 'welcome-notice', priority: -1 }, SkipHarnessNotice))
   // Shell cells that are developer surfaces here, each shadowed (the host half's `Config`): three by an empty

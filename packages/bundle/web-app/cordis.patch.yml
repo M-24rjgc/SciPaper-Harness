@@ -570,7 +570,7 @@
         sandbox: workspace-write
         approval: never
         name: 全自动 · Automatic
-        description: 工作区内修改，不弹审批：越权请求直接拒绝，无人值守时不会卡住。Workspace writes without approval prompts; escalations are declined so unattended runs never stall.
+        description: 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。
 
 - insert:
     - id: research-workbench

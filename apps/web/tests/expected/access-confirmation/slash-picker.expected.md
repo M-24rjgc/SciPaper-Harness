@@ -6,6 +6,7 @@
     - text: 工作区内修改
     - img
   - option "完全权限"
+  - option "全自动 · Automatic 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。"
   - option "Auto review EXP":
     - text: Auto review
     - superscript: EXP

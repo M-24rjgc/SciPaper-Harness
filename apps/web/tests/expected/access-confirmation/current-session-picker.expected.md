@@ -4,6 +4,7 @@
     - text: 工作区内修改
     - img
   - menuitem "完全权限"
+  - menuitem "全自动 · Automatic"
   - menuitem "Auto review EXP":
     - text: Auto review
     - superscript: EXP
