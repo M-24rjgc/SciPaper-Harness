@@ -195,13 +195,15 @@ describe('package payload constraints', () => {
   it('requires the research runtime alongside the emitted JavaScript and declarations', () => {
     const dir = 'packages/research/workbench'
     const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as PackageManifest
+    const declaredFiles = manifest.files
+    if (declaredFiles === undefined) throw new Error('Research manifest fixture must declare files')
 
-    expect(expectedDshPackageFiles(manifest)).toEqual(manifest.files)
+    expect(expectedDshPackageFiles(manifest)).toEqual(declaredFiles)
     expect(expectedDshPackageFiles(manifest)).toContain('runtime/**/*')
     expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
     for (const files of [
-      manifest.files?.filter(file => file !== 'runtime/**/*'),
-      [...manifest.files ?? [], 'unrelated/**/*'],
+      declaredFiles.filter(file => file !== 'runtime/**/*'),
+      [...declaredFiles, 'unrelated/**/*'],
     ]) {
       expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files } })).toEqual([
         expect.stringContaining('package.json files must be'),
