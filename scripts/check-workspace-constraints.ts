@@ -8,6 +8,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { SCIPAPER_RELEASES } from '../apps/desktop/scripts/scipaper-identity.mjs'
 import {
   isPublicExperimentalPackageDirectory,
   PRIVATE_EXPERIMENTAL_PACKAGE_DIRECTORIES,
@@ -48,7 +49,7 @@ const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = 
   '@deepseek-ai/node-addon-system': ['src/main.c', 'src/flock.c'],
 }
 /** Public source home recorded in maintained package manifests. */
-const publishedRepositoryUrl = 'git+https://github.com/deepseek-ai/deepseek-harness.git'
+const publishedRepositoryUrl = `git+https://github.com/${SCIPAPER_RELEASES.owner}/${SCIPAPER_RELEASES.repo}.git`
 /** Packages that participate in the experimental policy. */
 const experimentalPackageDirectory = /^packages\/experimental\/[^/]+$/
 /** npm namespace reserved for experimental packages. */
@@ -252,6 +253,8 @@ export function expectedDshPackageFiles(manifest: PackageManifest): readonly str
     ...hasTypertRemoteNavigation(manifest)
       ? ['lib/typert.remote-client.js', 'lib/typert.remote-client.d.ts']
       : [],
+    // The research runtime ships Python helpers, mode packs, and paper assets.
+    ...manifest.name === '@deepseek-ai/dsh-research-workbench' ? ['runtime/**/*'] : [],
   ]
 }
 

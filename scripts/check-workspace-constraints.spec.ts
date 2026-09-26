@@ -1,5 +1,6 @@
 /** Experimental-package publication and dependency constraints. */
 
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   isPublicExperimentalPackageDirectory,
@@ -9,7 +10,9 @@ import {
   checkDshFamilyVersion,
   checkExperimentalDependencyIsolation,
   checkExperimentalManifest,
+  checkWorkspaceManifest,
   expectedDshPackageFiles,
+  type PackageManifest,
   type WorkspaceManifest,
 } from './check-workspace-constraints.ts'
 
@@ -20,6 +23,38 @@ const experimental = {
     publishConfig: { access: 'public' },
   },
 } satisfies WorkspaceManifest
+
+describe.each([
+  'vendor/cordis',
+  'packages/core/agent',
+  'native/system/packages/entry',
+  'apps/cli',
+])('published repository constraints for %s', (dir) => {
+  const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as PackageManifest
+
+  it('accepts the public fork recorded by the maintained manifest', () => {
+    expect(manifest.repository).toEqual({
+      type: 'git',
+      url: 'git+https://github.com/M-24rjgc/SciPaper-Harness.git',
+      directory: dir,
+    })
+    expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+  })
+
+  it.each([
+    { name: 'upstream source home', repository: { url: 'git+https://github.com/deepseek-ai/deepseek-harness.git' } },
+    { name: 'unrelated source home', repository: { url: 'git+https://github.com/example/other.git' } },
+    { name: 'non-git repository type', repository: { type: 'svn' } },
+    { name: 'wrong package directory', repository: { directory: 'packages/other/package' } },
+  ])('rejects $name', ({ repository }) => {
+    const errors = checkWorkspaceManifest({
+      dir,
+      manifest: { ...manifest, repository: { ...manifest.repository, ...repository } },
+    })
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toContain(`repository must use git+https://github.com/M-24rjgc/SciPaper-Harness.git with directory ${dir}`)
+  })
+})
 
 describe('experimental workspace constraints', () => {
   it('requires the experimental package-name prefix', () => {
@@ -155,5 +190,23 @@ describe('package payload constraints', () => {
       'cordis.patch.yml',
       'lib/types/**/*.d.ts',
     ])
+  })
+
+  it('requires the research runtime alongside the emitted JavaScript and declarations', () => {
+    const dir = 'packages/research/workbench'
+    const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as PackageManifest
+
+    expect(expectedDshPackageFiles(manifest)).toEqual(manifest.files)
+    expect(expectedDshPackageFiles(manifest)).toContain('runtime/**/*')
+    expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+    for (const files of [
+      manifest.files?.filter(file => file !== 'runtime/**/*'),
+      [...manifest.files ?? [], 'unrelated/**/*'],
+    ]) {
+      expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files } })).toEqual([
+        expect.stringContaining('package.json files must be'),
+      ])
+    }
+    expect(expectedDshPackageFiles({ name: '@deepseek-ai/dsh-other' })).not.toContain('runtime/**/*')
   })
 })

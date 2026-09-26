@@ -37,6 +37,12 @@ afterEach(() => {
 })
 
 describe('verifyRuntimeClosure', () => {
+  it('supplies every shipped preset and its required workspace peers in the Python runtime', async () => {
+    const result = await verifyRuntimeClosure(join(import.meta.dirname, '..'))
+    expect(result.presetCount).toBeGreaterThan(0)
+    expect(result.failures).toEqual([])
+  })
+
   it('requires only plugins active for each published target', async () => {
     const root = fixture({
       'python/sdk-runtime/package.json': { name: 'runtime', dependencies: { '@scope/shared': 'workspace:^' } },

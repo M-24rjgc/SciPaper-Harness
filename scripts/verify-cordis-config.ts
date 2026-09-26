@@ -10,8 +10,9 @@
  * Loader fixtures resolve from their package manifest.
  */
 
-import { globSync, readFileSync } from 'node:fs'
-import { dirname, relative, resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { globSync, readFileSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Script } from 'node:vm'
 import ts from 'typescript'
 import { cordisConfigFiles } from './cordis-config-files.ts'
@@ -61,7 +62,7 @@ if (import.meta.main) {
   const files = cordisConfigFiles(root)
 
   for (const file of files) {
-    const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+    const document = readRepositoryCordisConfig(root, file)
     if (!isUnknownArray(document)) {
       errors.push(`${file}: root must be a Loader entry array`)
       continue
@@ -85,6 +86,38 @@ if (import.meta.main) {
   } else {
     console.log(`verify-cordis-config: ${files.length} config files passed.`)
   }
+}
+
+/**
+ * Read Loader YAML, following unchanged Git symlink placeholders in Windows checkouts.
+ * @param repoRoot - repository root containing the config and its Git index.
+ * @param file - repository-relative config path.
+ * @returns parsed YAML with Loader expressions preserved as data.
+ */
+export function readRepositoryCordisConfig(repoRoot: string, file: string): unknown {
+  const visited = new Set<string>()
+  const repository = realpathSync(repoRoot)
+  const read = (path: string): unknown => {
+    const local = relative(repository, path)
+    const canonical = relative(repository, realpathSync(path))
+    if ([local, canonical].some(value => isAbsolute(value) || value === '..' || value.startsWith(`..${sep}`))) {
+      throw new Error(`${file}: Loader config link escapes the repository`)
+    }
+    if (visited.has(path)) throw new Error(`${file}: Loader config links form a cycle`)
+    visited.add(path)
+    const source = readFileSync(path, 'utf8')
+    const document = loadCordisYaml(source)
+    if (typeof document !== 'string') return document
+    const tracked = execFileSync('git', ['ls-files', '--stage', '-z', '--', local], { cwd: repository, encoding: 'utf8' })
+    const record = tracked.split('\0').find(entry => entry.endsWith(`\t${local.replaceAll('\\', '/')}`))
+    const match = record === undefined ? null : /^120000 ([a-f0-9]+) 0\t/.exec(record)
+    const hash = match?.[1]
+    if (hash === undefined) return document
+    const target = execFileSync('git', ['cat-file', 'blob', hash], { cwd: repository, encoding: 'utf8' })
+    if (source !== target) return document
+    return read(resolve(dirname(path), target))
+  }
+  return read(resolve(repository, file))
 }
 
 /**
@@ -162,7 +195,7 @@ function validatePresetPlaneSeparation(): string[] {
 
 /** Every entry of one config file, or an empty list when it is not an entry array. */
 function loadEntries(file: string): unknown[] {
-  const document = loadCordisYaml(readFileSync(resolve(root, file), 'utf8'))
+  const document = readRepositoryCordisConfig(root, file)
   return isUnknownArray(document) ? document : []
 }
 

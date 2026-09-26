@@ -5,6 +5,7 @@
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -14,7 +15,76 @@ import {
   metadataExpressionErrors,
   packageTestFixtureDependencyErrors,
   packageTestPluginDependencyErrors,
+  readRepositoryCordisConfig,
 } from './verify-cordis-config.ts'
+
+describe('Cordis configs materialized from Git symlinks', () => {
+  function fixture(run: (root: string, trackLink: (file: string, target: string) => void) => void): void {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-cordis-git-link-'))
+    const git = (args: string[], input?: string): string => execFileSync('git', args, { cwd: root, encoding: 'utf8', input })
+    try {
+      git(['init', '--quiet'])
+      const trackLink = (file: string, target: string): void => {
+        writeFileSync(join(root, file), target)
+        const hash = git(['hash-object', '-w', '--stdin'], target).trim()
+        git(['update-index', '--add', '--cacheinfo', `120000,${hash},${file}`])
+      }
+      run(root, trackLink)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }
+
+  it('validates a tracked symlink target while preserving its metadata expressions', () => {
+    fixture((root, trackLink) => {
+      writeFileSync(join(root, 'target.yml'), '- name: example\n  disabled: !!js process.platform\n')
+      trackLink('cordis.yml', 'target.yml')
+      expect(readRepositoryCordisConfig(root, 'cordis.yml')).toEqual([
+        { name: 'example', disabled: { __jsExpr: 'process.platform' } },
+      ])
+    })
+  })
+
+  it('leaves an ordinary scalar YAML file invalid even when it names an existing config', () => {
+    fixture((root) => {
+      writeFileSync(join(root, 'target.yml'), '[]\n')
+      writeFileSync(join(root, 'cordis.yml'), 'target.yml')
+      execFileSync('git', ['add', 'cordis.yml'], { cwd: root })
+      expect(readRepositoryCordisConfig(root, 'cordis.yml')).toBe('target.yml')
+    })
+  })
+
+  it('does not treat modified symlink placeholder text as its recorded Git target', () => {
+    fixture((root, trackLink) => {
+      writeFileSync(join(root, 'target.yml'), '[]\n')
+      trackLink('cordis.yml', 'target.yml')
+      writeFileSync(join(root, 'cordis.yml'), './target.yml')
+      expect(readRepositoryCordisConfig(root, 'cordis.yml')).toBe('./target.yml')
+    })
+  })
+
+  it('rejects a tracked config link with a missing target', () => {
+    fixture((root, trackLink) => {
+      trackLink('cordis.yml', 'missing.yml')
+      expect(() => readRepositoryCordisConfig(root, 'cordis.yml')).toThrow(/ENOENT/)
+    })
+  })
+
+  it('rejects tracked config links outside the repository', () => {
+    fixture((root, trackLink) => {
+      trackLink('cordis.yml', '../')
+      expect(() => readRepositoryCordisConfig(root, 'cordis.yml')).toThrow('Loader config link escapes the repository')
+    })
+  })
+
+  it('rejects a cycle between tracked config links', () => {
+    fixture((root, trackLink) => {
+      trackLink('cordis.yml', 'second.yml')
+      trackLink('second.yml', 'cordis.yml')
+      expect(() => readRepositoryCordisConfig(root, 'cordis.yml')).toThrow('Loader config links form a cycle')
+    })
+  })
+})
 
 describe('verify-cordis-config metadata expressions', () => {
   it('accepts a disabled !!js expression', () => {
