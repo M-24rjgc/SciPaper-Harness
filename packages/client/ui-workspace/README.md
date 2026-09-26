@@ -70,7 +70,7 @@ Under `entry: recent` a registered policy is kept and never called.
 |---|---|---|
 | `entry` | `recent` | The startup and unscoped New Session rule: `recent` or `policy` |
 
-A client row's `config` reaches only the Host half. For `entry: policy` it puts the `__DSH_WORKSPACE__` global into every served page, which the browser half reads when it applies; without the global the browser half uses `recent`, so a default row serves the page unchanged. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-ui-workspace) is the exhaustive source for the field and its JSDoc.
+A client row's `config` reaches only the Host half. For `entry: policy` it puts the `__DSH_WORKSPACE__` global into every Web or Desktop page through `webserver/index-inject`, which the browser half reads when it applies; without the global the browser half uses `recent`, so a default row serves the page unchanged. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-ui-workspace) is the exhaustive source for the field and its JSDoc.
 
 -----
 

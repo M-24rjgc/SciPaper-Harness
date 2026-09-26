@@ -191,9 +191,9 @@ describe('ui-workspace apply', () => {
       .rejects.toThrow('index unavailable')
   })
 
-  it('has the host half put `entry: policy` into every served page, and take it back', async () => {
+  it.each([false, true])('injects and withdraws the page entry policy with webServer available: %s', async (hasWebServer) => {
     const host = new Context()
-    host.provide('webServer', {} as never)
+    if (hasWebServer) host.provide('webServer', {} as never)
     const served = async (config?: unknown): Promise<unknown[]> => {
       const fiber = config === undefined
         ? host.plugin({ apply: hostApply })

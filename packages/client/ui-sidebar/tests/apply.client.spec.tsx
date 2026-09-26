@@ -131,9 +131,9 @@ describe('ui-sidebar apply', () => {
     }
   })
 
-  it('has the host half put `brandAction: none` into every served page, and take it back', async () => {
+  it.each([true, false])('has the host half put `brandAction: none` into every served page, and take it back (webServer: %s)', async (hasWebServer) => {
     const host = new Context()
-    host.provide('webServer', {} as never)
+    if (hasWebServer) host.provide('webServer', {} as never)
     const served = async (config?: unknown): Promise<unknown[]> => {
       const fiber = config === undefined
         ? host.plugin({ apply: hostApply })

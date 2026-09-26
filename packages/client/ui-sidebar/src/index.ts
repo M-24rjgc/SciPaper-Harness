@@ -23,7 +23,7 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Put `brandAction: none` into each page the Web server serves, as the
+ * Put `brandAction: none` into each page the Web or Desktop Host renders, as the
  * `__DSH_SIDEBAR__` global the browser half reads when it applies. The browser
  * half reads an absent global as `new-session`, so a row left at the default
  * serves every page unchanged.
@@ -32,9 +32,7 @@ export const Config: z<Config> = z.object({
  */
 export function apply(ctx: Context, config: Config = Config({})): void {
   if (config.brandAction !== 'none') return
-  ctx.inject(['webServer'], (web) => {
-    web.on('webserver/index-inject', (table) => {
-      table.push({ kind: 'global', name: '__DSH_SIDEBAR__', value: { brandAction: 'none' } })
-    })
+  ctx.on('webserver/index-inject', (table) => {
+    table.push({ kind: 'global', name: '__DSH_SIDEBAR__', value: { brandAction: 'none' } })
   })
 }

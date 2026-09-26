@@ -395,9 +395,9 @@ describe('the research plugin', () => {
     expect(complete).toHaveBeenCalledTimes(1)
   })
 
-  it('has the host half put the validated setting into every served page, and take it back', async () => {
+  it.each([true, false])('has the host half put the validated setting into every served page, and take it back (webServer: %s)', async (hasWebServer) => {
     const host = new Context()
-    host.provide('webServer', {} as never)
+    if (hasWebServer) host.provide('webServer', {} as never)
     const served = async (config?: unknown): Promise<unknown[]> => {
       const fiber = config === undefined ? host.plugin({ apply: applyHost }) : host.plugin({ apply: applyHost, Config: HostConfig }, config)
       await fiber.await()
@@ -415,8 +415,6 @@ describe('the research plugin', () => {
     expect(await served()).toEqual(global(false))
     // A row whose YAML says something other than a boolean fails the load.
     expect(() => HostConfig({ hideDeveloperCells: 'yes' } as never)).toThrow()
-    // Without a Web server no page is served, and applying does nothing.
-    await new Context().plugin({ apply: applyHost }).await()
   })
 
   it('injects exactly the services it reads', () => {

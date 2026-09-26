@@ -1,5 +1,5 @@
 ---
-description: "dsh Web 客户端的侧边栏外壳插件：品牌行、New Session 操作、折叠控件、可感知滚动的区域席位与底部固定的 Settings 席位。"
+description: "dsh Web 与桌面客户端的侧边栏外壳插件：品牌行、New Session 操作、折叠控件、可感知滚动的区域席位与底部固定的 Settings 席位。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-dsh Web 客户端的侧边栏让用户识别当前构建、启动新会话、将导航折叠为 56px 轨道、浏览 Workspace 与 Session，以及打开 Settings。它会将 Settings 入口固定在底部，并在隐藏空闲滚动条时避免浏览器行发生位移。New Session 运行 ui-workspace 共享的新会话操作。部署可以替换品牌标记或名称，同时保留导航控件和轨道几何，也可以让品牌行只作为纯标识，而不是第二个 New Session 按钮。
+dsh Web 与桌面客户端的侧边栏让用户识别当前构建、启动新会话、将导航折叠为 56px 轨道、浏览 Workspace 与 Session，以及打开 Settings。它会将 Settings 入口固定在底部，并在隐藏空闲滚动条时避免浏览器行发生位移。New Session 运行 ui-workspace 共享的新会话操作。部署可以替换品牌标记或名称，同时保留导航控件和轨道几何，也可以让品牌行只作为纯标识，而不是第二个 New Session 按钮。
 
 ## 目录
 
@@ -37,7 +37,7 @@ dsh Web 客户端的侧边栏让用户识别当前构建、启动新会话、将
 |---|---|---|
 | `brandAction` | `new-session` | 展开的品牌行的行为：`new-session`（第二个 New Session 按钮）或 `none`（纯标识） |
 
-客户端行的 `config` 只会到达 Host 端。对于 `brandAction: none`，Host 端会把 `__DSH_SIDEBAR__` 全局变量放进每个下发的页面，浏览器端在 apply 时读取它；没有该全局变量时浏览器端使用 `new-session`，因此默认行下发的页面保持不变。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-ui-sidebar)是该字段及其 JSDoc 的完整来源。
+客户端行的 `config` 只会到达 Host 端。对于 `brandAction: none`，Host 端会把 `__DSH_SIDEBAR__` 全局变量放进 Web 或桌面宿主渲染的每个页面，浏览器端在 apply 时读取它；没有该全局变量时浏览器端使用 `new-session`，因此默认行让页面保持不变。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-ui-sidebar)是该字段及其 JSDoc 的完整来源。
 
 ### 全局面板入口
 

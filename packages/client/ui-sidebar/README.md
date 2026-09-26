@@ -1,5 +1,5 @@
 ---
-description: "Sidebar shell plugin for the dsh web client: brand row, New Session action, collapse control, scroll-aware region seat, and bottom-pinned Settings seat."
+description: "Sidebar shell plugin for the dsh Web and desktop clients: brand row, New Session action, collapse control, scroll-aware region seat, and bottom-pinned Settings seat."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The dsh web client sidebar lets users recognize the active build, start a new session, collapse navigation to a 56px rail, browse Workspaces and Sessions, and open Settings. It preserves a bottom-pinned Settings entry and hides idle scrollbars without moving browser rows. New Session runs ui-workspace's shared New Session action. Deployments can replace the brand mark or name while retaining the navigation controls and rail geometry, and can make the brand row plain identity instead of a second New Session button.
+The dsh Web and desktop sidebar lets users recognize the active build, start a new session, collapse navigation to a 56px rail, browse Workspaces and Sessions, and open Settings. It preserves a bottom-pinned Settings entry and hides idle scrollbars without moving browser rows. New Session runs ui-workspace's shared New Session action. Deployments can replace the brand mark or name while retaining the navigation controls and rail geometry, and can make the brand row plain identity instead of a second New Session button.
 
 ## Table of Contents
 
@@ -37,7 +37,7 @@ The expanded brand row renders `sidebar.brand.mark` and `sidebar.brand.name` as 
 |---|---|---|
 | `brandAction` | `new-session` | What the expanded brand row does: `new-session` (a second New Session button) or `none` (plain identity) |
 
-A client row's `config` reaches only the Host half. For `brandAction: none` it puts the `__DSH_SIDEBAR__` global into every served page, which the browser half reads when it applies; without the global the browser half uses `new-session`, so a default row serves the page unchanged. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-ui-sidebar) is the exhaustive source for the field and its JSDoc.
+A client row's `config` reaches only the Host half. For `brandAction: none` it puts the `__DSH_SIDEBAR__` global into every page rendered by the Web or Desktop Host, which the browser half reads when it applies; without the global the browser half uses `new-session`, so a default row leaves the page unchanged. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-client-ui-sidebar) is the exhaustive source for the field and its JSDoc.
 
 ### Global panel entries
 

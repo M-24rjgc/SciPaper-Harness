@@ -70,7 +70,7 @@ Session 列表和 Workspace 列表都就绪且没有选中项时，默认的 `en
 |---|---|---|
 | `entry` | `recent` | 启动与不带作用域新会话的规则：`recent` 或 `policy` |
 
-客户端行的 `config` 只会到达 Host 端。对于 `entry: policy`，Host 端会把 `__DSH_WORKSPACE__` 全局变量放进每个下发的页面，浏览器端在 apply 时读取它；没有该全局变量时浏览器端使用 `recent`，因此默认行下发的页面保持不变。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-ui-workspace)是该字段及其 JSDoc 的完整来源。
+客户端行的 `config` 只会到达 Host 端。对于 `entry: policy`，Host 端通过 `webserver/index-inject` 把 `__DSH_WORKSPACE__` 全局变量放进每个 Web 或桌面页面，浏览器端在 apply 时读取它；没有该全局变量时浏览器端使用 `recent`，因此默认行下发的页面保持不变。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-client-ui-workspace)是该字段及其 JSDoc 的完整来源。
 
 -----
 

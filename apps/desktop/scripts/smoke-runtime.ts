@@ -48,8 +48,21 @@ export function apply(ctx) {
     const ready = await host.start()
     if (ready.dshVersion !== runtime.release.version) throw new Error('desktop runtime: Host reported another dsh release')
     const response = await host.fetch(new Request('dsh-app://app/'))
-    if (response.status !== 200 || !(await response.text()).includes('<html')) {
+    const html = await response.text()
+    if (response.status !== 200 || !html.includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
+    }
+    if (runtime.sharedPackages.some(entry => entry.name === '@deepseek-ai/dsh-research-workbench')) {
+      // These configuration rows must reach Desktop's page without an HTTP server.
+      // A page can render successfully while New Research silently uses the default entry rule.
+      for (const [name, value] of [
+        ['__DSH_WORKSPACE__', { entry: 'policy' }],
+        ['__DSH_SIDEBAR__', { brandAction: 'none' }],
+        ['__DSH_RESEARCH__', { hideDeveloperCells: true }],
+      ] as const) {
+        const assignment = `<script>globalThis[${JSON.stringify(name)}] = ${JSON.stringify(value)}</script>`
+        if (!html.includes(assignment)) throw new Error(`desktop runtime: packaged research page is missing ${name} configuration`)
+      }
     }
   } finally {
     await host.stop()

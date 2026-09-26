@@ -1,5 +1,5 @@
 ---
-description: "Research edition browser surfaces: the sidebar's research tree, where startup and 新研究 (New research) land, the entry screen's line, Try sentences and folder menu, header status, the composer's autonomy chip, the read-only right-sidebar research record with the mode, autonomy, the Now line, phases, check findings, decisions and tools, the right-sidebar tabs of the experiment board, the sources and claims, the figure gallery and the draw.io editor, the research tool cards in the conversation, the claim evidence sheet, experiment runs and research settings."
+description: "Research edition Web and desktop interface: the sidebar's research tree, where startup and 新研究 (New research) land, the entry screen's line, Try sentences and folder menu, header status, the composer's autonomy chip, the read-only right-sidebar research record with the mode, autonomy, the Now line, phases, check findings, decisions and tools, the right-sidebar tabs of the experiment board, the sources and claims, the figure gallery and the draw.io editor, the research tool cards in the conversation, the claim evidence sheet, experiment runs and research settings."
 kind: "package-reference"
 ---
 
@@ -39,7 +39,7 @@ Mount the row in a client roster alongside the host-side service:
     hideDeveloperCells: true
 ```
 
-`hideDeveloperCells` (default `false`) shadows the shell cells that are developer surfaces in this product: the composer's turn, step, token-rate and cache-hit pills, General settings' default permission, and the open-configuration-file action draw nothing, the research's autonomy chip takes the composer's access chip, the research's folder menu takes the entry screen's Workspace picker, and the research tree takes the sidebar's workspace browser. The Host half validates it and puts it into every served page as the `__DSH_RESEARCH__` global, which the browser half reads when it applies; a client row's `config` reaches no browser plugin otherwise.
+`hideDeveloperCells` (default `false`) shadows the shell cells that are developer surfaces in this product: the composer's turn, step, token-rate and cache-hit pills, General settings' default permission, and the open-configuration-file action draw nothing, the research's autonomy chip takes the composer's access chip, the research's folder menu takes the entry screen's Workspace picker, and the research tree takes the sidebar's workspace browser. The Host half validates it and puts it into every page rendered by the Web or Desktop Host as the `__DSH_RESEARCH__` global, which the browser half reads when it applies; a client row's `config` reaches no browser plugin otherwise.
 
 The plugin injects `remote`, `remote.research`, `remote.directoryPicker`, `remote.session`, `slots`, `locale`, `layout`, `sessions`, `workspaces`, `sidebarRight`, `uiWorkspace` and `settingsScope`, through which it reads the `agent-presets` settings namespace. It registers ui-workspace's entry policy, which acts only where the ui-workspace row sets `entry: policy`. Without the host row the Remote is absent and nothing registers.
 

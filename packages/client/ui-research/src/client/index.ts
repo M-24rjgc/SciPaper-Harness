@@ -79,7 +79,7 @@ export const inject = [
 
 /**
  * The page global the host half fills from the row's validated configuration
- * (`../index.ts`); absent when no Web server served the page.
+ * (`../index.ts`) for both Web and desktop pages.
  */
 interface ResearchPageGlobal {
   __DSH_RESEARCH__?: { hideDeveloperCells?: unknown }

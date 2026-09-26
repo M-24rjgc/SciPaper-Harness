@@ -26,17 +26,15 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Put the validated configuration into each page the Web server serves, as the
- * `__DSH_RESEARCH__` global the browser half reads when it applies. Without a
- * Web server nothing is served, and nothing is put anywhere.
+ * Put the validated configuration into each page rendered by the Web or
+ * Desktop Host, as the `__DSH_RESEARCH__` global the browser half reads when
+ * it applies.
  * @param ctx - Host plugin context.
  * @param config - resolved configuration (schema defaults applied).
  */
 export function apply(ctx: Context, config: Config = Config({})): void {
   const value = { hideDeveloperCells: config.hideDeveloperCells === true }
-  ctx.inject(['webServer'], (web) => {
-    web.on('webserver/index-inject', (table) => {
-      table.push({ kind: 'global', name: '__DSH_RESEARCH__', value })
-    })
+  ctx.on('webserver/index-inject', (table) => {
+    table.push({ kind: 'global', name: '__DSH_RESEARCH__', value })
   })
 }

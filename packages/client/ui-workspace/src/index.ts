@@ -29,7 +29,7 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Put `entry: policy` into each page the Web server serves, as the
+ * Put `entry: policy` into each Web or Desktop page, as the
  * `__DSH_WORKSPACE__` global the browser half reads when it applies. The
  * browser half reads an absent global as `recent`, so a row left at the
  * default serves every page unchanged.
@@ -38,9 +38,7 @@ export const Config: z<Config> = z.object({
  */
 export function apply(ctx: Context, config: Config = Config({})): void {
   if (config.entry !== 'policy') return
-  ctx.inject(['webServer'], (web) => {
-    web.on('webserver/index-inject', (table) => {
-      table.push({ kind: 'global', name: '__DSH_WORKSPACE__', value: { entry: 'policy' } })
-    })
+  ctx.on('webserver/index-inject', (table) => {
+    table.push({ kind: 'global', name: '__DSH_WORKSPACE__', value: { entry: 'policy' } })
   })
 }

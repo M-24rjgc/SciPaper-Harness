@@ -1,5 +1,5 @@
 ---
-description: "科研版的浏览器界面：侧栏的研究树、启动与「新研究」落在哪里、入口页的说明行、「试试」示例说法与文件夹菜单、标题栏状态、输入框里的自主程度按钮、只报告的右侧栏研究记录（模式、自主程度、「现在」一行、阶段、检查发现、决策与工具）、右侧栏的实验看板、资料与论点、配图灵感和 draw.io 编辑器标签页、对话里的研究工具卡片、论点原文面板、实验运行与科研设置。"
+description: "科研版的 Web 与桌面界面：侧栏的研究树、启动与「新研究」落在哪里、入口页的说明行、「试试」示例说法与文件夹菜单、标题栏状态、输入框里的自主程度按钮、只报告的右侧栏研究记录（模式、自主程度、「现在」一行、阶段、检查发现、决策与工具）、右侧栏的实验看板、资料与论点、配图灵感和 draw.io 编辑器标签页、对话里的研究工具卡片、论点原文面板、实验运行与科研设置。"
 kind: "package-reference"
 ---
 
@@ -39,7 +39,7 @@ kind: "package-reference"
     hideDeveloperCells: true
 ```
 
-`hideDeveloperCells`（默认 `false`）遮蔽外壳中在本产品里属于开发者界面的单元格：输入框下方的轮次、步数、token 速率与缓存命中小胶囊，通用设置里的默认权限，以及「打开配置文件」操作不再绘制，输入框的访问模式按钮由研究的自主程度按钮取代，入口页的 Workspace 选择器由研究的文件夹菜单取代，侧栏的 Workspace 浏览器由研究树取代。Host 半边校验它，并作为 `__DSH_RESEARCH__` 全局变量放进每个服务出去的页面，浏览器半边在应用时读取；除此之外，客户端行的 `config` 到不了任何浏览器插件。
+`hideDeveloperCells`（默认 `false`）遮蔽外壳中在本产品里属于开发者界面的单元格：输入框下方的轮次、步数、token 速率与缓存命中小胶囊，通用设置里的默认权限，以及「打开配置文件」操作不再绘制，输入框的访问模式按钮由研究的自主程度按钮取代，入口页的 Workspace 选择器由研究的文件夹菜单取代，侧栏的 Workspace 浏览器由研究树取代。Host 半边校验它，并作为 `__DSH_RESEARCH__` 全局变量放进 Web 或桌面宿主渲染的每个页面，浏览器半边在应用时读取；除此之外，客户端行的 `config` 到不了任何浏览器插件。
 
 该插件注入 `remote`、`remote.research`、`remote.directoryPicker`、`remote.session`、`slots`、`locale`、`layout`、`sessions`、`workspaces`、`sidebarRight`、`uiWorkspace` 与 `settingsScope`，并通过后者读取 `agent-presets` 设置命名空间。它向 ui-workspace 注册入口策略，只在 ui-workspace 行设置 `entry: policy` 时生效。缺少宿主行时 Remote 不存在，任何注册都不会发生。
 
