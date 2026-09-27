@@ -34,7 +34,7 @@
 .swatch5 { background: var(--dsw-alias-chart-5); }
 .swatch6 { background: var(--dsw-alias-chart-6); }
 
-.tooltip { position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; border-radius: 8px; border: 0; box-shadow: var(--dsw-elevation-panel); background: var(--dsw-alias-bg-layer-3); font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tooltip { position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; border-radius: var(--dsw-radius-sm); border: 0; box-shadow: var(--dsw-elevation-panel); background: var(--dsw-alias-bg-layer-3); font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tooltip strong { color: var(--dsw-alias-label-primary); font-weight: 600; }
 
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; line-height: 1.5; color: var(--dsw-alias-label-secondary); }

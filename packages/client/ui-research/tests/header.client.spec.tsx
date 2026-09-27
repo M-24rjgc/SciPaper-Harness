@@ -11,7 +11,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { ResearchGoal, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
@@ -43,10 +42,10 @@ function propsFor(projects: ResearchProject[], log: { toggles: number }, page: P
   const sessions = page.sessions ?? []
   const list: SessionListState = {
     ids: sessions.map(item => item.id), byId: Object.fromEntries(sessions.map(item => [item.id, item])),
-    current: SESSION as SessionId, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    projectionsBySession: {}, phase: 'ready',
   }
-  const pending = new Map<SessionId, SessionPendingInteractionBase>((page.pending ?? []).map(([id, kind]) => [
-    id as SessionId, { key: `${id}-${kind}`, kind, sessionId: id as SessionId },
+  const pending = new Map((page.pending ?? []).map(([id, kind]) => [
+    id as SessionId, { pendingInteraction: { key: `${id}-${kind}`, kind, sessionId: id as SessionId }, running: undefined, completionUnread: false },
   ]))
   return {
     sessionId: SESSION,
@@ -57,7 +56,7 @@ function propsFor(projects: ResearchProject[], log: { toggles: number }, page: P
     useResearch: (select: (value: ResearchView) => unknown) => select(view),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select(page.directories ?? {}),
     useSessions: (select: (value: SessionListState) => unknown) => select(list),
-    useSessionPendingInteraction: (select: (value: typeof pending) => unknown) => select(pending),
+    useSessionStatus: (select: (value: typeof pending) => unknown) => select(pending),
     toggleProgress: () => { log.toggles += 1 },
   } as unknown as StatusChipProps
 }
@@ -127,7 +126,7 @@ describe('the chip\'s dot', () => {
   const root = '/research/mine'
   const goal = (phase: ResearchGoal['phase']): ResearchGoal => ({ sessionId: 'other', objective: 'the paper', phase, roundsStarted: 1, updatedAt: 1 })
   const session = (id: string, extra: Partial<SessionSummary> = {}): SessionSummary =>
-    ({ id: id as SessionId, displayTitle: id, cwd: root, running: false, blank: false, updatedAt: 1, ...extra })
+    ({ id: id as SessionId, displayTitle: id, cwd: root, running: false, retainedBy: {}, blank: false, updatedAt: 1, ...extra })
   const mine = (): ResearchProject => { const record = project(root); record.sessionId = SESSION; return record }
   const dotOf = (projects: ResearchProject[], page: Page): { signal: string | null | undefined; label: string | undefined } => {
     const chip = render(<ResearchStatusChip {...propsFor(projects, log(), { directories: { [SESSION]: root, other: root }, ...page })} />)

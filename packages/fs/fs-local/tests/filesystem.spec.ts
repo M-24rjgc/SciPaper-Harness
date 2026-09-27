@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { constants as bufferConstants } from 'node:buffer'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, unlink, utimes, writeFile } from 'node:fs/promises'
+import { requireFileSymlinks } from '../../../../scripts/test-symlinks.ts'
 import { tmpdir } from 'node:os'
 import { join, parse, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -178,7 +179,8 @@ describe('lstat', () => {
     }
   })
 
-  it('reports path metadata without following the final symlink component', async () => {
+  it('reports path metadata without following the final symlink component', async (context) => {
+    requireFileSymlinks(context)
     await writeFile(join(dir, 'real.txt'), 'hello')
     await symlink(join(dir, 'real.txt'), join(dir, 'link.txt'))
 
@@ -363,18 +365,15 @@ describe('listDir', () => {
     await mkdir(join(dir, 'skills', 'dir-skill'), { recursive: true })
     await writeFile(join(dir, 'skills', 'zeta.md'), 'zeta')
     await writeFile(join(dir, 'skills', 'alpha.md'), 'alpha')
-    await symlink(join(dir, 'skills', 'missing-target'), join(dir, 'skills', 'broken-link'))
 
     const entries = await fs.listDir(await fs.resolve('skills'))
     expect(entries.map(entry => [entry.name, entry.type])).toEqual([
       ['alpha.md', 'file'],
-      ['broken-link', 'other'],
       ['dir-skill', 'directory'],
       ['zeta.md', 'file'],
     ])
     expect(entries.map(entry => entry.target.displayPath)).toEqual([
       join(dir, 'skills', 'alpha.md'),
-      join(dir, 'skills', 'broken-link'),
       join(dir, 'skills', 'dir-skill'),
       join(dir, 'skills', 'zeta.md'),
     ])
@@ -383,8 +382,14 @@ describe('listDir', () => {
       .toEqual(await Promise.all(materializedEntries.map(entry => realpath(entry.target.displayPath))))
     expect(entries.find(entry => entry.name === 'alpha.md')?.size).toBe(5)
     expect(typeof entries.find(entry => entry.name === 'alpha.md')?.version).toBe('string')
-    expect(entries.find(entry => entry.name === 'broken-link')?.version).toBeUndefined()
     expect(entries.find(entry => entry.name === 'dir-skill')?.size).toBeUndefined()
+  })
+
+  it('lists a dangling file symlink as other without a version', async (context) => {
+    requireFileSymlinks(context)
+    await symlink(join(dir, 'missing-target'), join(dir, 'broken-link'))
+    const entries = await fs.listDir(await fs.resolve('.'))
+    expect(entries.map(entry => [entry.name, entry.type, entry.version])).toEqual([['broken-link', 'other', undefined]])
   })
 
   it('reports a missing directory as FS_NOT_FOUND', async () => {
@@ -453,7 +458,8 @@ describe('writeText', () => {
     expect((await stat(path)).isDirectory()).toBe(true)
   })
 
-  it('createIfAbsent rejects and preserves a dangling symbolic link', async () => {
+  it('createIfAbsent rejects and preserves a dangling symbolic link', async (context) => {
+    requireFileSymlinks(context)
     const path = join(dir, 'dangling')
     await symlink(join(dir, 'missing-target'), path)
     const target = await fs.resolve('dangling')
@@ -802,7 +808,8 @@ describe('editText', () => {
 })
 
 describe('symlink targetKey identity', () => {
-  it('two paths to the same file via a symlink share one version and write the real target', async () => {
+  it('two paths to the same file via a symlink share one version and write the real target', async (context) => {
+    requireFileSymlinks(context)
     await writeFile(join(dir, 'real.txt'), 'hello')
     await symlink(join(dir, 'real.txt'), join(dir, 'link.txt'))
     const viaReal = await fs.resolve('real.txt')
@@ -814,7 +821,8 @@ describe('symlink targetKey identity', () => {
     expect(await readFile(join(dir, 'real.txt'), 'utf8')).toBe('bye') // link preserved
   })
 
-  it('a stale change is detected across both paths', async () => {
+  it('a stale change is detected across both paths', async (context) => {
+    requireFileSymlinks(context)
     await writeFile(join(dir, 'real.txt'), 'hello')
     await symlink(join(dir, 'real.txt'), join(dir, 'link.txt'))
     const viaReal = await fs.resolve('real.txt')

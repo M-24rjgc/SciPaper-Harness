@@ -1,6 +1,46 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for research.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/research.md
-research.md: d9dc9b0f5da4ae80450238fd3f38b8709dfd39d8
-research.zh.md: 2a7f91243fe0d877f4e5dad64980c32d8f492fc1
+/research:
+  en: 4b01183c0b87d310
+  zh: 16da951239858377
+/research/project-record:
+  en: 840689b78160e3ba
+  zh: 1bbdf15548c5a319
+/research/the-new-research-draft:
+  en: cf83eb303a258014
+  zh: 9f6bda264409c667
+/research/removing-a-research-from-the-list:
+  en: e1e680ce3d7fed38
+  zh: ee02808e97de84e8
+/research/mode-packs:
+  en: 798982dbeb45a759
+  zh: 808425c0be12c659
+/research/venue-templates:
+  en: 3585fa6186e20adb
+  zh: 2d952be3c4670f84
+/research/svg-figures:
+  en: 53b71551f7474c4d
+  zh: 4f00304e7d622237
+/research/figure-gallery:
+  en: f0fe546a4a4ff2dd
+  zh: 35ffaa30210619de
+/research/experiment-board:
+  en: 51a54766ee0eee10
+  zh: 30f95182c39e4b38
+/research/knowledge-graphs:
+  en: e77c66266fd1f2dc
+  zh: 612d565c0425ce6b
+/research/checks:
+  en: 6e608bdc8ee94d47
+  zh: fbba590256e725c2
+/research/progress-and-standing:
+  en: 84255445dc59922a
+  zh: dc9f032b360e08aa
+/research/what-is-refused:
+  en: 90edd907ba3a4c9c
+  zh: 45d97cdad52c27c2
+/research/concurrency:
+  en: edd9d90eb3bb4dfd
+  zh: 9b012f1956da9181

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { PassThrough } from 'node:stream'
-import { resolve } from 'node:path'
+import { posix } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import SessionStore, { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -73,6 +73,7 @@ function terminalHandle(): SubprocessTerminalHandle {
     done: Promise.resolve({ exitCode: 0, signal: null }),
     write: async () => {},
     resize: async () => {},
+    inspectActivity: async () => ({ state: 'unknown' as const, revision: 0 }),
     inspectForeground: async () => ({ processGroupId: 123, inputWaiting: true }),
     signalForeground: async () => 123,
     terminate: async () => { output.end() },
@@ -156,6 +157,41 @@ describe('BashTerminalBackend startup rollback', () => {
       spawnError: startupFailure,
       cleanupError: cleanupFailure,
     } satisfies Partial<TerminalBackendCleanupError>))
+  })
+
+  it('awaits terminal cleanup when session construction fails', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SandboxPolicyService, { mode: 'danger-full-access', workspaceRoot: '/tmp' })
+    const quiescent = Promise.withResolvers<undefined>()
+    const terminal = {
+      ...terminalHandle(),
+      terminate: vi.fn(() => quiescent.promise),
+    }
+    const constructionStarted = Promise.withResolvers<undefined>()
+    const failure = new Error('terminal emulator unavailable')
+    const backend = new BashTerminalBackend(
+      ctx,
+      config(),
+      async () => terminal,
+      () => {
+        constructionStarted.resolve(undefined)
+        throw failure
+      },
+    )
+
+    const spawning = backend.spawn(spec(agent(ctx)))
+    await constructionStarted.promise
+    expect(terminal.terminate).toHaveBeenCalledOnce()
+    let settled = false
+    void spawning.then(
+      () => { settled = true },
+      () => { settled = true },
+    )
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    quiescent.resolve(undefined)
+    await expect(spawning).rejects.toBe(failure)
   })
 
   it('starts startup rollback when cancellation wins a stalled initialization', async () => {
@@ -252,7 +288,7 @@ describe('BashTerminalBackend startup rollback', () => {
     expect(initialized).toHaveBeenCalledWith(undefined)
     expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/workspace') },
+      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: posix.resolve('/workspace') },
     }])
   })
 
@@ -281,11 +317,11 @@ describe('BashTerminalBackend startup rollback', () => {
 
     expect(spawned).toMatchObject({
       argv: ['/sandbox', '--', '/bin/bash', '-i'],
-      cwd: resolve('/session-workspace'),
+      cwd: posix.resolve('/session-workspace'),
     })
     expect((ctx.sandbox as RecordingSandbox).calls).toEqual([{
       argv: ['/bin/bash', '-i'],
-      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: resolve('/session-workspace') },
+      policy: { mode: 'workspace-write', sessionId: 'agent', workspaceRoot: posix.resolve('/session-workspace') },
     }])
   })
 
@@ -362,6 +398,7 @@ describe('BashTerminalBackend startup rollback', () => {
       done: outcome.promise,
       write: async () => {},
       resize: async () => {},
+      inspectActivity: async () => ({ state: 'unknown' as const, revision: 0 }),
       inspectForeground: async () => ({ processGroupId: 123, inputWaiting: true }),
       signalForeground: async () => 123,
       async terminate() {

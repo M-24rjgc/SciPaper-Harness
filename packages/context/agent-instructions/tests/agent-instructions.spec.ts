@@ -2,14 +2,16 @@ import { chmod, mkdtemp, mkdir, rm, stat, symlink, utimes, writeFile } from 'nod
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterAll, describe, expect, it, vi } from 'vitest'
+import { requireFileSymlinks } from '../../../../scripts/test-symlinks.ts'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import * as AgentInstructions from '@deepseek-ai/dsh-agent-instructions'
-import LlmRuntime, { createUserMessage, ToolCallId, type Message, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, ToolCallId, type Message, type MessageSource, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId, SessionSeq, type SessionEvent, type SurfaceIntent, type UserMessage } from '@deepseek-ai/dsh-session'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import AgentRegistry, { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop, { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { FileSystem, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import type {
   FsDirEntry,
@@ -41,12 +43,27 @@ import {
   type InstructionVersionCache,
 } from '../src/state.ts'
 import { resolveConfig } from '../src/config.ts'
-import { candidateScopeKey, renderInstructionChanges, renderAgentInstructionSet, USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE } from '../src/render.ts'
+import { candidateScopeKey, renderInstructionChanges, renderAgentInstructionSet, scopeForDisplayPath, USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE } from '../src/render.ts'
 import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import {
   mountAgentLoopTestDependencies,
   mountAgentLoopTestHarness,
 } from '@deepseek-ai/dsh-agent-loop-testkit'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'downstream': { kind: 'downstream' } & ContextFormed
+    'other': { kind: 'other' } & ContextFormed
+    'test-skills': { kind: 'test-skills' } & ContextFormed
+  }
+}
+
+type CheckpointSource = Extract<MessageSource, { readonly kind: 'compact-checkpoint' }>
+
+/** Build a typed checkpoint source for an instruction projection fixture. */
+function checkpointSource(compactionId: string): CheckpointSource {
+  return { kind: 'compact-checkpoint', compactionId: compactionId as CheckpointSource['compactionId'] }
+}
 
 /** Per-candidate reconciliation scope key: directory paired with the file name. */
 const sk = (directory: string, candidateName: string): string => candidateScopeKey(directory, candidateName)
@@ -76,6 +93,7 @@ async function write(path: string, content: string): Promise<void> {
 }
 
 class RecordingFileSystem extends FileSystem {
+  override watch(): never { throw new Error('Fixture does not support watching') }
   entries = new Map<string, { type: FsInfo['type']; content?: string; version?: FsVersion }>()
   missingOnResolve = new Set<string>()
   throwOnStat = new Set<string>()
@@ -251,7 +269,7 @@ function stubToolExecution(
   }
 }
 
-function blocksText(blocks: { type: string; text?: string }[] | undefined): string {
+function blocksText(blocks: readonly { type: string; text?: string }[] | undefined): string {
   return blocks?.map(block => block.type === 'text' ? block.text ?? '' : '').join('\n') ?? ''
 }
 
@@ -489,7 +507,8 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
-  it('follows a symlinked instruction file to its target content', async () => {
+  it('follows a symlinked instruction file to its target content', async (testContext) => {
+    requireFileSymlinks(testContext)
     const root = await tempRepo()
     const home = await tempRepo()
     const outside = await tempRepo()
@@ -510,7 +529,8 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
-  it('follows a symlinked instruction file through ctx.fs to its target content', async () => {
+  it('follows a symlinked instruction file through ctx.fs to its target content', async (testContext) => {
+    requireFileSymlinks(testContext)
     const root = await tempRepo()
     const home = await tempRepo()
     const outside = await tempRepo()
@@ -657,20 +677,22 @@ describe('workspace context instruction discovery', () => {
     }
   })
 
-  it('labels the default DSH home as ~/.dsh when HOME points at the configured default', async () => {
+  it('labels the default research home and retains its user-global reconciliation scope', async () => {
     const root = await tempRepo()
     const home = await tempRepo()
     try {
-      await write(join(home, '.dsh/AGENTS.md'), 'global default rule')
+      await write(join(home, '.research-workbench/AGENTS.md'), 'global default rule')
 
       // A set DSH_HOME would override the homedir default and relabel the home.
       vi.stubEnv('DSH_HOME', '')
+      vi.stubEnv('RESEARCH_WORKBENCH_HOME', '')
       vi.resetModules()
       vi.doMock('node:os', () => ({ homedir: () => home }))
       const isolated = await import('@deepseek-ai/dsh-agent-instructions')
       const files = await isolated.discoverBaselineInstructionFiles({ cwd: root })
 
-      expect(files.map(file => file.displayPath)).toEqual(['~/.dsh/AGENTS.md'])
+      expect(files.map(file => file.displayPath)).toEqual(['~/.research-workbench/AGENTS.md'])
+      expect(scopeForDisplayPath(files[0]!.displayPath)).toBe(USER_GLOBAL_DIRECTORY)
     } finally {
       vi.unstubAllEnvs()
       vi.doUnmock('node:os')
@@ -691,7 +713,7 @@ describe('workspace context instruction discovery', () => {
       const isolated = await import('@deepseek-ai/dsh-agent-instructions')
       const files = await isolated.discoverBaselineInstructionFiles({ cwd: root, dshHome: '~/.dsh' })
 
-      expect(files).toEqual([{ absolutePath: join(home, '.dsh/AGENTS.md'), displayPath: '~/.dsh/AGENTS.md' }])
+      expect(files).toEqual([{ absolutePath: join(home, '.dsh/AGENTS.md'), displayPath: '$DSH_HOME/AGENTS.md' }])
     } finally {
       vi.doUnmock('node:os')
       vi.resetModules()
@@ -1746,7 +1768,7 @@ describe('workspace context request injection', () => {
 
       agent.session.append('user/message', createUserMessage({
         content: [{ type: 'text', text: 'compacted summary' }],
-        source: { kind: 'plugin', plugin: 'compact' },
+        source: checkpointSource('instruction-compaction-1'),
       }), {
         surfaceOp: { op: 'replace', startSeq: baseline!.seq, endSeq: baseline!.seq },
         sourceEventSeqs: [baseline!.seq],
@@ -1779,7 +1801,7 @@ describe('workspace context request injection', () => {
 
       agent.session.append('user/message', createUserMessage({
         content: [{ type: 'text', text: 'compacted summary' }],
-        source: { kind: 'plugin', plugin: 'compact' },
+        source: checkpointSource('instruction-compaction-2'),
       }), {
         surfaceOp: { op: 'replace', startSeq: baseline!.seq, endSeq: baseline!.seq },
         sourceEventSeqs: [baseline!.seq],
@@ -1882,7 +1904,7 @@ describe('workspace context request injection', () => {
           ...decision,
           messages: [
             ...decision.messages,
-            createUserMessage({ content: [{ type: 'text', text: '<system-reminder>Available skills</system-reminder>' }], source: { kind: 'plugin', plugin: 'test-skills' } }),
+            createUserMessage({ content: [{ type: 'text', text: '<system-reminder>Available skills</system-reminder>' }], source: { kind: 'test-skills' } }),
           ],
         }
       })
@@ -3523,7 +3545,7 @@ describe('dynamic nested workspace context injection', () => {
       // removed; an unavailable classification would emit no change at all.
       await rm(join(root, 'pkg/AGENTS.md'))
       await mkdir(join(root, 'pkg/elsewhere'), { recursive: true })
-      await symlink(join(root, 'pkg/elsewhere'), join(root, 'pkg/AGENTS.md'))
+      await symlink(join(root, 'pkg/elsewhere'), join(root, 'pkg/AGENTS.md'), 'junction')
       await ctx.tools.execute({
         signal: testToolSignal,
         callId: ToolCallId('read-after-symlink-dir'), name: 'read', arguments: { file_path: join('pkg', 'file.txt') }, agent,
@@ -3710,7 +3732,7 @@ describe('dynamic nested workspace context injection', () => {
 
       agent.session.append('user/message', createUserMessage({
         content: [{ type: 'text', text: 'compacted summary' }],
-        source: { kind: 'plugin', plugin: 'compact' },
+        source: checkpointSource('instruction-compaction-3'),
       }), {
         surfaceOp: { op: 'replace', startSeq: SessionSeq(contextSeq), endSeq: SessionSeq(contextSeq) },
         sourceEventSeqs: [SessionSeq(contextSeq)],
@@ -3757,7 +3779,7 @@ describe('dynamic nested workspace context injection', () => {
       })
       agent.session.append('user/message', createUserMessage({
         content: [{ type: 'text', text: 'compacted summary' }],
-        source: { kind: 'plugin', plugin: 'compact' },
+        source: checkpointSource('instruction-compaction-4'),
       }), {
         surfaceOp: { op: 'replace', startSeq: baseline!.seq, endSeq: baseline!.seq },
         sourceEventSeqs: [baseline!.seq],
@@ -3901,7 +3923,7 @@ describe('dynamic nested workspace context injection', () => {
       }), { surfaceOp: 'append' })
       agent.session.append('user/message', createUserMessage({
         content: [{ type: 'text', text: 'foreign plugin context' }],
-        source: { kind: 'plugin', plugin: 'other' },
+        source: { kind: 'other' },
       }), { surfaceOp: 'append' })
 
       await ctx.tools.execute({
@@ -4015,7 +4037,7 @@ describe('dynamic nested workspace context injection', () => {
         },
         additionalContexts: [createUserMessage({
           content: [{ type: 'text' as const, text: 'downstream context' }],
-          source: { kind: 'plugin' as const, plugin: 'downstream' },
+          source: { kind: 'downstream' as const },
         })],
       }))
 
@@ -4049,7 +4071,7 @@ describe('dynamic nested workspace context injection', () => {
         id: expect.any(String) as unknown,
         role: 'user',
         content: [{ type: 'text', text: 'downstream context' }],
-        source: { kind: 'plugin', plugin: 'downstream' },
+        source: { kind: 'downstream' },
       })
     } finally {
       await rm(root, { recursive: true, force: true })

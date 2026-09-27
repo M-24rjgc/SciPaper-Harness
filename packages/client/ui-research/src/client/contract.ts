@@ -114,6 +114,8 @@ export type CarryDraft = (workspaceId: WorkspaceId) => void
  */
 export interface ResearchEntryInjected {
   hooks: {
+    /** Main-view selection, independent of the Session catalog. */
+    currentSession: ObservableSnapshot<SessionId | undefined>
     research: ObservableSnapshot<ResearchView>
     directories: ObservableSnapshot<SessionDirectories>
     entry: ObservableSnapshot<EntryView>
@@ -144,6 +146,8 @@ export type EntryProps = PropsLocale<'research'> & InjectFace<ResearchEntryInjec
 /** Remote operations and cross-scope selection the plugin injects into every research seat. */
 export interface ResearchInjected {
   hooks: {
+    /** Main-view selection, independent of the Session catalog. */
+    currentSession: ObservableSnapshot<SessionId | undefined>
     research: ObservableSnapshot<ResearchView>
     focus: ObservableSnapshot<ResearchFocus>
     directories: ObservableSnapshot<SessionDirectories>
@@ -232,6 +236,8 @@ export interface ResearchInjected {
  */
 export interface ResearchToolInjected {
   hooks: {
+    /** Main-view selection, independent of the Session catalog. */
+    currentSession: ObservableSnapshot<SessionId | undefined>
     research: ObservableSnapshot<ResearchView>
   }
   /** Open a project file in the conversation's right sidebar; throws when no sidebar is mounted to show it. */
@@ -253,6 +259,8 @@ export interface SessionSeatProps {
  */
 export interface ResearchTreeInjected {
   hooks: {
+    /** Main-view selection, independent of the Session catalog. */
+    currentSession: ObservableSnapshot<SessionId | undefined>
     drafts: ObservableSnapshot<ConversationDrafts>
     research: ObservableSnapshot<ResearchView>
     directories: ObservableSnapshot<SessionDirectories>

@@ -399,7 +399,7 @@ function ResearchRecord(props: RecordProps): ReactNode {
   const { project, t } = props
   const projects = props.useResearch(state => state.snapshot)?.projects
   const list = props.useSessions(state => state)
-  const pending = props.useSessionPendingInteraction(state => state)
+  const pending = props.useSessionStatus(state => state)
   const directories = props.useDirectories(state => state)
   const activity = useMemo(
     () => researchActivity(project, projects, list, pending, directories),

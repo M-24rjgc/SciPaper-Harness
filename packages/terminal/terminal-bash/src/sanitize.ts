@@ -12,7 +12,7 @@ export const CONTROLLED_PROMPT = 'dsh> '
 export interface SanitizedChunk {
   text: string
   prompt: boolean
-  /** Printable text after the latest owned marker in this chunk. */
+  /** Printable prompt text, including ConPTY cursor-forward spacing when enabled. */
   promptTail?: string
 }
 
@@ -28,7 +28,7 @@ export class TerminalSanitizer {
   private trailingCarriageReturn = false
   private trackingPromptTail = false
 
-  constructor(private readonly maxPendingBytes: number) {}
+  constructor(private readonly maxPendingBytes: number, private readonly promptCursorForward = false) {}
 
   /**
    * Consume one decoded `node-pty` data chunk.
@@ -91,6 +91,14 @@ export class TerminalSanitizer {
         if (end >= this.pending.length) {
           index = escape
           break
+        }
+        if (this.promptCursorForward && this.trackingPromptTail && this.pending[end] === 'C') {
+          const parameter = this.pending.slice(escape + 2, end)
+          if (/^\d*$/u.test(parameter)) {
+            // ConPTY can encode the final prompt space as CUF. Bound the evidence
+            // to one more than the expected prompt length, even for huge counts.
+            promptTail += ' '.repeat(Math.min(Number(parameter) || 1, CONTROLLED_PROMPT.length + 1))
+          }
         }
         index = end + 1
         continue

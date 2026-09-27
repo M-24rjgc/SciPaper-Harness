@@ -16,7 +16,9 @@ const RESERVED_PATH_SEGMENTS = new Set(['', '.', '..'])
 
 /** User-facing workspace instruction loader configuration. */
 export interface Config {
-  /** Harness home containing the fixed user-global `AGENTS.md`; defaults to `$DSH_HOME` or `~/.dsh`. */
+  /** Harness home containing user-global `AGENTS.md`.
+   * Defaults to `$RESEARCH_WORKBENCH_HOME`, `$DSH_HOME`, or `~/.research-workbench`.
+   */
   dshHome?: string
   /** Directory entries that identify the project root while walking upward from the session cwd. */
   projectRootMarkers?: string[]

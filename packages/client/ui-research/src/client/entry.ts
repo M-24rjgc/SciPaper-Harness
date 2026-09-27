@@ -21,6 +21,7 @@ import type { Translate } from './format.ts'
 /** What the entry flows read and act through; the plugin's apply supplies each. */
 export interface EntrySources {
   sessions: Pick<ISessions, 'list'>
+  current: ObservableSnapshot<SessionId | undefined>
   workspaces: Pick<IWorkspaces, 'list'>
   research: ObservableSnapshot<ResearchView>
   entry: SnapshotStore<EntryView>
@@ -168,7 +169,7 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
   let landing: Promise<void> | undefined
   let noticeTimer: ReturnType<typeof setTimeout> | undefined
   lifetime.addEventListener('abort', () => { clearTimeout(noticeTimer) })
-  const current = (): SessionId | undefined => sessions.list.getSnapshot().current
+  const current = (): SessionId | undefined => sources.current.getSnapshot()
 
   const notify = (notice: EntryNotice | null, ttl?: number): void => {
     clearTimeout(noticeTimer)
@@ -182,7 +183,7 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
   const workspaceOf = (sessionId: SessionId | undefined): WorkspaceId | undefined => sessionId === undefined
     ? undefined
     : workspaces.list.getSnapshot().items.find(item => item.sessionIds.includes(sessionId))?.workspaceId
-  const lists = [sessions.list, workspaces.list] as const
+  const lists = [sessions.list, workspaces.list, sources.current] as const
 
   /** Open the draft `start-new` answers with, while `free()` says nothing superseded this navigation. */
   const openDraft = async (free: () => boolean): Promise<void> => {
@@ -263,10 +264,10 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
       const check = (): boolean => {
         const list = sessions.list.getSnapshot()
         if (list.phase !== 'ready' || workspaces.list.getSnapshot().phase !== 'ready') return false
-        restored ??= { sessionId: list.current }
+        restored ??= { sessionId: current() }
         const snapshot = research.getSnapshot().snapshot
         if (snapshot === null) return false
-        const selected = list.current
+        const selected = current()
         const inExample = selected !== undefined && sessionProject(snapshot.projects, selected, directoriesOf(list))?.example === true
         if (inExample && selected === restored.sessionId) {
           land(selected).catch((_error: unknown) => {
@@ -276,7 +277,8 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
         return true
       }
       if (check()) return () => {}
-      const stops = [sessions.list, workspaces.list, research].map(source => source.subscribe(() => { if (check()) stop() }))
+      const stops = [sessions.list, workspaces.list, sources.current, research]
+        .map(source => source.subscribe(() => { if (check()) stop() }))
       const stop = (): void => { for (const dispose of stops) dispose() }
       return stop
     },

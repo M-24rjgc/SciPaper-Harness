@@ -6,7 +6,7 @@
  * interactions and the record; nothing here holds state.
  */
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { LocalizedText, ResearchGoal, ResearchProject, StandingPhase } from '@deepseek-ai/dsh-research-workbench/types'
 import { sessionProject, type SessionDirectories } from './contract.ts'
 
@@ -22,10 +22,11 @@ const WAITING_KINDS: ReadonlySet<string> = new Set(['approval', 'plan-review', '
  * @param pending - the pending interactions by session.
  * @returns the dot, or undefined when nothing waits and nothing runs.
  */
-export function conversationSignal(summary: SessionSummary, pending: SessionPendingInteractionSnapshot): ActivitySignal | undefined {
-  const interaction = pending.get(summary.id)
+export function conversationSignal(summary: SessionSummary, pending: SessionStatusSnapshot): ActivitySignal | undefined {
+  const status = pending.get(summary.id)
+  const interaction = status?.pendingInteraction
   if (interaction !== undefined && WAITING_KINDS.has(interaction.kind)) return 'waiting'
-  return summary.running ? 'ongoing' : undefined
+  return (status?.running ?? summary.running) ? 'ongoing' : undefined
 }
 
 /**
@@ -73,7 +74,7 @@ export interface ResearchActivity {
  */
 export function researchActivity(
   project: ResearchProject, projects: readonly ResearchProject[] | undefined, list: SessionListState,
-  pending: SessionPendingInteractionSnapshot, directories: SessionDirectories,
+  pending: SessionStatusSnapshot, directories: SessionDirectories,
 ): ResearchActivity {
   const signals: (ActivitySignal | undefined)[] = []
   let waiting: SessionSummary | undefined

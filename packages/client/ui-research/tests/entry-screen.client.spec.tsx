@@ -47,6 +47,7 @@ function lineProps(parts: {
   const props = {
     t,
     useSessions: (select: (state: SessionListState) => unknown) => select(list),
+    useCurrentSession: (select: (value: string | undefined) => unknown) => select(parts.current),
     useEntry: (select: (state: { notice: EntryNotice | null }) => unknown) => select({ notice: parts.notice ?? null }),
     useResearch: (select: (state: ResearchView) => unknown) => select(view),
     useDirectories: (select: (state: Record<string, string>) => unknown) => select(parts.directories ?? {

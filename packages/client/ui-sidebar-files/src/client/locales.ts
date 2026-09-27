@@ -20,6 +20,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Simplified Chinese dictionary and key-set source of truth. */
 export const zh = {
+  'shortcut.noSession': '请先选择会话',
   'type.label': '文件',
   'guide.title': '研究文件',
   'guide.description': '浏览这项研究的文件夹',
@@ -28,6 +29,9 @@ export const zh = {
   truncated: '条目太多，只显示了一部分。',
   noWorkspace: '这段对话没有研究文件夹。',
   reload: '重新读取',
+  autoRefresh: '自动刷新',
+  'autoRefresh.enable': '开启自动刷新',
+  'autoRefresh.disable': '关闭自动刷新',
   'entry.other': '这不是文件或目录，没法打开。',
   'error.notFound': '这个目录不在了。可能已被移动或删除。',
   'error.outsideWorkspace': '这个目录在研究文件夹之外，侧栏不会读取它。',
@@ -40,6 +44,7 @@ export type SidebarFilesKey = keyof typeof zh
 
 /** English dictionary, checked against the Chinese key set. */
 export const en = {
+  'shortcut.noSession': 'Select a session first',
   'type.label': 'Files',
   'guide.title': 'Research files',
   'guide.description': 'Browse this research\'s folder',
@@ -48,6 +53,9 @@ export const en = {
   truncated: 'Too many entries, showing only some of them.',
   noWorkspace: 'This conversation has no research folder.',
   reload: 'Reload',
+  autoRefresh: 'Auto refresh',
+  'autoRefresh.enable': 'Enable auto refresh',
+  'autoRefresh.disable': 'Disable auto refresh',
   'entry.other': 'Not a file or a directory, so it cannot be opened.',
   'error.notFound': 'That directory is gone. It may have been moved or deleted.',
   'error.outsideWorkspace': 'That directory is outside the research folder, so the sidebar will not read it.',

@@ -1,6 +1,6 @@
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 0; border-radius: 6px; background: var(--dsw-alias-bg-module-platform); font-family: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 0; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-module-platform); font-family: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
 .chip:hover { background: var(--dsw-alias-interactive-bg-hover); }
-.chip:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.chip:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
 .separator { color: var(--dsw-alias-label-caption); }
 .stage { color: var(--dsw-alias-label-secondary); }
 .verified { color: var(--dsw-alias-state-success-primary); }

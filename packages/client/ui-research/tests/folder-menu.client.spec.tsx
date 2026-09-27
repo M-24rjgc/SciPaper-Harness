@@ -90,6 +90,7 @@ function setup(parts: Setup = {}) {
     return {
       t, open, onPick, onClose, selectedId: undefined,
       ...(parts.anchor === false ? {} : { anchorRef: { current: anchor } }),
+      useCurrentSession: (select: (value: string | undefined) => unknown) => select(selected),
       useSessions: (select: (state: SessionListState) => unknown) => select(now as unknown as SessionListState),
       useWorkspaces: (select: (state: WorkspaceSnapshot) => unknown) => select(workspaces),
       useResearch: (select: (state: ResearchView) => unknown) => select(view),

@@ -39,6 +39,17 @@ describe('TerminalSanitizer', () => {
     expect(sanitizer.push('dsh> ')).toEqual({ text: 'dsh> ', prompt: false, promptTail: 'dsh> ' })
   })
 
+  it('uses split ConPTY cursor-forward spacing only as owned prompt evidence', () => {
+    const sanitizer = new TerminalSanitizer(64, true)
+    expect(sanitizer.push('plain\x1b[1C')).toEqual({ text: 'plain', prompt: false })
+    expect(sanitizer.push('\x1b]133;D;0\x07dsh>\x1b[')).toEqual({ text: 'dsh>', prompt: true, promptTail: 'dsh>' })
+    expect(sanitizer.push('1C')).toEqual({ text: '', prompt: false, promptTail: ' ' })
+    expect(sanitizer.push('\x1b[99999999999999999999C')).toEqual({ text: '', prompt: false, promptTail: '      ' })
+    expect(sanitizer.push('\x1b[?1C')).toEqual({ text: '', prompt: false, promptTail: '' })
+    const ordinary = new TerminalSanitizer(64)
+    expect(ordinary.push('\x1b]133;D;0\x07dsh>\x1b[C')).toEqual({ text: 'dsh>', prompt: true, promptTail: 'dsh>' })
+  })
+
   it('bounds and discards unterminated control sequences through their terminators', () => {
     const oscBel = new TerminalSanitizer(8)
     expect(oscBel.push(`\x1b]0;${'x'.repeat(16)}`)).toEqual({ text: '', prompt: false })

@@ -1,6 +1,31 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-README.md: 66b9b495339ea9d472f37e1695bfe9d81cd222d2
-README.zh.md: c7bd2c22188da609ed51e99ec685057b4433d641
+/:
+  en: 92163b67c648e9e1
+  zh: 92163b67c648e9e1
+/scipaper-harness:
+  en: 642311dcd49b95d8
+  zh: f16aee7372376b7e
+/scipaper-harness/why-researchers-use-it:
+  en: 87dd125b57c0b883
+  zh: 2f2bcebc6cd0d5d0
+/scipaper-harness/everything-a-paper-needs-in-one-place:
+  en: 7af9738d10531fbd
+  zh: c7af6bd41fd7de89
+/scipaper-harness/get-started:
+  en: 3dd73f30eafffdb2
+  zh: 929b293351d0b820
+/scipaper-harness/preview:
+  en: 5e64cc8660083834
+  zh: 883e23f419a4aef8
+/scipaper-harness/for-developers:
+  en: c592ed65e3640e20
+  zh: 1b19efa2c47ea594
+/scipaper-harness/credits:
+  en: 7d6c1638f0968e75
+  zh: 23277b8130ccb37e
+/scipaper-harness/license:
+  en: 7b5f7a55ff3978c1
+  zh: 603bb58689bfe569

@@ -35,7 +35,7 @@ export type EntryLineProps = PropsRuntime<'conversation.hero.welcome'> & EntryPr
  */
 export function ResearchEntryLine(props: EntryLineProps): ReactNode {
   const { t } = props
-  const current = props.useSessions(state => state.current)
+  const current = props.useCurrentSession(state => state)
   const notice = props.useEntry(state => state.notice)
   const snapshot = props.useResearch(state => state.snapshot)
   const directories = props.useDirectories(state => state)

@@ -1,6 +1,73 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-25-research-conversation-first-redesign.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-25-research-conversation-first-redesign.md
-2026-09-25-research-conversation-first-redesign.md: e8f1b4f8730903104bc033d6d7b8f9d28562ec20
-2026-09-25-research-conversation-first-redesign.zh.md: e05ca5b6740503546ad7b0d7cb611f00ad2e9845
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation:
+  en: de6c517528a1e3ed
+  zh: e2c1cf4f2df6e783
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/problem:
+  en: 5200b87f8fd979a6
+  zh: d3a5e12d70019a59
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision:
+  en: a15c7c13f167e5ac
+  zh: 63bcc2ef60c2f344
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-1-no-telemetry-feedback-or-developer-controls:
+  en: e4252aaf0430c5c9
+  zh: a71dc1873d71b066
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-2-the-shell-s-copy-names-the-research-not-a-workspace-or-a-company:
+  en: e30cb7588489ec2f
+  zh: 6dbc7a77c51bf136
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-3-the-research-surfaces-stop-destroying-files-and-stop-acting-on-their-own:
+  en: 341653d79c44a65e
+  zh: 0140df2bcde4702b
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-4-one-colour-per-meaning:
+  en: 043baf35c6185f8e
+  zh: 43fe51431d62153d
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-5-examples-say-they-are-examples-and-nothing-writes-into-them:
+  en: df41df4a8f85cfde
+  zh: d3d59b86f94e09e0
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-6-one-record-of-progress:
+  en: 00836b9a279baab2
+  zh: 2ad0618ef347e36a
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-7-the-agent-chooses-the-mode-names-the-research-and-keeps-one-goal-host-persona-and-skills:
+  en: c1c99611a7c031dc
+  zh: c941dbfcd529ebf3
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-7-research-tool-calls-read-in-the-reader-s-language-ui-research:
+  en: c6b89212b0a84591
+  zh: 447e027201073282
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-8-autonomy-is-every-conversation-s-permission-and-attached-files-are-the-person-s-consent-host-and-persona:
+  en: 33399f2782d3dd4f
+  zh: 5366449ba2abce69
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-8-autonomy-is-changed-in-the-composer-ui-research:
+  en: 1a072edd21a35d0e
+  zh: 1b69a5486a1057a7
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-9-startup-and-go-to-the-research-s-entry-policy-the-brand-row-is-identity-shell:
+  en: ae769e9d7b029943
+  zh: 2257a09b34f97522
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-9-opens-one-untouched-draft-research-host:
+  en: 21b2504eb5ff0921
+  zh: 71fad09df68c9f15
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-9-startup-and-the-entry-screen-go-to-the-research-ui-research:
+  en: 79a911e74cc93f19
+  zh: f73ebe83dcc3b862
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-10-archives-a-research-s-conversations-and-content-search-opens-at-the-first-search-host-and-bundle:
+  en: 043964323498422e
+  zh: 46dce53e14959498
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-10-the-sidebar-lists-researches-and-their-conversations-ui-research:
+  en: b3c2b698c01f66d5
+  zh: 391efbfd0ce9a0ed
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-11-the-secondary-tools-are-tabs-beside-the-conversation-and-the-workbench-goes-ui-research:
+  en: ac850c763f783cee
+  zh: 2ee58f521c565fb5
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/step-11-the-research-record-reads-the-research-s-standing-and-run-cards-stay-in-their-conversation-ui-research:
+  en: b33518eb830b6ae4
+  zh: 1d96dd96741c28ca
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/decision/final-sweep-the-inherited-lanes-keep-upstream-onboarding-and-no-test-writes-the-real-home:
+  en: e2d13f688b4bb297
+  zh: 3dad9aaa711de996
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/alternatives-considered:
+  en: 8584d1599f09b42e
+  zh: 6c8528802c87062c
+/agent-note-scipaper-harness-redesigned-around-research-and-conversation/consequences:
+  en: 85b0fdb87f43ac50
+  zh: 6674a3776dca0b46

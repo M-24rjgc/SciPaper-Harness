@@ -1,88 +1,51 @@
-/** Release commands resolve pnpm lifecycle entrypoints without a shell. */
-
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { attempt, attemptEchoed, capture, runConcurrent } from './process.ts'
+import { basename, dirname, join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { capture, pnpmCommand } from './process.ts'
+import { packedIdentity, tarballFiles } from './tarball.ts'
 
-const roots: string[] = []
+const directories: string[] = []
 
-function fixture() {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-release process-'))
-  roots.push(root)
-  const entrypoint = join(root, 'pnpm 中文 $;.cjs')
-  const result = join(root, 'result.json')
-  writeFileSync(entrypoint, `
-    const { writeFileSync, realpathSync } = require('node:fs')
-    writeFileSync(process.env.DSH_RELEASE_RESULT, JSON.stringify({
-      args: process.argv.slice(2),
-      cwd: realpathSync(process.cwd()),
-      value: process.env.DSH_RELEASE_VALUE,
-    }))
-    if (process.env.DSH_RELEASE_STDOUT) process.stdout.write(process.env.DSH_RELEASE_STDOUT)
-    process.exitCode = Number(process.env.DSH_RELEASE_STATUS || 0)
-  `)
-  return {
-    root,
-    entrypoint,
-    result,
-    env: { ...process.env, DSH_RELEASE_RESULT: result, DSH_RELEASE_VALUE: 'child environment' },
-  }
-}
-
-afterEach(() => {
-  vi.unstubAllEnvs()
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+afterEach(async () => {
+  for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true })
 })
 
-describe.each(['javascript', 'native'] as const)('release pnpm %s entrypoint', (kind) => {
-  it.each([
-    ['attempt', attempt],
-    ['attemptEchoed', attemptEchoed],
-    ['capture', capture],
-    ['runConcurrent', runConcurrent],
-  ] as const)('%s preserves arguments, working directory, and child environment', async (_name, run) => {
-    const files = fixture()
-    const args = ['install', '--lockfile-only', 'path with spaces', '中文 $;&']
-    const entrypoint = kind === 'native' ? process.execPath : files.entrypoint
-    const invocationArgs = kind === 'native' ? [files.entrypoint, ...args] : args
+/**
+ * Pack one manifest into a tarball shaped like `npm pack` output.
+ * @returns Absolute path of the archive.
+ */
+async function packedTarball(name: string, version: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-tarball-'))
+  directories.push(directory)
+  const contents = join(directory, 'package')
+  await import('node:fs/promises').then(async fs => fs.mkdir(contents))
+  await writeFile(join(contents, 'package.json'), JSON.stringify({ name, version }))
+  await writeFile(join(contents, 'index.js'), '')
+  const archive = join(directory, `${name.replaceAll('/', '-').replace('@', '')}-${version}.tgz`)
+  execFileSync('tar', ['-czf', basename(archive), 'package'], { cwd: dirname(archive) })
+  return archive
+}
 
-    await run('pnpm', invocationArgs, {
-      cwd: files.root,
-      env: { ...files.env, npm_execpath: entrypoint },
-    })
-
-    expect(JSON.parse(readFileSync(files.result, 'utf8'))).toEqual({
-      args,
-      cwd: realpathSync(files.root),
-      value: 'child environment',
-    })
+describe('release process helpers', () => {
+  it('runs pnpm through a JavaScript entry, which spawnSync can start on Windows', () => {
+    const [command, ...args] = pnpmCommand()
+    expect(command === 'pnpm' || /node(?:\.exe)?$/iu.test(command)).toBe(true)
+    if (command !== 'pnpm') expect(args[0]).toMatch(/pnpm/u)
+    expect(capture(command, [...args, '--version'])).toMatch(/^\d+\.\d+\.\d+/u)
   })
 })
 
-it('capture resolves the inherited lifecycle entrypoint and trims output', () => {
-  const files = fixture()
-  vi.stubEnv('npm_execpath', files.entrypoint)
-  vi.stubEnv('DSH_RELEASE_RESULT', files.result)
-  vi.stubEnv('DSH_RELEASE_STDOUT', '  package-manager output\n')
+describe('release tarball readers', () => {
+  it('lists members of an archive under an absolute path', async () => {
+    // GNU tar reads the colon in a Windows drive path as a remote host, so the readers run beside the archive.
+    const archive = await packedTarball('@deepseek-ai/dsh-probe', '1.2.3')
+    expect(tarballFiles(archive)).toEqual(expect.arrayContaining(['package/package.json', 'package/index.js']))
+  })
 
-  expect(capture('pnpm', ['--version'])).toBe('package-manager output')
-})
-
-it('preserves non-zero exit handling after resolving pnpm', async () => {
-  const files = fixture()
-  const options = { env: { ...files.env, npm_execpath: files.entrypoint, DSH_RELEASE_STATUS: '7' } }
-
-  expect(attempt('pnpm', ['install'], options).status).toBe(7)
-  expect(() => capture('pnpm', ['install'], options)).toThrow('pnpm install exited with 7')
-  await expect(runConcurrent('pnpm', ['install'], options)).rejects.toThrow('pnpm install exited with 7')
-})
-
-it('keeps non-pnpm executables independent of the lifecycle entrypoint', () => {
-  const files = fixture()
-
-  expect(attempt(process.execPath, [files.entrypoint], {
-    env: { ...files.env, npm_execpath: '' },
-  }).status).toBe(0)
+  it('reads what an archive declares about itself', async () => {
+    const archive = await packedTarball('@deepseek-ai/dsh-probe', '1.2.3')
+    expect(packedIdentity(archive)).toEqual({ name: '@deepseek-ai/dsh-probe', version: '1.2.3' })
+  })
 })

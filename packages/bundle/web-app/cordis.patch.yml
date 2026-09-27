@@ -13,24 +13,21 @@
 
 # ── surface-specific values the base deliberately omits ─────────────────────
 
-# The research edition introduces its agent through the preset persona only:
-# no fixed "powered by DeepSeek Harness" opener before it.
 - id: system-prompt
   config:
-    includeHarnessIdentity: false
     personaSuffix: Your working directory is {{cwd}}.
     personaPrefix: >-
       You are a coding agent powered by the {{model}} model.
 
-# Full-text session search is opt-in (the base row's `openAt: never`); the
-# research edition opts in, so the sidebar's research search also matches
-# conversation content. `first-search` defers the node:sqlite import and the
-# ephemeral in-memory index to the first search, so Node 22 startup stays
-# quiet. The row restates `path`, the base row's other key.
+# Full-text session search is opt-in (the base row's `openAt: never`). This
+# restatement keeps the Web values on one ephemeral in-memory index; a
+# deployment enabling content search overrides `openAt` to `first-search` in a
+# later patch layer, which defers the node:sqlite import and in-memory handle
+# to the first search so Node 22 startup stays quiet.
 - id: session-query-sqlite
   config:
     path: ':memory:'
-    openAt: first-search
+    openAt: never
 
 - id: tools
   config:
@@ -39,29 +36,6 @@
     # designed; unset keeps the schema default (native). Remove the env seam
     # once the web UI owns the choice per session.
     mode: !!js process.env.DSH_TOOLS_MODE
-
-# ── the research edition exports no telemetry and records no feedback ───────
-#
-# SciPaper Harness exports no telemetry and records no feedback: in the base
-# FEEDBACK_ONLY mode a rating or `/feedback` releases the Session log to the
-# DeepSeek telemetry endpoint. The web profile and the Desktop Host both
-# compose this bundle, so these rows are off in both; the Desktop Host also
-# applies DSH_TELEMETRY_DISABLED, which the Electron shell always sets. The
-# Web feedback rows below (`message-feedback`, `ui-message-feedback`) are
-# inserted disabled. DeepSeek models stay an ordinary provider, but their
-# requests carry no `dsh_session_log` copy of the Session log. Every row the
-# research edition disables is also listed in `tests/research-edition-rows.ts`,
-# which the composition specs and the Web e2e harnesses read.
-
-- id: session-telemetry-otel
-  disabled: true
-
-- id: command-feedback
-  disabled: true
-
-- id: session-log-deepseek
-  config:
-    enabled: false
 
 # ── web-only host rows, the transport layer, and the browser roster ─────────
 
@@ -73,26 +47,20 @@
     - id: subagent-model-selection-settings
       name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
 
-    # Off in the research edition: message ratings authorise a Session-log upload.
     - id: message-feedback
       name: '@deepseek-ai/dsh-message-feedback'
-      disabled: true
       config:
         maxNoteBytes: 8192
 
     # Browser Session export: `/export` command plus the shared download dialog.
-    # Off in the research edition, which offers no Session-log download.
     - id: session-log-download
       name: '@deepseek-ai/dsh-session-log-export'
-      disabled: true
 
     # Session-header "Open In..." split button over the host application
     # resolution (macOS/Windows/Linux; a host with no resolved application
     # renders no button). Two halves: the host routes and the browser surface.
-    # Off in the research edition, on the web as on the desktop.
     - id: open-in-app
       name: '@deepseek-ai/dsh-host-open-in-app'
-      disabled: true
       config:
         probeTimeoutMs: 10000
         iconTimeoutMs: 10000
@@ -100,7 +68,6 @@
 
     - id: ui-open-in-app
       name: '@deepseek-ai/dsh-client-ui-open-in-app'
-      disabled: true
 
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'
@@ -135,6 +102,10 @@
     - id: session-controller
       name: '@deepseek-ai/dsh-api-session-controller'
 
+    # One background job's observation record streamed over Typert Remote;
+    # the roster rides the session control stream above.
+    - id: job-controller
+      name: '@deepseek-ai/dsh-api-job-controller'
     # Workspace file service: bounded read, directory listing, and the
     # agent-write change feed inside the session workspace root.
     - id: terminal-controller
@@ -142,8 +113,27 @@
     - id: workspace-files
       name: '@deepseek-ai/dsh-api-workspace-files'
 
+    # Durable Host-wide reminders. The Schedule service owns the task store and
+    # delivers each due occurrence as a follow-up in its original Session;
+    # `time-context` supplies the current time, browser zone, and elapsed time
+    # the model needs to resolve an unqualified date or time. The browser half
+    # is the `ui-schedule` row below.
+    - id: time-context
+      name: '@deepseek-ai/dsh-time-context'
+      disabled: true
+
+    - id: schedule
+      name: '@deepseek-ai/dsh-schedule'
+      disabled: true
+
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
+    - id: ui-settings-account
+      name: '@deepseek-ai/dsh-client-ui-settings-account'
+
+    - id: account-controller
+      name: '@deepseek-ai/dsh-api-account-controller'
+
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'
 
@@ -153,6 +143,12 @@
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
+
+    # The Host inspect providers are process-global: the registry rejects a
+    # duplicate id, so they register here once and every preset's `tool-cordis`
+    # row reads them.
+    - id: cordis-inspect-providers
+      name: '@deepseek-ai/dsh-tool-cordis/host'
 
     # Ordinary provider for the parsed Web flags. Its plugin-level injection
     # waits for cmdlineArgs; no launcher metadata or special row kind is needed.
@@ -178,8 +174,9 @@
     # assembly fact of dsh-web-app, never user config), mounts the
     # frontend-static fallback owner, registers the web-surface prompt
     # section and the bash runtime variable, prints the URL line, and opens the
-    # canonical local URL after the full tree settles. The webStartup provider
-    # supplies invocation-only values; after the server binds, this row samples
+    # canonical local URL after the full Loader tree settles and the required-
+    # entry audit passes. The
+    # webStartup provider supplies invocation-only values; after the server binds, this row samples
     # LAN trust once and provides `webRuntime`. A complete agent-preset persona
     # suppresses the prompt section for that agent while retaining the host-owned
     # shell variable.
@@ -236,6 +233,12 @@
     - id: locale
       name: '@deepseek-ai/dsh-client-locale'
 
+    - id: shortcuts
+      name: '@deepseek-ai/dsh-client-shortcuts'
+
+    - id: ui-shortcuts
+      name: '@deepseek-ai/dsh-client-ui-shortcuts'
+
     - id: ui-layout
       name: '@deepseek-ai/dsh-client-ui-layout'
 
@@ -249,28 +252,29 @@
     - id: resources
       name: '@deepseek-ai/dsh-client-resources'
 
-    # The brand row is plain identity in the research edition; 新研究 is the
-    # one New Session button.
     - id: ui-sidebar
       name: '@deepseek-ai/dsh-client-ui-sidebar'
-      config:
-        brandAction: none
 
     # The right Sidebar: one docking surface per session over ui-dockkit.
     - id: ui-sidebar-right
       name: '@deepseek-ai/dsh-client-ui-sidebar-right'
 
 
+    - id: office-to-pdf
+      name: '@deepseek-ai/dsh-office-to-pdf'
+
     # The right Sidebar's document tab: bounded file reads with selectable
-    # Markdown, code, HTML, PDF, and plain-text renderers.
+    # Markdown, code, HTML, PDF, Office, and plain-text renderers.
     - id: ui-sidebar-documentpreview
       name: '@deepseek-ai/dsh-client-ui-sidebar-documentpreview'
 
-    # The right Sidebar's terminal tab type; off in the research edition.
+    # Web profiles opt in; Desktop retains sandboxed HTTP(S) Browser tabs.
+    - id: ui-sidebar-browser
+      name: '@deepseek-ai/dsh-client-ui-sidebar-browser'
+      disabled: !!js "ctx.get('profileContext')?.name !== 'desktop'"
+
     - id: ui-sidebar-terminal
       name: '@deepseek-ai/dsh-client-ui-sidebar-terminal'
-      disabled: true
-
     # The right Sidebar's workspace file tree tab type.
     - id: ui-sidebar-files
       name: '@deepseek-ai/dsh-client-ui-sidebar-files'
@@ -284,13 +288,16 @@
     - id: ui-settings-models
       name: '@deepseek-ai/dsh-client-ui-settings-models'
 
-    # The plugin list in settings; off in the research edition.
+    # Plugin management: the sidebar Plugins page installs, enables, disables,
+    # and removes the profile's bundles through the `pluginManager` Remote.
+    # Without a profile-backed Host it reports itself unavailable.
+    - id: ui-plugin-manager
+      name: '@deepseek-ai/dsh-client-ui-plugin-manager'
+
+    # Read-only Plugin list tab in the Settings Plugins section; the built-in
+    # bundles the sidebar page leaves out are inspected here.
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
-      disabled: true
-
-    - id: ui-settings-unarchive-sessions
-      name: '@deepseek-ai/dsh-client-ui-settings-unarchive-sessions'
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
@@ -312,28 +319,28 @@
     - id: ui-tool
       name: '@deepseek-ai/dsh-client-ui-tool'
 
-    # The Cordis plugin badge and panel; off in the research edition.
     - id: ui-cordis
       name: '@deepseek-ai/dsh-client-ui-cordis'
-      disabled: true
+
+    # Turn tail: the changed-files card and delivery cards under each closing
+    # assistant message. Remove this entry to turn the surface off; the tail
+    # hole renders empty.
+    - id: ui-deliverables
+      name: '@deepseek-ai/dsh-client-ui-deliverables'
+
+    # Records each top-level turn's changed files from git working-tree
+    # snapshots; the changed-files card above renders its events.
+    - id: workspace-changes
+      name: '@deepseek-ai/dsh-workspace-changes'
+
+
+    - id: ui-workspace
+      name: '@deepseek-ai/dsh-client-ui-workspace'
 
     # Durable workflow lifecycle as an independent Chat node after the
     # existing generic workflow tool row.
     - id: ui-workflow-run
       name: '@deepseek-ai/dsh-client-ui-workflow-run'
-
-    # Turn tail: the produced-files row under each closing assistant message.
-    # Remove this entry to turn the surface off; the tail hole renders empty.
-    - id: ui-deliverables
-      name: '@deepseek-ai/dsh-client-ui-deliverables'
-
-
-    # Startup, a lost selection and the unscoped 新研究 go to the entry policy
-    # ui-research registers; without one, startup uses the recent Workspace.
-    - id: ui-workspace
-      name: '@deepseek-ai/dsh-client-ui-workspace'
-      config:
-        entry: policy
 
     # Input triggers: the '/' | '@' pipeline (ui-input-trigger), the command surface over
     # it (ui-commands), and the reference sources (ui-skill / ui-reference).
@@ -352,16 +359,17 @@
     - id: ui-reference
       name: '@deepseek-ai/dsh-client-ui-reference'
 
-    # Read-only active Schedule catalog. The shipped Web graph resolves the
-    # client package but leaves it disabled; the explicit Schedule overlay
-    # enables this same row together with the host Schedule services.
+
+    # Background jobs: the session-header roster with on-demand streaming
+    # record panels over the session job-output service.
+    - id: ui-jobs
+      name: '@deepseek-ai/dsh-client-ui-jobs'
+
+    # Task management and Session reminder catalog over the Host Schedule
+    # service mounted above.
     - id: ui-schedule
       name: '@deepseek-ai/dsh-client-ui-schedule'
       disabled: true
-
-    # Background jobs: the session-header list over the jobsBySession mirror.
-    - id: ui-jobs
-      name: '@deepseek-ai/dsh-client-ui-jobs'
 
     # Goal surface: GoalBar in the input dock over the goal session projection.
     - id: ui-goal
@@ -370,10 +378,8 @@
     # The feedback surface: Like/Dislike in the assistant-message action
     # strip, the feedback dialog behind Dislike and /feedback with its
     # acknowledgement toast, over the messageFeedback and sessionFeedback Remotes.
-    # Off in the research edition, with both Remotes' Host rows.
     - id: ui-message-feedback
       name: '@deepseek-ai/dsh-client-ui-message-feedback'
-      disabled: true
 
     # Model selection: the /model popupSelect + composer seat over session.models.
     - id: ui-model-selection
@@ -382,20 +388,31 @@
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
 
-    # The agent-preset controls: the preset chip on a blank conversation, the
-    # preset label in the session header, and the preset settings section.
-    # Absent a roster it renders nothing. Off in the research edition, where
-    # every conversation composes from the roster's default preset.
+    # The agent-preset row in General settings: the default preset for
+    # sessions created later. Absent a roster it renders nothing.
     - id: ui-agent-preset
       name: '@deepseek-ai/dsh-client-ui-agent-preset'
-      disabled: true
 
-    # Plugin configuration: the host-plane sections a user owns, as expandable
-    # cards. A namespace this deployment does not expose renders nothing.
-    # Off in the research edition.
+    # The Built-in plugins settings section: the navigation entry and the tab
+    # row the inventory tab registers into. The official configuration pages
+    # are the companion rows below.
     - id: ui-settings-plugins
       name: '@deepseek-ai/dsh-client-ui-settings-plugins'
-      disabled: true
+
+    # The official settings pages: one companion package per host-plane
+    # namespace, each registering its page into the Plugins page while the
+    # Host serves the namespace.
+    - id: ui-settings-shell
+      name: '@deepseek-ai/dsh-client-ui-settings-shell'
+
+    - id: ui-settings-agent-loop
+      name: '@deepseek-ai/dsh-client-ui-settings-agent-loop'
+
+    - id: ui-settings-subagent
+      name: '@deepseek-ai/dsh-client-ui-settings-subagent'
+
+    - id: ui-settings-web-search
+      name: '@deepseek-ai/dsh-client-ui-settings-web-search'
 
     # Plan control: the composer plan seat over the plan projection + /plan channel.
     - id: ui-plan
@@ -404,11 +421,8 @@
     - id: ui-user-questions
       name: '@deepseek-ai/dsh-client-ui-user-questions'
 
-    # The trajectory view beside the conversation. Off in the research
-    # edition, so the session header draws no view tabs.
     - id: ui-trajectory
       name: '@deepseek-ai/dsh-client-ui-trajectory'
-      disabled: true
 
 # ── the agent plane moves behind agent presets ─────────────────────────────
 #
@@ -426,6 +440,9 @@
 # the criterion for host-plane ownership — injection resolves before any session
 # exists, so there is no agent to key by. Behind a preset realm those variables
 # would never reach the model's shell at all.
+
+- id: tool-plugin-manager
+  disabled: true
 
 - id: tool-bash
   disabled: true
@@ -535,53 +552,11 @@
 - id: tool-web
   disabled: true
 
-# The preset roster. The shipped presets are bundled inside
-# `dsh-agent-presets` itself and prepended as a read-only `system` root
-# (`includeShippedRoot`); `$DSH_HOME/.agent-presets` is where a person — or an
-# agent — authors their own, appended by the same package (`includeUserRoot`),
-# and carries the same trust as shell access because a preset IS a
-# composition. This row only names the default and any deployment-added
-# `roots`; no launcher patching is involved.
+# The preset selection registry. The shipped preset declarations follow as
+# separate patch files under `presets/`, listed after this file in
+# `package.json` `dsh.bundle.patch`.
 - insert:
-    - id: agent-presets
-      name: '@deepseek-ai/dsh-agent-presets'
+    - id: agent-preset-registry
+      name: '@deepseek-ai/dsh-agent-preset-registry'
       config:
-        # The research edition opens every conversation as a research
-        # collaborator. It ships no preset chooser (`ui-agent-preset` is off).
-        default: research
-
-# The research edition's automatic autonomy runs unattended: workspace writes
-# as usual, but an escalation is declined instead of waiting on an approval
-# card nobody is there to answer. A patch replaces the row's configuration, so
-# the base table is restated beside the new row.
-- id: permission
-  config:
-    presets:
-      read-only:
-        sandbox: read-only
-        approval: ask
-      workspace-write:
-        sandbox: workspace-write
-        approval: ask
-      danger-full-access:
-        sandbox: danger-full-access
-        approval: never
-      research-auto:
-        sandbox: workspace-write
-        approval: never
-        name: 全自动 · Automatic
-        description: 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。
-
-- insert:
-    - id: research-workbench
-      name: '@deepseek-ai/dsh-research-workbench'
-      config:
-        maxSourceBytes: 67108864
-        pollIntervalMs: 5000
-        maxReviewPages: 12
-    - id: ui-research
-      name: '@deepseek-ai/dsh-client-ui-research'
-      # The composer's statistics pills, the default-permission setting and
-      # the open-config-file action are developer surfaces in this product.
-      config:
-        hideDeveloperCells: true
+        default: standard

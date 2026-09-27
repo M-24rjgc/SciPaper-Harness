@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { pathToFileURL } from 'node:url'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import * as DomainPlugin from '@deepseek-ai/dsh-storage-domain'
@@ -18,6 +20,7 @@ import type { ProcessOptions, ProcessResult } from '../src/process.ts'
 import type { ResearchProject } from '../src/types.ts'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { draftFolderName } from '../src/drafts.ts'
+import { RESEARCH_TOOL_MODULES, type ResearchToolModule } from '../src/tools.ts'
 
 /** Every child process the service starts, answered by a scripted stand-in. */
 const processes = vi.hoisted(() => ({
@@ -123,6 +126,7 @@ vi.mock('../src/drafts.ts', async (original) => {
 
 const { default: ResearchWorkbench, EMBEDDING_CREDENTIAL, IMAGE_CREDENTIAL } = await import('../src/index.ts')
 const AgentTools = await import('../src/agent-tools.ts')
+const ModeSkills = await import('../src/mode-skills.ts')
 const { default: SkillRegistry } = await import('@deepseek-ai/dsh-skill')
 
 let ctx: Context | undefined
@@ -162,6 +166,8 @@ interface Harness {
   registry: Map<string, unknown>
   prompts: unknown[]
   sessions: string[]
+  /** Preset explicitly requested for every newly created research conversation. */
+  sessionPresets: (string | undefined)[]
   credentials: Map<string, string>
   /** Registered folders by id, one per project root. */
   workspaces: Map<WorkspaceId, FakeWorkspace>
@@ -178,6 +184,8 @@ interface Harness {
   archived: string[]
   /** Set to make the session list fail, as a persistence read can. */
   listing: { failure?: Error | undefined }
+  /** A late archive failure and an optional restoration failure. */
+  archiving: { failOn?: string; restoreFailOn?: string }
 }
 
 interface BootOptions {
@@ -188,6 +196,8 @@ interface BootOptions {
   presets?: string[]
   /** The service's configured research home. */
   researchHome?: string
+  /** Independent tool-family plugin declarations. */
+  toolModules?: ResearchToolModule[][]
 }
 
 async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<Harness> {
@@ -197,9 +207,9 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   logs = messages
   // The default exporter keeps errors and information only; warnings are kept here too.
   ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { messages.push(message) } })
-  const registry = new Map<string, unknown>()
   const prompts: unknown[] = []
   const sessions: string[] = []
+  const sessionPresets: (string | undefined)[] = []
   const credentials = new Map<string, string>()
   const workspaces = new Map<WorkspaceId, FakeWorkspace>()
   const agents: FakeAgent[] = []
@@ -209,11 +219,13 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   const turns = new Set<string>()
   const archived: string[] = []
   const listing: Harness['listing'] = {}
+  const archiving: Harness['archiving'] = {}
   let open = (_session: FakeSession): void => {}
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
-    ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['skills', SkillRegistry],
+    ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['research-mode-skills', ModeSkills],
+    ['skills', SkillRegistry], ['system-prompt', SystemPrompt], ['tools', ToolRuntime],
     ['adapters', { inject: ['storage'], apply(c: Context) {
       const backend = new MemoryStorageBackend(pool)
       c.storage.backend.register('memory', backend)
@@ -228,8 +240,14 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         list: () => [...workspaces.values()],
         delete: async (id: WorkspaceId) => workspaces.delete(id),
         // As the registry does: archiving an archived session, or unarchiving one that is not, writes nothing.
-        archiveSession: async (id: string) => { if (!archived.includes(id)) archived.push(id) },
-        unarchiveSession: async (id: string) => { if (archived.includes(id)) archived.splice(archived.indexOf(id), 1) },
+        archiveSession: async (id: string) => {
+          if (id === archiving.failOn) throw new Error('Session became active')
+          if (!archived.includes(id)) archived.push(id)
+        },
+        unarchiveSession: async (id: string) => {
+          if (id === archiving.restoreFailOn) throw new Error('Archive storage is unavailable')
+          if (archived.includes(id)) archived.splice(archived.indexOf(id), 1)
+        },
         get archivedSessionIds() { return [...archived] },
       } as unknown as Context['workspaceRegistry'])
       c.provide('agents', { list: () => agents } as unknown as Context['agents'])
@@ -253,9 +271,10 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
       } as unknown as Context['permissionPresets'])
       c.provide('sessionController', {
-        create: async ({ workspaceId }: { workspaceId: WorkspaceId }) => {
+        create: async ({ workspaceId, agentPreset }: { workspaceId: WorkspaceId; agentPreset?: string }) => {
           const id = `session-${sessions.length + 1}`
           sessions.push(id)
+          sessionPresets.push(agentPreset)
           open({ id, header: { cwd: workspaceId.slice('workspace:'.length) } })
           return { sessionId: id as SessionId }
         },
@@ -277,15 +296,17 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         resolve: async (ref: string) => credentials.has(ref) ? { value: credentials.get(ref) } : undefined,
       } as unknown as Context['credentials'])
       c.provide('llm', {} as Context['llm'])
-      c.provide('tools', { register: (tool: { name: string }) => { registry.set(tool.name, tool); return () => registry.delete(tool.name) } } as unknown as Context['tools'])
     } }],
   ])
   ctx.loader.internal = { version: 'v2', async import(name: string) { if (!modules.has(name)) throw new Error(name); return modules.get(name) } } as unknown as NonNullable<typeof ctx.loader.internal>
   const configuration = join(root ?? '', 'cordis.yml')
   await writeFile(configuration, [
     '- name: storage', '- name: adapters', '- name: domain', '  config:', '    backend: memory',
-    '- name: skills',
-    '- name: research-tools',
+    '- name: skills', '- name: system-prompt', '- name: tools',
+    ...(options.toolModules ?? [[...RESEARCH_TOOL_MODULES]]).flatMap((modules, index) => [
+      `- id: research-tools-${index}`, '  name: research-tools', '  config:', `    modules: ${JSON.stringify(modules)}`,
+    ]),
+    '- id: research-mode-skills', '  name: research-mode-skills',
     '- name: research', '  config:', '    maxSourceBytes: 100000', '    pollIntervalMs: 500', '    maxReviewPages: 4',
     ...options.componentRoot === false ? [] : [`    componentRoot: ${JSON.stringify(join(root ?? '', 'components'))}`],
     ...options.researchHome === undefined ? [] : [`    researchHome: ${JSON.stringify(options.researchHome)}`],
@@ -293,8 +314,9 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configuration).href } })
   await ctx.loader.await()
   return {
-    service: ctx.research, registry, prompts, sessions, credentials, workspaces, agents, goals, applied,
-    open: (session) => { open(session) }, turns, archived, listing,
+    service: ctx.research, registry: new Map(ctx.tools.schemas().map(tool => [tool.name, tool])),
+    prompts, sessions, sessionPresets, credentials, workspaces, agents, goals, applied,
+    open: (session) => { open(session) }, turns, archived, listing, archiving,
   }
 }
 
@@ -312,6 +334,28 @@ function logged(type: 'warn' | 'error', text: string): boolean {
 }
 
 describe('the research service records; it never drives the agent', () => {
+  it('loads independent tool families and removes only a disabled plugin contribution', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-modules-'))
+    const { service } = await boot(new MemoryMediaPool(), { toolModules: [['project'], ['evidence'], ['checks']] })
+    const names = () => ctx!.tools.schemas().map(tool => tool.name).sort()
+    expect(names()).toEqual(['research_check', 'research_evidence', 'research_project'])
+    const project = await service.create({ title: 'Modes', root: join(root, 'paper'), brief: '', mode: 'spark-to-paper' })
+    expect((await ctx!.skills.list({ cwd: project.root })).map(skill => skill.name)).toContain('ts-paper')
+    const evidence = [...ctx!.loader.entries()].find(entry => entry.options.id === 'research-tools-1')!
+    await evidence.update({ disabled: true })
+    await ctx!.loader.await()
+    expect(names()).toEqual(['research_check', 'research_project'])
+    expect(service.getProject(project.id).title).toBe('Modes')
+    const provider = [...ctx!.loader.entries()].find(entry => entry.options.id === 'research-mode-skills')!
+    await provider.update({ disabled: true })
+    await ctx!.loader.await()
+    expect(await ctx!.skills.list({ cwd: project.root })).toEqual([])
+    expect(names()).toEqual(['research_check', 'research_project'])
+    await evidence.update({ disabled: false })
+    await ctx!.loader.await()
+    expect(names()).toEqual(['research_check', 'research_evidence', 'research_project'])
+  })
+
   it('creates and reopens projects without prompting any session, and restores after a restart', async () => {
     root = await mkdtemp(join(tmpdir(), 'research-loader-'))
     const pool = new MemoryMediaPool(), first = await boot(pool)
@@ -323,6 +367,7 @@ describe('the research service records; it never drives the agent', () => {
     ctx!.on('research/mode', (event) => { announced.push(event) })
     const p = await first.service.create({ title: 'Study', root: join(root, 'paper'), brief: 'One small spark', mode: 'spark-to-paper' })
     expect(p).toMatchObject({ sessionId: 'session-1', mode: 'spark-to-paper', route: 'proposal', autonomy: 'checkpoints' })
+    expect(first.sessionPresets).toEqual(['research'])
     expect(announced).toEqual([{ projectId: p.id, root: p.root, mode: 'spark-to-paper', route: 'proposal' }])
     await expect(first.service.create({ title: 'x', root: join(root, 'x'), brief: '', mode: 'nope' })).rejects.toThrow(/Unknown mode nope; installed modes: general, spark-to-paper, ccfa/)
     await expect(first.service.create({ title: 'x', root: join(root, 'x'), brief: '', mode: 'spark-to-paper', route: 'nope' })).rejects.toThrow(/has no route nope/)
@@ -1765,6 +1810,41 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
   const PERSON_ONLY = /the person's commands/
   const command = (service: Harness['service'], request: Record<string, unknown>, actor: 'user' | 'agent' = 'user') =>
     service.execute(request as never, signal, actor)
+
+  it('keeps the entire research visible when a conversation is active', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-archive-active-'))
+    const { service, archived, open } = await boot(new MemoryMediaPool())
+    const paper = await service.create({ title: 'Paper', root: join(root, 'paper'), brief: 'An active study' })
+    open({ id: 'active', header: { cwd: paper.root } })
+    const before = structuredClone(service.getProject(paper.id))
+    ctx!.on('workspace/session-activity', async ({ sessionId }, next) => [
+      ...sessionId === 'active' ? [{ kind: 'turn' as const }] : [], ...await next(),
+    ])
+    await expect(command(service, { action: 'archive-project', projectId: paper.id })).rejects.toThrow(/session is active/)
+    expect(archived).toEqual([])
+    expect(service.getProject(paper.id)).toEqual(before)
+  })
+
+  it('reverses a partially completed archive and retains recovery information when reversal fails', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-archive-race-'))
+    const { service, archived, open, archiving } = await boot(new MemoryMediaPool())
+    const paper = await service.create({ title: 'Paper', root: join(root, 'paper'), brief: 'A study' })
+    open({ id: 'late-active', header: { cwd: paper.root } })
+    archiving.failOn = 'late-active'
+    await expect(command(service, { action: 'archive-project', projectId: paper.id })).rejects.toThrow('Session became active')
+    expect(archived).toEqual([])
+    expect(service.getProject(paper.id)).not.toHaveProperty('archivedAt')
+    expect(service.getProject(paper.id)).not.toHaveProperty('archivedConversations')
+
+    archiving.restoreFailOn = paper.sessionId!
+    await expect(command(service, { action: 'archive-project', projectId: paper.id })).rejects.toThrow(/restore the research/)
+    expect(archived).toEqual([paper.sessionId])
+    expect(service.getProject(paper.id).archivedConversations).toEqual([paper.sessionId, 'late-active'])
+    delete archiving.restoreFailOn
+    await command(service, { action: 'unarchive-project', projectId: paper.id })
+    expect(archived).toEqual([])
+    expect(service.getProject(paper.id)).not.toHaveProperty('archivedAt')
+  })
 
   it('archives the research\'s own conversations, keeps the removal across a restart, and restores exactly what it archived', async () => {
     root = await realpath(await mkdtemp(join(tmpdir(), 'research-archive-')))

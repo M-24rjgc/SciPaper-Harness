@@ -1,40 +1,25 @@
-- button "New research"
-- button "Collapse sidebar":
-  - img
-- button "New research":
-  - img
-  - text: New research
+- button "New session"
+- button "Collapse sidebar"
+- button "New session": New Session
+- navigation "Global panels":
+  - button "Plugins"
 - text: Workspaces
-- button "Search sessions":
-  - img
-- textbox "Search sessions..."
-- button "View options":
-  - img
-- button "Add workspace":
-  - img
+- button "Search sessions"
+- textbox "Search session names"
+- button "View options"
+- button "Add workspace"
 - tree "Sessions":
-  - treeitem "workspace" [expanded]:
-    - img
-    - text: workspace
+  - treeitem "workspace" [expanded]
   - treeitem "New Session" [selected]
-- button "Settings":
-  - img
-  - text: Settings
-- text: What shall we work on today?
-- button "Choose research":
-  - img
-  - text: workspace
-  - img
-- button "Standard mode":
-  - img
-  - text: Standard mode
-  - img
-- textbox "Describe your research question, or drop in papers and data; / for commands, @ for files or conversations":
+- button "Settings"
+- banner:
+  - button "Open right sidebar"
+- text: Into the Unknown Preview
+- button "Choose workspace": workspace
+- button "Standard mode"
+- textbox "Describe what you want to build, / commands, @ files or sessions":
   - paragraph
-- button "Add files or run commands":
-  - img
+- button "Add files or run commands"
 - 'button "Access mode, current: Workspace Write"': Workspace Write
-- button "Select model, current DeepSeek-V4-Flash":
-  - text: DeepSeek-V4-Flash
-  - img
+- button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
 - button "Send message" [disabled]

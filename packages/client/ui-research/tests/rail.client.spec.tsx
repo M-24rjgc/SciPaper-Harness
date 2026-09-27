@@ -11,7 +11,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { EvidenceId, ExperimentRecord, ResearchCommand, ResearchGoal, ResearchProject, RunStatus } from '@deepseek-ai/dsh-research-workbench/types'
@@ -80,7 +79,7 @@ function run(id: string, status: RunStatus): ExperimentRecord {
 }
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionId, displayTitle: id, cwd: ROOT, running: false, blank: false, updatedAt: 1, ...extra }
+  return { id: id as SessionId, displayTitle: id, cwd: ROOT, running: false, retainedBy: {}, blank: false, updatedAt: 1, ...extra }
 }
 
 const goal = (sessionId: string, phase: ResearchGoal['phase']): ResearchGoal => ({ sessionId, objective: 'the paper', phase, roundsStarted: 1, updatedAt: 1 })
@@ -91,10 +90,10 @@ function seat(projects: ResearchProject[], host: Host): { props: ResearchTabProp
   const sessions = host.sessions ?? [session(SESSION, { displayTitle: '稀疏注意力' })]
   const list: SessionListState = {
     ids: sessions.map(item => item.id), byId: Object.fromEntries(sessions.map(item => [item.id, item])),
-    current: SESSION as SessionId, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    projectionsBySession: {}, phase: 'ready',
   }
-  const pending = new Map<SessionId, SessionPendingInteractionBase>((host.pending ?? []).map(([id, kind]) => [
-    id as SessionId, { key: `${id}-${kind}`, kind, sessionId: id as SessionId },
+  const pending = new Map((host.pending ?? []).map(([id, kind]) => [
+    id as SessionId, { pendingInteraction: { key: `${id}-${kind}`, kind, sessionId: id as SessionId }, running: undefined, completionUnread: false },
   ]))
   const input = { draft: host.draft ?? '' }
   const presets = host.presets === undefined ? { research: 'research' } : host.presets
@@ -106,7 +105,7 @@ function seat(projects: ResearchProject[], host: Host): { props: ResearchTabProp
     useResearch: (select: (value: typeof view) => unknown) => select(view),
     useDirectories: (select: (value: Record<string, string>) => unknown) => select(directories),
     useSessions: (select: (value: SessionListState) => unknown) => select(list),
-    useSessionPendingInteraction: (select: (value: typeof pending) => unknown) => select(pending),
+    useSessionStatus: (select: (value: typeof pending) => unknown) => select(pending),
     useInput: (select: (value: typeof input) => unknown) => select(input),
     useCanReveal: (select: (value: boolean) => unknown) => select(host.canReveal ?? true),
     usePresets: (select: (value: PresetDefaults | null) => unknown) => select(presets),

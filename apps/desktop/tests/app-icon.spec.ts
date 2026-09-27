@@ -11,7 +11,7 @@ function icoSizes(file: Buffer): number[] {
 
 describe('the app icon', () => {
   it('names the flask icon for the exe, the installer, the uninstaller and the other platforms', async () => {
-    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     const config = createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'win32', 'x64')
     const windows = [config.win.icon, config.nsis.installerIcon, config.nsis.uninstallerIcon, config.nsis.installerHeaderIcon]
     expect(new Set(windows).size).toBe(1)
@@ -20,7 +20,7 @@ describe('the app icon', () => {
   })
 
   it('carries every size the Windows shell draws, from the title bar to the large tile', async () => {
-    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     const icon = readFileSync(createElectronBuilderConfig(RELEASE_ENVIRONMENT, 'win32', 'x64').win.icon)
     expect(icoSizes(icon)).toEqual([16, 20, 24, 32, 40, 48, 64, 256])
   })

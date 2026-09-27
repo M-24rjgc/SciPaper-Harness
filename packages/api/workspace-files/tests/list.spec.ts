@@ -1,6 +1,7 @@
 /** The `list` endpoint: the same containment gates as `read`, plus the entry cap. */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { requireFileSymlinks } from '../../../../scripts/test-symlinks.ts'
 import { join } from 'node:path'
 import { failureOf, openWorkspace, signal, type Harness } from './harness.ts'
 
@@ -19,6 +20,10 @@ afterEach(async () => {
 })
 
 const endpoint = (caps?: { maxEntries?: number }): ReturnType<Harness['endpoint']> => harness.endpoint(caps)
+
+/** Create a link to a directory: a Windows junction where junctions exist, a directory symlink elsewhere. */
+const directoryLink = (target: string, link: string): Promise<void> =>
+  symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir')
 
 describe('workspaceFiles.list — the happy path', () => {
   it('lists the root as the empty workspace path, with types and file sizes', async () => {
@@ -49,11 +54,12 @@ describe('workspaceFiles.list — the happy path', () => {
     expect(listing.entries.map(entry => entry.name)).toEqual(['a.ts'])
   })
 
-  it('reports a symlink child as what it points to, and a dangling one as other', async () => {
+  it('reports a file symlink child as what it points to, and a dangling one as other', async (context) => {
+    requireFileSymlinks(context)
     await writeFile(join(workspace, 'real.txt'), 'x', 'utf8')
     await mkdir(join(workspace, 'dir'))
     await symlink(join(workspace, 'real.txt'), join(workspace, 'to-file'))
-    await symlink(join(workspace, 'dir'), join(workspace, 'to-dir'))
+    await directoryLink(join(workspace, 'dir'), join(workspace, 'to-dir'))
     await symlink(join(workspace, 'missing'), join(workspace, 'dangling'))
     const listing = await endpoint().list(harness.scope, '.', signal())
     expect(listing.entries).toEqual([
@@ -63,6 +69,15 @@ describe('workspaceFiles.list — the happy path', () => {
       { name: 'to-dir', type: 'directory' },
       { name: 'to-file', type: 'file', size: 1 },
     ])
+  })
+
+  it('lists a directory link whose target is inside the workspace', async () => {
+    await mkdir(join(workspace, 'real-dir'))
+    await writeFile(join(workspace, 'real-dir', 'child.txt'), 'x', 'utf8')
+    await directoryLink(join(workspace, 'real-dir'), join(workspace, 'dir-link'))
+    const listing = await endpoint().list(harness.scope, 'dir-link', signal())
+    expect(listing.path).toBe('real-dir')
+    expect(listing.entries).toEqual([{ name: 'child.txt', type: 'file', size: 1 }])
   })
 })
 
@@ -93,11 +108,19 @@ describe('workspaceFiles.list — gates', () => {
     expect(failure.code).toBe('workspace-file/outside-workspace')
   })
 
-  it('rejects a symlinked directory before following it, wherever it points', async () => {
-    await symlink(outside, join(workspace, 'escape'))
+  it('rejects a directory link that resolves outside the workspace', async () => {
+    await directoryLink(outside, join(workspace, 'escape'))
     const failure = await failureOf(endpoint().list(harness.scope, 'escape', signal()))
+    expect(failure.code).toBe('workspace-file/outside-workspace')
+  })
+
+  it('rejects a directory link whose target is gone', async () => {
+    await mkdir(join(workspace, 'vanishing'))
+    await directoryLink(join(workspace, 'vanishing'), join(workspace, 'dangling'))
+    await rm(join(workspace, 'vanishing'), { recursive: true })
+    const failure = await failureOf(endpoint().list(harness.scope, 'dangling', signal()))
     expect(failure.code).toBe('workspace-file/not-directory')
-    expect(failure.details).toMatchObject({ kind: 'symlink' })
+    expect(failure.details).toMatchObject({ path: 'dangling', kind: 'symlink' })
   })
 
   it('rejects a file, which has no children to list', async () => {

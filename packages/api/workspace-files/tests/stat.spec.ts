@@ -1,6 +1,7 @@
 /** The `stat` endpoint: the same gates as `read`, answering identity and freshness without content. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { requireFileSymlinks } from '../../../../scripts/test-symlinks.ts'
 import { join } from 'node:path'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
 import { failureOf, openWorkspace, signal, type Harness } from './harness.ts'
@@ -61,18 +62,22 @@ describe('workspaceFiles.stat', () => {
     expect(result).toEqual({ absolutePath: result.absolutePath, version: 'v-sizeless' })
   })
 
-  it('accepts outside files and refuses symlinks, directories, missing and empty paths', async () => {
+  it('accepts outside files and refuses directories, missing and empty paths', async () => {
     await writeFile(join(harness.outside, 'secret.txt'), 'no', 'utf8')
-    await symlink(join(harness.outside, 'secret.txt'), join(harness.workspace, 'link.txt'))
     await mkdir(join(harness.workspace, 'src'))
     const endpoint = harness.endpoint()
-    expect(await failureOf(endpoint.stat(harness.scope, 'link.txt', signal()))).toMatchObject({
-      code: 'workspace-file/not-regular-file',
-      details: { kind: 'symlink' },
-    })
     expect((await failureOf(endpoint.stat(harness.scope, 'src', signal()))).details).toMatchObject({ kind: 'directory' })
     expect(await endpoint.stat(harness.scope, join(harness.outside, 'secret.txt'), signal())).toMatchObject({ bytes: 2 })
     expect((await failureOf(endpoint.stat(harness.scope, 'nope.txt', signal()))).code).toBe('workspace-file/not-found')
     expect((await failureOf(endpoint.stat(harness.scope, '', signal()))).code).toBe('gateway/bad-request')
+  })
+
+  it('refuses a file symlink without following its outside target', async (context) => {
+    requireFileSymlinks(context)
+    await writeFile(join(harness.outside, 'secret.txt'), 'no', 'utf8')
+    await symlink(join(harness.outside, 'secret.txt'), join(harness.workspace, 'link.txt'))
+    expect(await failureOf(harness.endpoint().stat(harness.scope, 'link.txt', signal()))).toMatchObject({
+      code: 'workspace-file/not-regular-file', details: { kind: 'symlink' },
+    })
   })
 })

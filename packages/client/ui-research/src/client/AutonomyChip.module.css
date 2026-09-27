@@ -1,8 +1,8 @@
 /* The composer's chips share one measure: 28px tall, 13/20 medium secondary text, a rounded hover fill (the shell's access chip). */
 .root { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.trigger { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 240px; height: 28px; padding: 0 4px 0 8px; border: none; border-radius: 24px; outline: none; background: transparent; color: var(--dsw-alias-label-secondary); font-family: inherit; font-size: 13px; line-height: 20px; font-weight: 500; cursor: pointer; }
+.trigger { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 240px; height: 28px; padding: 0 4px 0 8px; border: none; border-radius: var(--dsw-radius-panel); outline: none; background: transparent; color: var(--dsw-alias-label-secondary); font-family: inherit; font-size: 13px; line-height: 20px; font-weight: 500; cursor: pointer; }
 .trigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
-.trigger:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }
+.trigger:focus-visible { box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); }
 .trigger:disabled { color: var(--dsw-alias-label-dimmed); cursor: default; }
 .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A preset typed by hand is the person's to notice. */

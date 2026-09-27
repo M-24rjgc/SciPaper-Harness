@@ -13,10 +13,10 @@ import type {
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { queueReadFaceOf } from './queue-store.ts'
+import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import { createSnapshotStore, type ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type {
-  ConversationDrafts, DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController, InputState,
+  ConversationDrafts, InputState, DraftAttachmentId, DraftAttachmentSerializationResult, InputTriggerController,
   SessionInputResolver, SessionInput, SubmitOutcome,
 } from '../contract/input.ts'
 import type { ComposerKeyboard } from '../contract/draft-editor.ts'
@@ -50,7 +50,7 @@ interface ConversationAttachmentFace {
 
 /** Session-addressed input facade registry (SessionInputResolver face + composer-layer extras). */
 export class InputHub implements SessionInputResolver {
-  private readonly shells = new Map<SessionId, SessionInputShell>()
+  private readonly shells = new WeakMap<SessionBinding, SessionInputShell>()
   readonly drafts = createSnapshotStore<Record<string, ConversationDrafts[string]>>({})
   private readSavedDraft: ((id: SessionId) => string) | undefined
 
@@ -74,7 +74,8 @@ export class InputHub implements SessionInputResolver {
       const ids = this.sessions().list.getSnapshot().ids
       const listed = new Set<string>(ids)
       for (const id of ids) {
-        const live = this.shells.get(id)?.snapshot
+        const binding = this.sessions().binding(id)
+        const live = binding === undefined ? undefined : this.shells.get(binding)?.snapshot
         this.publishDraft(id, live ?? { draft: readSaved(id), attachmentIds: [] })
       }
       const drafts = this.drafts.getSnapshot()
@@ -105,9 +106,12 @@ export class InputHub implements SessionInputResolver {
    */
   for(actx: Context): SessionInput {
     const sessions = this.sessions()
-    const id = sessions.scopeOf(actx)
-    if (id === undefined) throw new Error('conversation.input.for requires a session scope')
-    return this.shell(id)
+    const session = sessions.sessionOf(actx)
+    const binding = session === undefined ? undefined : sessions.binding(session.sessionId)
+    if (binding === undefined || binding.session !== session) {
+      throw new Error('conversation.input.for requires a retained Session scope')
+    }
+    return this.shellFor(binding)
   }
 
   /**
@@ -119,14 +123,14 @@ export class InputHub implements SessionInputResolver {
    * @returns the shell.
    */
   shellFor(binding: SessionBinding): SessionInputShell {
-    const existing = this.shells.get(binding.sessionId)
+    const existing = this.shells.get(binding)
     if (existing !== undefined) return existing
-    const { sessionId: id, session, ctx: actx } = binding
+    const { session, ctx: actx } = binding
     const shell = new SessionInputShell({
       actx,
       inputTriggers: () => this.controller(actx),
       popup: () => this.popup(actx),
-      queue: queueReadFaceOf(session),
+      inbox: session.projections.faceOf('inbox') as ObservableSnapshot<InboxState | undefined>,
       defaultSink: (text, attachmentIds, mode, signal) => this.sink(session, text, attachmentIds, mode, signal),
       steerQueue: () => { void this.steerQueue(session, shell) },
       commandAttachments: {
@@ -147,14 +151,14 @@ export class InputHub implements SessionInputResolver {
         }),
       },
     })
-    if (this.readSavedDraft !== undefined) shell.setDraft(this.readSavedDraft(id))
-    this.shells.set(id, shell)
-    this.publishDraft(id, shell.snapshot)
+    if (this.readSavedDraft !== undefined) shell.setDraft(this.readSavedDraft(binding.sessionId))
+    this.shells.set(binding, shell)
+    this.publishDraft(binding.sessionId, shell.snapshot)
     // The one teardown axis: listeners, shell, and map entries all ride the
     // scope fiber (nothing here outlives the scope).
     actx.effect(() => {
       const offs = [
-        shell.state.subscribe(() => { this.publishDraft(id, shell.snapshot) }),
+        shell.state.subscribe(() => { this.publishDraft(binding.sessionId, shell.snapshot) }),
         actx.on('slash/input-begin-command', req =>
           shell.beginCommand(req.claim, req.span) ? true : undefined),
         actx.on('slash/input-insert-reference', req =>
@@ -167,8 +171,8 @@ export class InputHub implements SessionInputResolver {
       return () => {
         for (const off of offs) off()
         const drafts = shell.dispose()
-        this.shells.delete(id)
-        this.publishDraft(id, { draft: this.readSavedDraft?.(id) ?? '', attachmentIds: [] })
+        this.shells.delete(binding)
+        this.publishDraft(binding.sessionId, { draft: this.readSavedDraft?.(binding.sessionId) ?? '', attachmentIds: [] })
         const conversation = this.rootCtx.get('conversation') as ConversationAttachmentFace | undefined
         for (const attachmentId of drafts) conversation?.releaseDraftAttachment(attachmentId)
       }
@@ -183,8 +187,6 @@ export class InputHub implements SessionInputResolver {
    * @returns the shell.
    */
   shell(id: SessionId): SessionInputShell {
-    const existing = this.shells.get(id)
-    if (existing !== undefined) return existing
     const binding = this.sessions().binding(id)
     if (binding === undefined) throw new Error(`conversation.input: session "${id}" resolved no binding`)
     return this.shellFor(binding)
@@ -207,7 +209,8 @@ export class InputHub implements SessionInputResolver {
    * @returns whether its mounted composer currently accepts files.
    */
   canPickFiles(id: SessionId): boolean {
-    return this.shells.get(id)?.canPickFiles() === true
+    const binding = this.sessions().binding(id)
+    return binding !== undefined && this.shells.get(binding)?.canPickFiles() === true
   }
 
   /**
@@ -215,7 +218,8 @@ export class InputHub implements SessionInputResolver {
    * @param id - target Session.
    */
   pickFiles(id: SessionId): void {
-    this.shells.get(id)?.pickFiles()
+    const binding = this.sessions().binding(id)
+    if (binding !== undefined) this.shells.get(binding)?.pickFiles()
   }
 
   /**
@@ -225,8 +229,8 @@ export class InputHub implements SessionInputResolver {
    * @returns the resident controller, or undefined when no trigger provider is installed.
    */
   inputTriggers(id: SessionId): InputTriggerController | undefined {
-    const actx = this.sessions().scope(id)
-    return actx === undefined ? undefined : this.controller(actx)
+    const binding = this.sessions().binding(id)
+    return binding === undefined ? undefined : this.controller(binding.ctx)
   }
 
   /**
@@ -259,7 +263,8 @@ export class InputHub implements SessionInputResolver {
    * @param shell - the resident shell (notice outlet).
    */
   private async steerQueue(session: SessionFace, shell: SessionInputShell): Promise<void> {
-    const queued = session.getSnapshot().queue.filter(item => item.placement === 'queued')
+    const inbox = session.projections.faceOf('inbox').getSnapshot() as InboxState | undefined
+    const queued = inbox?.['next-turn'] ?? []
     if (queued.length === 0) return
     for (const item of queued) {
       const result = await session.updateQueue(item.id, { kind: 'steer' })
@@ -271,11 +276,13 @@ export class InputHub implements SessionInputResolver {
   }
 
   private controller(actx: Context): InputTriggerController | undefined {
+    if (this.sessions().sessionOf(actx) === undefined) return undefined
     const inputTriggers = this.rootCtx.get('inputTriggers') as InputTriggerServiceFace | undefined
     return inputTriggers?.sessionOf(actx)
   }
 
   private popup(actx: Context): PopupDismissFace | undefined {
+    if (this.sessions().sessionOf(actx) === undefined) return undefined
     const command = this.rootCtx.get('commandUi') as CommandFace | undefined
     return command?.popupFor(actx)
   }

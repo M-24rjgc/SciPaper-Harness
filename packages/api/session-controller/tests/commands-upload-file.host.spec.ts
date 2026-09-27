@@ -83,6 +83,7 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
     },
   } as never)
   ctx.provide('llm', {
+    listModels: async () => [{ id: 'fixture-model', name: 'Model' }],
     listProviders: () => [{ id: 'fixture', name: 'Fixture' }],
     resolveModelInfo: () => Promise.resolve({ provider: 'fixture', id: 'fixture-model', name: 'Fixture' }),
   } as never)
@@ -426,7 +427,7 @@ describe('Session file uploads', () => {
     await controller.prompt(promptRequest([{ type: 'file', receiptId: receipt.receiptId }]))
     const queued = followup.mock.calls[0]?.[0] as UserMessage
     agent.inbox.append('next-turn', queued)
-    expect(controller.updateQueue({
+    expect(await controller.updateQueue({
       sessionId: SESSION,
       itemId: queued.id,
       action: { kind: 'remove' },

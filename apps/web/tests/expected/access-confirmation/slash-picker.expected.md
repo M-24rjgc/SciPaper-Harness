@@ -1,10 +1,8 @@
 - textbox "筛选选项":
   - /placeholder: 搜索…
 - listbox "/permission 匹配项":
-  - option "仅可查看" [selected]
-  - option "工作区内修改":
-    - text: 工作区内修改
-    - img
+  - option "仅可查看"
+  - option "工作区内修改" [selected]
   - option "完全权限"
   - option "全自动 · Automatic 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。"
   - option "Auto review EXP":

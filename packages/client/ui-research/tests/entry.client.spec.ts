@@ -17,6 +17,9 @@ import type { EntryView, ResearchView } from '../src/client/contract.ts'
 
 afterEach(() => { vi.useRealTimers() })
 
+/** Initial selection travels beside the Host list in this fixture. */
+type SessionFixture = SessionListState & { selected: SessionId | undefined }
+
 const LISTING_MS = 40
 const NOTICE_MS = 40
 
@@ -36,27 +39,28 @@ function research(title: string, root: string, workspaceId: string, extra: Parti
 }
 
 function session(id: string, cwd: string, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionId, displayTitle: id, cwd, running: false, blank: false, updatedAt: 1000, ...extra }
+  return { id: id as SessionId, displayTitle: id, cwd, running: false, retainedBy: {}, blank: false, updatedAt: 1000, ...extra }
 }
 
 function workspace(id: string, path: string, sessionIds: string[]): WorkspaceView {
   return { workspaceId: id as WorkspaceId, path, title: path, sessionIds: sessionIds as SessionId[], createdAt: '2026-09-26T00:00:00.000Z', updatedAt: '2026-09-26T00:00:00.000Z' }
 }
 
-function listOf(sessions: SessionSummary[], current?: string, phase: SessionListState['phase'] = 'ready'): SessionListState {
+function listOf(sessions: SessionSummary[], current?: string, phase: SessionListState['phase'] = 'ready'): SessionFixture {
   return {
     ids: sessions.map(item => item.id), byId: Object.fromEntries(sessions.map(item => [item.id, item])),
-    current: current as SessionId | undefined, phase, subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    selected: current as SessionId | undefined, projectionsBySession: {}, phase,
   }
 }
 
 function workspacesOf(items: readonly WorkspaceView[], archived: string[] = [], phase: WorkspaceSnapshot['phase'] = 'ready'): WorkspaceSnapshot {
-  return { items, archivedSessionIds: archived as SessionId[], state: 'idle', phase, error: null }
+  return { items, pinnedSessionIds: [], archivedSessionIds: archived as SessionId[], state: 'idle', phase, error: null }
 }
 
 /** One world: the lists, the record, the host and the navigation calls, all recorded. */
-function world(init: { sessions?: SessionListState; workspaces?: WorkspaceSnapshot; projects?: ResearchProject[] | null } = {}) {
+function world(init: { sessions?: SessionFixture; workspaces?: WorkspaceSnapshot; projects?: ResearchProject[] | null } = {}) {
   const sessions = createSnapshotStore<SessionListState>(init.sessions ?? listOf([]))
+  const current = createSnapshotStore<SessionId | undefined>(init.sessions?.selected)
   const workspaces = createSnapshotStore<WorkspaceSnapshot>(init.workspaces ?? workspacesOf([]))
   const projects = init.projects === undefined ? [] : init.projects
   const research = createSnapshotStore<ResearchView>({
@@ -70,12 +74,13 @@ function world(init: { sessions?: SessionListState; workspaces?: WorkspaceSnapsh
     const answer = answers.shift()
     return answer === undefined ? Promise.reject(new Error(`unexpected ${request.action}`)) : Promise.resolve().then(() => answer(request))
   })
-  const select = (id: string | undefined): void => { sessions.update((state) => { state.current = id as SessionId | undefined }) }
+  const select = (id: string | undefined): void => { current.set(id as SessionId | undefined) }
   const openSession = vi.fn((id: SessionId) => { select(id) })
   const openWorkspace = vi.fn((_id: WorkspaceId) => Promise.resolve())
   let reading: Promise<void> = Promise.resolve()
   const reread = vi.fn(() => reading)
   const sources: EntrySources = {
+    current,
     sessions: { list: sessions }, workspaces: { list: workspaces }, research, entry,
     reread, command, openSession, openWorkspace,
     beginNavigation: () => {
@@ -100,7 +105,7 @@ function world(init: { sessions?: SessionListState; workspaces?: WorkspaceSnapsh
     navigateElsewhere: () => { sources.beginNavigation() },
     listSessions: (items: SessionSummary[]) => {
       sessions.update((state) => {
-        const next = listOf(items, state.current)
+        const next = listOf(items)
         state.ids = next.ids
         state.byId = next.byId
       })

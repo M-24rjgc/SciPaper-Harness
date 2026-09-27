@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { SessionPendingInteractionBase, SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
@@ -19,22 +19,22 @@ function research(root: string, extra: Partial<ResearchProject> = {}): ResearchP
 
 function session(id: string, cwd: string | undefined, extra: Partial<SessionSummary> = {}): SessionSummary {
   const where = cwd === undefined ? {} : { cwd }
-  return { id: id as SessionId, displayTitle: id, ...where, running: false, blank: false, updatedAt: 1, ...extra }
+  return { id: id as SessionId, displayTitle: id, ...where, running: false, retainedBy: {}, blank: false, updatedAt: 1, ...extra }
 }
 
 function listOf(sessions: SessionSummary[], ghosts: string[] = []): SessionListState {
   return {
     ids: [...sessions.map(item => item.id), ...ghosts as SessionId[]],
     byId: Object.fromEntries(sessions.map(item => [item.id, item])),
-    current: undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    projectionsBySession: {}, phase: 'ready',
   }
 }
 
 /** The pending interactions by session; the assembled client narrows them to its domains' kinds, and these read only `kind`. */
-function pendingOf(entries: [string, string][]): SessionPendingInteractionSnapshot {
-  return new Map<SessionId, SessionPendingInteractionBase>(entries.map(([id, kind]) => [
-    id as SessionId, { key: `${id}-${kind}`, kind, sessionId: id as SessionId },
-  ])) as unknown as SessionPendingInteractionSnapshot
+function pendingOf(entries: [string, string][]): SessionStatusSnapshot {
+  return new Map(entries.map(([id, kind]) => [
+    id as SessionId, { pendingInteraction: { key: `${id}-${kind}`, kind, sessionId: id as SessionId }, running: undefined, completionUnread: false },
+  ])) as unknown as SessionStatusSnapshot
 }
 
 const directoriesOf = (sessions: SessionSummary[]): Record<string, string> =>

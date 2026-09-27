@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The research group turns the harness into a research collaborator that can take an idea, or existing results, to a paper that compiles and can be submitted. It is one service package: the project ledger (`ctx.research`) with its model tools for evidence, literature, files and LaTeX, Python environments, experiments, page renders and the report-only paper check. The agent drives the work; the research agent preset, its skills and the `ui-research` client plugin live outside this group.
+The research group turns the harness into a research collaborator that can take an idea, or existing results, to a paper that compiles and can be submitted. It provides the project ledger (`ctx.research`), research tools and skills for evidence, literature, files and LaTeX, Python environments, experiments, page renders and the report-only paper check. The agent drives the work; the research agent preset and the `ui-research` client plugin live outside this group.
 
 ## Table of Contents
 
@@ -24,7 +24,7 @@ The research group turns the harness into a research collaborator that can take 
 
 | Package | Role | ctx key |
 |---|---|---|
-| [`workbench`](workbench/README.md) | Records each research project and checks the paper: evidence, files, decisions, environments, experiments, compiles and exports | `ctx.research`; registers on `ctx.tools` |
+| [`workbench`](workbench/README.md) | Records each research project and checks the paper: evidence, files, decisions, environments, experiments, compiles and exports | `ctx.research`; separate tool and skill plugins register on `ctx.tools` and `ctx.skills` |
 
 -----
 

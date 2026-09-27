@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { requireFileSymlinks } from '../../../../scripts/test-symlinks.ts'
 import {
   captureExpectedWorkspaceSnapshot,
   captureWorkspaceSnapshot,
@@ -21,17 +22,26 @@ describe('workspace snapshots', () => {
     await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true })))
   })
 
-  it('captures readable text, binary bytes, links, and empty directories in path order', async () => {
+  it('captures readable text, binary bytes, and empty directories in path order', async () => {
     const directory = await root()
     await writeFile(join(directory, 'a.txt'), 'hello\n')
     await writeFile(join(directory, 'b.bin'), Buffer.from([0xff, 0x01]))
     await mkdir(join(directory, 'empty'))
-    await symlink('a.txt', join(directory, 'link'))
 
     expect(await captureWorkspaceSnapshot(directory)).toEqual([
       { path: 'a.txt', kind: 'text', content: 'hello\n' },
       { path: 'b.bin', kind: 'binary', base64: '/wE=' },
       { path: 'empty', kind: 'empty-directory' },
+    ])
+  })
+
+  it('captures a file link without duplicating its target content', async (testContext) => {
+    requireFileSymlinks(testContext)
+    const directory = await root()
+    await writeFile(join(directory, 'a.txt'), 'hello\n')
+    await symlink('a.txt', join(directory, 'link'), 'file')
+    expect(await captureWorkspaceSnapshot(directory)).toEqual([
+      { path: 'a.txt', kind: 'text', content: 'hello\n' },
       { path: 'link', kind: 'symlink', target: 'a.txt' },
     ])
   })

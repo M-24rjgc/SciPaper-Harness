@@ -6,7 +6,7 @@
  * things, so a call reads the same with or without it, less well named.
  */
 import { describe, expect, it } from 'vitest'
-import type { RunningToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { StartedToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import { registerResearchTools } from '@deepseek-ai/dsh-research-workbench/src/tools.ts'
 import type { CheckReport, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
@@ -51,8 +51,8 @@ function settled(name: string, args: unknown, content: ToolResultNode['content']
 function answered(name: string, args: unknown, value: unknown): ToolResultNode {
   return settled(name, args, [{ type: 'text', text: JSON.stringify(value) }])
 }
-function running(name: string, argsRaw: string): RunningToolCall {
-  return { callId: 'call-running', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [] }
+function running(name: string, argsRaw: string): StartedToolCall {
+  return { phase: 'start', callId: 'call-running', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [] }
 }
 function report(over: Partial<CheckReport>): CheckReport {
   return { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'data', gatesRun: [], phases: [], findings: [], checkedAt: '2026-09-25T08:56:57.092Z', ...over }
@@ -64,6 +64,14 @@ describe('a logged research call', () => {
     expect(callState(answered('research_check', {}, { message: 'Clean' }))).toBe('ok')
     expect(callState(settled('research_check', {}, [{ type: 'text', text: 'Error: Research project not found' }], { isError: true, error: { name: 'ToolError', code: 'execution_failed' } }))).toBe('error')
     expect(callState(settled('research_check', {}, [], { isError: true, error: { name: 'ToolError', code: 'interrupted' } }))).toBe('stopped')
+  })
+
+  it('reads preparation arguments only from the call-local stream', () => {
+    const block = { phase: 'preparing' as const, callId: 'preparing', name: 'research_check', turn: 1, step: 1, time: 1000, subCalls: [] }
+    expect(callState(block)).toBe('running')
+    expect(callArgsRaw(block)).toBe('')
+    expect(callArgs(block, '{"scope":"ci')).toBeUndefined()
+    expect(callArgs(block, '{"scope":"cite"}')).toEqual({ scope: 'cite' })
   })
 
   it('reads its arguments only once they are a whole JSON object', () => {

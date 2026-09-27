@@ -9,9 +9,9 @@
 .raw { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 6px 22px; min-width: 0; }
 .rawPart { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .rawHead { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); }
-.rawBody { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--dsw-font-markdown-code-block-small); color: var(--dsw-alias-label-secondary); }
+.rawBody { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--dsw-font-markdown-code-block-small); color: var(--dsw-alias-label-secondary); }
 
-.check { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; padding: 8px 12px; min-width: 0; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 10px; }
+.check { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; padding: 8px 12px; min-width: 0; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); }
 .checkHead { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; min-width: 0; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: 20px; }
 .leading { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 6px; color: var(--dsw-alias-label-tertiary); }
 .passMark { width: 14px; height: 14px; color: var(--dsw-alias-state-success-primary); }
@@ -24,7 +24,7 @@
 .fileName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); }
 .file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: none; background: none; font: inherit; color: var(--dsw-alias-label-secondary); text-align: left; text-decoration: underline; text-decoration-color: var(--dsw-alias-border-l4); text-underline-offset: 2px; cursor: pointer; }
 .file:hover { text-decoration-color: currentColor; }
-.file:focus-visible, .detailsToggle:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+.file:focus-visible, .detailsToggle:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
 .details { padding-left: 22px; }
 .detailsToggle { font-size: 11px; line-height: 1.6; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
 .detailLine { margin: 4px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }

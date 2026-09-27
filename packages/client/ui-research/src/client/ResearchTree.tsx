@@ -11,8 +11,9 @@
  */
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import {
-  Button, IconArchiveOutline20, IconCloseFill14, IconEditOutline16, IconEllipsisOutline16, IconFolderOpenOutline16, IconPlusOutline16,
-  IconProjectAddOutline16, IconSearchOutline16, IconTriangleRightFill14, Menu, Modal, Tooltip, type MenuItem,
+  Button, IconArchiveOutlineRegular, IconCloseFillRegular, IconEditOutlineRegular, IconEllipsisOutlineRegular,
+  IconFolderOpenOutlineRegular, IconPlusOutlineRegular,
+  IconProjectAddOutlineRegular, IconSearchOutlineRegular, IconTriangleRightFillRegular, Menu, Modal, Tooltip, type MenuItem,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -198,7 +199,7 @@ function TreeItem(props: { row: TreeRow; view: ItemView; focusable: boolean; t: 
               event.stopPropagation()
               openMenu(false)
             }}
-          ><IconEllipsisOutline16 /></button>}
+          ><IconEllipsisOutlineRegular /></button>}
         />
       </span>}
     </span>
@@ -209,7 +210,7 @@ function TreeItem(props: { row: TreeRow; view: ItemView; focusable: boolean; t: 
 /** The disclosure triangle of a row that opens. */
 function Arrow(props: { open: boolean; current?: boolean }): ReactNode {
   const className = cx(styles.arrow, props.open && styles.arrowOpen, props.current === true && styles.arrowCurrent)
-  return <IconTriangleRightFill14 size={12} className={className} />
+  return <IconTriangleRightFillRegular size={12} className={className} />
 }
 
 /** What the body needs besides the model: the face, the dictionary, and who opens dialogs. */
@@ -259,10 +260,10 @@ function researchMenu(props: BodyProps, project: ResearchProject): RowMenu | und
   const { t } = props
   const items: MenuItem[] = []
   const example = project.example === true
-  if (!example) items.push({ id: 'rename', label: t('treeRename'), icon: <IconEditOutline16 /> })
-  if (props.canReveal) items.push({ id: 'reveal', label: t('folderReveal'), icon: <IconFolderOpenOutline16 /> })
+  if (!example) items.push({ id: 'rename', label: t('treeRename'), icon: <IconEditOutlineRegular /> })
+  if (props.canReveal) items.push({ id: 'reveal', label: t('folderReveal'), icon: <IconFolderOpenOutlineRegular /> })
   // The host refuses the untouched draft's removal: 新研究 reopens it, and it holds nothing yet.
-  if (!example && project.draft !== true) items.push({ id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutline20 size={16} /> })
+  if (!example && project.draft !== true) items.push({ id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutlineRegular size={16} /> })
   if (items.length === 0) return undefined
   return {
     items,
@@ -314,8 +315,8 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
         menu: writable
           ? {
             items: [
-              { id: 'rename', label: t('treeRename'), icon: <IconEditOutline16 /> },
-              { id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutline20 size={16} /> },
+              { id: 'rename', label: t('treeRename'), icon: <IconEditOutlineRegular /> },
+              { id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutlineRegular size={16} /> },
             ],
             choose: (id) => {
               if (id === 'rename') {
@@ -334,7 +335,7 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
       return {
         label: t('treeAddConversation'),
         name: t('treeAddConversationIn', { title: researchName(project, t) }),
-        lead: <IconPlusOutline16 size={12} />,
+        lead: <IconPlusOutlineRegular size={12} />,
         selected: false,
         className: styles.add,
         activate: () => { props.startSession(project.workspaceId) },
@@ -358,8 +359,8 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
         className: styles.research,
         menu: {
           items: [
-            { id: 'make', label: t('treeMakeResearch'), icon: <IconProjectAddOutline16 /> },
-            { id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutline20 size={16} /> },
+            { id: 'make', label: t('treeMakeResearch'), icon: <IconProjectAddOutlineRegular /> },
+            { id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutlineRegular size={16} /> },
           ],
           choose: (id) => {
             if (id === 'make') {
@@ -578,18 +579,20 @@ function NameDialog(props: {
 export function ResearchTree(props: ResearchTreeProps): ReactNode {
   const { t, wide } = props
   const list = props.useSessions(state => state)
+  const current = props.useCurrentSession(state => state)
   const workspaces = props.useWorkspaces(state => state)
-  const pending = props.useSessionPendingInteraction(state => state)
+  const pending = props.useSessionStatus(state => state)
   const drafts = props.useDrafts(state => state)
   const panelActive = props.usePanelInfo(info => info.activePanelId !== null)
   const snapshot = props.useResearch(state => state.snapshot)
   const canReveal = props.useCanReveal(state => state)
   const chosen = props.useStore(state => state.expanded)
   const model = useMemo(() => deriveTree({
-    projects: snapshot?.projects ?? [], list, workspaces, pending, drafts, showExamples: snapshot?.preferences.showExamples !== false,
-  }), [snapshot, list, workspaces, pending, drafts])
+    projects: snapshot?.projects ?? [], current, list, workspaces, pending, drafts,
+    showExamples: snapshot?.preferences.showExamples !== false,
+  }), [snapshot, current, list, workspaces, pending, drafts])
   const rows = useMemo(() => flattenTree(model, chosen), [model, chosen])
-  const selectedId = panelActive ? undefined : list.current
+  const selectedId = panelActive ? undefined : current
 
   const [dialog, setDialog] = useState<TreeDialog | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -668,7 +671,7 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
         if (query.trim() === '' && !event.currentTarget.contains(event.relatedTarget)) setSearchOpen(false)
       }}
     >
-      <IconSearchOutline16 size={12} />
+      <IconSearchOutlineRegular size={12} />
       <input
         ref={searchInput}
         className={styles.searchInput}
@@ -680,13 +683,13 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
         onChange={(event) => { setQuery(searchable(event.target.value)) }}
         onKeyDown={(event) => { if (event.key === 'Escape') closeSearch() }}
       />
-      <button type="button" className={styles.clear} aria-label={t('treeSearchClear')} onClick={closeSearch}><IconCloseFill14 /></button>
+      <button type="button" className={styles.clear} aria-label={t('treeSearchClear')} onClick={closeSearch}><IconCloseFillRegular /></button>
     </div>
     : <>
       <span className={styles.heading}>{t('treeTitle')}</span>
       <Tooltip label={t('treeSearch')} side="bottom" delayMs={500}>
         <button type="button" className={styles.iconButton} aria-label={t('treeSearch')} onClick={() => { setSearchOpen(true) }}>
-          <IconSearchOutline16 size={14} />
+          <IconSearchOutlineRegular size={14} />
         </button>
       </Tooltip>
     </>
@@ -705,7 +708,7 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
             props.expandSidebar()
           }}
         >
-          <IconSearchOutline16 size={18} />
+          <IconSearchOutlineRegular size={18} />
         </button>
       </Tooltip>}
     <div className={styles.area}>

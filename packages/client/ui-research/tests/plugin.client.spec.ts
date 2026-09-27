@@ -27,7 +27,6 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ComposerBlockRegistry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/input/blocks.ts'
-import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { ResearchBrand, ResearchMark } from '../src/client/Brand.tsx'
 import { ResearchHeroMark } from '../src/client/Hero.tsx'
@@ -241,15 +240,17 @@ async function bench(services: BenchServices = {}) {
   const rows = (entries: Record<string, Partial<SessionSummary>>): SessionListState => ({
     ids: Object.keys(entries) as SessionId[],
     byId: Object.fromEntries(Object.entries(entries).map(([id, row]) => [id, {
-      id, displayTitle: id, running: false, blank: false, updatedAt: 0, ...row,
+      id, displayTitle: id, running: false, retainedBy: {}, blank: false, updatedAt: 0, ...row,
     }])) as Record<SessionId, SessionSummary>,
-    current: services.current as SessionId | undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    projectionsBySession: {}, phase: 'ready',
   })
+  const current = createSnapshotStore<SessionId | undefined>(services.current as SessionId | undefined)
   const list = createSnapshotStore<SessionListState>(rows(services.sessions ?? { 'session-a': { cwd: 'C:\\research\\sparse' }, 'session-b': {} }))
   // Each listed session renames itself through its binding; an unknown one has none.
   const renames = new Map<string, ReturnType<typeof vi.fn>>()
   const sessions = {
     list,
+    retain: vi.fn(() => ({ release: vi.fn() })),
     binding: vi.fn((id: string) => {
       if (!(id in list.getSnapshot().byId)) return undefined
       if (!renames.has(id)) renames.set(id, vi.fn((_title: string) => Promise.resolve(ok({ title: _title, seq: 1 }))))
@@ -262,12 +263,12 @@ async function bench(services: BenchServices = {}) {
     const { ids, byId } = rows(next)
     list.update((state) => { state.ids = ids; state.byId = byId })
   }
-  const select = (id: string | undefined): void => { list.update((state) => { state.current = id as SessionId | undefined }) }
+  const select = (id: string | undefined): void => { current.set(id as SessionId | undefined) }
   const workspaceList = createSnapshotStore<WorkspaceSnapshot>({
     items: (services.workspaces ?? []).map(([workspaceId, path, ids]) => ({
       workspaceId: workspaceId as WorkspaceId, path, title: path, sessionIds: ids as SessionId[], createdAt: '', updatedAt: '',
     })),
-    archivedSessionIds: (services.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
+    pinnedSessionIds: [], archivedSessionIds: (services.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
   })
   const workspaces = { list: workspaceList, delete: vi.fn((_workspaceId: string) => Promise.resolve()) }
   const policies: UiWorkspaceEntryPolicy[] = []
@@ -303,9 +304,9 @@ async function bench(services: BenchServices = {}) {
     return Promise.resolve()
   })
   const bound: string[] = []
-  const settingsScope = {
-    bind: vi.fn((spec: { namespace: string }) => {
-      bound.push(spec.namespace)
+  const configForms = {
+    get: vi.fn((namespace: string) => {
+      bound.push(namespace)
       return {
         getSnapshot: () => presetScope.getSnapshot(),
         subscribe: (listener: () => void) => presetScope.subscribe(listener),
@@ -332,14 +333,15 @@ async function bench(services: BenchServices = {}) {
   ctx.provide('uiWorkspace', uiWorkspace as never)
   ctx.provide('sidebarRight', sidebarRight as never)
   ctx.provide('sidebarRightTabs', sidebarRightTabs as never)
-  ctx.provide('settingsScope', settingsScope as never)
+  ctx.provide('configForms', configForms as never)
+  ctx.provide('uiSession', { adapter: { current: { getSnapshot: () => ({ key: current.getSnapshot() }), subscribe: (listener: () => void) => current.subscribe(listener) } } } as never)
 
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
   live.push(fiber)
 
   const seat = (name: string, cell?: string): StoredEntry => {
-    const entries = ctx.slots.entries(name as never)
+    const entries = ctx.slots.entriesOfSlot(name as never)
     return (cell === undefined
       ? entries[0]
       : entries.find(entry => entry.options.id === cell || entry.options.key === cell))!
@@ -395,32 +397,10 @@ describe('the research plugin', () => {
     expect(complete).toHaveBeenCalledTimes(1)
   })
 
-  it.each([true, false])('has the host half put the validated setting into every served page, and take it back (webServer: %s)', async (hasWebServer) => {
-    const host = new Context()
-    if (hasWebServer) host.provide('webServer', {} as never)
-    const served = async (config?: unknown): Promise<unknown[]> => {
-      const fiber = config === undefined ? host.plugin({ apply: applyHost }) : host.plugin({ apply: applyHost, Config: HostConfig }, config)
-      await fiber.await()
-      const rows: unknown[] = []
-      host.emit('webserver/index-inject', rows as never)
-      await fiber.dispose()
-      const after: unknown[] = []
-      host.emit('webserver/index-inject', after as never)
-      expect(after).toEqual([])
-      return rows
-    }
-    const global = (hideDeveloperCells: boolean): unknown[] => [{ kind: 'global', name: '__DSH_RESEARCH__', value: { hideDeveloperCells } }]
-    expect(await served({ hideDeveloperCells: true })).toEqual(global(true))
-    expect(await served({})).toEqual(global(false))
-    expect(await served()).toEqual(global(false))
-    // A row whose YAML says something other than a boolean fails the load.
-    expect(() => HostConfig({ hideDeveloperCells: 'yes' } as never)).toThrow()
-  })
-
   it('injects exactly the services it reads', () => {
     expect(inject).toEqual([
       'remote', 'remote.research', 'remote.directoryPicker', 'remote.session', 'slots', 'locale', 'layout', 'sessions', 'workspaces',
-      'sidebarRight', 'uiWorkspace', 'settingsScope',
+      'sidebarRight', 'uiWorkspace', 'uiSession', 'configForms',
     ])
   })
 
@@ -452,9 +432,9 @@ describe('the research plugin', () => {
   })
 
   it('reads the agent presets from their settings namespace, and puts the research assistant back as the default', async () => {
-    const saved = { status: 'ready' as const, base: { default: 'research', modeSelectionEnabled: true }, user: { default: 'standard' }, value: { default: 'standard', modeSelectionEnabled: true }, revision: 3 }
+    const saved = { status: 'ready' as const, base: { default: 'research', modeSelectionEnabled: true }, user: { selectedDefault: 'standard' }, value: { default: 'standard', modeSelectionEnabled: true }, revision: 3 }
     const b = await bench({ presetSettings: { status: 'loading', base: undefined, user: undefined, value: undefined, revision: undefined } })
-    expect(b.bound).toEqual(['agent-presets'])
+    expect(b.bound).toEqual(['agent-preset-registry'])
     expect(b.face.hooks.presets.getSnapshot()).toBeNull()
     b.presetScope.set(saved)
     const before = b.face.hooks.presets.getSnapshot()
@@ -463,7 +443,7 @@ describe('the research plugin', () => {
     b.presetScope.set({ ...saved, revision: 4 })
     expect(b.face.hooks.presets.getSnapshot()).toBe(before)
     await b.face.resetDefaultPreset()
-    expect(b.unsetPreset).toHaveBeenCalledWith('default')
+    expect(b.unsetPreset).toHaveBeenCalledWith('selectedDefault')
     expect(b.face.hooks.presets.getSnapshot()).toEqual({ research: 'research' })
     // Settings that keep the saved default refuse the reset in the reader's language.
     const kept = await bench({ presetSettings: saved, presetsKept: true })
@@ -505,10 +485,10 @@ describe('the research plugin', () => {
     ]
     for (const [key, component] of titles) expect(b.seat('sidebar.right.pane.tab.title', key)).toMatchObject({ locale: 'research', component })
     // The draw.io editor's chip shows the file's name, captured when the tab opens.
-    expect(b.ctx.slots.entries('sidebar.right.pane.tab.title').map(entry => entry.options.key)).not.toContain(DRAWIO_ID)
+    expect(b.ctx.slots.entriesOfSlot('sidebar.right.pane.tab.title').map(entry => entry.options.key)).not.toContain(DRAWIO_ID)
 
     // Every research tool's calls get a research card; a research check gets its own.
-    const cards = b.ctx.slots.entries('tool.call.toolview')
+    const cards = b.ctx.slots.entriesOfSlot('tool.call.toolview')
     expect(cards.map(entry => entry.options.key).sort()).toEqual([...RESEARCH_TOOLS].sort())
     for (const entry of cards) {
       expect(entry).toMatchObject({ locale: 'research', component: entry.options.key === 'research_check' ? ResearchCheckCard : ResearchToolCard })
@@ -516,16 +496,16 @@ describe('the research plugin', () => {
 
     // The entry screen carries no cards, intro, promises or folder button, the composer no folder button,
     // and the header no file, board or gallery buttons.
-    expect(b.ctx.slots.entries('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-entry'])
-    expect(b.ctx.slots.entries('conversation.hero.footer')).toHaveLength(0)
-    expect(b.ctx.slots.entries('conversation.input.dock').map(entry => entry.options.id).sort()).toEqual(['research-runs', 'research-try'])
-    expect(b.ctx.slots.entries('conversation.input.left')).toHaveLength(0)
-    expect(b.ctx.slots.entries('conversation.session.header.utilities')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-entry'])
+    expect(b.ctx.slots.entriesOfSlot('conversation.hero.footer')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('conversation.input.dock').map(entry => entry.options.id).sort()).toEqual(['research-runs', 'research-try'])
+    expect(b.ctx.slots.entriesOfSlot('conversation.input.left')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('conversation.session.header.utilities')).toHaveLength(0)
     // Without the edition's setting the shell's folder picker and workspace browser keep their seats,
     // and the sidebar has no project cards: the research tree lists researches under the edition's setting.
-    expect(b.ctx.slots.entries('conversation.hero.workspace')).toHaveLength(0)
-    expect(b.ctx.slots.entries('sidebar.workspaces')).toHaveLength(0)
-    expect(b.ctx.slots.entries('sidebar.projects')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('conversation.hero.workspace')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('sidebar.workspaces')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('sidebar.projects')).toHaveLength(0)
 
     // The settings row names itself through the dictionary, at read time.
     const settings = b.seat('settings.section', 'research')
@@ -533,7 +513,7 @@ describe('the research plugin', () => {
     expect((settings.options.label as () => string)()).toBe(en.settingsSection)
 
     // Without the edition's setting the harness's own first-run notice keeps its seat.
-    expect(b.ctx.slots.entries('settings.onboarding')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('settings.onboarding')).toHaveLength(0)
 
     // The record and the secondary tools are builtin tab types; only the record is offered on the guide page.
     expect(b.tabs.map(type => [type.id, type.kind, type.priority, type.title('sidebar://page'), type.guide !== undefined])).toEqual([
@@ -554,7 +534,7 @@ describe('the research plugin', () => {
     expect(drawio.title('dsh-resource://file/session/s1/figures/arch%20v2.drawio')).toBe('arch v2.drawio')
 
     // Nothing takes the main panel: the research is not a second application beside the conversation.
-    expect(b.ctx.slots.entries('sidebar.panellist')).toHaveLength(0)
+    expect(b.ctx.slots.entriesOfSlot('sidebar.panellist')).toHaveLength(0)
 
     await stop(b)
 
@@ -564,7 +544,7 @@ describe('the research plugin', () => {
       'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
       'tool.call.toolview',
     ]) {
-      expect(b.ctx.slots.entries(name as never)).toHaveLength(0)
+      expect(b.ctx.slots.entriesOfSlot(name as never)).toHaveLength(0)
     }
     expect(b.tabs).toEqual([])
     expect(b.dictionaries.size).toBe(0)
@@ -628,8 +608,8 @@ describe('the research plugin', () => {
       expect(tree).toMatchObject({ locale: 'research', component: ResearchTree, options: { priority: -1 } })
       expect(tree.store).toBeDefined()
       // The browser stays registered underneath: shadowed, not replaced.
-      const browsers = b.ctx.slots.entries(BROWSER_SEAT as never).map(entry => entry.component)
-      expect(browsers).toEqual(expect.arrayContaining([ResearchTree, Shipped]))
+      const browsers = b.ctx.slots.entriesOfSlot(BROWSER_SEAT as never).map(entry => entry.component)
+      expect(browsers).toEqual([ResearchTree])
       expect(b.ctx.slots.spec(FLOW_SEAT)).toMatchObject({ kind: 'single' })
       expect(b.ctx.slots.entriesOfSlot(FLOW_SEAT)[0]?.component).toBe(Flow)
 
@@ -1079,7 +1059,11 @@ describe('where startup and 新研究 go', () => {
     const answer = deferred<RemoteResult<ResearchResponse>>()
     b.remote.command.mockImplementationOnce(() => answer.promise)
     const carry = vi.fn(() => { b.select('s-moved') })
+    const release = vi.fn()
+    b.sessions.retain.mockReturnValueOnce({ release })
     const moving = b.entry.move({ projectId: draft.id, root: '/picked' }, carry)
+    expect(b.sessions.retain).toHaveBeenCalledWith('s-draft', { source: 'workspaceOperation' })
+    expect(release).not.toHaveBeenCalled()
     // The host archives the draft's conversation before it answers, and ui-workspace clears the selection and asks to land.
     b.select(undefined)
     await b.policies[0]!.land()
@@ -1094,6 +1078,7 @@ describe('where startup and 新研究 go', () => {
     })
     expect(await moving).toMatchObject({ outcome: 'moved' })
     expect(carry).toHaveBeenCalledWith('w-moved')
+    expect(release).toHaveBeenCalledTimes(1)
     expect(b.uiWorkspace.openSession).not.toHaveBeenCalled()
   })
 

@@ -12,15 +12,15 @@ function scope(user: unknown, value: unknown = { default: 'research', modeSelect
 }
 
 describe('the agent presets conversations compose from', () => {
-  it('names the research assistant\'s preset, and a saved default only while it names another one and selection is on', () => {
+  it('names the research assistant\'s preset, and a saved default when it names another one', () => {
     expect(presetDefaults(scope(undefined))).toEqual({ research: 'research' })
-    expect(presetDefaults(scope({ default: 'research' }))).toEqual({ research: 'research' })
-    expect(presetDefaults(scope({ default: 'standard' }, { default: 'standard', modeSelectionEnabled: true }))).toEqual({ research: 'research', saved: 'standard' })
-    // With preset selection off the roster composes the deployment's default whatever is saved.
-    expect(presetDefaults(scope({ default: 'standard', modeSelectionEnabled: false }, { default: 'standard', modeSelectionEnabled: false })))
-      .toEqual({ research: 'research' })
+    expect(presetDefaults(scope({ selectedDefault: 'research' }))).toEqual({ research: 'research' })
+    expect(presetDefaults(scope({ selectedDefault: 'standard' }, { default: 'standard', modeSelectionEnabled: true }))).toEqual({ research: 'research', saved: 'standard' })
+    // Hiding preset selection does not change the configured default.
+    expect(presetDefaults(scope({ selectedDefault: 'standard', modeSelectionEnabled: false }, { default: 'standard', modeSelectionEnabled: false })))
+      .toEqual({ research: 'research', saved: 'standard' })
     // A saved field that is not a preset id replaces nothing.
-    expect(presetDefaults(scope({ default: 7 }))).toEqual({ research: 'research' })
+    expect(presetDefaults(scope({ selectedDefault: 7 }))).toEqual({ research: 'research' })
   })
 
   it('knows nothing before the namespace is read, where it is not exposed, or without a composition default', () => {

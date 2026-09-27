@@ -41,7 +41,7 @@ Mount the row in a client roster alongside the host-side service:
 
 `hideDeveloperCells` (default `false`) shadows the shell cells that are developer surfaces in this product: the composer's turn, step, token-rate and cache-hit pills, General settings' default permission, and the open-configuration-file action draw nothing, the research's autonomy chip takes the composer's access chip, the research's folder menu takes the entry screen's Workspace picker, and the research tree takes the sidebar's workspace browser. The Host half validates it and puts it into every page rendered by the Web or Desktop Host as the `__DSH_RESEARCH__` global, which the browser half reads when it applies; a client row's `config` reaches no browser plugin otherwise.
 
-The plugin injects `remote`, `remote.research`, `remote.directoryPicker`, `remote.session`, `slots`, `locale`, `layout`, `sessions`, `workspaces`, `sidebarRight`, `uiWorkspace` and `settingsScope`, through which it reads the `agent-presets` settings namespace. It registers ui-workspace's entry policy, which acts only where the ui-workspace row sets `entry: policy`. Without the host row the Remote is absent and nothing registers.
+The plugin injects `remote`, `remote.research`, `remote.directoryPicker`, `remote.session`, `slots`, `locale`, `layout`, `sessions`, `workspaces`, `sidebarRight`, `uiWorkspace` and `uiSession` and `configForms`, through which it reads the `agent-preset-registry` settings namespace. It registers ui-workspace's entry policy, which acts only where the ui-workspace row sets `entry: policy`. Without the host row the Remote is absent and nothing registers.
 
 -----
 
@@ -66,7 +66,7 @@ Unsent conversations with text or attachments remain in the tree as drafts, with
 | `AutonomyChip.tsx` | The research's autonomy in the composer's access seat: `检查点 ▾` or `全自动 ▾` with a two-choice menu, `本对话：<preset>` while the conversation runs under another preset, `示例 · 只读` in an example |
 | `Rail.tsx` | The research tab (研究记录): the research and its folder with 在资源管理器中打开; the mode as recorded, with who chose it and 想换模式？, which only adds a sentence to the draft; the autonomy (read-only); the 现在 (Now) line, which names what waits on the person or moves before the next step, with 跳过去 (Go there) or a sentence to suggest in the conversation; the phases and open issues of the host's `standing` with when it was checked; the three newest decisions; the 资料 · 论点 · 文件 · 实验 counts and the tools row, each opening a tab beside it; and a note when the conversation does not use the research assistant, or the settings keep another agent preset as the default, with 改回科研助手 |
 | `activity.ts` | What is live in a research, for the 现在 line and the dots: its first conversation waiting on the person, the goals the snapshot carries (`goals`), its running conversations and runs |
-| `presets.ts` | The research assistant's agent preset (the `agent-presets` namespace's composition default) and a saved `default` that replaces it for new conversations |
+| `presets.ts` | The research assistant's agent preset (the `agent-preset-registry` namespace's composition default) and a saved `selectedDefault` that replaces it for new conversations |
 | `entry.ts` | The entry policy: where startup, a lost selection and 新研究 land, and the draft's moves to a folder or into another research |
 | `EntryScreen.tsx` | The line under the entry screen's headline (`新对话 · {mode} · {phase} n/m · 研究记录`, `示例研究 · 只能查看`, and the entry screen's notices), and the two 试试 (Try) sentences above the untouched draft's empty composer, which only add to the draft |
 | `FolderMenu.tsx` | The folder chip's menu: 保存在 <path>, 更改位置… for the untouched draft (the host's chooser, or a typed path where it has none), 在资源管理器中打开 where the host can, 换到另一项研究; and what a chosen folder turned out to be (already a research, inside one, holding files, among the examples) |
@@ -95,7 +95,7 @@ All copy is locale-owned per the [locale-owned client UI copy](../../../.agents/
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through the commands and records its controls write: the autonomy chip sends `set-autonomy`, the host applies `research-auto` or `workspace-write` to every conversation of the research, and autonomy lands in the host ledger that the agent reads with `research_project current`. Suggested sentences (the entry screen's Try sentences, a plot request from a finished run, the research record's 想换模式？ and 在对话中提出 sentences) are appended to the composer draft and reach the model only when the person sends them. 改回科研助手 (Use the research assistant again) removes a saved `agent-presets.default`, so conversations created afterwards compose from the research preset.
+Indirectly, through the commands and records its controls write: the autonomy chip sends `set-autonomy`, the host applies `research-auto` or `workspace-write` to every conversation of the research, and autonomy lands in the host ledger that the agent reads with `research_project current`. Suggested sentences (the entry screen's Try sentences, a plot request from a finished run, the research record's 想换模式？ and 在对话中提出 sentences) are appended to the composer draft and reach the model only when the person sends them. 改回科研助手 (Use the research assistant again) removes a saved `agent-preset-registry.selectedDefault`, so conversations created afterwards compose from the research preset.
 
 #### KV Cache effect
 
@@ -122,7 +122,7 @@ No runtime invariant companion is published because this package holds no indepe
 - **A conversation restored alone stays hidden** — a conversation of a removed research, unarchived by itself from the shell's archived-conversation list, belongs to that hidden research and shows nowhere until the research is restored.
 - **Only loaded conversations report goals** — the dots and the 现在 line read goals through the host's goal service, which sees only loaded conversations; a goal in a conversation nobody has loaded shows nothing.
 - **Runs recorded without their conversation are on the board only** — a run the desktop submitted, or one recorded before runs kept their conversation, has a card in no conversation; the board lists it and reconnects or dismisses it when its state is unconfirmed.
-- **The research assistant is the deployment's default preset** — a conversation counts as using it when it composes from the `agent-presets` row's `default`; a copy of that preset under another id reads as another preset.
+- **The research assistant is the deployment's default preset** — a conversation counts as using it when it composes from the `agent-preset-registry` row's `default`; a copy of that preset under another id reads as another preset.
 
 <a id="dev-note"></a>
 ### Dev Note

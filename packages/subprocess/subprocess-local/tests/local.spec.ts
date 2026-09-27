@@ -2,7 +2,9 @@ import { PassThrough } from 'node:stream'
 import os from 'node:os'
 import { syncBuiltinESMExports } from 'node:module'
 import { describe, expect, it, vi } from 'vitest'
-import { basename, dirname, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve } from 'node:path'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessSpawnSpec, SubprocessTerminalHandle, SubprocessTerminalSpawnSpec } from '@deepseek-ai/dsh-subprocess'
@@ -18,6 +20,19 @@ function mockWin32ForIsolatedRuntime(): void {
 
 function unmockWin32ForIsolatedRuntime(): void {
   vi.doUnmock('@deepseek-ai/dsh-win32-process')
+}
+
+function mockNodePtyForIsolatedRuntime(spawn: unknown): void {
+  vi.doMock('@deepseek-ai/dsh-lazy-require', () => ({
+    createLazyRequire: (specifier: string) => () => {
+      if (specifier === 'node-pty') return { spawn }
+      throw new Error(`unexpected lazy dependency ${specifier}`)
+    },
+  }))
+}
+
+function unmockLazyRequireForIsolatedRuntime(): void {
+  vi.doUnmock('@deepseek-ai/dsh-lazy-require')
 }
 
 function spec(command: string, overrides: Partial<SubprocessSpawnSpec> = {}): SubprocessSpawnSpec {
@@ -295,6 +310,7 @@ describe('LocalSubprocessRuntime', () => {
       done: Promise.resolve({ exitCode: 0, signal: null }),
       write: async () => {},
       resize: async () => {},
+      inspectActivity: async () => ({ state: 'unknown' as const, revision: 0 }),
       inspectForeground: async () => undefined,
       signalForeground: async () => 1,
       terminate,
@@ -323,6 +339,7 @@ describe('LocalSubprocessRuntime', () => {
       done: Promise.resolve({ exitCode: 0, signal: null }),
       write: async () => {},
       resize: async () => {},
+      inspectActivity: async () => ({ state: 'unknown' as const, revision: 0 }),
       inspectForeground: async () => undefined,
       signalForeground: async () => 1,
       terminate: vi.fn(async () => { throw firstFailure }),
@@ -376,6 +393,7 @@ describe('LocalSubprocessRuntime', () => {
       done: Promise.resolve({ exitCode: 0, signal: null }),
       write: async () => {},
       resize: async () => {},
+      inspectActivity: async () => ({ state: 'unknown' as const, revision: 0 }),
       inspectForeground: async () => undefined,
       signalForeground: async () => 1,
       terminate: vi.fn(async () => { throw failure }),
@@ -440,7 +458,7 @@ describe('LocalSubprocessRuntime', () => {
     }
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
-    vi.doMock('node-pty', () => ({ spawn: () => terminal }))
+    mockNodePtyForIsolatedRuntime(() => terminal)
     vi.doMock('../src/process-inspector.ts', async importOriginal => ({
       ...await importOriginal<typeof import('../src/process-inspector.ts')>(),
       createProcessInspector: () => inspector,
@@ -463,7 +481,7 @@ describe('LocalSubprocessRuntime', () => {
       await expect.poll(() => (service as unknown as { terminals: Set<SubprocessTerminalHandle> }).terminals.size).toBe(0)
       await fiber.dispose()
     } finally {
-      vi.doUnmock('node-pty')
+      unmockLazyRequireForIsolatedRuntime()
       vi.doUnmock('../src/process-inspector.ts')
       vi.doUnmock('../src/linux-scope.ts')
       unmockWin32ForIsolatedRuntime()
@@ -531,7 +549,7 @@ describe('LocalSubprocessRuntime', () => {
 
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
-    vi.doMock('node-pty', () => ({ spawn: nodePtySpawn }))
+    mockNodePtyForIsolatedRuntime(nodePtySpawn)
     vi.doMock('../src/linux-scope.ts', () => ({
       signalLinuxDirectProcess,
       launchLinuxScope: vi.fn(),
@@ -597,7 +615,7 @@ describe('LocalSubprocessRuntime', () => {
     } finally {
       await fiber?.dispose()
       directProbe.mockRestore()
-      vi.doUnmock('node-pty')
+      unmockLazyRequireForIsolatedRuntime()
       vi.doUnmock('../src/linux-scope.ts')
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()
@@ -632,7 +650,7 @@ describe('LocalSubprocessRuntime', () => {
 
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
-    vi.doMock('node-pty', () => ({ spawn: nodePtySpawn }))
+    mockNodePtyForIsolatedRuntime(nodePtySpawn)
     vi.doMock('../src/linux-scope.ts', () => ({
       signalLinuxDirectProcess,
       launchLinuxScope: vi.fn(),
@@ -655,7 +673,7 @@ describe('LocalSubprocessRuntime', () => {
       expect(cleanup).toHaveBeenCalledOnce()
     } finally {
       await fiber?.dispose()
-      vi.doUnmock('node-pty')
+      unmockLazyRequireForIsolatedRuntime()
       vi.doUnmock('../src/linux-scope.ts')
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()
@@ -676,7 +694,7 @@ describe('LocalSubprocessRuntime', () => {
     }
     vi.resetModules()
     mockWin32ForIsolatedRuntime()
-    vi.doMock('node-pty', () => ({ spawn: () => terminal }))
+    mockNodePtyForIsolatedRuntime(() => terminal)
     try {
       const { default: IsolatedLocalSubprocessRuntime } = await import('../src/index.ts')
       const ctx = new Context()
@@ -711,7 +729,7 @@ describe('LocalSubprocessRuntime', () => {
       await fiber.dispose()
       expect(disposalErrors).toHaveLength(1)
     } finally {
-      vi.doUnmock('node-pty')
+      unmockLazyRequireForIsolatedRuntime()
       unmockWin32ForIsolatedRuntime()
       vi.resetModules()
     }
@@ -726,6 +744,35 @@ describe('LocalSubprocessRuntime', () => {
     expect(result.exitCode).toBe(0)
     expect(handle.collected.stdout!.readFrom(0).text).toBe('managed\n')
     await fiber.dispose()
+  })
+
+  it('logs one error through the plugin logger when a spill cannot be written and keeps the tail', async () => {
+    const removedDir = mkdtempSync(join(tmpdir(), 'dsh-subprocess-removed-'))
+    rmSync(removedDir, { recursive: true, force: true })
+    const ctx = new Context()
+    const logged = vi.spyOn(ctx.logger, 'error').mockImplementation(() => {})
+    const fiber = await ctx.plugin(LocalSubprocessRuntime)
+    const runtime = ctx.subprocess as LocalSubprocessRuntime
+    runtime.internals = { spillDir: removedDir }
+    try {
+      const handle = runtime.spawn(spec('', {
+        argv: [process.execPath, '-e', 'process.stdout.write("x".repeat(4096))'],
+        stdio: { stdin: 'ignore', stdout: { maxBytes: 16, spill: { maxBytes: 1_000_000 } }, stderr: 'pipe' },
+      }))
+      const result = await handle.done
+      expect(result.exitCode).toBe(0)
+      const stdout = handle.collected.stdout!.readFrom(0)
+      expect(stdout.text).toBe('x'.repeat(16))
+      expect(stdout.lossy).toBe(true)
+      expect(stdout.spillPath).toBeUndefined()
+      expect(logged).toHaveBeenCalledOnce()
+      const [message, error] = logged.mock.calls[0] as [string, NodeJS.ErrnoException]
+      expect(message).toContain('could not write the complete stdout stream')
+      expect(message).toContain('temporary-file cleaner')
+      expect(error.code).toBe('ENOENT')
+    } finally {
+      await fiber.dispose()
+    }
   })
 
   it('warns once when ordinary spawns use the weaker macOS fallback', async () => {

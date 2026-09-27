@@ -74,7 +74,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' { interface LocaleNamespaceMap
 export type { ResearchInjected, ResearchView, WorkbenchProps } from './contract.ts'
 export const inject = [
   'remote', 'remote.research', 'remote.directoryPicker', 'remote.session', 'slots', 'locale', 'layout', 'sessions', 'workspaces', 'sidebarRight',
-  'uiWorkspace', 'settingsScope',
+  'uiWorkspace', 'uiSession', 'configForms',
 ]
 
 /**
@@ -103,6 +103,11 @@ export function apply(ctx: Context): void {
   // Every conversation in a project folder shows that project, so seats need each session's working directory.
   const sessions = ctx.get('sessions') as unknown as ISessions
   const workspaces = ctx.get('workspaces') as unknown as IWorkspaces
+  const currentBinding = ctx.uiSession.adapter.current
+  const currentSession: ObservableSnapshot<SessionId | undefined> = {
+    getSnapshot: () => currentBinding.getSnapshot().key as SessionId | undefined,
+    subscribe: listener => currentBinding.subscribe(listener),
+  }
   const directories = createSnapshotStore<SessionDirectories>({})
   const readDirectories = (): void => {
     const byId = sessions.list.getSnapshot().byId
@@ -173,7 +178,7 @@ export function apply(ctx: Context): void {
   }
   // A file opens through the conversation on screen, which is the one whose right sidebar is mounted.
   const openProjectFile = (root: string, path: string): void => {
-    const current = sessions.list.getSnapshot().current
+    const current = currentSession.getSnapshot()
     if (current === undefined) throw new Error('No conversation is on screen to show the file beside')
     ctx.sidebarRight.openResource(projectFileAddress(current, root, path))
   }
@@ -198,7 +203,7 @@ export function apply(ctx: Context): void {
     unwrap(await ctx.remote.session.openWorkspacePath({ path, action: 'reveal' }, controller.signal))
   }
   // Which agent preset conversations compose from: the research assistant's, unless the settings keep another as the default.
-  const presetScope = ctx.settingsScope.bind({ namespace: PRESET_SETTINGS_NAMESPACE })
+  const presetScope = ctx.configForms.get(PRESET_SETTINGS_NAMESPACE)
   const presets = createSnapshotStore<PresetDefaults | null>(null)
   const readPresets = (): void => {
     const next = presetDefaults(presetScope.getSnapshot())
@@ -243,7 +248,7 @@ export function apply(ctx: Context): void {
   }
   const run: ResearchInjected['run'] = async request => follow(unwrap(await ctx.remote.research.command(request, controller.signal)))
   const injected = (): ResearchInjected => ({
-    hooks: { research: state, focus, directories, canReveal, presets }, refresh,
+    hooks: { currentSession, research: state, focus, directories, canReveal, presets }, refresh,
     openFile: openProjectFile,
     openFiles: () => { ctx.sidebarRight.openTab(FILES_TAB_KIND) },
     showProgress,
@@ -292,7 +297,7 @@ export function apply(ctx: Context): void {
   // Where startup and 新研究 go (ui-workspace's entry policy), and the untouched draft's moves.
   const entryView = createSnapshotStore<EntryView>({ notice: null })
   const researchEntry = createResearchEntry({
-    sessions, workspaces, research: state, entry: entryView, reread,
+    sessions, workspaces, current: currentSession, research: state, entry: entryView, reread,
     command: async request => unwrap(await ctx.remote.research.command(request, controller.signal)),
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
@@ -309,14 +314,21 @@ export function apply(ctx: Context): void {
       unregister()
     }
   }, 'research.entry-policy')
+  // Relocation archives the old Session before its answer arrives. Keep its input
+  // generation alive until the captured carry callback has committed the draft.
+  const retainForMove = async <T>(work: () => Promise<T>): Promise<T> => {
+    const id = currentSession.getSnapshot()
+    const reference = id === undefined ? undefined : sessions.retain(id, { source: 'workspaceOperation' })
+    try { return await work() } finally { reference?.release() }
+  }
   const entryInjected = (): ResearchEntryInjected => ({
-    hooks: { research: state, directories, entry: entryView, canReveal },
+    hooks: { currentSession, research: state, directories, entry: entryView, canReveal },
     chooseFolder: () => pickFolder().catch((error: unknown): FolderPick => {
       researchEntry.fail('move', error)
       return { kind: 'cancelled' }
     }),
-    move: (request, carry) => researchEntry.move(request, carry),
-    adopt: (draftId, workspaceId, carry) => researchEntry.adopt(draftId, workspaceId, carry),
+    move: (request, carry) => retainForMove(() => researchEntry.move(request, carry)),
+    adopt: (draftId, workspaceId, carry) => retainForMove(() => researchEntry.adopt(draftId, workspaceId, carry)),
     reveal: (path) => {
       void ctx.remote.session.openWorkspacePath({ path, action: 'reveal' }, controller.signal).then(unwrap).catch((error: unknown) => {
         researchEntry.fail('reveal', error)
@@ -325,7 +337,7 @@ export function apply(ctx: Context): void {
     showProgress,
   })
   const treeInjected = (drafts: ObservableSnapshot<ConversationDrafts>): ResearchTreeInjected => ({
-    hooks: { research: state, directories, canReveal, drafts },
+    hooks: { currentSession, research: state, directories, canReveal, drafts },
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
     startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
@@ -363,7 +375,7 @@ export function apply(ctx: Context): void {
   // A claim's sources open over the whole frame; the Sources tab puts one in focus.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-claim', order: 20, locale: 'research', inject: injected }, ResearchClaimSheet))
   // The research tools' calls read in the reader's language inside the conversation, a research check as its own card.
-  const toolInjected = (): ResearchToolInjected => ({ hooks: { research: state }, openProjectFile })
+  const toolInjected = (): ResearchToolInjected => ({ hooks: { currentSession, research: state }, openProjectFile })
   ctx.slots.inject('tool.call.toolview', function* () {
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_check', locale: 'research', inject: toolInjected }, ResearchCheckCard)
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_project', locale: 'research', inject: toolInjected }, ResearchToolCard)

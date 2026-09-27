@@ -13,7 +13,6 @@ import { useSyncExternalStore } from 'react'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
@@ -45,7 +44,7 @@ function research(title: string, root: string, workspaceId: string, extra: Parti
 }
 
 function session(id: string, cwd: string, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionId, displayTitle: id, cwd, running: false, blank: false, updatedAt: day(2), ...extra }
+  return { id: id as SessionId, displayTitle: id, cwd, running: false, retainedBy: {}, blank: false, updatedAt: day(2), ...extra }
 }
 
 function workspace(id: string, path: string, title = path): WorkspaceView {
@@ -93,11 +92,13 @@ function propsOf(w: World, face: ReturnType<typeof faceOf>, store: ReturnType<Re
   const sessions = w.sessions ?? SESSIONS
   const list: SessionListState = {
     ids: sessions.map(item => item.id), byId: Object.fromEntries(sessions.map(item => [item.id, item])),
-    current: w.current as SessionId | undefined, phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    projectionsBySession: {}, phase: 'ready',
   }
-  const workspaces: WorkspaceSnapshot = { items: w.workspaces ?? WORKSPACES, archivedSessionIds: [], state: 'idle', phase: 'ready', error: null }
-  const pending = new Map<SessionId, SessionPendingInteractionBase>((w.pending ?? [])
-    .map(([id, kind]) => [id as SessionId, { key: id, kind, sessionId: id as SessionId }]))
+  const workspaces: WorkspaceSnapshot = { items: w.workspaces ?? WORKSPACES, pinnedSessionIds: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null }
+  const pending = new Map((w.pending ?? [])
+    .map(([id, kind]) => [id as SessionId, {
+      pendingInteraction: { key: id, kind, sessionId: id as SessionId }, running: undefined, completionUnread: false,
+    }]))
   const projects = w.projects === undefined ? [draft, sparse, long, quiet, example, bare] : w.projects
   const view: ResearchView = {
     snapshot: projects === null
@@ -108,8 +109,9 @@ function propsOf(w: World, face: ReturnType<typeof faceOf>, store: ReturnType<Re
   return {
     t, wide: w.wide ?? true,
     useSessions: (select: (value: SessionListState) => unknown) => select(list),
+    useCurrentSession: (select: (value: string | undefined) => unknown) => select(w.current),
     useWorkspaces: (select: (value: WorkspaceSnapshot) => unknown) => select(workspaces),
-    useSessionPendingInteraction: (select: (value: unknown) => unknown) => select(pending),
+    useSessionStatus: (select: (value: unknown) => unknown) => select(pending),
     usePanelInfo: (select: (value: { activePanelId: string | null }) => unknown) => select({ activePanelId: w.panel ?? null }),
     useResearch: (select: (value: ResearchView) => unknown) => select(view),
     useDrafts: (select: (value: NonNullable<World['drafts']>) => unknown) => select(w.drafts ?? {}),

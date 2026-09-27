@@ -1,0 +1,91 @@
+# SciPaper product composition over the shared DSH base and Web bundles.
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    personaSuffix: Your working directory is {{cwd}}.
+    personaPrefix: You are a research collaborator powered by the {{model}} model.
+
+- id: session-query-sqlite
+  config:
+    path: ':memory:'
+    openAt: first-search
+
+- id: agent-preset-registry
+  config:
+    default: research
+
+- id: session-telemetry-otel
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: session-log-deepseek
+  config:
+    enabled: false
+- id: command-feedback
+  disabled: true
+- id: message-feedback
+  disabled: true
+- id: ui-message-feedback
+  disabled: true
+- id: deepseek-account
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: account-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+
+- id: session-log-download
+  disabled: true
+- id: open-in-app
+  disabled: true
+- id: ui-open-in-app
+  disabled: true
+- id: ui-sidebar-terminal
+  disabled: true
+- id: ui-cordis
+  disabled: true
+- id: ui-agent-preset
+  disabled: true
+- id: ui-trajectory
+  disabled: true
+
+- id: ui-sidebar
+  config:
+    brandAction: none
+- id: ui-workspace
+  config:
+    entry: policy
+
+- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      research-auto:
+        sandbox: workspace-write
+        approval: never
+        name: 全自动 · Automatic
+        description: 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。
+
+- insert:
+    - id: research-workbench
+      name: '@deepseek-ai/dsh-research-workbench'
+      config:
+        maxSourceBytes: 67108864
+        pollIntervalMs: 5000
+        maxReviewPages: 12
+    - id: ui-research
+      name: '@deepseek-ai/dsh-client-ui-research'
+      config:
+        hideDeveloperCells: true

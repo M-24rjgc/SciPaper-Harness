@@ -1,8 +1,6 @@
 - menu:
   - menuitem "仅可查看"
-  - menuitem "工作区内修改":
-    - text: 工作区内修改
-    - img
+  - menuitem "工作区内修改"
   - menuitem "完全权限"
   - menuitem "全自动 · Automatic"
   - menuitem "Auto review EXP":

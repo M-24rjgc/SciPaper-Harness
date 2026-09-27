@@ -8,7 +8,7 @@
  * record only names things and gives the project folder.
  */
 import { Fragment, useState, type ReactNode } from 'react'
-import { DisclosureRow, IconCheckOutline14, StateDot, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
+import { DisclosureRow, IconCheckOutlineRegular, StateDot, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { sessionProject, type ResearchToolInjected } from './contract.ts'
@@ -77,9 +77,10 @@ export function ResearchToolCard(props: ResearchToolProps): ReactNode {
   const { block, toolName, t } = props
   const names = useNames(props)
   const [expanded, setExpanded] = useState(false)
+  const partial = props.useToolCallArgumentsPartial()
   const state = callState(block)
-  const phrase = actionPhrase(toolName, callArgs(block), names)
-  const args = callArgsRaw(block)
+  const phrase = actionPhrase(toolName, callArgs(block, partial), names)
+  const args = callArgsRaw(block, partial)
   const result = resultText(block)
   const expandable = args !== '' || result !== ''
   return <div className={styles.call} data-tool={toolName} data-state={state}>
@@ -153,7 +154,7 @@ function Group(props: { group: FindingGroup; names: NameContext; onOpen: ((path:
 /** The check card's leading mark: the verified ✓ only on a clean report, the warn dot on one that did not pass. */
 function CheckMark(props: { state: CallState; view: CheckView | undefined }): ReactNode {
   if (props.view === undefined) return <Leading state={props.state} />
-  return props.view.clean ? <IconCheckOutline14 className={styles.passMark} /> : <StateDot state="warning" />
+  return props.view.clean ? <IconCheckOutlineRegular className={styles.passMark} /> : <StateDot state="warning" />
 }
 
 /** The check's own words: each finding, then what each unfinished phase the scope covers still lacks. */
@@ -185,12 +186,13 @@ export function ResearchCheckCard(props: ResearchToolProps): ReactNode {
   const { block, t } = props
   const names = useNames(props)
   const opening = useAction()
+  const partial = props.useToolCallArgumentsPartial()
   const state = callState(block)
   const view = state === 'ok' ? checkView(block) : undefined
   if (state === 'ok' && view === undefined) return <ResearchToolCard {...props} />
   const mode = view?.mode ?? names.project?.mode
   // Before the report arrives the scope comes from the call, and an incomplete call names none yet.
-  const scope = view === undefined ? actionPhrase('research_check', callArgs(block), names) : scopeName(view.scope, mode, names)
+  const scope = view === undefined ? actionPhrase('research_check', callArgs(block, partial), names) : scopeName(view.scope, mode, names)
   const said = verdict(state, view, t)
   const project = names.project
   // A file opens only when the report proves it was on disk and the card knows the research folder.

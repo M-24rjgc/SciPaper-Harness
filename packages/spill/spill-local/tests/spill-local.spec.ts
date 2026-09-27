@@ -12,6 +12,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { requireFileSymlinks } from '../../../../scripts/test-symlinks.ts'
 import { realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, normalize } from 'node:path'
@@ -297,20 +298,24 @@ describe('startup cleanup sweep', () => {
     expect(existsSync(kept)).toBe(true)
   })
 
-  it('skips a symlink INSIDE a session dir and non-session siblings', async () => {
+  it('skips a file symlink inside a session directory', async (context) => {
+    requireFileSymlinks(context)
     const dir = sessionDir(root, 'sess-1')
     mkdirSync(dir, { recursive: true })
     // A symlink pointing at an old target must NOT be followed or deleted.
     const target = join(root, 'target.txt'); writeAged(target, 'keep', 40)
     const link = join(dir, 'link.txt'); symlinkSync(target, link)
-    // A non-session sibling directory under a shared root is untouched.
-    const unrelated = join(root, 'not-a-session'); mkdirSync(unrelated)
-    const unrelatedOld = join(unrelated, 'old.txt'); writeAged(unrelatedOld, 'x', 40)
     await runSweep([active(root)])
     // The symlink itself survives (lstat sees a link, not a file), so its dir is
     // not empty and is not pruned; the link target survives too.
     expect(existsSync(link)).toBe(true)
     expect(existsSync(target)).toBe(true)
+  })
+
+  it('preserves non-session siblings under a shared root', async () => {
+    const unrelated = join(root, 'not-a-session'); mkdirSync(unrelated)
+    const unrelatedOld = join(unrelated, 'old.txt'); writeAged(unrelatedOld, 'x', 40)
+    await runSweep([active(root)])
     expect(existsSync(unrelatedOld)).toBe(true)
   })
 
@@ -321,7 +326,7 @@ describe('startup cleanup sweep', () => {
     const victimDir = join(root, 'victim'); mkdirSync(victimDir, { recursive: true })
     const victimOld = join(victimDir, 'old.txt'); writeAged(victimOld, 'x', 40)
     const linkName = `session-${'a'.repeat(12)}`
-    const link = join(root, linkName); symlinkSync(victimDir, link)
+    const link = join(root, linkName); symlinkSync(victimDir, link, process.platform === 'win32' ? 'junction' : 'dir')
     await runSweep([active(root)])
     expect(existsSync(victimOld)).toBe(true)
     expect(existsSync(link)).toBe(true)
@@ -557,7 +562,7 @@ describe('discoverDefaultRoots', () => {
       // Names of the EXACT default shape that must still be excluded because they
       // are not real directories the backend could have created.
       writeFileSync(join(base, `${DEFAULT_ROOT_PREFIX}file01`), 'x') // matches shape but is a file
-      symlinkSync(realRoot, join(base, `${DEFAULT_ROOT_PREFIX}link01`)) // matches shape but is a symlink
+      symlinkSync(realRoot, join(base, `${DEFAULT_ROOT_PREFIX}link01`), process.platform === 'win32' ? 'junction' : 'dir') // matches shape but is a link
       const found = await discoverDefaultRoots(() => {}, base)
       expect(found).toEqual([await realpath(realRoot)])
     } finally {

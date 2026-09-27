@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../util/atomic-write"
+    },
+    {
       "path": "../../../vendor/cosmokit"
     },
     {
@@ -24,7 +27,10 @@
       "path": "../../util/values"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
+      "path": "../../boot/config-editor"
+    },
+    {
+      "path": "../../../vendor/loader"
     }
   ]
 }

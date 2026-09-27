@@ -6,6 +6,8 @@
 
 源码：[`packages/research/workbench/src/types.ts`](../../packages/research/workbench/src/types.ts)
 
+[`research-app` 组合包](../../packages/bundle/research-app/README.zh.md) 装配科研服务、可独立配置的工具模块、科研技能与浏览器界面。服务本身不注册工具；[包配置](../../packages/research/workbench/README.zh.md#use-this-package) 定义各自独立的插件入口。新项目和视觉复核对话显式选择 `research` 智能体预设，不受普通会话默认预设影响。从已有对话创建项目时保留该对话。
+
 ## 项目记录
 
 一个 `ResearchProject` 绑定一个规范的 Workspace 目录。它记录证据（导入的资料、文献、收集到的运行输出）、论点及其证据关联、带修订号与输入的已登记文件、环境、实验运行、编译、页面渲染与视觉复核、决策（每条可带一个 `key`，即说明它定下了什么的短标识，例如 `experiments-deferred`），以及检查确立的进展（[见下文](#progress-and-standing)）。三个设置决定 agent 如何工作：
@@ -62,6 +64,8 @@
 | `archive-project {projectId}` | 归档这项研究中尚未归档的每段顶层对话：绑定到它的那段，以及每段在它文件夹里工作、且不在其中嵌套的其他研究里的对话。归档通过 Workspace 注册表完成，与 shell 自己的归档操作及其「已归档会话」设置页用的是同一套归档。在归档第一段对话之前，记录先存下 `archivedAt` 和这次要归档的对话 id（`archivedConversations`）。委派出的子会话不受影响，磁盘上的任何内容都不改变。再次执行时保留 `archivedAt`，并归档此后新增的对话。对示例拒绝执行；对未动过的草稿也拒绝，并提示 `还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list`。 |
 | `unarchive-project {projectId}` | 取消归档 `archivedConversations` 中的对话，然后清除这两个字段。用户在移出之前自己归档的对话保持归档。仍在列表中的研究原样答复；对示例拒绝执行。 |
 
+归档在修改记录之前通过 `workspace/session-activity` 检查所选对话；任何活跃对话都会使操作被拒绝。后续某次归档失败时，撤销已经完成的归档并恢复先前记录。如果撤销也失败，则保留恢复记录并报告错误；`unarchive-project` 可重新尝试恢复。归档和恢复都不会停止独立实验进程。
+
 快照和命令答复把已移出的研究标为 `archived: true`，它由 `archivedAt` 推导得出，从不存储。它的运行照常进行，但后台观测会跳过它们，直到研究恢复；`experiment-wait` 与 `experiment-refresh` 在被调用时仍会观测运行。已移出的研究永远不会是草稿。
 
 `showExamples` 偏好（设置 › 科研 › 显示示例研究）决定侧边栏是否列出示例。没有设置时视为 true。
@@ -81,7 +85,7 @@
 | `phases` | 每个阶段的名称、所属路线、技能、是否为检查点、决定它的检查、它要求的事实（每条带一个 `hint`，用中英文各一句话说明缺什么），以及可选的 `deferrable` 决策键 |
 | `gates`、`scripts` | 模式包的检查要运行的 Python 脚本（每个门禁带中英文的 `label`），以及 agent 可以运行的脚本 |
 
-通用模式也是一个模式包，只是没有阶段、没有技能：全部科研工具，不走流水线。模式包的技能通过与科研工具一起挂载的技能提供者送达 agent：它按会话工作目录所在项目的模式列出技能，因此切换模式会在进行中的会话里替换技能目录。`research/mode` 事件在项目模式变化时通知这个提供者。
+通用模式也是一个模式包，只是没有阶段、没有技能：使用已启用的科研工具，不走流水线。模式包的技能通过独立的 `@deepseek-ai/dsh-research-workbench/mode-skills` 插件送达 agent：它按会话工作目录所在项目的模式列出技能，因此切换模式会在进行中的会话里替换技能目录。`research/mode` 事件在项目模式变化时通知这个提供者。停用工具模块不会影响模式技能提供者或共用台账。
 
 阶段要求使用一组固定的事实：文件通配（`file`，可带 `min`）、`manuscript`、`bibEntries`、`sections`、`figures`、`diagram`、`pagesInspected`、`reviewCurrent`、`runsCollected`、`noActiveRuns`、`dataEvidence` 与 `resultsOrData`。以列表给出的要求，其中任意一项成立即视为满足。一条要求在所属阶段内以它的条件命名（`requirementKey`：`file:story.json`、`sections>=4`，多个备选之间用 ` | ` 连接），同一阶段内不能重复；检查按这些键报告未满足的要求。`hint`、门禁的 `label` 和 `paperRoot` 都是必填项，缺少它们的模式包会被跳过并给出警告。
 

@@ -12,7 +12,7 @@
  */
 import type { SessionListState, SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ConversationDrafts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
@@ -80,8 +80,9 @@ export interface TreeSources {
   drafts: ConversationDrafts
   projects: readonly ResearchProject[]
   list: SessionListState
+  current: SessionId | undefined
   workspaces: WorkspaceSnapshot
-  pending: SessionPendingInteractionSnapshot
+  pending: SessionStatusSnapshot
   showExamples: boolean
 }
 
@@ -103,7 +104,7 @@ function byRecency(a: TreeConversation, b: TreeConversation): number {
  */
 export function deriveTree(sources: TreeSources): TreeModel {
   const { projects, list, workspaces, pending } = sources
-  const current = list.current
+  const current = sources.current
   const archived = new Set<string>(workspaces.archivedSessionIds)
   const reviewers = new Set<string>(projects.flatMap(project => project.visualReviews.flatMap(review => review.sessionId ?? [])))
   const directories: Record<string, string> = {}

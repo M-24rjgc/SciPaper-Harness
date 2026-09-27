@@ -81,8 +81,7 @@ it('renders durable record images in the Trajectory details panel from the share
     configurable: true,
     value: () => {},
   })
-  // The research edition ships the trajectory view disabled; this scenario of it composes the row again.
-  mountAssembledApp({ enableRows: ['ui-trajectory'] })
+  mountAssembledApp({ remote: { developerTools: true } })
   await openFixtureSession()
   const chatSrc = document.querySelector('[data-align="end"] img')?.getAttribute('src')
   if (chatSrc === null || chatSrc === undefined) throw new Error('chat gallery image missing')

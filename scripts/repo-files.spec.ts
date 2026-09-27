@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { uniqueRepoFiles } from './repo-files.ts'
+import { fileSymlinksAvailable, requireFileSymlinks } from './test-symlinks.ts'
 
 interface Tree {
   root: string
@@ -16,17 +17,18 @@ function makeTree(): Tree {
   mkdirSync(join(root, 'a'), { recursive: true })
   writeFileSync(join(root, 'a', 'snap.md'), 'real\n')
   mkdirSync(join(root, 'd'), { recursive: true })
-  symlinkSync(join(root, 'a', 'snap.md'), join(root, 'd', 'snap.md'))
+  if (fileSymlinksAvailable) symlinkSync(join(root, 'a', 'snap.md'), join(root, 'd', 'snap.md'), 'file')
   mkdirSync(outside, { recursive: true })
   writeFileSync(join(outside, 'snap.md'), 'behind a symlinked dir\n')
-  symlinkSync(outside, join(root, 'linked-dir'))
+  symlinkSync(outside, join(root, 'linked-dir'), process.platform === 'win32' ? 'junction' : 'dir')
   mkdirSync(join(root, '.hidden'), { recursive: true })
   writeFileSync(join(root, '.hidden', 'snap.md'), 'hidden by dot\n')
   return { root, clean: () => { rmSync(parent, { recursive: true, force: true }) } }
 }
 
 describe('uniqueRepoFiles', () => {
-  it('enumerates ** matches without probing a symlinked file as a directory', () => {
+  it('enumerates ** matches without probing a symlinked file as a directory', (testContext) => {
+    requireFileSymlinks(testContext)
     const tree = makeTree()
     try {
       // Node's internal glob (from some 24.x releases) lstat-probes
@@ -79,7 +81,7 @@ describe('uniqueRepoFiles', () => {
       const root = join(parent, 'root')
       mkdirSync(join(root, 'a'), { recursive: true })
       writeFileSync(join(root, 'a', 'snap.md'), 'x\n')
-      symlinkSync(root, join(root, 'cyc'))
+      symlinkSync(root, join(root, 'cyc'), process.platform === 'win32' ? 'junction' : 'dir')
       // Each literal `cyc` segment resolves through stat and enters the
       // symlinked directory again, exactly as node glob does for a repeated
       // literal; recursion stays bounded because each literal consumes one
@@ -106,7 +108,8 @@ describe('uniqueRepoFiles', () => {
     }
   })
 
-  it('fails loudly on a broken symlink instead of shrinking the corpus', () => {
+  it('fails loudly on a broken symlink instead of shrinking the corpus', (testContext) => {
+    requireFileSymlinks(testContext)
     const tree = makeTree()
     try {
       // A healthy tree with symlinked files must not throw.
@@ -127,7 +130,7 @@ describe('uniqueRepoFiles', () => {
       expect(() => uniqueRepoFiles(root, ['*.md'])).toThrow()
       // A broken symlink under a literal non-final segment matches nothing,
       // again as node glob silently returns no match for it.
-      symlinkSync(join(root, 'gone-dir'), join(root, 'broken-dir'))
+      symlinkSync(join(root, 'gone-dir'), join(root, 'broken-dir'), process.platform === 'win32' ? 'junction' : 'dir')
       expect(uniqueRepoFiles(root, ['broken-dir/*.md'])).toEqual([])
     } finally {
       rmSync(parent, { recursive: true, force: true })

@@ -22,6 +22,17 @@ const json = (description: string) => ({ type: 'json' as const, description })
 const projectId = text('Optional; defaults to the research project containing your working directory.')
 const output = { schema: { type: 'json' as const }, render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }] }
 
+/** Independently selectable tool families, sharing the same project ledger. */
+export const RESEARCH_TOOL_MODULES = ['project', 'evidence', 'artifact', 'environment', 'experiment', 'board', 'media', 'knowledge', 'checks', 'tasks'] as const
+/** One family selected by a research-tools plugin declaration. */
+export type ResearchToolModule = typeof RESEARCH_TOOL_MODULES[number]
+
+const MODULE_TOOLS: Record<ResearchToolModule, string> = {
+  project: 'research_project', evidence: 'research_evidence', artifact: 'research_artifact',
+  environment: 'research_environment', experiment: 'research_experiment', board: 'research_board',
+  media: 'research_media', knowledge: 'research_knowledge', checks: 'research_check', tasks: 'research_task',
+}
+
 interface Family {
   name: string
   title: string
@@ -382,14 +393,21 @@ async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): 
  * Register the research tools and the approval hook for calls that reach outside the project.
  * @param ctx - plugin context owning tool contributions and approval-hook disposal.
  * @param service - workbench executing commands in the initiating session's research project.
+ * @param modules - tool families contributed by this plugin instance.
  */
-export function registerResearchTools(ctx: Context, service: ResearchWorkbench): void {
+export function registerResearchTools(
+  ctx: Context,
+  service: ResearchWorkbench,
+  modules: readonly ResearchToolModule[] = RESEARCH_TOOL_MODULES,
+): void {
+  const selected = new Set(modules.map(module => MODULE_TOOLS[module]))
   ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> => {
+    if (!selected.has(exec.name)) return next()
     const reason = await approvalReason(service, exec)
     return reason === undefined ? next() : { kind: 'ask', reason }
   })
 
-  ctx.tools.register(defineTool({
+  if (selected.has('research_project')) ctx.tools.register(defineTool({
     name: 'research_project',
     description: 'The research around your working directory. current: the brief — the mode and whether it was chosen (modeChosen, modeSetBy, routingSettled), '
       + 'autonomy, where each phase stands, any goal already running in a conversation of this research (activeGoal), decisions, files, sources and runs; '
@@ -472,7 +490,7 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
     presentCall: () => ({ card: 'generic', title: 'Research project', kind: 'read' }),
   }))
 
-  ctx.tools.register(defineTool({
+  if (selected.has('research_check')) ctx.tools.register(defineTool({
     name: 'research_check',
     description: 'Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected '
       + 'metrics or data, placeholders (\\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review '
@@ -488,7 +506,7 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
     presentCall: () => ({ card: 'generic', title: 'Research check', kind: 'read' }),
   }))
 
-  for (const family of FAMILIES) ctx.tools.register(defineTool({
+  for (const family of FAMILIES.filter(family => selected.has(family.name))) ctx.tools.register(defineTool({
     name: family.name,
     description: family.description,
     parameters: {
@@ -509,7 +527,7 @@ export function registerResearchTools(ctx: Context, service: ResearchWorkbench):
     presentCall: () => ({ card: 'generic', title: family.title, kind: 'other' }),
   }))
 
-  ctx.tools.register(defineTool({
+  if (selected.has('research_task')) ctx.tools.register(defineTool({
     name: 'research_task',
     description: 'Read a desktop-started research operation by jobId. A failed or interrupted task did not complete. Experiment runs are separate and reconciled by runId.',
     parameters: { jobId: { type: 'string', required: true } },

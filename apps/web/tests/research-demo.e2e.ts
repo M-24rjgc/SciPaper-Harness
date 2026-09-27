@@ -32,7 +32,8 @@ import type {} from '@deepseek-ai/dsh-research-workbench'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
-import { launchWebScaffold, type WebScaffold } from './scaffold.ts'
+import type { WebScaffold } from './scaffold.ts'
+import { launchResearchScaffold } from './research-scaffold.ts'
 
 const HOME = process.env.DSH_RESEARCH_DEMO_HOME
 const TEX_BIN = process.env.DSH_RESEARCH_TEST_TEX_BIN
@@ -332,8 +333,8 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
   const overlay = join(backup, 'overlay.yml')
   await writeFile(overlay, '- id: agent-default-model\n  config:\n    provider: deepseek-official\n    model: deepseek-flash\n')
   // The examples are made in the research edition as shipped, none of the inherited rows it turns off.
-  const scaffold: WebScaffold = await launchWebScaffold({
-    agentPresets: { roots: [], default: 'research' }, extraOverlayPath: overlay, enableInheritedRows: false,
+  const scaffold: WebScaffold = await launchResearchScaffold({
+    extraOverlayPath: overlay,
   })
   const transcript: string[] = []
   const toolErrors: string[] = []
@@ -370,7 +371,7 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
         if (text) transcript.push(`\n### 助手\n${text}`)
       }
     })
-    await ctx.research.configure({ main: { provider: 'deepseek-official', model: 'deepseek-flash' }, python, texBin: TEX_BIN })
+    await ctx.research.configure({ researchHome: join(scaffold.workspaceCwd, 'SciPaper'), main: { provider: 'deepseek-official', model: 'deepseek-flash' }, python, texBin: TEX_BIN })
     const { modes } = await ctx.research.snapshot()
     const phaseLabels = new Map(modes.flatMap(mode => mode.phases.map(phase => [phase.id, phase.label.zh] as const)))
 

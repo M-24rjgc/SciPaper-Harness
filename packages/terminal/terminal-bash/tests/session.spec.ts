@@ -93,6 +93,8 @@ class FakeTerminal implements SubprocessTerminalHandle {
     this.writes.push(data)
   }
 
+  async inspectActivity() { return { state: 'unknown' as const, revision: 0 } }
+
   async inspectForeground() {
     const processGroupId = this.inspector.foregroundPgid()
     return processGroupId === undefined
@@ -1143,6 +1145,44 @@ describe('LocalPtySession readiness and output', () => {
     await initializing
     expect(session.motd).toBe('dsh> ')
   })
+
+  it.skipIf(process.platform !== 'win32')('waits for the complete pwsh prompt after ConPTY flushes buffered output', async () => {
+    vi.useFakeTimers()
+    const terminal = new FakeTerminal()
+    const session = new LocalPtySession(terminal, config({ shellDialect: 'pwsh', idleSilenceMs: 100, timeoutMs: 200 }))
+    await initialize(session, terminal)
+    const operation = session.startSend({ text: 'Write-Output result', submit: true })
+    let settled = false
+    void operation.done.then(() => { settled = true })
+    await Promise.resolve()
+    await Promise.resolve()
+    terminal.emitData('\x1b]133;D;0\x07')
+    terminal.emitData('result\r\ndsh>')
+    await vi.advanceTimersByTimeAsync(20)
+    expect(settled).toBe(false)
+    terminal.inspector.pgid = 789
+    terminal.emitData('\x1b[1C')
+    await vi.advanceTimersByTimeAsync(20)
+    expect(settled).toBe(false)
+    terminal.inspector.pgid = 456
+    await vi.advanceTimersByTimeAsync(10)
+    expect(await operation.done).toMatchObject({ waitReason: 'stdin_read', viewport: 'result\ndsh>' })
+  })
+
+  it.skipIf(process.platform !== 'win32').each(['output dsh> ', 'output\r\ndsh> still running', 'output\r\nchild> '])(
+    'does not accept non-prompt pwsh output after an owned marker: %j', async (output) => {
+      vi.useFakeTimers()
+      const terminal = new FakeTerminal()
+      const session = new LocalPtySession(terminal, config({ shellDialect: 'pwsh' }))
+      await initialize(session, terminal)
+      const operation = session.startSend({ text: 'run', submit: true })
+      await Promise.resolve()
+      await Promise.resolve()
+      terminal.emitData('\x1b]133;D;0\x07' + output)
+      await vi.advanceTimersByTimeAsync(70)
+      expect((await operation.done).waitReason).toBe('inferred_idle')
+    },
+  )
 
   it('does not attribute a delayed prior prompt to the current send', async () => {
     vi.useFakeTimers()

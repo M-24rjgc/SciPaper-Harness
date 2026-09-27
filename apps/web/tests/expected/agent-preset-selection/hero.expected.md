@@ -1,8 +1,2 @@
-- button "Choose research":
-  - img
-  - text: workspace
-  - img
-- button "Standard mode":
-  - img
-  - text: Standard mode
-  - img
+- button "Choose workspace": workspace
+- button "Standard mode"

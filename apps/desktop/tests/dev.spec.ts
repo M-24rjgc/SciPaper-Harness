@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const spawn = vi.hoisted(() => vi.fn())
-vi.mock('node:child_process', () => ({ spawn }))
+vi.mock('node:child_process', async importOriginal => ({ ...await importOriginal<typeof import('node:child_process')>(), spawn }))
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -33,7 +33,7 @@ describe('desktop development launcher', () => {
 
     expect(spawn).toHaveBeenCalledExactlyOnceWith(
       native ? entry : process.execPath,
-      native ? ['run', 'build'] : [entry, 'run', 'build'],
+      native ? ['run', 'build:research'] : [entry, 'run', 'build:research'],
       expect.objectContaining({ cwd: resolve(import.meta.dirname, '../../..'), stdio: 'inherit' }),
     )
     expect(console.error).toHaveBeenCalledWith('stop before the fixture build')

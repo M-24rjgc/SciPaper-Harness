@@ -10,7 +10,7 @@
  * hand its seat back, and `/permission` still opens the shell's own picker.
  */
 import { useEffect, useState, type ReactNode } from 'react'
-import { IconChevronDownOutline14, Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Autonomy } from '@deepseek-ai/dsh-research-workbench/types'
 // Type-only: the `permissions` projection key comes with the Remote assembly's type exports.
@@ -116,7 +116,7 @@ export function AutonomyChip(props: AutonomyChipProps): ReactNode {
           {handSet === undefined ? name : t('autonomyThisConversation', { preset: handSet })}
         </span>
         <span className={open ? `${styles.chevron} ${styles.chevronOpen}` : styles.chevron} aria-hidden>
-          <IconChevronDownOutline14 />
+          <IconChevronDownOutlineRegular />
         </span>
       </button>}
     />

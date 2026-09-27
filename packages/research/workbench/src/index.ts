@@ -12,7 +12,7 @@ import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
 import type { SessionRequestId, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
-import type {} from '@deepseek-ai/dsh-workspace'
+import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
@@ -432,7 +432,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     if (existing) {
       if (!existing.sessionId) {
         await this.mutate(existing.id, async (project) => {
-          project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
+          project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId, agentPreset: 'research' })).sessionId
         })
       }
       return this.record(existing.id)
@@ -448,7 +448,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     for (const directory of SCAFFOLD) {
       await mkdir(await projectPath(root, directory), { recursive: true })
     }
-    project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
+    project.sessionId = sessionId ?? (await this.ctx.sessionController.create({ workspaceId: project.workspaceId, agentPreset: 'research' })).sessionId
     await this.domain.table('projects').put(project.id, project)
     this.announceMode(project.id)
     // The bound session went live before the record existed, and so did any conversation already open in the folder.
@@ -799,7 +799,9 @@ export class ResearchWorkbench extends TypertRemoteService {
    * which conversations it archives, before any is archived, so a removal
    * cut short can still be restored; repeating it archives any conversation
    * added since. Delegated children follow their parent and are left alone;
-   * nothing on disk changes.
+   * nothing on disk changes. Active conversations refuse the operation before
+   * it writes. An archive failure reverses this operation's completed writes;
+   * a failed reversal retains the restoration record.
    */
   private async archive(id: ProjectId): Promise<ResearchResponse> {
     const project = this.record(id)
@@ -811,12 +813,40 @@ export class ResearchWorkbench extends TypertRemoteService {
     const conversations = conversationsOf(project, projects, items)
       .filter(conversation => conversation.origin !== 'subagent' && !archived.has(conversation.sessionId))
       .map(conversation => conversation.sessionId)
+    for (const sessionId of conversations) {
+      const activity = await this.ctx.waterfall('workspace/session-activity', { sessionId }, () => Promise.resolve([]))
+      if (activity.length > 0) throw new WorkspaceActiveSessionError(sessionId, activity)
+    }
+    const previous = { archivedAt: project.archivedAt, conversations: project.archivedConversations?.slice() }
     await this.mutate(id, (current) => {
       current.archivedAt ??= new Date().toISOString()
       const recorded = [...new Set([...current.archivedConversations ?? [], ...conversations])]
       if (recorded.length > 0) current.archivedConversations = recorded
     })
-    for (const sessionId of conversations) await this.ctx.workspaceRegistry.archiveSession(sessionId)
+    const completed: SessionId[] = []
+    try {
+      for (const sessionId of conversations) {
+        await this.ctx.workspaceRegistry.archiveSession(sessionId)
+        completed.push(sessionId)
+      }
+    } catch (error) {
+      const failures: unknown[] = []
+      for (const sessionId of completed.reverse()) {
+        try { await this.ctx.workspaceRegistry.unarchiveSession(sessionId) }
+        catch (failure) { failures.push(failure) }
+      }
+      if (failures.length === 0) {
+        await this.mutate(id, (current) => {
+          if (previous.archivedAt === undefined) delete current.archivedAt
+          else current.archivedAt = previous.archivedAt
+          if (previous.conversations === undefined) delete current.archivedConversations
+          else current.archivedConversations = previous.conversations
+        })
+      } else {
+        throw new AggregateError([error, ...failures], 'Research archive failed; restore the research to recover its conversations')
+      }
+      throw error
+    }
     return {
       message: `Removed from the list: ${conversations.length} conversation(s) archived; its folder and runs are untouched`,
       project: await this.presented(this.record(id)),
@@ -922,7 +952,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   private async blankConversation(project: ResearchProject): Promise<string> {
     const bound = project.sessionId
     if (bound !== undefined && !this.ctx.workspaceRegistry.archivedSessionIds.includes(bound as SessionId)) return bound
-    return (await this.ctx.sessionController.create({ workspaceId: project.workspaceId })).sessionId
+    return (await this.ctx.sessionController.create({ workspaceId: project.workspaceId, agentPreset: 'research' })).sessionId
   }
 
   /**
@@ -1492,7 +1522,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     } else {
       throw new Error('Compile the manuscript or export the figure to PNG before requesting a visual review')
     }
-    const session = await this.ctx.sessionController.create({ workspaceId: project.workspaceId })
+    const session = await this.ctx.sessionController.create({ workspaceId: project.workspaceId, agentPreset: 'research' })
     await this.ctx.sessionController.selectModel({ sessionId: session.sessionId, ...binding })
     const instructions = `Review the attached pages of ${artifact.path} for legibility, clipped content, overlaps, typography and figure/text consistency. `
       + 'Explain visible findings precisely. This is visual inspection, not validation of numerical claims. '

@@ -11,7 +11,8 @@
  */
 import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react'
 import {
-  Button, IconEditOutline16, IconFolderClose16, IconFolderOpenOutline16, IconRightUpOutline16, Menu, Modal, type MenuEntry, type MenuItem,
+  Button, IconEditOutlineRegular, IconFolderCloseRegular, IconFolderOpenOutlineRegular, IconRightUpOutlineRegular,
+  Menu, Modal, type MenuEntry, type MenuItem,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ProjectId, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
@@ -106,7 +107,7 @@ interface Typing {
  */
 export function ResearchFolderMenu(props: FolderMenuProps): ReactNode {
   const { t, onPick, onClose, anchorRef } = props
-  const current = props.useSessions(state => state.current)
+  const current = props.useCurrentSession(state => state)
   const cwd = props.useSessions(state => current === undefined ? undefined : state.byId[current]?.cwd)
   const registered = props.useWorkspaces(state => state.items)
   const snapshot = props.useResearch(state => state.snapshot)
@@ -147,11 +148,11 @@ export function ResearchFolderMenu(props: FolderMenuProps): ReactNode {
   if (path !== undefined) items.push({ type: 'label', id: 'saved', text: t('folderSavedAt', { path: breakablePath(path) }) })
   if (project?.draft === true) {
     const projectId = project.id
-    items.push({ id: 'move', label: t('folderMove'), icon: <IconEditOutline16 size={16} />, disabled: moving })
+    items.push({ id: 'move', label: t('folderMove'), icon: <IconEditOutlineRegular size={16} />, disabled: moving })
     runs.set('move', () => { pickFor(projectId, onPick) })
   }
   if (canReveal && path !== undefined) {
-    items.push({ id: 'reveal', label: t('folderReveal'), icon: <IconFolderOpenOutline16 /> })
+    items.push({ id: 'reveal', label: t('folderReveal'), icon: <IconFolderOpenOutlineRegular /> })
     runs.set('reveal', () => { props.reveal(path) })
   }
   // The person's own researches, newest first; the untouched draft is where 新研究 goes,
@@ -164,9 +165,9 @@ export function ResearchFolderMenu(props: FolderMenuProps): ReactNode {
   if (others.length > 0) {
     const submenu = others.map((other): MenuItem => {
       runs.set(`research:${other.id}`, () => { onPick(other.workspaceId) })
-      return { id: `research:${other.id}`, label: other.title, icon: <IconFolderClose16 size={16} /> }
+      return { id: `research:${other.id}`, label: other.title, icon: <IconFolderCloseRegular size={16} /> }
     })
-    items.push({ id: 'switch', label: t('folderSwitch'), icon: <IconRightUpOutline16 size={16} />, submenu })
+    items.push({ id: 'switch', label: t('folderSwitch'), icon: <IconRightUpOutlineRegular size={16} />, submenu })
   }
 
   const decide = (chosen: Outcome, id: string): void => {

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-21-research-workbench-default-home.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-21-research-workbench-default-home.md
-2026-09-21-research-workbench-default-home.md: bed0abaa22c10167032567c03133ddaa4e38dbee
-2026-09-21-research-workbench-default-home.zh.md: f3095dc8e7f11b0e4b31f7f77a9fdd91631dde2f
+/agent-note-research-workbench-installs-beside-deepseek-harness-not-over-it:
+  en: 98fcce9a496b53da
+  zh: 4c344d23b1528436
+/agent-note-research-workbench-installs-beside-deepseek-harness-not-over-it/problem:
+  en: 7cbe15f584058020
+  zh: 6c1424a20a0a4af3
+/agent-note-research-workbench-installs-beside-deepseek-harness-not-over-it/decision:
+  en: c391190784467d6e
+  zh: 994c816437147c26
+/agent-note-research-workbench-installs-beside-deepseek-harness-not-over-it/alternatives-considered:
+  en: 17ad2ea42f577f00
+  zh: c3f117f78485e21c
+/agent-note-research-workbench-installs-beside-deepseek-harness-not-over-it/consequences:
+  en: d29722527ad5d67f
+  zh: c055dc7d3756dc1a

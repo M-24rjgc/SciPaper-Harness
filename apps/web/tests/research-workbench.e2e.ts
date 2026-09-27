@@ -5,14 +5,15 @@ import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
-import { afterAll, beforeAll, expect, it, beforeEach, onTestFailed } from 'vitest'
+import { afterAll, beforeAll, expect, it, beforeEach, onTestFailed, vi } from 'vitest'
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type {
   ArtifactId, ExperimentId, ProjectId, ResearchCommand, ResearchProject, ResearchResponse,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-research-workbench'
 import type {} from '@deepseek-ai/dsh-permission-presets'
-import { launchWebScaffold, seedSession, watchConsole, type WebScaffold } from './scaffold.ts'
+import { seedSession, watchConsole, type WebScaffold } from './scaffold.ts'
+import { launchResearchScaffold } from './research-scaffold.ts'
 import { newEnglishPage, saveFailureShot, writeComposerDraft, ZH_BROWSER_LOCALE } from './support.ts'
 
 // Borrowed read-only: any settled transcript with a closing assistant reply.
@@ -20,6 +21,10 @@ const SETTLED_SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-histor
 
 /** A deterministic model: the project storage, tools and execution stay real. */
 class ReplyAdapter extends LlmAdapter {
+  override listModels(provider: string) {
+    return Promise.resolve([{ provider, id: 'reply', name: 'Reply' }])
+  }
+
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
     return Promise.resolve({ provider, id: model, name: model, contextWindow: 128000 })
   }
@@ -47,9 +52,14 @@ const texBin = process.env.DSH_RESEARCH_TEST_TEX_BIN
 beforeAll(async () => {
   // The research edition as shipped: none of the inherited rows it turns off, and
   // conversations compose from the research preset, the shipped default.
-  scaffold = await launchWebScaffold({ enableInheritedRows: false, agentPresets: { roots: [], default: 'research' } })
+  scaffold = await launchResearchScaffold()
   scaffold.ctx.effect(() => scaffold.ctx.llm.registerAdapter(['research-browser-test'], new ReplyAdapter()))
+  await scaffold.ctx.agentDefaultModel.saveSelection({ provider: 'research-browser-test', model: 'reply' })
+  await vi.waitFor(() => {
+    expect(scaffold.ctx.agentDefaultModel.currentSelection()).toMatchObject({ provider: 'research-browser-test', model: 'reply' })
+  })
   await scaffold.ctx.research.configure({
+    researchHome: join(scaffold.workspaceCwd, 'SciPaper'),
     main: { provider: 'research-browser-test', model: 'reply' },
     ...(python ? { python } : {}), ...(texBin ? { texBin } : {}),
   })
@@ -173,8 +183,9 @@ it('lands on a new research, moves it to a chosen folder, records evidence and o
   const input = page.locator('[data-composer-input][contenteditable="true"]').first()
   await writeComposerDraft(page, input, 'Start from the measured sample')
   await input.press('Enter')
-  // The scenario records no model reply; the sent message alone ends the blank conversation and brings the header.
+  // The scripted adapter answers through the real conversation loop.
   await page.getByText('Start from the measured sample', { exact: true }).first().waitFor({ timeout: 30000 })
+  await page.getByText('Noted.', { exact: true }).first().waitFor({ timeout: 30000 })
   await page.getByTitle('Research record', { exact: true }).first().click({ timeout: 15000 })
   // The claims count opens the Sources tab beside the conversation, at its claims; nothing takes the main panel.
   await page.getByRole('button', { name: /^Claims/ }).first().click({ timeout: 15000 })
@@ -183,6 +194,9 @@ it('lands on a new research, moves it to a chosen folder, records evidence and o
   await page.getByText('The measured value is 42.', { exact: true }).filter({ visible: true }).first().click({ timeout: 15000 })
   const claim = page.getByRole('dialog')
   await expect.poll(() => claim.innerText()).toContain(source.title)
+  await claim.evaluate(async (element) => {
+    await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished))
+  })
   await saveFailureShot(page, 'research-claim-sources')
   await page.keyboard.press('Escape')
 })
@@ -270,7 +284,9 @@ it('opens the secondary tools as tabs beside the conversation, and a .drawio fil
   await page.getByText('source.csv', { exact: true }).filter({ visible: true }).first().waitFor()
   await saveFailureShot(page, 'research-sources-tab')
   await tool('Open this page in the source').click()
-  await page.getByText('measurement,value', { exact: false }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  const spreadsheet = page.locator('[data-excel-preview]').filter({ visible: true }).first()
+  await spreadsheet.waitFor({ timeout: 15000 })
+  await expect.poll(() => spreadsheet.innerText()).toContain('measurement')
   // The board opens from the tools row, empty until the assistant registers a run; the conversation stays on screen.
   await page.getByTitle('Research record', { exact: true }).first().click()
   await tool('Experiment board').click({ timeout: 15000 })
@@ -409,7 +425,7 @@ it('lists the researches in the sidebar, opens a second conversation, and remove
   // ＋ New conversation waits until the person leaves it.
   const research = tree.getByRole('treeitem', { name: /^Evidence study/ })
   await expect.poll(() => research.getAttribute('aria-expanded'), { timeout: 15000 }).toBe('true')
-  const blank = tree.getByRole('treeitem', { name: 'New conversation', exact: true })
+  const blank = tree.getByRole('treeitem', { name: /^Draft · Can block-sparse attention/ })
   await expect.poll(() => blank.getAttribute('aria-selected'), { timeout: 15000 }).toBe('true')
   const add = tree.getByRole('treeitem', { name: 'New conversation in “Evidence study”', exact: true })
   expect(await add.count()).toBe(0)
@@ -466,6 +482,11 @@ it('lists the researches in the sidebar, opens a second conversation, and remove
   await expect.poll(async () => (await projects()).find(item => item.id === projectId)?.archived, { timeout: 15000 }).toBeUndefined()
   await settings.getByRole('button', { name: 'Close' }).last().click()
   await renamed.waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Plugins', exact: true }).click()
+  const plugins = page.locator('[data-plugin-panel]')
+  await plugins.getByRole('heading', { name: 'Plugins', exact: true }).waitFor({ timeout: 15000 })
+  expect(await plugins.locator('[data-plugin-package]').count()).toBeGreaterThan(0)
+  await renamed.click()
 })
 
 it('shows a settled reply with no feedback buttons or view tabs', async () => {

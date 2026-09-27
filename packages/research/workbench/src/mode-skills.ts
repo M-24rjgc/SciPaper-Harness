@@ -17,6 +17,19 @@ import { parseSkillFile, type ModeSkill } from './modes.ts'
 const MODE_SKILL_RANK = 290
 const PROVIDER = 'research-modes'
 
+/** Loader identity of the project-mode skill provider. */
+export const name = 'research-mode-skills'
+/** The project ledger and scoped skill catalog this provider reads. */
+export const inject = ['research', 'skills']
+
+/**
+ * Mount project-mode skills in one Agent preset independently of its tools.
+ * @param ctx - preset context owning the provider and invalidation listener.
+ */
+export function apply(ctx: Context): void {
+  registerModeSkills(ctx, ctx.research)
+}
+
 /**
  * Register the provider that lists the current mode's skills for a working directory.
  * @param ctx - the research preset's plugin context; the provider lives in its skill layer.

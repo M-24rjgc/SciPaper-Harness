@@ -10,7 +10,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { act, cleanup, fireEvent, render, type RenderResult } from '@testing-library/react'
-import type { RunningToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { StartedToolCall, ToolResultNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { CheckReport, ResearchProject, ResearchSnapshot } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -67,8 +67,8 @@ function failed(name: string, args: unknown, message: string): ToolResultNode {
 function stopped(name: string, args: unknown): ToolResultNode {
   return settled(name, args, [], { isError: true, error: { name: 'ToolError', code: 'interrupted' } })
 }
-function running(name: string, argsRaw: string): RunningToolCall {
-  return { callId: 'call-running', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [] }
+function running(name: string, argsRaw: string): StartedToolCall {
+  return { phase: 'start', callId: 'call-running', name, argsRaw, turn: 1, step: 1, time: 1_000, subCalls: [] }
 }
 function report(over: Partial<CheckReport>): CheckReport {
   return { clean: true, scope: 'all', mode: 'spark-to-paper', route: 'data', gatesRun: [], phases: [], findings: [], checkedAt: '2026-09-26T08:00:00.000Z', ...over }
@@ -94,6 +94,7 @@ function props(block: ResearchToolProps['block'], seat: Seat = {}): { props: Res
       callId: block.callId, toolName, block, cwd: seat.cwd, sessionId: SESSION,
       openFile: () => {}, loadImage: () => Promise.resolve(''),
       t: lookup(seat.dictionary ?? zh),
+      useToolCallArgumentsPartial: () => '',
       useResearch: (select: (value: ResearchView) => unknown) => select(view),
       openProjectFile: (root: string, path: string) => {
         opened.push([root, path])
@@ -114,6 +115,19 @@ function parts(element: Element | null): string[] {
 const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }
 
 describe('a research tool call', () => {
+  it('updates a preparing call from the call-local argument hook', () => {
+    const block = { phase: 'preparing' as const, callId: 'preparing', name: 'research_evidence', turn: 1, step: 1, time: 1000, subCalls: [] }
+    let partial = '{"action":"import","paths":["data/'
+    const face = { ...props(block).props, useToolCallArgumentsPartial: () => partial }
+    const view = render(<ResearchToolCard {...face} />)
+    const row = view.getByRole('button')
+    fireEvent.click(row)
+    expect(view.container.textContent).toContain(partial)
+    partial = '{"action":"import","paths":["data/notes.md"]}'
+    view.rerender(<ResearchToolCard {...face} />)
+    expect(view.container.textContent).toContain('导入 1 个文件')
+  })
+
   it('reads as the tool\'s name and what the call did, with the raw call behind the row', () => {
     const block = answered('research_evidence', { action: 'import', paths: ['data/results/consistency.csv', 'data/results/by_length.csv', 'data/notes.md'] },
       { message: 'Sources imported with immutable snapshots' })

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-24-scipaper-independent-identity.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-scipaper-independent-identity.md
-2026-09-24-scipaper-independent-identity.md: f95434749abf302e4a4ca2341df7ae31f5d4265d
-2026-09-24-scipaper-independent-identity.zh.md: 0da763fbb8bfb0677ba335b2325c6fe3eee2ed69
+/agent-note-scipaper-harness-as-an-independent-product:
+  en: cb1c6443628a618b
+  zh: 3f440177d191cfd3
+/agent-note-scipaper-harness-as-an-independent-product/problem:
+  en: 886d4cd658780655
+  zh: 20ef79476f00d00c
+/agent-note-scipaper-harness-as-an-independent-product/decision:
+  en: 3e2c97003df483d8
+  zh: c608248eb6d800ea
+/agent-note-scipaper-harness-as-an-independent-product/consequences:
+  en: 779bbc1d6c17d9a2
+  zh: d03bb9b19e34a6e3
+/agent-note-scipaper-harness-as-an-independent-product/alternatives-considered:
+  en: a7e85236812e5573
+  zh: 3d110f699ff38535

@@ -25,13 +25,13 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用这个包
 
-与 `ui-research` 客户端插件和科研 agent 预设一起挂载；web-app bundle 已经这样配置。服务本身不注册任何工具：预设挂载 `@deepseek-ai/dsh-research-workbench/tools`，因此只有由该预设组成的 agent 能看到科研工具。
+通过 `research-app` bundle 与 `ui-research` 客户端插件和科研 agent 预设一起挂载。服务本身不注册工具。预设中的配置行挂载 `@deepseek-ai/dsh-research-workbench/tools`，通过 `config.modules` 选择 `project`、`evidence`、`artifact`、`environment`、`experiment`、`board`、`media`、`knowledge`、`checks` 或 `tasks`；省略时全部启用，空列表不启用任何工具。每行独立拥有选定的工具及审批钩子，停用一行不会影响其他工具族或共用台账。项目模式技能由独立的 `@deepseek-ai/dsh-research-workbench/mode-skills` 提供，通用科研技能通过指向本包 `runtime/skills` 的 `skill-filesystem` 提供。新研究和视觉审查对话显式选择固定的 `research` 预设，不受普通会话默认预设影响。
 
-项目的自主程度就是它每段对话的权限预设：服务注入 `ctx.permissionPresets`，在每次设置自主程度时、以及每个会话上线时，为项目的每个在线会话设置预设，`checkpoints` 对应 `workspace-write`，`automatic` 对应 `research-auto`；示例和委派出的子会话不受影响（[详情](../../../docs/subsystems/research.zh.md#autonomy-and-permission)）。权限配置行必须同时配置这两个预设（web-app bundle 已经如此），否则服务不会加载。
+项目的自主程度就是它每段对话的权限预设：服务注入 `ctx.permissionPresets`，在每次设置自主程度时、以及每个会话上线时，为项目的每个在线会话设置预设，`checkpoints` 对应 `workspace-write`，`automatic` 对应 `research-auto`；示例和委派出的子会话不受影响（[详情](../../../docs/subsystems/research.zh.md#autonomy-and-permission)）。权限配置行必须同时配置这两个预设（research-app bundle 已经如此），否则服务不会加载。
 
 「新研究」是桌面端的 `start-new` 命令：它打开唯一一份未动过的草稿研究，没有时在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一份，连同文件夹的 Workspace 和一段空白对话。`relocate` 把草稿移到用户选择的文件夹，`discard-draft` 删除草稿以及它建立的空文件夹。研究存放位置取用户的 `researchHome` 偏好，没有时取配置的 `researchHome`，再没有时取 `<用户目录>/SciPaper`。agent 不能发送这几个命令（[详情](../../../docs/subsystems/research.zh.md#new-research-draft)）。
 
-「移出列表」是桌面端的 `archive-project`：它归档这项研究的对话，并在记录上标记 `archivedAt`，磁盘上的内容都不改变；它的运行不再被观测，直到 `unarchive-project` 恢复它，并恰好取消归档它当初归档的那些对话。agent 同样不能发送这两个命令（[详情](../../../docs/subsystems/research.zh.md#remove-from-list)）。
+「移出列表」是桌面端的 `archive-project`：它归档这项研究的对话，并在记录上标记 `archivedAt`，磁盘上的内容都不改变；它的运行不再被观测，直到 `unarchive-project` 恢复它，并恰好取消归档它当初归档的那些对话。存在活跃对话时，操作在任何写入之前拒绝归档；随后发生归档失败时，撤销本次已经完成的归档，如果撤销也失败则保留恢复所需的对话记录。归档不会停止独立实验进程。agent 同样不能发送这两个命令（[详情](../../../docs/subsystems/research.zh.md#remove-from-list)）。
 
 ### 何时选用
 

@@ -7,7 +7,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { SessionPendingInteractionBase } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
@@ -21,7 +20,7 @@ function research(title: string, root: string, workspaceId: string, extra: Parti
 }
 
 function session(id: string, cwd: string | undefined, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionId, displayTitle: `title ${id}`, ...(cwd === undefined ? {} : { cwd }), running: false, blank: false, updatedAt: 1000, ...extra }
+  return { id: id as SessionId, displayTitle: `title ${id}`, ...(cwd === undefined ? {} : { cwd }), running: false, retainedBy: {}, blank: false, updatedAt: 1000, ...extra }
 }
 
 function workspace(id: string, path: string, sessionIds: string[], title = path): WorkspaceView {
@@ -42,19 +41,19 @@ function sources(parts: {
   const list: SessionListState = {
     ids: [...parts.sessions.map(item => item.id), ...(parts.ghosts ?? []) as SessionId[]],
     byId: Object.fromEntries(parts.sessions.map(item => [item.id, item])),
-    current: parts.current as SessionId | undefined,
-    phase: 'ready', subagentsByParent: {}, jobsBySession: {}, currentAddress: undefined,
+    projectionsBySession: {}, phase: 'ready',
   }
   const workspaces: WorkspaceSnapshot = {
-    items: parts.workspaces ?? [], archivedSessionIds: (parts.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
+    items: parts.workspaces ?? [], pinnedSessionIds: [], archivedSessionIds: (parts.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
   }
-  const pending = new Map<SessionId, SessionPendingInteractionBase>((parts.pending ?? []).map(([id, kind]) => [
-    id as SessionId, { key: `${id}-${kind}`, kind, sessionId: id as SessionId },
+  const pending = new Map((parts.pending ?? []).map(([id, kind]) => [
+    id as SessionId, { pendingInteraction: { key: `${id}-${kind}`, kind, sessionId: id as SessionId }, running: undefined, completionUnread: false },
   ]))
   // The assembled client narrows pending interactions to its domains' kinds; the tree reads only `kind`.
   const narrowed = pending as unknown as TreeSources['pending']
   return {
-    projects: parts.projects, list, workspaces, pending: narrowed, drafts: parts.drafts ?? {}, showExamples: parts.showExamples ?? true,
+    projects: parts.projects, current: parts.current as SessionId | undefined, list, workspaces, pending: narrowed,
+    drafts: parts.drafts ?? {}, showExamples: parts.showExamples ?? true,
   }
 }
 
@@ -277,7 +276,6 @@ describe('searching the tree', () => {
       session('s-legacy', '/legacy', { displayTitle: 'Legacy notes' }),
       session('s-loose', '/elsewhere', { displayTitle: 'Loose thoughts' }),
     ],
-    current: 's-blank',
     workspaces: [workspace('w-legacy', '/legacy', ['s-legacy'], 'legacy')],
   }))
   const nameOf = (project: ResearchProject): string => project.untitled === true ? 'New research' : project.title

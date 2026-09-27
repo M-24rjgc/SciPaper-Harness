@@ -1,23 +1,29 @@
-/**
- * The research tools for one agent, and the skills of each project's mode.
- * The research preset mounts this entry, so the tools, their approval hook and
- * the mode skills live in the agents composed from it and nowhere else; the
- * ledger service itself stays host-wide.
- */
+/** Independently mountable research tool families in an Agent preset. */
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-skill'
+import s from '@deepseek-ai/schemastery'
 import type {} from './index.ts'
-import { registerModeSkills } from './mode-skills.ts'
-import { registerResearchTools } from './tools.ts'
+import { RESEARCH_TOOL_MODULES, registerResearchTools, type ResearchToolModule } from './tools.ts'
 
+/** Loader identity of the tool-family consumer. */
 export const name = 'research-tools'
-export const inject = ['research', 'tools', 'skills']
+/** The project ledger and scoped tool registry required by every family. */
+export const inject = ['research', 'tools']
+
+/** Tool families contributed by this plugin instance. */
+export interface Config {
+  modules: ResearchToolModule[]
+}
+
+/** Empty selections contribute no tools; omitted selections mount every family. */
+export const Config: s<Config> = s.object({
+  modules: s.array(s.union([...RESEARCH_TOOL_MODULES])).default([...RESEARCH_TOOL_MODULES]),
+})
 
 /**
- * Register the research tools and the mode-skill provider in the mounting preset.
+ * Register selected families with their own external-file approval hooks.
  * @param ctx - the preset's plugin context.
+ * @param config - families enabled in this plugin instance.
  */
-export function apply(ctx: Context): void {
-  registerResearchTools(ctx, ctx.research)
-  registerModeSkills(ctx, ctx.research)
+export function apply(ctx: Context, config: Config): void {
+  registerResearchTools(ctx, ctx.research, config.modules)
 }

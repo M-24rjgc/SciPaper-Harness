@@ -63,8 +63,8 @@ export function callState(block: ToolCallBlock): CallState {
  * @param block - the call as the conversation holds it.
  * @returns the raw JSON text; empty when a result arrived without its call.
  */
-export function callArgsRaw(block: ToolCallBlock): string {
-  return ('kind' in block ? block.call?.argsRaw : block.argsRaw) ?? ''
+export function callArgsRaw(block: ToolCallBlock, partial = ''): string {
+  return ('kind' in block ? block.call?.argsRaw : block.phase === 'preparing' ? partial : block.argsRaw) ?? ''
 }
 
 /**
@@ -72,8 +72,8 @@ export function callArgsRaw(block: ToolCallBlock): string {
  * @param block - the call as the conversation holds it.
  * @returns the argument object, or undefined while it is incomplete or when it is no object.
  */
-export function callArgs(block: ToolCallBlock): Fields | undefined {
-  return objectOf(callArgsRaw(block))
+export function callArgs(block: ToolCallBlock, partial = ''): Fields | undefined {
+  return objectOf(callArgsRaw(block, partial))
 }
 
 /**
