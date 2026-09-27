@@ -81,6 +81,7 @@ describe('desktop package-set selection', () => {
   it('requires the Desktop Host entry', () => {
     const files = [
       'package/lib/index.js',
+      'package/lib/office-cli.js',
     ]
     expect(() => {
       assertDesktopHostPackageFiles(files)
@@ -88,5 +89,8 @@ describe('desktop package-set selection', () => {
     expect(() => {
       assertDesktopHostPackageFiles(files.slice(1))
     }).toThrow(/lib\/index\.js/u)
+    expect(() => {
+      assertDesktopHostPackageFiles(files.slice(0, 1))
+    }).toThrow(/lib\/office-cli\.js/u)
   })
 })

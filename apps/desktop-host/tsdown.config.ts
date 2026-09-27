@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown'
 
-export default defineConfig({
-  entry: ['lib/types/index.js'],
+export default defineConfig(['index', 'office-cli'].map(entry => ({
+  entry: [`lib/types/${entry}.js`],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
@@ -9,4 +9,4 @@ export default defineConfig({
   fixedExtension: false,
   dts: false,
   clean: false,
-})
+})))

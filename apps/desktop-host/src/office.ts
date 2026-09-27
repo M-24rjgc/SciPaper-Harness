@@ -30,9 +30,14 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const archive = runtimeArchivePath(config.runtimeDir) === undefined ? undefined : dirname(realpathSync(config.runtimeDir))
   const manifest = fileURLToPath(import.meta.resolve('@deepseek-ai/libreoffice-kit/package.json'))
   const packageRoot = dirname(archive === undefined ? manifest : join(`${archive}.unpacked`, relative(archive, manifest)))
+  const desktopCli = archive === undefined ? (process.platform === 'win32'
+    ? join(config.runtimeDir, 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'office-cli.js')
+    : join(packageRoot, 'lib', 'cli.js'))
+    : join(`${archive}.unpacked`, relative(archive, config.runtimeDir),
+      'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'office-cli.js')
   await ctx.plugin(officeSkills, {
     assetRoot: join(dirname(config.source), 'office-skills'),
     node: join(config.source, 'dependencies', 'node', 'bin', process.platform === 'win32' ? 'node.exe' : 'node'),
-    cli: join(packageRoot, 'lib', 'cli.js'),
+    cli: desktopCli,
   })
 }

@@ -21,6 +21,9 @@ it('loads Desktop Office CLI paths and removes them on disposal', async () => {
     const nodeDirectory = join(root, 'runtime', 'primary-runtime', 'dependencies', 'node', 'bin')
     await mkdir(nodeDirectory, { recursive: true })
     await cp(process.execPath, join(nodeDirectory, process.platform === 'win32' ? 'node.exe' : 'node'))
+    const cli = join(root, 'dsh', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'office-cli.js')
+    await mkdir(join(cli, '..'), { recursive: true })
+    await writeFile(cli, '')
     ctx.baseUrl = pathToFileURL(root).href + '/'
     await ctx.plugin(Loader)
     ctx.loader.builtins.include = Include

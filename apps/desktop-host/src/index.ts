@@ -18,7 +18,7 @@ import { installOfficeEngineResolution } from './office-engine.ts'
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
-  installOfficeEngineResolution(runtimeDir)
+  const officeEngine = installOfficeEngineResolution(runtimeDir)
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
@@ -53,6 +53,7 @@ async function main(): Promise<void> {
     // Startup failure is reported by main; shutdown only owns a tree that booted.
     const running = await application.catch(() => undefined)
     await running?.shutdown.shutdown(0)
+    officeEngine?.deregister()
     await send({ type: 'shutdown-complete' })
     if (process.connected) process.disconnect()
   })()
