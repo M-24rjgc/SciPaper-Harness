@@ -255,6 +255,61 @@ it('reads the last match when the registry lookup answers with several versions'
   expect(command.run).toHaveBeenCalledTimes(1)
 })
 
+it('requests SciPaper metadata and admits a matching published product plugin', async () => {
+  const { dir, context, pnpm } = fixture()
+  const product = JSON.parse(readFileSync(new URL('../../app-boot/package.json', import.meta.url), 'utf8')) as {
+    version: string
+    scipaper: { kernel: { name: string; version: string } }
+  }
+  const manifest = {
+    name: 'product-plugin', version: product.version, scipaper: product.scipaper,
+    peerDependencies: { '@deepseek-ai/dsh-tools': product.version }, dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }
+  pnpm.view = () => ({ exitCode: 0, stdout: JSON.stringify(manifest) })
+  pnpm.mutate = (target) => {
+    install(target, manifest.name)
+    writeFileSync(join(target, 'node_modules', manifest.name, 'package.json'), JSON.stringify(manifest))
+  }
+  expect(await runProfilePnpm(context, ['add', 'product-plugin'], { execution: 'service', outputBytes: 8192 }))
+    .toMatchObject({ exitCode: 0 })
+  expect(command.run.mock.calls[0]?.[1] as readonly string[]).toContain('scipaper')
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toEqual(['product-plugin'])
+})
+
+it('refuses a declared foreign SciPaper kernel before the registry package is installed', async () => {
+  const { context, pnpm } = fixture()
+  pnpm.view = () => ({ exitCode: 0, stdout: JSON.stringify({
+    name: 'foreign-product', version: '0.2.0-alpha.4',
+    scipaper: { kernel: { name: 'deepseek-harness', version: '0.2.0' } },
+    peerDependencies: { '@deepseek-ai/dsh-tools': '*' },
+  }) })
+  const outcome = await runProfilePnpm(context, ['add', 'foreign-product'], { execution: 'service', outputBytes: 8192 })
+  expect(outcome.exitCode).toBe(1)
+  expect(outcome.output).toContain('SciPaper release metadata must match')
+  expect(outcome.output).toContain('nothing was installed')
+  expect(command.run).toHaveBeenCalledTimes(1)
+})
+
+it('restores profile files when a tarball reveals incompatible SciPaper metadata after installation', async () => {
+  const { dir, context, pnpm } = fixture()
+  const before = readFileSync(join(dir, 'package.json'), 'utf8')
+  writeFileSync(join(dir, 'pnpm-lock.yaml'), 'original-lock\n')
+  pnpm.mutate = (target) => {
+    install(target, 'foreign-product')
+    writeFileSync(join(target, 'pnpm-lock.yaml'), 'replaced-lock\n')
+    writeFileSync(join(target, 'node_modules', 'foreign-product', 'package.json'), JSON.stringify({
+      name: 'foreign-product', version: '0.2.0-alpha.4',
+      scipaper: { kernel: { name: 'deepseek-harness', version: '0.2.0' } },
+    }))
+  }
+  const outcome = await runProfilePnpm(context, ['add', 'https://example.com/product.tgz'], { execution: 'service', outputBytes: 8192 })
+  expect(outcome.exitCode).toBe(1)
+  expect(outcome.output).toContain('SciPaper release metadata must match')
+  expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before)
+  expect(readFileSync(join(dir, 'pnpm-lock.yaml'), 'utf8')).toBe('original-lock\n')
+  expect(command.run).toHaveBeenLastCalledWith(expect.anything(), ['install', '--frozen-lockfile'], expect.anything())
+})
+
 it('runs an invocation that names no command without a registry lookup', async () => {
   const { context, pnpm } = fixture()
   expect(await runProfilePnpm(context, ['--version'], { execution: 'service', outputBytes: 8192 }))

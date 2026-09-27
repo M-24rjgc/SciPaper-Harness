@@ -72,5 +72,12 @@
     "@deepseek-ai/dsh-subagent": "workspace:*",
     "@deepseek-ai/dsh-subagent-fork-in-process": "workspace:*",
     "@deepseek-ai/dsh-subagent-spawn-in-process": "workspace:*"
+  },
+  "scipaper": {
+    "kernel": {
+      "name": "deepseek-harness",
+      "version": "0.1.7-rc.2",
+      "revision": "477b4f420553e8a52c2fbccc464d7561b239c443"
+    }
   }
 }

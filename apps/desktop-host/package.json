@@ -24,5 +24,12 @@
     "@deepseek-ai/dsh-skill-office": "workspace:*",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*"
+  },
+  "scipaper": {
+    "kernel": {
+      "name": "deepseek-harness",
+      "version": "0.1.7-rc.2",
+      "revision": "477b4f420553e8a52c2fbccc464d7561b239c443"
+    }
   }
 }

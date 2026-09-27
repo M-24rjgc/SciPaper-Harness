@@ -371,6 +371,24 @@ it('preserves a user edit to the legacy file made during its profile import', as
   expect(readFileSync(`${legacy}.imported`, 'utf8')).toContain('model: legacy')
 })
 
+it('retains rejected-only legacy bytes across repeated startup imports', async () => {
+  const { ctx, home, start } = await fixture()
+  await ctx.fiber.dispose()
+  const legacy = join(home, 'settings.yaml')
+  const original = '# keep this formatting\nmissing: {userEdit: preserve}\n'
+  writeFileSync(legacy, original)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const restored = await start()
+    await vi.waitFor(() => {
+      const errors = restored.logger.buffer.filter(message => message.type === 'error').flatMap(message => message.args.map(String))
+      expect(errors).toContain('Error: No configurable plugin entry "missing"')
+    })
+    expect(readFileSync(legacy, 'utf8')).toBe(original)
+    expect(readFileSync(`${legacy}.imported`, 'utf8')).toBe(original)
+    await restored.fiber.dispose()
+  }
+})
+
 it('describes an entry whose required field only the profile supplies, and reports a failed refresh instead of crashing', async () => {
   const { ctx, profile, start } = await fixture({
     schema: z.object({ ordinary: z.string(), required: z.string().required(), count: z.number().default(2).volatile() }),

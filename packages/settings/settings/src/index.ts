@@ -238,16 +238,21 @@ export class SettingsForms extends Service {
     void ctx.root.loader.await().then(() => this.importLegacyDocument()).catch((error: unknown) => { ctx.logger.error(error) })
   }
 
+  private canImportLegacy(): boolean {
+    return !this.closed && this.ownerContext.fiber.state === FiberState.ACTIVE
+  }
+
   /** Import legacy settings after Loader activation, retaining rejected sections for repair or a later composition.
    * Back up original bytes exclusively before any write. Successful sections are removed only after their
    * profile write succeeds; failed sections stay in settings.yaml and are reported as an incomplete import. */
   private async importLegacyDocument(): Promise<void> {
     const profile = this.ownerContext.profileContext
     const path = join(profile.home, 'settings.yaml')
-    if (!existsSync(path)) return
+    if (!this.canImportLegacy() || !existsSync(path)) return
     await withFileLock(path, async () => {
-      if (!existsSync(path)) return
+      if (!this.canImportLegacy() || !existsSync(path)) return
       const before = await readFile(path, 'utf8')
+      if (!this.canImportLegacy()) return
       const document = parseDocument(before)
       if (document.errors.length > 0) throw new Error(`settings: invalid legacy document ${path}`)
       if (document.contents !== null && !isMap(document.contents)) throw new Error(`settings: legacy document must be a mapping: ${path}`)
@@ -260,23 +265,28 @@ export class SettingsForms extends Service {
       }
       const sections: unknown = document.toJS()
       const failures: unknown[] = []
+      let consumed = false
       for (const [section, values] of Object.entries(isPlainObject(sections) ? sections : {})) {
+        if (!this.canImportLegacy()) return
         const ns = LEGACY_SECTION_ENTRIES[section] ?? section
         try {
           if (!isPlainObject(values)) throw new Error(`settings: section ${section} must be a mapping`)
           await this.update(ns, values)
           document.delete(section)
+          consumed = true
         } catch (error) {
           failures.push(error)
           this.ownerContext.logger.warn('settings: section %s remains in %s; import into entry %s failed', section, path, ns)
           this.ownerContext.logger.warn(error)
         }
       }
+      if (!this.canImportLegacy()) return
       if (await readFile(path, 'utf8') !== before) {
         throw new Error(`settings: legacy document changed during import; new contents retained in ${path}`)
       }
+      if (!this.canImportLegacy()) return
       if (failures.length > 0) {
-        await writeFileAtomic(path, document.toString(), { mode: 0o600 })
+        if (consumed) await writeFileAtomic(path, document.toString(), { mode: 0o600 })
         throw new AggregateError(failures, `settings: incomplete import; ${String(failures.length)} section(s) remain in ${path}`)
       }
       await rm(path)

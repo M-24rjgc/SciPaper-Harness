@@ -67,7 +67,9 @@ export interface Config {
 ```ts config-catalog
 /** User-facing workspace instruction loader configuration. */
 export interface Config {
-  /** Harness home containing the fixed user-global `AGENTS.md`; defaults to `$DSH_HOME` or `~/.dsh`. */
+  /** Harness home containing user-global `AGENTS.md`.
+   * Defaults to `$RESEARCH_WORKBENCH_HOME`, `$DSH_HOME`, or `~/.research-workbench`.
+   */
   dshHome?: string
   /** Directory entries that identify the project root while walking upward from the session cwd. */
   projectRootMarkers?: string[]
@@ -531,6 +533,30 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-plugin-manager -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-ui-research -->
+<a id="deepseek-aidsh-client-ui-research"></a>
+
+## `@deepseek-ai/dsh-client-ui-research`
+
+- `source`: [`packages/client/ui-research/src/index.ts:10`](../packages/client/ui-research/src/index.ts)
+
+```ts config-catalog
+/** Research edition configuration, read by the browser half from the served page. */
+export interface Config {
+  /**
+   * Shadow the shell cells that are developer surfaces in this product: the
+   * turn, step, token-rate and cache-hit pills under the composer, General
+   * settings' default permission (the research's autonomy decides it), and the
+   * button that opens the raw configuration file draw nothing, the research's
+   * autonomy chip takes the composer's access chip, and the research's folder
+   * menu takes the entry screen's Workspace picker. The shipped Web bundle
+   * sets it.
+   */
+  hideDeveloperCells?: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-research -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-ui-settings-account -->
 <a id="deepseek-aidsh-client-ui-settings-account"></a>
 
@@ -597,6 +623,26 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-settings-models -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-ui-sidebar -->
+<a id="deepseek-aidsh-client-ui-sidebar"></a>
+
+## `@deepseek-ai/dsh-client-ui-sidebar`
+
+- `source`: [`packages/client/ui-sidebar/src/index.ts:11`](../packages/client/ui-sidebar/src/index.ts)
+
+```ts config-catalog
+/** Sidebar configuration, read by the browser half from the served page. */
+export interface Config {
+  /**
+   * What the expanded brand row does. `new-session` (the default) makes it a
+   * second New Session button beside the labelled one; `none` renders it as
+   * plain identity, not a button.
+   */
+  brandAction?: 'new-session' | 'none'
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-sidebar -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-ui-sidebar-documentpreview -->
 <a id="deepseek-aidsh-client-ui-sidebar-documentpreview"></a>
 
@@ -652,6 +698,31 @@ export interface Config {
 export type ThemePreference = typeof THEME_PREFERENCES[number]
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-theme -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-ui-workspace -->
+<a id="deepseek-aidsh-client-ui-workspace"></a>
+
+## `@deepseek-ai/dsh-client-ui-workspace`
+
+- `source`: [`packages/client/ui-workspace/src/index.ts:12`](../packages/client/ui-workspace/src/index.ts)
+
+```ts config-catalog
+/** Workspace UI configuration, read by the browser half from the served page. */
+export interface Config {
+  /**
+   * What selects a Session when nothing is selected, and what the unscoped
+   * New Session action opens. `recent` (the default) connects the most
+   * recently active Workspace at startup and starts New Session in the
+   * current, then the most recent Workspace. `policy` asks the entry policy a
+   * plugin registers through `uiWorkspace.setEntryPolicy`: its `land()` at
+   * startup and whenever the selection is lost, its `startNew()` for the
+   * unscoped action. A startup in which no policy registers within 5 s of the
+   * Session and Workspace lists being ready uses `recent`.
+   */
+  entry?: 'recent' | 'policy'
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-workspace -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-compaction-basic -->
 <a id="deepseek-aidsh-compaction-basic"></a>
@@ -2402,6 +2473,34 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-repeat-tool-reminder -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-research-workbench -->
+<a id="deepseek-aidsh-research-workbench"></a>
+
+## `@deepseek-ai/dsh-research-workbench`
+
+- `inject`: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals` · `sessions` · `permissionPresets`
+- `source`: [`packages/research/workbench/src/index.ts:53`](../packages/research/workbench/src/index.ts)
+
+```ts config-catalog
+/** Research workbench configuration. */
+export interface Config {
+  /** Directory for managed tools (Python, uv, TeX, draw.io); defaults to the product home's research/components. */
+  componentRoot?: string
+  /** Byte ceiling for any single source, artifact or tool response the service reads or returns. */
+  maxSourceBytes: number
+  /** How often running experiments are observed, in milliseconds. */
+  pollIntervalMs: number
+  /** Most PDF pages rendered for one inspection. */
+  maxReviewPages: number
+  /**
+   * Absolute folder new researches are created in while the person has not
+   * chosen one in the settings (the `researchHome` preference); `<profile home>/SciPaper` when unset.
+   */
+  researchHome?: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-research-workbench -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-sandbox-local -->
 <a id="deepseek-aidsh-sandbox-local"></a>
@@ -4322,7 +4421,6 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-settings-subagent` | — | [`packages/client/ui-settings-subagent/src/index.ts`](../packages/client/ui-settings-subagent/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-web-search` | — | [`packages/client/ui-settings-web-search/src/index.ts`](../packages/client/ui-settings-web-search/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-shortcuts` | — | [`packages/client/ui-shortcuts/src/index.ts`](../packages/client/ui-shortcuts/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-sidebar` | — | [`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-browser` | — | [`packages/client/ui-sidebar-browser/src/index.ts`](../packages/client/ui-sidebar-browser/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-files` | — | [`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-sidebar-right` | — | [`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts) |
@@ -4333,7 +4431,6 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-trajectory` | — | [`packages/client/ui-trajectory/src/index.ts`](../packages/client/ui-trajectory/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-user-questions` | — | [`packages/client/ui-user-questions/src/index.ts`](../packages/client/ui-user-questions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-workflow-run` | — | [`packages/client/ui-workflow-run/src/index.ts`](../packages/client/ui-workflow-run/src/index.ts) |
-| `@deepseek-ai/dsh-client-ui-workspace` | — | [`packages/client/ui-workspace/src/index.ts`](../packages/client/ui-workspace/src/index.ts) |
 | `@deepseek-ai/dsh-command-compact` | `commands` · `compaction` | [`packages/compaction/command-compact/src/index.ts`](../packages/compaction/command-compact/src/index.ts) |
 | `@deepseek-ai/dsh-command-feedback` | `commands` | [`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts) |
 | `@deepseek-ai/dsh-command-goal` | `commands` · `goals` | [`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts) |
@@ -4441,6 +4538,7 @@ export interface Config {
 | `@deepseek-ai/dsh-output-retention` | — | [`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts) |
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
 | `@deepseek-ai/dsh-remote-mock` | — | [`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts) |
+| `@deepseek-ai/dsh-research-app` | — | [`packages/bundle/research-app/src/index.ts`](../packages/bundle/research-app/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-windows-acl` | — | [`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts) |
 | `@deepseek-ai/dsh-scope` | — | [`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts) |
 | `@deepseek-ai/dsh-sdk-client` | — | [`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts) |

@@ -175,7 +175,7 @@ async function namedSpecManifest(
   }
   if (parsed.kind !== 'registry') return undefined
   const viewed = await execa(options.command ?? 'pnpm', [
-    ...options.args ?? [], 'view', parsed.spec, 'name', 'version', 'peerDependencies', '--json',
+    ...options.args ?? [], 'view', parsed.spec, 'name', 'version', 'peerDependencies', 'scipaper', '--json',
     ...flags, '--config.fetch-retries=0',
   ], {
     cwd: dir, env: environment, extendEnv: false, reject: false, stdin: 'ignore',
@@ -336,17 +336,21 @@ export async function runProfilePnpm(
   // The run's own registry flags, so the lookup asks the registry the installation will use.
   const registryFlags = args.filter(argument => argument.startsWith('--registry='))
   for (const raw of namedSpecs(args)) {
-    // A spec whose manifest cannot be read or validated is left to the run itself and to the check
-    // after installation, which reports what it could not validate.
+    // Registry lookup failures remain subject to installed-manifest validation.
+    let manifest: object | undefined
     try {
-      const manifest = await namedSpecManifest(dir, anchorPathSpec(raw, context.cwd), options, environment, registryFlags)
-      if (manifest === undefined) continue
+      manifest = await namedSpecManifest(dir, anchorPathSpec(raw, context.cwd), options, environment, registryFlags)
+    } catch (error) { void error; continue }
+    if (manifest === undefined) continue
+    try {
       const issue = evaluatePluginCompatibility(manifest, exemptions)
       if (issue !== undefined && !issue.exempted) {
         preflight.push(pluginCompatibilityWarning(issue))
         incompatible.push(incompatiblePlugin(issue))
       }
-    } catch (error) { void error; continue }
+    } catch (error) {
+      preflight.push(`Cannot validate package ${raw}: ${String(error)}`)
+    }
   }
   if (preflight.length > 0) return rejected(preflight, 'nothing was installed')
   const cancellation = new AbortController()

@@ -9,6 +9,10 @@ import { evaluatePluginCompatibility, getDshRuntimeVersion, pluginCompatibilityW
 const runtime = '0.1.7-alpha.1'
 const identity = { name: '@example/plugin', version: '2.0.0' }
 const incompatible = { ...identity, peerDependencies: { '@deepseek-ai/dsh': '^0.2.0' } }
+const product = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  version: string
+  scipaper: { kernel: { name: string; version: string; revision: string } }
+}
 
 function check(peerDependencies: object) {
   return evaluatePluginCompatibility({ ...identity, peerDependencies }, {}, runtime)
@@ -141,6 +145,58 @@ describe('plugin compatibility', () => {
 
   it('rejects array plugin manifests', () => {
     expect(() => evaluatePluginCompatibility([], {}, runtime)).toThrow('Plugin manifest must be an object')
+  })
+})
+
+describe('SciPaper product and kernel compatibility', () => {
+  const own = { ...identity, version: product.version, scipaper: product.scipaper }
+
+  it('checks a marked release against product peers without accepting a kernel alternative', () => {
+    expect(evaluatePluginCompatibility({ ...own, peerDependencies: { '@deepseek-ai/dsh-tools': product.version } })).toBeUndefined()
+    expect(evaluatePluginCompatibility({ ...own, peerDependencies: { '@deepseek-ai/dsh-tools': getDshRuntimeVersion() } })?.peers)
+      .toEqual({ '@deepseek-ai/dsh-tools': getDshRuntimeVersion() })
+  })
+
+  it.each([
+    { kernel: { ...product.scipaper.kernel, name: 'other-kernel' } },
+    { kernel: { ...product.scipaper.kernel, version: '0.2.0' } },
+  ])('rejects a foreign kernel even for unconstrained source peers: %j', (scipaper) => {
+    for (const peerDependencies of [{}, { '@deepseek-ai/dsh-tools': '*' }, { '@deepseek-ai/dsh-tools': 'workspace:*' }]) {
+      expect(() => evaluatePluginCompatibility({ ...own, scipaper, peerDependencies })).toThrow('SciPaper release metadata must match')
+    }
+  })
+
+  it('rejects another product release, inherited versions and malformed declarations', () => {
+    expect(() => evaluatePluginCompatibility({ ...own, version: '0.2.0-alpha.3' })).toThrow('SciPaper release metadata must match')
+    const inherited = Object.assign(Object.create({ version: product.version }) as object, { scipaper: product.scipaper })
+    expect(() => evaluatePluginCompatibility(inherited)).toThrow('SciPaper release metadata must match')
+    for (const scipaper of [null, {}, { kernel: {} }, { kernel: { name: 'deepseek-harness', version: 'bad' } }]) {
+      expect(() => evaluatePluginCompatibility({ ...own, scipaper })).toThrow()
+    }
+  })
+
+  it.each(['research-app', 'research-workbench', 'client-ui-research'])('checks the product-only %s peer against the product', (suffix) => {
+    const name = `@deepseek-ai/dsh-${suffix}`
+    const peers = { '@deepseek-ai/dsh-tools': getDshRuntimeVersion(), [name]: product.version }
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: peers })).toBeUndefined()
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { ...peers, [name]: getDshRuntimeVersion() } })?.peers)
+      .toEqual({ [name]: getDshRuntimeVersion() })
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { ...peers, '@deepseek-ai/dsh-tools': product.version } })?.peers)
+      .toEqual({ '@deepseek-ai/dsh-tools': product.version })
+  })
+
+  it('does not infer additional product peers or inherit product metadata', () => {
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh-research-future': product.version } })?.peers)
+      .toEqual({ '@deepseek-ai/dsh-research-future': product.version })
+    const inherited = Object.assign(Object.create({ scipaper: product.scipaper }) as object,
+      { ...identity, peerDependencies: { '@deepseek-ai/dsh-tools': product.version } })
+    expect(evaluatePluginCompatibility(inherited)?.peers).toEqual({ '@deepseek-ai/dsh-tools': product.version })
+  })
+
+  it('does not claim product-only peers exist in an upstream installation', () => {
+    vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify({ version: '0.1.7-rc.2' }))
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh-research-workbench': '*' } })?.peers)
+      .toEqual({ '@deepseek-ai/dsh-research-workbench': '*' })
   })
 })
 

@@ -36,6 +36,27 @@ function identityField(manifest: Record<string, unknown>, field: 'name' | 'versi
   return value
 }
 
+const productPeers = new Set([
+  '@deepseek-ai/dsh-research-app',
+  '@deepseek-ai/dsh-research-workbench',
+  '@deepseek-ai/dsh-client-ui-research',
+])
+
+function runtimeManifest(): Record<string, unknown> {
+  // The executable's virtual filesystem intercepts string paths, not URL arguments.
+  const filename = fileURLToPath(new URL('../package.json', import.meta.url))
+  return objectOf(JSON.parse(fs.readFileSync(filename, 'utf8')), 'app-boot package.json')
+}
+
+function kernelOf(manifest: Record<string, unknown>, owner: string): { name: string; version: string } | undefined {
+  if (!Object.hasOwn(manifest, 'scipaper')) return undefined
+  const product = objectOf(manifest.scipaper, `${owner} scipaper metadata`)
+  const kernel = objectOf(Object.hasOwn(product, 'kernel') ? product.kernel : undefined, `${owner} kernel metadata`)
+  const name = Object.hasOwn(kernel, 'name') ? kernel.name : undefined
+  if (typeof name !== 'string' || name.trim() === '') throw new Error(`${owner} kernel name must be a non-empty string`)
+  return { name, version: runtimeVersionOf(Object.hasOwn(kernel, 'version') ? kernel.version : undefined) }
+}
+
 /**
  * Read the embedded DSH kernel version in source and bundled installations.
  * Upstream installations without product metadata use the package version.
@@ -43,26 +64,23 @@ function identityField(manifest: Record<string, unknown>, field: 'name' | 'versi
  * @throws if package.json cannot be read or its version is missing or invalid.
  */
 export function getDshRuntimeVersion(): string {
-  // The executable's virtual filesystem intercepts string paths, not URL arguments.
-  const filename = fileURLToPath(new URL('../package.json', import.meta.url))
-  const manifest = objectOf(JSON.parse(fs.readFileSync(filename, 'utf8')), 'app-boot package.json')
-  if (Object.hasOwn(manifest, 'scipaper')) {
-    const product = objectOf(manifest.scipaper, 'app-boot scipaper metadata')
-    const kernel = objectOf(product.kernel, 'app-boot kernel metadata')
-    return runtimeVersionOf(kernel.version)
-  }
-  return runtimeVersionOf(Object.hasOwn(manifest, 'version') ? manifest.version : undefined)
+  const manifest = runtimeManifest()
+  return kernelOf(manifest, 'app-boot')?.version
+    ?? runtimeVersionOf(Object.hasOwn(manifest, 'version') ? manifest.version : undefined)
 }
 
 /**
- * Check every @deepseek-ai/dsh or @deepseek-ai/dsh-* peer against the runtime.
+ * Check upstream dsh peers against the kernel and research-only peers against
+ * the product release. Packages declaring the host's exact SciPaper release
+ * and kernel identity use product versions for all dsh peers. Mismatched or
+ * malformed SciPaper declarations are refused, including peerless packages.
  * Prereleases participate in ranges. workspace:^, workspace:~, and workspace:*
  * refer to the current runtime; other invalid ranges are incompatible.
  * @param manifest - parsed plugin package.json; inherited fields are ignored.
  * @param exemptions - exact plugin name@version keys mapped to exact runtime versions.
  * @param runtimeVersion - running dsh version, defaulting to this app-boot package.
  * @returns incompatible peers and exemption status, or undefined when none are incompatible.
- * @throws for malformed manifest peer fields, invalid runtime versions, or missing identity on a mismatch.
+ * @throws for malformed metadata, mismatched SciPaper releases, invalid runtime versions, or missing identity on a mismatch.
  */
 export function evaluatePluginCompatibility(
   manifest: object,
@@ -71,16 +89,28 @@ export function evaluatePluginCompatibility(
 ): PluginCompatibility | undefined {
   runtimeVersionOf(runtimeVersion)
   const fields = objectOf(manifest, 'Plugin manifest')
-  if (!Object.hasOwn(fields, 'peerDependencies')) return undefined
-  const dependencies = objectOf(fields.peerDependencies, 'Plugin manifest peerDependencies')
+  const kernel = kernelOf(fields, 'Plugin manifest')
+  const dependencies = Object.hasOwn(fields, 'peerDependencies')
+    ? objectOf(fields.peerDependencies, 'Plugin manifest peerDependencies') : {}
+  const needsProduct = kernel !== undefined || Object.keys(dependencies).some(name => productPeers.has(name))
+  const host = needsProduct ? runtimeManifest() : undefined
+  const hostKernel = host === undefined ? undefined : kernelOf(host, 'app-boot')
+  const productVersion = host === undefined || hostKernel === undefined ? undefined : runtimeVersionOf(host.version)
+  if (kernel !== undefined && (hostKernel === undefined || kernel.name !== hostKernel.name
+    || kernel.version !== hostKernel.version || kernel.version !== runtimeVersion
+    || !Object.hasOwn(fields, 'version') || fields.version !== productVersion)) {
+    throw new Error('Plugin SciPaper release metadata must match the running product version and kernel name/version')
+  }
   const peers: Record<string, string> = {}
   for (const [name, range] of Object.entries(dependencies)) {
     if (typeof range !== 'string') {
       throw new Error(`Plugin manifest peerDependencies[${JSON.stringify(name)}] must be a string`)
     }
     if (name !== '@deepseek-ai/dsh' && !name.startsWith('@deepseek-ai/dsh-')) continue
-    const requirement = ['workspace:^', 'workspace:~', 'workspace:*'].includes(range) ? runtimeVersion : range
-    if (requirement.trim() === '' || !semver.satisfies(runtimeVersion, requirement, { includePrerelease: true })) {
+    const version = kernel !== undefined || productPeers.has(name) ? productVersion : runtimeVersion
+    const requirement = ['workspace:^', 'workspace:~', 'workspace:*'].includes(range) ? version : range
+    if (version === undefined || requirement === undefined || requirement.trim() === ''
+      || !semver.satisfies(version, requirement, { includePrerelease: true })) {
       peers[name] = range
     }
   }
