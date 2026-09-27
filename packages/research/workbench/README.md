@@ -58,6 +58,8 @@ Choose it when the agent should carry a paper from an idea or from existing resu
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-research-workbench) is the exhaustive source for every accepted field.
 
+The platform Python uses an explicitly configured interpreter first, then the bundled interpreter, then the environment under `componentRoot`. Windows absolute interpreter commands use extended-length paths so native document and plotting libraries load from deep installation folders. Stored preferences and component status retain their original paths; relative commands retain their normal lookup behavior.
+
 ### Adding a mode
 
 A mode is a directory, not code. To add one — a learning mode, say — create `runtime/modes/<id>/` with a `mode.yml` (identity, routes, phases with the facts each requires and the checks that decide it, gates and scripts), the skills under `skills/<name>/SKILL.md`, and any gate or script it runs with the platform Python; an adapted upstream method also carries its `LICENSE` and a `NOTICE.md`. The manifest also says what the person reads:

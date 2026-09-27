@@ -58,6 +58,8 @@ kind: "package-reference"
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-research-workbench)是全部受支持字段的完整来源。
 
+平台 Python 优先使用显式配置的解释器，其次是内嵌解释器，最后使用 `componentRoot` 下的环境。Windows 下以扩展长度路径执行绝对路径解释器，使文档和绘图库的原生模块能从深层安装目录加载。保存的偏好设置和组件状态保留原始路径；相对命令保留通常的查找方式。
+
 ### 新增一个模式
 
 模式是一个目录，不是代码。要新增一个模式（比如学习模式），就创建 `runtime/modes/<id>/`：一份 `mode.yml`（标识、路线、各阶段要求的事实与决定它的检查、门禁和脚本），`skills/<name>/SKILL.md` 下的技能，以及它用平台 Python 运行的门禁或脚本；改编自上游方法的模式还要带上它的 `LICENSE` 和一份 `NOTICE.md`。清单还要写明给人看的内容：

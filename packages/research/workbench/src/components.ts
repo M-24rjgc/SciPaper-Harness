@@ -1,7 +1,7 @@
 /** Versioned tool provisioning in product-owned directories. */
 import { existsSync, createWriteStream } from 'node:fs'
 import { mkdir, readdir, readFile, rename } from 'node:fs/promises'
-import { basename, delimiter, dirname, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -133,6 +133,11 @@ export class ComponentManager {
     return join(directory, this.host.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
   }
 
+  private pythonCommand(python: string): string {
+    // CPython retains this prefix in sys.prefix, including native extension paths.
+    return this.host.platform === 'win32' && win32.isAbsolute(python) ? win32.toNamespacedPath(python) : python
+  }
+
   /**
    * Describe installed components without downloading or executing them.
    * @returns installation status and discovered paths for each managed component.
@@ -163,11 +168,11 @@ export class ComponentManager {
   /**
    * The platform Python when it is already installed or configured; never
    * installs anything, so a check that needs it stays quick.
-   * @returns the interpreter path, or undefined without one.
+   * @returns the interpreter command, with Windows absolute paths in extended-length form, or undefined without one.
    */
   async installedPython(): Promise<string | undefined> {
     const python = (await this.status()).find(item => item.id === 'python')
-    return python?.installed ? python.path : undefined
+    return python?.installed ? this.pythonCommand(python.path) : undefined
   }
 
   /**
@@ -198,22 +203,23 @@ export class ComponentManager {
   /**
    * Resolve a private platform Python environment with document and plotting dependencies.
    * @param signal - cancellation for interpreter and dependency preparation.
-   * @returns configured, bundled or privately provisioned interpreter path.
+   * @returns configured, bundled or privately provisioned command, with Windows absolute paths in extended-length form.
    */
   async python(signal: AbortSignal): Promise<string> {
     return this.once('python', async () => {
-      const configured = this.preferences().python
+      const preference = this.preferences().python
+      const configured = preference === undefined ? undefined : this.pythonCommand(preference)
       if (configured) {
         checked(await runProcess(configured, ['-c', `import ${PLATFORM_PYTHON_IMPORTS.join(', ')}; print("ready")`], { signal }), 'Platform Python check')
         return configured
       }
       const bundledPython = await findFile(this.host.asset('components/platform-python'), 'python.exe', 3)
-      if (bundledPython) return bundledPython
+      if (bundledPython) return this.pythonCommand(bundledPython)
       const target = join(this.root, 'platform-python')
       const python = this.venvPython(target)
       const marker = join(target, '.research-ready')
       // The marker names the packages installed; a changed list installs again.
-      if (existsSync(python) && existsSync(marker) && await readFile(marker, 'utf8') === PLATFORM_PYTHON_MARKER) return python
+      if (existsSync(python) && existsSync(marker) && await readFile(marker, 'utf8') === PLATFORM_PYTHON_MARKER) return this.pythonCommand(python)
       const uv = await this.uv(signal)
       const bundled = await findFile(this.host.asset('components/python'), 'python.exe', 3)
       const pythonInstall = join(this.root, 'interpreters')
@@ -224,7 +230,7 @@ export class ComponentManager {
       }
       checked(await runProcess(uv, ['pip', 'install', '--python', python, ...PLATFORM_PYTHON_PACKAGES], { signal, timeoutMs: 600000 }), 'Research document dependencies')
       await atomicWrite(marker, PLATFORM_PYTHON_MARKER)
-      return python
+      return this.pythonCommand(python)
     })
   }
 

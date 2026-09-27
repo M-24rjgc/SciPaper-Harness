@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve, toNamespacedPath } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const runtime = process.argv[2]
@@ -158,7 +158,7 @@ function checkHtml() {
 function checkResearchPython() {
   const pythonRoot = join(root, 'node_modules', '@deepseek-ai', 'dsh-research-workbench', 'runtime', 'components', 'platform-python')
     .replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
-  const output = execFileSync(join(pythonRoot, 'python.exe'), ['-I', '-B', '-c', [
+  const output = execFileSync(toNamespacedPath(join(pythonRoot, 'python.exe')), ['-I', '-B', '-c', [
     'import os, sys, pathlib, pypdf, docx, matplotlib, pypdfium2',
     'root = pathlib.Path(sys.executable).resolve().parent',
     'assert all(pathlib.Path(m.__file__).resolve().is_relative_to(root) for m in (pypdf, docx, matplotlib, pypdfium2))',

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, win32 } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import type { ProcessResult } from '../src/process.ts'
 import type { ResearchPreferences } from '../src/types.ts'
@@ -117,7 +117,7 @@ describe('managed tools on a Windows x64 host', () => {
     expect(await manager.latex(signal)).toBe(bin)
     expect(await manager.latex(signal)).toBe(bin)
     const python = await manager.python(signal)
-    expect(python).toBe(join(root, 'platform-python', 'Scripts/python.exe'))
+    expect(python).toBe(win32.toNamespacedPath(join(root, 'platform-python', 'Scripts/python.exe')))
     expect(scripted.calls.some(call => call.args.includes('venv') && call.args.includes('3.12'))).toBe(true)
     expect(await readFile(join(root, 'platform-python', '.research-ready'), 'utf8')).toMatch(/pypdf==6\.0\.0\n[\s\S]*svglib==2\.2\.0\nreportlab==5\.0\.1\nPyYAML==6\.0\.3\n$/)
     // A ready platform Python is reused; one whose environment exists but lacks the marker only gets its packages.
@@ -164,7 +164,10 @@ describe('managed tools on a Windows x64 host', () => {
     const requested = serve({})
     const manager = new ComponentManager(root, none, windows(assets, {}))
     expect(await manager.uv(signal)).toBe(join(assets, 'components/uv/uv.exe'))
-    expect(await manager.python(signal)).toBe(join(assets, 'components/platform-python/Scripts/python.exe'))
+    expect(await manager.python(signal)).toBe(win32.toNamespacedPath(join(assets, 'components/platform-python/Scripts/python.exe')))
+    expect(await manager.installedPython()).toBe(await manager.python(signal))
+    expect((await manager.status()).find(status => status.id === 'python')?.path)
+      .toBe(join(assets, 'components/platform-python/Scripts/python.exe'))
     expect(await manager.drawio(signal)).toBe(join(assets, 'components/drawio'))
     expect(requested).toEqual([])
     expect((await manager.status()).find(status => status.id === 'drawio')?.installed).toBe(true)
@@ -211,12 +214,28 @@ describe('configured and unsupported hosts', () => {
     const root = await temporary()
     const manager = new ComponentManager(root, () => ({ uv: 'C:/tools/uv.exe', python: 'C:/py/python.exe', texBin: 'C:/texlive/bin' }), windows(await temporary(), {}))
     expect(await manager.uv(signal)).toBe('C:/tools/uv.exe')
-    expect(await manager.python(signal)).toBe('C:/py/python.exe')
+    expect(await manager.python(signal)).toBe('\\\\?\\C:\\py\\python.exe')
     expect(await manager.latex(signal)).toBe('C:/texlive/bin')
-    expect(scripted.calls.map(call => call.command)).toEqual(['C:/tools/uv.exe', 'C:/py/python.exe'])
+    expect(scripted.calls.map(call => call.command)).toEqual(['C:/tools/uv.exe', '\\\\?\\C:\\py\\python.exe'])
     const statuses = await manager.status()
     expect(statuses.every(status => !status.installed)).toBe(true)
     expect(statuses.map(status => status.path)).toEqual(['C:/tools/uv.exe', 'C:/py/python.exe', 'C:/texlive/bin', ''])
+  })
+
+  it.each([
+    ['win32', '\\\\server\\share\\python.exe', '\\\\?\\UNC\\server\\share\\python.exe'],
+    ['win32', '\\\\?\\C:\\tools\\python.exe', '\\\\?\\C:\\tools\\python.exe'],
+    ['win32', 'python', 'python'],
+    ['win32', '.\\tools\\python.exe', '.\\tools\\python.exe'],
+    ['linux', '/opt/python/bin/python', '/opt/python/bin/python'],
+  ] as const)('preserves Python command lookup and configured display on %s: %s', async (platform, python, expected) => {
+    const root = await temporary()
+    const preferences = { python }
+    const manager = new ComponentManager(root, () => preferences, { ...windows(root, {}), platform })
+    expect(await manager.python(signal)).toBe(expected)
+    expect(scripted.calls[0]?.command).toBe(expected)
+    expect((await manager.status()).find(status => status.id === 'python')?.path).toBe(python)
+    expect(preferences.python).toBe(python)
   })
 
   it('asks for bound tools where automatic installation does not reach', async () => {

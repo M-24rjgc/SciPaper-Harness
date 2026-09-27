@@ -1,7 +1,7 @@
 /** Provision pinned editor and Python tooling into the immutable desktop payload. */
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, toNamespacedPath } from 'node:path'
 import { ComponentManager, COMPONENT_RELEASES, PLATFORM_PYTHON_IMPORTS, PLATFORM_PYTHON_PACKAGES } from '../../../packages/research/workbench/src/components.ts'
 import { checked, runProcess } from '../../../packages/research/workbench/src/process.ts'
 
@@ -30,7 +30,10 @@ export async function bundleResearchComponents(stagingRoot: string, runtimeRoot:
   await cp(dirname(python), platformPython, { recursive: true, dereference: true })
   await cp(join(virtualenv, 'Lib', 'site-packages'), join(platformPython, 'Lib', 'site-packages'), { recursive: true, dereference: true })
   await rm(join(platformPython, 'pyvenv.cfg'), { force: true })
-  checked(await runProcess(join(platformPython, 'python.exe'), ['-I', '-c', `import ${PLATFORM_PYTHON_IMPORTS.join(', ')}; print("ready")`], { timeoutMs: 120000 }), 'Relocated platform Python')
+  // CPython keeps the extended executable path for native-module imports beyond MAX_PATH.
+  checked(await runProcess(toNamespacedPath(join(platformPython, 'python.exe')),
+    ['-I', '-c', `import ${PLATFORM_PYTHON_IMPORTS.join(', ')}; print("ready")`],
+    { timeoutMs: 120000 }), 'Relocated platform Python')
   await cp(drawio, join(destination, 'drawio'), { recursive: true, dereference: true })
   await writeFile(join(destination, 'versions.json'), JSON.stringify({ python: pythonVersion, uv: COMPONENT_RELEASES.uv.version, drawio: COMPONENT_RELEASES.drawio.version }))
   console.log('research desktop: bundled Python, document libraries, uv and offline draw.io')
