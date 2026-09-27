@@ -11,7 +11,7 @@ import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
-import { basename, dirname, join, parse } from 'node:path'
+import { basename, dirname, join, parse, toNamespacedPath } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -439,7 +439,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(checked.check?.findings.filter(f => f.check === 'blueprint-lint')).toEqual([{ check: 'blueprint-lint', severity: 'error', message: 'blueprint found a problem' }])
     expect(checked.check?.gatesRun).toEqual(['template-lint', 'blueprint-lint'])
     const gate = processes.calls.find(call => call.args.includes('blueprint'))!
-    expect(gate).toMatchObject({ command: python, options: { cwd: p.root } })
+    expect(gate).toMatchObject({ command: toNamespacedPath(python), options: { cwd: p.root } })
     expect(gate.args.slice(0, 3)).toEqual(['-I', '-X', 'utf8'])
     // A declared script runs with the agent's extra arguments; its exit code and both streams come back.
     const assembled = await run({ action: 'run-script', script: 'assemble-paper', args: ['--backup'] })
