@@ -50,6 +50,8 @@ kind: "package-reference"
 
 在已安装依赖的仓库 checkout 中运行 `CI=true pnpm run prepare:primary-runtime --target linux-x64 --output /tmp/dsh-office`，会生成 `primary-runtime/` 和 `office-skills/`。[共享下载锁](../../../scripts/primary-runtime/lock.json)还覆盖 `linux-arm64`、`mac-arm64`、`mac-x64` 和 `win-x64`。`--python-only` 省略 Node.js 和 pnpm；`--cache` 选择经过哈希校验的归档缓存。入口仅对本机目标执行解释器与 Office 读写检查。跨目标构建必须在部署前到目标主机执行这些检查。
 
+Windows payload 包含 Python 启动钩子，为深层安装目录中的原生库使用扩展长度的绝对导入路径。它保留已有的 `sitecustomize` 文件，在 `-I` 下仍然生效。钩子内容参与 Windows payload 标识的计算，因此内容变化会触发安装刷新；其他目标的 payload 内容和标识保持原有方式。
+
 容器可将这两个目录复制到不可变镜像层，并将 `DSH_PRIMARY_RUNTIME` 设为 `primary-runtime/` 的绝对路径。SDK 原位查询该 payload。Desktop 使用同一构建器，并保留 Harness-home 安装与签名检查。
 
 -----

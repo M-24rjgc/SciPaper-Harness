@@ -6,11 +6,12 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { cp } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, toNamespacedPath } from 'node:path'
 import { parseArgs } from 'node:util'
 import extractZip from 'extract-zip'
 import { x as extractTar } from 'tar'
 import { parsePrimaryRuntime, workspaceDependencyPaths, type PrimaryRuntimeManifest } from '../../packages/skill/tool-workspace-dependencies/src/index.ts'
+import { installPythonPathHook, runtimeAsset } from '../../packages/research/workbench/src/components.ts'
 import lock from './lock.json' with { type: 'json' }
 
 /**
@@ -45,10 +46,12 @@ async function pythonArchive(target: keyof typeof lock.targets, cache: string): 
  * @param target - Runtime target whose archives are installed.
  * @param runtimeLock - Locked interpreter and wheel inputs.
  * @param pnpmVersion - Package-manager version copied into the payload.
+ * @param pythonPathBootstrap - Product-owned Windows import-path startup module.
  * @returns SHA-256 payload identity for installation reuse.
  */
 export function primaryRuntimePayloadDigest(
   target: keyof typeof lock.targets, runtimeLock: typeof lock, pnpmVersion: string | undefined,
+  pythonPathBootstrap: string = readFileSync(runtimeAsset('_scipaper_python_paths.py'), 'utf8'),
 ): string {
   const { pythonVersion, pythonRelease, nodeVersion, wheels, pythonPackages } = runtimeLock
   // Identity preserves key order within the selected target, wheel records and distribution map, plus wheel-entry order.
@@ -56,6 +59,7 @@ export function primaryRuntimePayloadDigest(
   return createHash('sha256').update(JSON.stringify({
     format: 4, target, pythonVersion, pythonRelease, nodeVersion: pnpmVersion === undefined ? undefined : nodeVersion,
     artifact: runtimeLock.targets[target], wheels, pythonPackages, pnpm: pnpmVersion,
+    windowsPythonPaths: target === 'win-x64' ? pythonPathBootstrap : undefined,
   })).digest('hex')
 }
 
@@ -90,6 +94,15 @@ export async function prepareOfficeSkillAssets(source: string, destination: stri
 
 /** A locked interpreter and wheel target. */
 export type PrimaryRuntimeTarget = keyof typeof lock.targets
+
+/**
+ * Add Windows import-path support to a product-owned Python payload.
+ * @param target - Target platform of the prepared interpreter.
+ * @param directory - Standalone interpreter root inside the primary runtime.
+ */
+export async function preparePrimaryRuntimePythonPaths(target: PrimaryRuntimeTarget, directory: string): Promise<void> {
+  if (target === 'win-x64') await installPythonPathHook(directory)
+}
 
 /** Build-only inputs shared by Desktop and SDK carriers. */
 export interface PreparePrimaryRuntimeOptions {
@@ -155,6 +168,7 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     for (const wheel of [...artifact.wheels, ...lock.wheels]) {
       await unpackPrimaryRuntimeWheel(await downloadPrimaryRuntimeAsset(wheel.url, wheel.sha256, paths.downloads), entries.pythonPackages)
     }
+    await preparePrimaryRuntimePythonPaths(target, join(dependencies, 'python'))
     writeFileSync(join(output, 'runtime.json'), `${JSON.stringify(manifest, undefined, 2)}\n`)
     const destination = join(paths.runtime, 'primary-runtime')
     rmSync(destination, { recursive: true, force: true })
@@ -179,11 +193,12 @@ export function smokePrimaryRuntime(root: string, environment: NodeJS.ProcessEnv
   if (manifest.platform !== process.platform || manifest.arch !== process.arch) return
   if (Object.keys(manifest.pythonPackages).length === 0) throw new Error('primary runtime: missing Python distribution versions; prepare the payload before running its smoke checks.')
   const entries = workspaceDependencyPaths(root, manifest)
+  const python = toNamespacedPath(entries.python)
   const options = { stdio: 'inherit', timeout: 120_000, env: environment } as const
-  execFileSync(entries.python, ['-I', '-B', '-c', 'import decimal, xml.parsers.expat, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
-  execFileSync(entries.python, ['-I', '-B', join(import.meta.dirname, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
+  execFileSync(python, ['-I', '-B', '-c', 'import decimal, pyexpat, _ssl, _sqlite3, lzma, uuid, numpy, pandas; assert numpy.arange(4).sum() == 6; assert pandas.DataFrame({"n": [1, 2]}).n.sum() == 3'], options)
+  execFileSync(python, ['-I', '-B', join(import.meta.dirname, 'smoke.py'), JSON.stringify(manifest.pythonPackages),
     manifest.python, join(dirname(root), 'office-skills', 'scripts', 'check_office.py')], options)
-  execFileSync(entries.python, ['-I', '-B', '-m', 'pip', 'check'], options)
+  execFileSync(python, ['-I', '-B', '-m', 'pip', 'check'], options)
   if (entries.node !== undefined) execFileSync(entries.node, ['-e', `if (process.versions.node !== ${JSON.stringify(manifest.node)}) process.exit(1)`], options)
   if (entries.pnpm !== undefined && entries.node !== undefined) execFileSync(entries.node, [entries.pnpm, '--version'], options)
 }

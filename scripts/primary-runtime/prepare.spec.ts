@@ -5,7 +5,10 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { zipSync } from 'fflate'
 import { expect, it } from 'vitest'
-import { downloadPrimaryRuntimeAsset, prepareOfficeSkillAssets, primaryRuntimePayloadDigest, smokePrimaryRuntime, unpackPrimaryRuntimeWheel } from './prepare.ts'
+import {
+  downloadPrimaryRuntimeAsset, prepareOfficeSkillAssets, preparePrimaryRuntimePythonPaths,
+  primaryRuntimePayloadDigest, smokePrimaryRuntime, unpackPrimaryRuntimeWheel,
+} from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
@@ -44,6 +47,35 @@ it('invalidates payload identity for shared wheels, package versions and package
   expect(primaryRuntimePayloadDigest('mac-arm64', wheel, '11.7.0')).not.toBe(original)
   expect(primaryRuntimePayloadDigest('mac-arm64', distribution, '11.7.0')).not.toBe(original)
   expect(primaryRuntimePayloadDigest('mac-arm64', lock, '11.7.1')).not.toBe(original)
+})
+
+it('invalidates only Windows payload identity when its native import startup module changes', () => {
+  expect(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0', 'first'))
+    .not.toBe(primaryRuntimePayloadDigest('win-x64', lock, '11.7.0', 'second'))
+  for (const target of ['linux-x64', 'linux-arm64', 'mac-x64', 'mac-arm64'] as const) {
+    expect(primaryRuntimePayloadDigest(target, lock, '11.7.0', 'first'))
+      .toBe(primaryRuntimePayloadDigest(target, lock, '11.7.0', 'second'))
+  }
+})
+
+it('prepares Windows import startup files and leaves other targets and sitecustomize untouched', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'primary-python-paths-'))
+  try {
+    const windows = join(root, 'windows')
+    const site = join(windows, 'Lib', 'site-packages')
+    await mkdir(site, { recursive: true })
+    await writeFile(join(site, 'sitecustomize.py'), '# preserved upstream hook\n')
+    await preparePrimaryRuntimePythonPaths('win-x64', windows)
+    await preparePrimaryRuntimePythonPaths('win-x64', windows)
+    expect(await readFile(join(site, 'sitecustomize.py'), 'utf8')).toBe('# preserved upstream hook\n')
+    expect(await readFile(join(site, '00_scipaper_python_paths.pth'), 'utf8')).toBe('import _scipaper_python_paths\n')
+    for (const target of ['linux-x64', 'linux-arm64', 'mac-x64', 'mac-arm64'] as const) {
+      const untouched = join(root, target)
+      await preparePrimaryRuntimePythonPaths(target, untouched)
+      await expect(readFile(join(untouched, 'Lib/site-packages/00_scipaper_python_paths.pth')))
+        .rejects.toMatchObject({ code: 'ENOENT' })
+    }
+  } finally { await rm(root, { recursive: true, force: true }) }
 })
 
 it('reports missing distribution metadata before trying to execute a stale native payload', async () => {
