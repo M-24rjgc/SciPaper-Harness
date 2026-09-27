@@ -82,6 +82,36 @@ describe('RepositoryCleaner', () => {
     expect(existsSync(join(root, 'native/system/tsconfig.tsbuildinfo'))).toBe(false)
   })
 
+  it('removes Desktop keyboard declarations while preserving sibling root lib files', async () => {
+    const root = fixture()
+    write(join(root, 'tsconfig.json'), JSON.stringify({ files: [], references: [{ path: './tsconfig.desktop-keyboard-tests.json' }] }))
+    write(join(root, 'tsconfig.desktop-keyboard-tests.json'), JSON.stringify({
+      compilerOptions: { composite: true, rootDir: '.', outDir: 'lib/desktop-keyboard-test-types', emitDeclarationOnly: true },
+      files: ['apps/desktop/tests/keyboard.ts'],
+    }))
+    write(join(root, 'apps/desktop/tests/keyboard.ts'), 'export {}\n')
+    write(join(root, 'lib/desktop-keyboard-test-types/apps/desktop/tests/keyboard.d.ts'))
+    write(join(root, 'lib/keep.txt'), 'keep')
+
+    await new RepositoryCleaner(root).clean()
+
+    expect(existsSync(join(root, 'lib/desktop-keyboard-test-types'))).toBe(false)
+    expect(existsSync(join(root, 'lib/keep.txt'))).toBe(true)
+    expect(existsSync(join(root, 'apps/desktop/tests/keyboard.ts'))).toBe(true)
+  })
+
+  it('refuses undeclared root lib output directories before deleting any target', async () => {
+    const root = fixture()
+    addProject(root, 'products/shell', '../../lib/desktop-keyboard-test-other')
+    write(join(root, 'lib/desktop-keyboard-test-other/index.js'))
+    write(join(root, '.dsh-build/client-build-environment.json'))
+
+    await expect(new RepositoryCleaner(root).clean()).rejects.toThrow('expected TypeScript outDir to end in /types')
+
+    expect(existsSync(join(root, 'lib/desktop-keyboard-test-other/index.js'))).toBe(true)
+    expect(existsSync(join(root, '.dsh-build/client-build-environment.json'))).toBe(true)
+  })
+
   it('refuses project outputs reached through a symlink outside the repository', async () => {
     const root = fixture()
     const externalProject = fixture()
