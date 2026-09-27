@@ -1,5 +1,6 @@
 /** Bounded process calls and OpenSSH transport. Long experiments have independent supervisors. */
 import { spawn } from 'node:child_process'
+import { win32 } from 'node:path'
 
 /** Closed process result with UTF-8 output and exit code; a missing exit code is represented by -1. */
 export interface ProcessResult { code: number; stdout: string; stderr: string }
@@ -14,6 +15,16 @@ export interface ProcessOptions {
   env?: NodeJS.ProcessEnv
   /** Host platform whose process-tree kill applies; tests exercise both. */
   platform?: NodeJS.Platform
+}
+
+/**
+ * Preserve executable lookup while enabling deeply installed Windows binaries.
+ * @param command - local executable path or command name.
+ * @param platform - operating system executing the command.
+ * @returns extended Windows absolute path, or the unchanged command.
+ */
+export function localExecutable(command: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' && win32.isAbsolute(command) ? win32.toNamespacedPath(command) : command
 }
 
 /**
@@ -32,7 +43,7 @@ export function runProcess(command: string, args: readonly string[], options: Pr
       PYTHONDONTWRITEBYTECODE: '1',
     }
     const platform = options.platform ?? process.platform
-    const child = spawn(command, [...args], {
+    const child = spawn(localExecutable(command, platform), [...args], {
       cwd: options.cwd,
       env: { ...environment, ...options.env },
       detached: platform !== 'win32',

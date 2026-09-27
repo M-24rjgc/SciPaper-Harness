@@ -25,7 +25,7 @@ vi.mock('../src/process.ts', async (original) => {
   }
 })
 
-const { COMPONENT_RELEASES, ComponentManager, downloadAsset, packageForFile, runtimeAsset, tlmgrCommand } = await import('../src/components.ts')
+const { COMPONENT_RELEASES, ComponentManager, downloadAsset, packageForFile, prepareManagedPython, runtimeAsset, tlmgrCommand } = await import('../src/components.ts')
 const { missingTexFile } = await import('../src/artifacts.ts')
 type Host = ComponentHost
 
@@ -152,7 +152,8 @@ describe('managed tools on a Windows x64 host', () => {
     await write(join(assets, 'components/python/cpython/python.exe'))
     const manager = new ComponentManager(root, none, windows(assets, {}))
     await manager.python(signal)
-    expect(scripted.calls.find(call => call.args[0] === 'venv')?.args).toContain(join(assets, 'components/python/cpython/python.exe'))
+    expect(scripted.calls.find(call => call.args[0] === 'venv')?.args)
+      .toContain(win32.toNamespacedPath(join(assets, 'components/python/cpython/python.exe')))
   })
 
   it('uses what the app bundles before downloading anything', async () => {
@@ -210,6 +211,36 @@ describe('managed tools on a Windows x64 host', () => {
 })
 
 describe('configured and unsupported hosts', () => {
+  it.skipIf(process.platform !== 'win32')('copies the real long-base interpreter into a newly created Windows venv', async () => {
+    const root = await temporary()
+    let base = join(root, 'base')
+    while (join(base, 'python.exe').length < 270) base = join(base, 'deep-install-directory')
+    await write(join(base, 'python.exe'), 'real interpreter')
+    await write(join(base, 'python312.dll'), 'matching runtime')
+    const env = join(root, 'venv')
+    await write(join(env, 'Scripts/python.exe'), 'redirector')
+    await write(join(env, 'pyvenv.cfg'), `home = ${base}\r\ninclude-system-site-packages = false\r\n`)
+    await prepareManagedPython(env)
+    expect(await readFile(join(env, 'Scripts/python.exe'), 'utf8')).toBe('real interpreter')
+    expect(await readFile(join(env, 'Scripts/python312.dll'), 'utf8')).toBe('matching runtime')
+    expect(await readFile(join(env, 'pyvenv.cfg'), 'utf8'))
+      .toBe(`home = ${win32.toNamespacedPath(base)}\r\ninclude-system-site-packages = false\r\n`)
+  })
+
+  it.skipIf(process.platform !== 'win32')('retains a short-base Windows venv redirector and its package isolation', async () => {
+    const root = await temporary()
+    const base = join(root, 'base')
+    await write(join(base, 'python.exe'), 'real interpreter')
+    const env = join(root, 'venv')
+    await write(join(env, 'Scripts/python.exe'), 'redirector')
+    await write(join(env, 'pyvenv.cfg'), `home = ${base}\ninclude-system-site-packages = false\n`)
+    await prepareManagedPython(env)
+    expect(await readFile(join(env, 'Scripts/python.exe'), 'utf8')).toBe('redirector')
+    expect(await readFile(join(env, 'pyvenv.cfg'), 'utf8')).toBe(`home = ${base}\ninclude-system-site-packages = false\n`)
+    expect(await readFile(join(env, 'Lib/site-packages/00_scipaper_python_paths.pth'), 'utf8'))
+      .toBe('import _scipaper_python_paths\n')
+  })
+
   it('uses tools the user bound, after checking them', async () => {
     const root = await temporary()
     const manager = new ComponentManager(root, () => ({ uv: 'C:/tools/uv.exe', python: 'C:/py/python.exe', texBin: 'C:/texlive/bin' }), windows(await temporary(), {}))

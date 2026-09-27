@@ -3,12 +3,25 @@ import argparse
 import ctypes
 import json
 import math
+import ntpath
 import os
 from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
+
+
+def executable_path(command):
+    """Extend Windows executable paths without changing PATH or relative lookup."""
+    if os.name != 'nt' or command.startswith(('\\\\?\\', '\\\\.\\')):
+        return command
+    normalized = ntpath.normpath(command)
+    if normalized.startswith('\\\\'):
+        return '\\\\?\\UNC\\' + normalized[2:]
+    if len(command) > 2 and command[1] == ':' and command[2] in '\\/':
+        return '\\\\?\\' + normalized
+    return command
 
 
 def atomic_json(path, value):
@@ -160,8 +173,11 @@ def worker(directory):
         outputs.mkdir(exist_ok=True)
         environment.update(CUDA_VISIBLE_DEVICES=','.join(spec['gpuIds']), PYTHONUNBUFFERED='1', PYTHONHASHSEED=str(spec['seed']), RESEARCH_RUN_DIR=str(directory), RESEARCH_OUTPUT_DIR=str(outputs), RESEARCH_SEED=str(spec['seed']), RESEARCH_METRICS_PATH=str(directory / 'metrics.json'), RESEARCH_PROGRESS_PATH=str(directory / 'progress.jsonl'))
         arguments = [spec['python'] if argument == '{python}' else argument for argument in spec['argv']]
+        arguments[0] = executable_path(arguments[0])
         options = {'cwd': spec['cwd'], 'env': environment, 'stdin': subprocess.DEVNULL}
         if os.name == 'nt':
+            if arguments[0].startswith(('\\\\?\\', '\\\\.\\')):
+                options['executable'] = arguments[0]
             options['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         else:
             options['start_new_session'] = True
@@ -217,11 +233,12 @@ def launch(directory):
         # A hidden console, not none: a virtual environment's python.exe starts the real interpreter, which opens a
         # visible console when its parent has none (DETACHED_PROCESS). Windows ignores CREATE_NO_WINDOW beside DETACHED_PROCESS.
         options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+        options['executable'] = executable_path(sys.executable)
     else:
         options['start_new_session'] = True
     with (directory / 'supervisor.log').open('ab', buffering=0) as log:
         try:
-            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'worker', str(directory)], stdout=log, stderr=log, **options)
+            subprocess.Popen([executable_path(sys.executable), str(Path(__file__).resolve()), 'worker', str(directory)], stdout=log, stderr=log, **options)
         except Exception as error:
             atomic_json(directory / 'state.json', {'status': 'failed', 'updatedAt': time.time(), 'message': str(error), 'metrics': {}})
             raise

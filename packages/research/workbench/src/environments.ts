@@ -1,12 +1,16 @@
 /** Project-local Python environments and explicit adoption of existing interpreters. */
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { ComponentManager } from './components.ts'
+import { ComponentManager, prepareManagedPython } from './components.ts'
 import { atomicWrite, hashBytes, projectPath } from './files.ts'
-import { checked, runProcess, ssh } from './process.ts'
+import { checked, localExecutable, runProcess, ssh } from './process.ts'
 import type { EnvironmentId, EnvironmentRecord, ResearchProject } from './types.ts'
 
 const INSPECT = `import sys,json,importlib.metadata,platform,subprocess,shutil
+executable = sys.executable
+prefix = chr(92) * 2 + '?' + chr(92)
+if sys.platform == 'win32' and executable.startswith(prefix):
+ executable = chr(92) * 2 + executable[8:] if executable[4:8].upper() == 'UNC' + chr(92) else executable[4:]
 gpu = None
 if shutil.which('nvidia-smi'):
  try:
@@ -14,7 +18,7 @@ if shutil.which('nvidia-smi'):
   gpu = result.stdout.strip() if result.returncode == 0 else None
  except (OSError,subprocess.TimeoutExpired):
   pass
-print(json.dumps({'executable':sys.executable,'version':sys.version,'platform':platform.platform(),'gpu':gpu,'packages':sorted([(d.metadata.get('Name',''),d.version) for d in importlib.metadata.distributions()])}))`
+print(json.dumps({'executable':executable,'version':sys.version,'platform':platform.platform(),'gpu':gpu,'packages':sorted([(d.metadata.get('Name',''),d.version) for d in importlib.metadata.distributions()])}))`
 
 /**
  * Create a uv environment or inspect an existing one without modifying its packages.
@@ -43,7 +47,8 @@ export async function createEnvironment(project: ResearchProject, request: Omit<
   if (request.kind === 'uv') {
     const uv = await components.uv(signal)
     const target = await projectPath(project.root, `.research/environments/${id}`)
-    checked(await runProcess(uv, ['venv', '--python', python || '3.12', target], { signal, timeoutMs: 600000, env: { UV_PYTHON_INSTALL_DIR: join(components.root, 'interpreters') } }), 'Project environment creation')
+    checked(await runProcess(uv, ['venv', '--python', localExecutable(python || '3.12'), target], { signal, timeoutMs: 600000, env: { UV_PYTHON_INSTALL_DIR: join(components.root, 'interpreters') } }), 'Project environment creation')
+    await prepareManagedPython(target)
     python = components.venvPython(target)
     if (request.requirements.length) checked(await runProcess(uv, ['pip', 'install', '--python', python, ...request.requirements], { signal, timeoutMs: 600000 }), 'Project dependencies')
     const lock = checked(await runProcess(uv, ['pip', 'freeze', '--python', python], { signal }), 'Dependency snapshot')

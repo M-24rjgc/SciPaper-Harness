@@ -14,6 +14,45 @@ RUNNER = Path(__file__).resolve().parents[1] / 'runtime' / 'experiment_runner.py
 
 
 class RunnerTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows CreateProcess application-name behavior')
+    def test_worker_supplies_an_application_name_only_for_absolute_executables(self):
+        module_spec = importlib.util.spec_from_file_location('experiment_runner_spawn', RUNNER)
+        runner = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(runner)
+        for command in [sys.executable, 'python', r'.\python.exe']:
+            self.setup_script('pass')
+            spec_path = self.root / 'spec.json'
+            spec = json.loads(spec_path.read_text(encoding='utf8'))
+            spec['python'] = command
+            spec_path.write_text(json.dumps(spec), encoding='utf8')
+            with mock.patch.object(runner.subprocess, 'Popen') as spawn:
+                spawn.return_value.pid = os.getpid()
+                spawn.return_value.poll.return_value = 0
+                spawn.return_value.wait.return_value = 0
+                runner.worker(self.root)
+                options = spawn.call_args.kwargs
+                if command == sys.executable:
+                    self.assertEqual(options['executable'], runner.executable_path(command))
+                else:
+                    self.assertNotIn('executable', options)
+                self.assertTrue(options['creationflags'] & subprocess.CREATE_NO_WINDOW)
+
+    def test_windows_executable_conversion_preserves_command_lookup(self):
+        module_spec = importlib.util.spec_from_file_location('experiment_runner_paths', RUNNER)
+        runner = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(runner)
+        with mock.patch.object(runner.os, 'name', 'nt'):
+            for command, expected in [
+                ('C:/tools/old/../python.exe', r'\\?\C:\tools\python.exe'),
+                (r'\\server\share\python.exe', r'\\?\UNC\server\share\python.exe'),
+                (r'\\?\C:\tools\python.exe', r'\\?\C:\tools\python.exe'),
+                ('python', 'python'),
+                (r'.\tools\python.exe', r'.\tools\python.exe'),
+            ]:
+                self.assertEqual(runner.executable_path(command), expected)
+        with mock.patch.object(runner.os, 'name', 'posix'):
+            self.assertEqual(runner.executable_path('/opt/python'), '/opt/python')
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='科研 runner space ')
         self.root = Path(self.temporary.name)

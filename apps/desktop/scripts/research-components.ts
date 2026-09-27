@@ -2,8 +2,16 @@
 import { cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, join, toNamespacedPath } from 'node:path'
-import { ComponentManager, COMPONENT_RELEASES, PLATFORM_PYTHON_IMPORTS, PLATFORM_PYTHON_PACKAGES } from '../../../packages/research/workbench/src/components.ts'
+import { ComponentManager, COMPONENT_RELEASES, PLATFORM_PYTHON_IMPORTS, PLATFORM_PYTHON_PACKAGES, installPythonPathHook } from '../../../packages/research/workbench/src/components.ts'
 import { checked, runProcess } from '../../../packages/research/workbench/src/process.ts'
+
+/**
+ * Install the bundled interpreter's import-path hook without replacing sitecustomize.
+ * @param platformPython - product-owned standalone Python directory.
+ */
+export async function installResearchPythonPaths(platformPython: string): Promise<void> {
+  await installPythonPathHook(platformPython)
+}
 
 /** Bundle platform tools separately from research project environments. */
 export async function bundleResearchComponents(stagingRoot: string, runtimeRoot: string): Promise<void> {
@@ -24,13 +32,15 @@ export async function bundleResearchComponents(stagingRoot: string, runtimeRoot:
   await mkdir(destination, { recursive: true })
   await cp(dirname(uv), join(destination, 'uv'), { recursive: true, dereference: true })
   await cp(dirname(python), join(destination, 'python'), { recursive: true, dereference: true })
+  await installResearchPythonPaths(join(destination, 'python'))
   // Windows venv launchers retain an absolute interpreter path. Package the
   // standalone interpreter and its libraries together so installation can move.
   const platformPython = join(destination, 'platform-python')
   await cp(dirname(python), platformPython, { recursive: true, dereference: true })
   await cp(join(virtualenv, 'Lib', 'site-packages'), join(platformPython, 'Lib', 'site-packages'), { recursive: true, dereference: true })
   await rm(join(platformPython, 'pyvenv.cfg'), { force: true })
-  // CPython keeps the extended executable path for native-module imports beyond MAX_PATH.
+  await installResearchPythonPaths(platformPython)
+  // CPython's DLLs and Lib paths also need the bundled startup hook beyond MAX_PATH.
   checked(await runProcess(toNamespacedPath(join(platformPython, 'python.exe')),
     ['-I', '-c', `import ${PLATFORM_PYTHON_IMPORTS.join(', ')}; print("ready")`],
     { timeoutMs: 120000 }), 'Relocated platform Python')

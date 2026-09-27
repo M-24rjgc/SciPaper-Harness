@@ -1,13 +1,13 @@
 /** Versioned tool provisioning in product-owned directories. */
 import { existsSync, createWriteStream } from 'node:fs'
-import { mkdir, readdir, readFile, rename } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, join, resolve, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import extract from 'extract-zip'
 import { hashFile, atomicWrite } from './files.ts'
-import { checked, runProcess } from './process.ts'
+import { checked, localExecutable, runProcess } from './process.ts'
 import type { ComponentStatus, ResearchPreferences } from './types.ts'
 
 /** One pinned download: what it is, where it comes from, and the checksum it must match. */
@@ -61,6 +61,56 @@ export interface ComponentHost {
  */
 export function runtimeAsset(name: string): string {
   return fileURLToPath(new URL(`../runtime/${name}`, import.meta.url)).replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
+}
+
+/**
+ * Install an import-path hook in a product-owned interpreter, preserving sitecustomize.
+ * @param directory - standalone Python or newly created virtual environment root.
+ */
+export async function installPythonPathHook(directory: string): Promise<void> {
+  const site = join(directory, 'Lib', 'site-packages')
+  await mkdir(site, { recursive: true })
+  const files = [
+    ['_scipaper_python_paths.py', await readFile(runtimeAsset('_scipaper_python_paths.py'), 'utf8')],
+    ['00_scipaper_python_paths.pth', 'import _scipaper_python_paths\n'],
+  ] as const
+  for (const [name, content] of files) {
+    const target = join(site, name)
+    if (existsSync(target)) {
+      if (await readFile(target, 'utf8') !== content) throw new Error(`Research Python bootstrap conflicts with ${target}`)
+    } else {
+      await writeFile(target, content, { flag: 'wx' })
+    }
+  }
+}
+
+/**
+ * Prepare a newly created, product-owned Windows venv for native imports from a deep base installation.
+ * @param directory - the environment just created by the product; never an adopted environment.
+ * @param platform - operating system owning the environment.
+ */
+export async function prepareManagedPython(directory: string, platform: NodeJS.Platform = process.platform): Promise<void> {
+  if (platform !== 'win32') return
+  await installPythonPathHook(directory)
+  const configPath = join(directory, 'pyvenv.cfg')
+  if (!existsSync(configPath)) return
+  const config = await readFile(configPath, 'utf8')
+  const home = /^home\s*=\s*([^\r\n]+)$/m.exec(config)?.[1]?.trim()
+  if (home === undefined || !win32.isAbsolute(home)) return
+  const base = localExecutable(home, platform)
+  const ordinary = base.slice(0, 8).toUpperCase() === '\\\\?\\UNC\\' ? `\\\\${base.slice(8)}` : base.slice(4)
+  // The Windows venv redirector cannot launch a base executable beyond MAX_PATH.
+  if (win32.join(ordinary, 'python.exe').length >= 260) {
+    const scripts = join(directory, 'Scripts')
+    for (const name of await readdir(base)) {
+      const lower = name.toLowerCase()
+      if (lower === 'python.exe' || lower === 'pythonw.exe' || lower.endsWith('.dll')) {
+        await copyFile(join(base, name), join(scripts, name))
+      }
+    }
+    const normalized = config.replace(/^home\s*=\s*[^\r\n]+/m, () => `home = ${base}`)
+    if (normalized !== config) await atomicWrite(configPath, normalized)
+  }
 }
 
 /**
@@ -134,8 +184,7 @@ export class ComponentManager {
   }
 
   private pythonCommand(python: string): string {
-    // CPython retains this prefix in sys.prefix, including native extension paths.
-    return this.host.platform === 'win32' && win32.isAbsolute(python) ? win32.toNamespacedPath(python) : python
+    return localExecutable(python, this.host.platform)
   }
 
   /**
@@ -224,9 +273,10 @@ export class ComponentManager {
       const bundled = await findFile(this.host.asset('components/python'), 'python.exe', 3)
       const pythonInstall = join(this.root, 'interpreters')
       if (!existsSync(python)) {
-        checked(await runProcess(uv, ['venv', '--python', bundled ?? '3.12', '--managed-python', target], {
+        checked(await runProcess(uv, ['venv', '--python', bundled === undefined ? '3.12' : localExecutable(bundled, this.host.platform), '--managed-python', target], {
           signal, timeoutMs: 600000, env: { UV_PYTHON_INSTALL_DIR: pythonInstall },
         }), 'Platform Python creation')
+        await prepareManagedPython(target, this.host.platform)
       }
       checked(await runProcess(uv, ['pip', 'install', '--python', python, ...PLATFORM_PYTHON_PACKAGES], { signal, timeoutMs: 600000 }), 'Research document dependencies')
       await atomicWrite(marker, PLATFORM_PYTHON_MARKER)

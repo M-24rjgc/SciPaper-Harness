@@ -58,7 +58,7 @@ Choose it when the agent should carry a paper from an idea or from existing resu
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-research-workbench) is the exhaustive source for every accepted field.
 
-The platform Python uses an explicitly configured interpreter first, then the bundled interpreter, then the environment under `componentRoot`. Windows absolute interpreter commands use extended-length paths so native document and plotting libraries load from deep installation folders. Stored preferences and component status retain their original paths; relative commands retain their normal lookup behavior.
+The platform Python uses an explicitly configured interpreter first, then the bundled interpreter, then the environment under `componentRoot`. Windows absolute executable commands use extended-length paths. Bundled interpreters and newly created local Windows environments normalize their native import paths at startup while preserving existing `sitecustomize` files. When a new environment's base executable exceeds the Windows redirector's path limit, it uses a copy of that base interpreter and its adjacent DLLs; its package isolation remains unchanged. Adopted environments are inspected without modifying their files. Stored preferences, environment records and component status retain ordinary paths; relative commands retain their normal lookup behavior.
 
 ### Adding a mode
 

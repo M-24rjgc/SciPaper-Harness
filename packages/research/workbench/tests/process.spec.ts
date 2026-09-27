@@ -1,10 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import { checked, runProcess, shQuote, ssh } from '../src/process.ts'
+import { checked, localExecutable, runProcess, shQuote, ssh } from '../src/process.ts'
 
 /** Run a short Node script as the child: the one interpreter every test host has. */
 const node = (script: string, options: Parameters<typeof runProcess>[2] = {}) => runProcess(process.execPath, ['-e', script], options)
 
 describe('child processes run bounded, without a shell and without model credentials', () => {
+  it.each([
+    ['win32', 'C:/tools/old/../python.exe', '\\\\?\\C:\\tools\\python.exe'],
+    ['win32', '\\\\server\\share\\python.exe', '\\\\?\\UNC\\server\\share\\python.exe'],
+    ['win32', '\\\\?\\C:\\python.exe', '\\\\?\\C:\\python.exe'],
+    ['win32', 'python', 'python'],
+    ['win32', '.\\tools\\python.exe', '.\\tools\\python.exe'],
+    ['linux', '/opt/python/bin/python', '/opt/python/bin/python'],
+  ] as const)('retains executable lookup on %s for %s', (platform, command, expected) => {
+    expect(localExecutable(command, platform)).toBe(expected)
+  })
+
   it('returns output and exit code, feeds stdin, and passes an explicit environment', async () => {
     const echoed = await node('process.stdin.pipe(process.stdout)', { input: 'hello' })
     expect(echoed).toEqual({ code: 0, stdout: 'hello', stderr: '' })

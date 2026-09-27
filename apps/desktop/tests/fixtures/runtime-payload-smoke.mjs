@@ -159,7 +159,8 @@ function checkResearchPython() {
   const pythonRoot = join(root, 'node_modules', '@deepseek-ai', 'dsh-research-workbench', 'runtime', 'components', 'platform-python')
     .replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
   const output = execFileSync(toNamespacedPath(join(pythonRoot, 'python.exe')), ['-I', '-B', '-c', [
-    'import os, sys, pathlib, pypdf, docx, matplotlib, pypdfium2',
+    'import os, sys, pathlib, pyexpat, _ssl, _sqlite3, pypdf, docx, matplotlib, pypdfium2, svglib, reportlab, yaml',
+    'assert all(m.__file__.startswith(chr(92) * 2 + "?" + chr(92)) for m in (pyexpat, _ssl, _sqlite3))',
     'root = pathlib.Path(sys.executable).resolve().parent',
     'assert all(pathlib.Path(m.__file__).resolve().is_relative_to(root) for m in (pypdf, docx, matplotlib, pypdfium2))',
     'out = pathlib.Path(sys.argv[1])',
