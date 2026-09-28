@@ -181,10 +181,10 @@ export const PROFILE_TEMPLATES: Record<string, ProfileTemplate> = {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-acp-app'],
   },
   web: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-research-app'],
+    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-schedule-bundle', '@deepseek-ai/dsh-research-app'],
   },
   research: {
-    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-research-app'],
+    bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-schedule-bundle', '@deepseek-ai/dsh-research-app'],
   },
   headless: {
     bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
@@ -209,8 +209,8 @@ export const DEFAULT_PROFILE_BUNDLES: readonly string[] = ['@deepseek-ai/dsh-bas
 /**
  * The bundles the dsh installation ships for a person to switch on: each a
  * runtime dependency of the installation that declares `dsh.bundle.patch`,
- * an `icon`, and `./locale/*.json` display metadata, selected by no shipped
- * template, and offered switched off by the plugin manager
+ * an `icon`, and `./locale/*.json` display metadata. The research templates
+ * initially select Schedule; the other bundles start switched off
  * ([rationale](../../../../.agents/notes/implemented/process/2026-09-15-shipped-optional-bundles.md),
  * [admission](../../../../.agents/notes/implemented/architecture/2026-09-21-experimental-capabilities-as-optional-bundles.md)).
  */
@@ -222,6 +222,7 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-ssh-remote-bundle',
   '@deepseek-ai/dsh-web-search-exa-bundle',
   '@deepseek-ai/dsh-web-search-perplexity-bundle',
+  '@deepseek-ai/dsh-experimental-schedule-bundle',
 ]
 
 const PROFILE_PATCH_TEMPLATE = `# Your patch layer for this dsh profile, applied after every bundle layer:

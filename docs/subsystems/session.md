@@ -1138,6 +1138,25 @@ A Session became visible or its Agent was created or disposed. Consumers upsert 
 
 Source: [`packages/api/session-controller/src/types.ts`](../../packages/api/session-controller/src/types.ts)
 
+<a id="api-sessioncommand-admission--waterfall"></a>
+
+#### `api-session/command-admission` — waterfall
+
+Admit a command before Agent activation, composition, or mutation. Plugins may reject with a typed RemoteError; accepted commands delegate to next.
+
+```ts cordis-catalog
+/**
+ * Admit a command before Agent activation, composition, or mutation.
+ * Plugins may reject with a typed RemoteError; accepted commands delegate to next.
+ * @mode waterfall
+ * @param admission - resolved target and command, with create's original request identity.
+ * @param next - admission by the remaining listeners.
+ */
+'api-session/command-admission'(admission: SessionCommandAdmission, next: () => Promise<void>): Promise<void>
+```
+
+Source: [`packages/api/session-controller/src/types.ts`](../../packages/api/session-controller/src/types.ts)
+
 <a id="api-sessionerror--emit"></a>
 
 #### `api-session/error` — emit

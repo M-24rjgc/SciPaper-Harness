@@ -22,6 +22,7 @@ export const DESKTOP_IPC = {
   browserClearWorkspaceData: 'dsh-desktop:browser-clear-workspace-data',
   browserOpenRequested: 'dsh-desktop:browser-open-requested',
   directoryPick: 'dsh-desktop:directory-pick',
+  deviceInfo: 'dsh-desktop:device-info',
   localeBootstrap: 'dsh-desktop:locale-bootstrap',
   localeChanged: 'dsh-desktop:locale-changed',
   updatesStatus: 'dsh-desktop:updates-status',
@@ -74,6 +75,11 @@ export interface DshDesktopProductApi {
   readonly browser: DesktopBrowserBridge
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
+  /**
+   * Local machine description for the feedback questionnaire.
+   * @returns `name=value` fields separated by `; `, with no hostname, user name, or serial number.
+   */
+  deviceInfo(): Promise<string>
   readonly updates: {
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>

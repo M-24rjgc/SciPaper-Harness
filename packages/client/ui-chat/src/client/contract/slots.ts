@@ -120,7 +120,11 @@ export interface ChatFileMentions {
 
 /** Exact relative-file vocabulary supplied by an optional owner of read-only content. */
 export interface ChatKnownFilePaths {
-  /** Whether the path is a registered file in this particular Session. */
+  /** Whether the path is a registered file in this particular Session.
+   * @param sessionId - Session that owns the displayed content.
+   * @param path - relative file path to look up.
+   * @returns whether the Session has registered that exact relative path.
+   */
   has(sessionId: SessionId, path: string): boolean
 }
 

@@ -8,6 +8,7 @@
 /** Telemetry and feedback: a rating or `/feedback` authorises uploading the Session log. */
 export const TELEMETRY_ROWS: readonly string[] = [
   'session-telemetry-otel', 'command-feedback', 'message-feedback', 'ui-message-feedback',
+  'desktop-product-telemetry', 'product-analytics',
 ]
 
 /** Official capabilities intentionally enabled in the research edition. */

@@ -17,7 +17,10 @@ export interface RemoteWorkspacePreset {
 }
 
 /** Product composition may explicitly include research tools when a shared ledger service is mounted. */
-export interface Config { researchTools?: boolean }
+export interface Config {
+  /** Include the research tool modules supplied by the shared research ledger. */
+  researchTools?: boolean
+}
 
 function presetId(host: string, canonicalPath: string): string {
   return `ssh-${createHash('sha256').update(host).update('\0').update(canonicalPath).digest('hex').slice(0, 24)}`
@@ -85,7 +88,10 @@ export class RemoteWorkspacePresets extends Service {
 
   private isClosed(): boolean { return this.closed }
 
-  /** Whether this service registered the requested preset for an SSH workspace. */
+  /** Whether this service registered the requested preset for an SSH workspace.
+   * @param id - preset identity to inspect.
+   * @returns whether the preset is mounted or currently mounting here.
+   */
   isRemotePreset(id: string): boolean { return this.mounted.has(id) || this.mounting.has(id) }
 
   constructor(ctx: Context, config: Config = {}) {

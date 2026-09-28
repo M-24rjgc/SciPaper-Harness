@@ -60,12 +60,42 @@ describe('desktop external plugin profile', () => {
     expect(readFileSync(join(manager.paths.profile, 'package.before-research-bundle.json'), 'utf8')).toBe(original)
     expect(JSON.parse(readFileSync(manifestPath, 'utf8'))).toMatchObject({
       dependencies: { plugin: '1.0.0' },
-      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-research-app', 'plugin'] } },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-research-app',
+        '@deepseek-ai/dsh-experimental-schedule-bundle', '@deepseek-ai/dsh-computer-use-cua-bundle', 'plugin'] } },
     })
     expect(readFileSync(patch, 'utf8')).toBe('- id: custom-setting\n  disabled: true\n')
     const migrated = readFileSync(manifestPath, 'utf8')
     await manager.applyRelease()
     expect(readFileSync(manifestPath, 'utf8')).toBe(migrated)
+  })
+  it('migrates Schedule once and preserves a later user disable across restarts', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    seedPlugin(manager)
+    const manifestPath = join(manager.paths.profile, 'package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      dsh: { profile: { bundles: string[] } }
+    }
+    const schedule = '@deepseek-ai/dsh-experimental-schedule-bundle'
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== schedule)
+    const original = JSON.stringify(manifest)
+    writeFileSync(manifestPath, original)
+    unlinkSync(join(manager.paths.profile, 'schedule-bundle-v0.2.migrated'))
+    const patch = join(manager.paths.profile, 'cordis.patch.yml')
+    writeFileSync(patch, '- id: custom-setting\n  disabled: true\n')
+
+    await manager.applyRelease()
+
+    expect(readFileSync(join(manager.paths.profile, 'package.before-dsh-0.2.json'), 'utf8')).toBe(original)
+    const upgraded = JSON.parse(readFileSync(manifestPath, 'utf8')) as typeof manifest
+    expect(upgraded.dsh.profile.bundles).toContain(schedule)
+    expect(upgraded.dsh.profile.bundles).toContain('plugin')
+    expect(readFileSync(patch, 'utf8')).toBe('- id: custom-setting\n  disabled: true\n')
+    upgraded.dsh.profile.bundles = upgraded.dsh.profile.bundles.filter(name => name !== schedule)
+    const disabled = JSON.stringify(upgraded)
+    writeFileSync(manifestPath, disabled)
+    await manager.applyRelease()
+    expect(readFileSync(manifestPath, 'utf8')).toBe(disabled)
   })
   it('preserves installed packages, profile state, and the lockfile when preparing a launch', async () => {
     const { manager } = setup()

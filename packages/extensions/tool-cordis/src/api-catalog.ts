@@ -919,6 +919,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
         returns: 'a Host-only snapshot, or null while signed out or when the credential changed during the read.',
       },
+      {
+        signature: 'abstract getDeviceIdentity(): Promise<{ deviceId?: string; userId?: AccountUserId; osVersion: string }>',
+        description: 'Read existing login identity without creating a device or returning credentials.',
+        parameters: [],
+        returns: 'optional device/account identifiers and the provider\'s OS version string.',
+      },
     ],
   },
   {
@@ -1542,6 +1548,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'otel',
+    summary: 'Shared transport provider.',
+    description: 'Shared transport provider. Mounting creates no queue, identity, or network connection.',
+    methods: [
+      {
+        signature: 'createEventReporter(options: EventLogOptions): EventLogReporter',
+        description: 'Create an independent ordinary-event channel with count-based batching. The injected consumer must drain it during its fiber disposal.',
+        parameters: [{ name: 'options', description: 'transport, scope, resource, queue, and diagnostic settings selected by the consumer.' }],
+        returns: 'the caller-owned channel; no state is shared with other channels.',
+      },
+      {
+        signature: 'createSessionLogReporter(options: SessionLogOptions): SessionLogReporter',
+        description: 'Create an independent byte-bounded Session-log channel. Authorization and redaction precede reporting; the consumer owns shutdown and its outer deadline.',
+        parameters: [{ name: 'options', description: 'transport, scope, resource, queue, and diagnostic settings selected by the consumer.' }],
+        returns: 'the caller-owned channel, preserving complete accepted events within the request byte ceiling.',
+      },
+    ],
+  },
+  {
     key: 'permissionPresets',
     summary: 'Owns the deployment\'s configured permission presets, the fixed Auto integration hook, and their write path.',
     description: 'Owns the deployment\'s configured permission presets, the fixed Auto integration hook, and their write path. Requires a confining `ctx.shell` executor and `ctx.approval`; unmatched knob values are reported as CUSTOM_PRESET, not an error.',
@@ -1698,6 +1723,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'productAnalytics',
+    summary: 'Authenticated event intake; disabled instances do not inspect identity or accept new events.',
+    description: 'Authenticated event intake; disabled instances do not inspect identity or accept new events.',
+    methods: [
+      {
+        signature: '@Remote enabled(): boolean',
+        description: 'Read the collection policy.',
+        parameters: [],
+        returns: 'whether this Host currently accepts Desktop analytics.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *watchPolicy(signal: AbortSignal): AsyncIterable<boolean>',
+        description: 'Stream the effective policy initially and after live configuration edits.',
+        parameters: [{ name: 'signal', description: 'subscriber lifetime.' }],
+        returns: 'current policy values until cancellation or service disposal.',
+      },
+      {
+        signature: '@Remote async report(event: ProductEvent): Promise<void>',
+        description: 'Submit selected Desktop fields; missing identity is omitted and never generated.',
+        parameters: [{ name: 'event', description: 'typed product event without message contents or credentials.' }],
+        returns: 'after local submission; no delivery or warehouse acknowledgement.',
+      },
+    ],
+  },
+  {
     key: 'productTelemetry',
     summary: 'Host analytics sender.',
     description: 'Host analytics sender. Mounting alone sends nothing; the owning fiber drains it on unload.',
@@ -1763,6 +1813,31 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Execute resolved inputs; program outcomes resolve as result fields.',
         parameters: [{ name: 'spec', description: 'directory, deadline, program, bindings, cancellation and supported policy.' }],
         returns: 'Captured output and the execution outcome.',
+      },
+    ],
+  },
+  {
+    key: 'remoteWorkspacePresets',
+    summary: 'Registry owner for remotely verified and independently mounted SSH Agent presets.',
+    description: 'Registry owner for remotely verified and independently mounted SSH Agent presets.',
+    methods: [
+      {
+        signature: 'isRemotePreset(id: string): boolean',
+        description: 'Whether this service registered the requested preset for an SSH workspace.',
+        parameters: [{ name: 'id', description: 'preset identity to inspect.' }],
+        returns: 'whether the preset is mounted or currently mounting here.',
+      },
+      {
+        signature: 'async ensure(request: RemoteWorkspaceRequest): Promise<string>',
+        description: 'Verify the directory, install the helper, and register its Agent preset.',
+        parameters: [{ name: 'request', description: 'configured OpenSSH alias and absolute POSIX workspace.' }],
+        returns: 'the mounted preset identity.',
+      },
+      {
+        signature: 'async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset>',
+        description: 'Resolve the canonical remote path and mounted preset for a Session header.',
+        parameters: [{ name: 'request', description: 'configured OpenSSH alias and absolute POSIX workspace.' }],
+        returns: 'preset identity and verified canonical directory.',
       },
     ],
   },
@@ -3731,7 +3806,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Durable workspace registry. Startup waits for `sessionPersistence`, builds one canonical-cwd header index, and completes the one-time history bootstrap before the service becomes active. The persistence dependency is mandatory so an unavailable peer can never be mistaken for an empty history and commit the initialized marker.',
     methods: [
       {
-        signature: 'async create(path: string, title?: string): Promise<Workspace>',
+        signature: 'async create(path: string | WorkspaceLocation, title?: string): Promise<Workspace>',
         description: 'Create or reuse a workspace for an existing directory. The fully qualified path is canonicalized through `fs.realpath`; a relative, nonexistent, or non-directory path rejects. Repeated calls for the same canonical path return the existing entity without changing its title. A newly created workspace is prepended to the durable registry order. Different canonical paths may share a display title.',
         parameters: [{ name: 'path', description: 'Existing directory to own, in a fully qualified path spelling.' }, { name: 'title', description: 'Display title used only when a new record is created.' }],
         returns: 'the existing or newly durable workspace.',
@@ -3791,7 +3866,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'resolution after durability.',
       },
       {
-        signature: 'async resolveByPath(path: string): Promise<Workspace | undefined>',
+        signature: 'async resolveByPath(path: string | WorkspaceLocation): Promise<Workspace | undefined>',
         description: 'Resolve by canonical directory path without creating or mutating a workspace. A missing path rejects during `realpath`; an existing unowned directory returns `undefined`.',
         parameters: [{ name: 'path', description: 'Existing directory path in a fully qualified spelling.' }],
         returns: 'the workspace owning the canonical path, when one exists.',
@@ -3929,6 +4004,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A Session became visible or its Agent was created or disposed.',
     description: 'A Session became visible or its Agent was created or disposed. Consumers upsert the summary and replace its current running and availability state.',
     parameters: [{ name: 'summary', description: 'current list row for the Session.' }],
+  },
+  {
+    name: 'api-session/command-admission',
+    mode: 'waterfall',
+    signature: '\'api-session/command-admission\'(admission: SessionCommandAdmission, next: () => Promise<void>): Promise<void>',
+    summary: 'Admit a command before Agent activation, composition, or mutation.',
+    description: 'Admit a command before Agent activation, composition, or mutation. Plugins may reject with a typed RemoteError; accepted commands delegate to next.',
+    parameters: [{ name: 'admission', description: 'resolved target and command, with create\'s original request identity.' }, { name: 'next', description: 'admission by the remaining listeners.' }],
   },
   {
     name: 'api-session/error',
@@ -4952,7 +5035,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ComponentManager',
-    declaration: 'export class ComponentManager {\n    constructor(readonly root: string, private readonly preferences: () => ResearchPreferences, private readonly host: ComponentHost = {\n        platform: process.platform, arch: process.arch, asset: runtimeAsset, releases: COMPONENT_RELEASES,\n    });\n    venvPython(directory: string): string;\n    async status(): Promise<ComponentStatus[]>;\n    async installedPython(): Promise<string | undefined>;\n    async uv(signal: AbortSignal): Promise<string>;\n    async python(signal: AbortSignal): Promise<string>;\n    async drawio(signal: AbortSignal): Promise<string>;\n    async latex(signal: AbortSignal): Promise<string>;\n    async installTexPackage(file: string, signal: AbortSignal, guess: boolean = true): Promise<boolean>;\n}',
+    declaration: 'export class ComponentManager {\n    constructor(readonly root: string, private readonly preferences: () => ResearchPreferences, private readonly host: ComponentHost = {\n        platform: process.platform, arch: process.arch, asset: runtimeAsset, releases: COMPONENT_RELEASES,\n    });\n    venvPython(directory: string): string;\n    async status(): Promise<ComponentStatus[]>;\n    async installedPython(): Promise<string | undefined>;\n    async uv(signal: AbortSignal): Promise<string>;\n    async python(signal: AbortSignal): Promise<string>;\n    async drawio(signal: AbortSignal): Promise<string>;\n    async latex(signal: AbortSignal, engine?: CompileRecord[\'engine\']): Promise<string>;\n    async latexRuntime(signal: AbortSignal, engine: CompileRecord[\'engine\']): Promise<LatexRuntime>;\n    async installTexPackage(file: string, signal: AbortSignal, guess: boolean = true): Promise<boolean>;\n}',
   },
   {
     name: 'ComponentRelease',
@@ -4960,7 +5043,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ComponentStatus',
-    declaration: 'export interface ComponentStatus {\n    id: \'python\' | \'uv\' | \'latex\' | \'drawio\';\n    installed: boolean;\n    path: string;\n    version: string;\n}',
+    declaration: 'export interface ComponentStatus {\n    id: \'python\' | \'uv\' | \'latex\' | \'drawio\';\n    installed: boolean;\n    path: string;\n    version: string;\n    source?: \'configured\' | \'managed\' | \'system\' | \'bundled\' | undefined;\n    problem?: \'missing-executable\' | \'invalid-executable\' | undefined;\n    engines?: CompileRecord[\'engine\'][] | undefined;\n}',
   },
   {
     name: 'CompositionRowEnablement',
@@ -5132,7 +5215,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateAgentOptions',
-    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly parentAgent?: Agent;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly isSeeded?: boolean;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
+    declaration: 'export interface CreateAgentOptions {\n    readonly sessionId: SessionId;\n    readonly parentAgent?: Agent;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly execution?: SessionExecution;\n        readonly parentSession?: SessionId;\n        readonly isSeeded?: boolean;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly seed?: readonly SessionEvent[];\n    readonly agentOptions?: AgentOptions;\n    readonly signal?: AbortSignal;\n    readonly setup?: AgentSetup;\n}',
   },
   {
     name: 'CreateGoalRequest',
@@ -5148,7 +5231,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CreateSessionOptions',
-    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly isSeeded?: boolean;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
+    declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly inheritedEventCount?: SessionLogOffset;\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly execution?: SessionExecution;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly isSeeded?: boolean;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
   },
   {
     name: 'CreateTeamTaskRequest',
@@ -5361,6 +5444,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n    system?: never;\n}',
+  },
+  {
+    name: 'EventLogOptions',
+    declaration: 'export interface EventLogOptions {\n    exporter: SessionLogOptions[\'exporter\'];\n    resourceAttributes: Attributes;\n    scope: {\n        name: string;\n        version?: string;\n    };\n    processor: Omit<BatchLogRecordProcessorOptions, \'exporter\'>;\n    onFailure: SessionLogOptions[\'onFailure\'];\n}',
+  },
+  {
+    name: 'EventLogReporter',
+    declaration: 'export class EventLogReporter {\n    constructor(options: EventLogOptions);\n    emit(record: OTelEventRecord): void;\n    async shutdown(signal?: AbortSignal): Promise<void>;\n}',
   },
   {
     name: 'EveryScheduleRecord',
@@ -5839,6 +5930,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
   },
   {
+    name: 'LatexRuntime',
+    declaration: 'export interface LatexRuntime {\n    bin: string;\n    compilerArgs: readonly string[];\n    bibliographyArgs: (program: \'bibtex\' | \'biber\') => Promise<readonly string[]>;\n}',
+  },
+  {
     name: 'LiteratureItem',
     declaration: 'export interface LiteratureItem {\n    id: string;\n    provider: \'crossref\' | \'openalex\' | \'arxiv\';\n    title: string;\n    authors: string[];\n    year?: number | undefined;\n    doi?: string | undefined;\n    url: string;\n    abstract: string;\n    bibtex: string;\n}',
   },
@@ -6175,6 +6270,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OfficeToPdfResult {\n    readonly pdf: Uint8Array;\n    readonly missingFonts: string[];\n    readonly cacheKey: OfficeToPdfKey;\n    readonly generation: OfficeToPdfGeneration;\n}',
   },
   {
+    name: 'OnboardingPage',
+    declaration: 'export type OnboardingPage = \'onboarding_welcome\' | \'onboarding_recharge\' | \'onboarding_use_case\' | \'onboarding_process\';',
+  },
+  {
     name: 'OneShotScheduleRecord',
     declaration: 'export type OneShotScheduleRecord = AfterScheduleRecord | AtScheduleRecord;',
   },
@@ -6185,6 +6284,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'OptionalSessionSeq',
     declaration: 'export type OptionalSessionSeq = SessionSeq | null;',
+  },
+  {
+    name: 'OTelEventRecord',
+    declaration: 'export interface OTelEventRecord {\n    eventName: string;\n    body: string;\n    timestamp: number;\n    severityNumber?: SeverityNumber;\n    attributes?: Record<string, OTelEventScalar | Record<string, OTelEventScalar>>;\n}',
+  },
+  {
+    name: 'OTelEventScalar',
+    declaration: 'export type OTelEventScalar = string | number | boolean;',
   },
   {
     name: 'PackageResult',
@@ -6327,12 +6434,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type PreToolDecision = {\n    kind: \'allow\';\n} | {\n    kind: \'deny\';\n    reason: string;\n    info?: ToolErrorInfo;\n} | {\n    kind: \'cancel\';\n} | {\n    kind: \'ask\';\n    reason?: string;\n    displayReason?: {\n        readonly en: string;\n        readonly [locale: string]: string;\n    };\n};',
   },
   {
-    name: 'ProductTelemetryRecord',
-    declaration: 'export interface ProductTelemetryRecord {\n    eventName: string;\n    body: string;\n    timestamp: number;\n    severityNumber?: SeverityNumber;\n    attributes?: Record<string, ProductTelemetryScalar | Record<string, ProductTelemetryScalar>>;\n}',
+    name: 'ProductEvent',
+    declaration: 'export type ProductEvent = {\n    [K in keyof ProductEventMap]: {\n        eventName: K;\n        attributes: ProductEventMap[K];\n        timestamp: number;\n    };\n}[keyof ProductEventMap];',
   },
   {
-    name: 'ProductTelemetryScalar',
-    declaration: 'export type ProductTelemetryScalar = string | number | boolean;',
+    name: 'ProductEventMap',
+    declaration: 'export interface ProductEventMap {\n    desktop_app_launch: Record<string, never>;\n    auth_page_view: Record<string, never>;\n    auth_page_click: {\n        button_name: \'sign_in\' | \'api-key\';\n    };\n    api_key_save_click: Record<string, never>;\n    onboarding_page_view: {\n        page_name: OnboardingPage;\n    };\n    onboarding_page_click: {\n        page_name: OnboardingPage;\n        button_name: \'next\' | \'back\' | \'skip\' | \'charge\' | \'later\' | \'continue\';\n        selected_content?: \'office\' | \'code\' | \'code_office\' | \'focus_result\' | \'key_detail\' | \'full_process\';\n    };\n    onboarding_popup_view: {\n        popup_name: \'skip_charge\' | \'skip_setting\';\n    };\n    onboarding_popup_click: {\n        popup_name: \'skip_charge\' | \'skip_setting\';\n        button_name: \'charge\' | \'know\' | \'enter\' | \'setting\' | \'close\';\n    };\n    desktop_upgrade_click: Record<string, never>;\n    desktop_upgrade_download_result: {\n        is_success: boolean;\n        error_reason?: string;\n    };\n    desktop_upgrade_install_restart_click: Record<string, never>;\n    send_button_click: {\n        session_id?: SessionId;\n        model_name?: string;\n        thinking_effort?: string;\n        run_mode: \'plan\' | \'goal\' | \'default\';\n        msg_type: \'default\' | \'steer\' | \'queue\';\n    };\n    model_switch: {\n        session_id?: SessionId;\n        switch_from: string;\n        switch_to: string;\n    };\n    thinking_level_switch: {\n        session_id?: SessionId;\n        switch_from: string;\n        switch_to: str /* …truncated — full shape in source */',
+  },
+  {
+    name: 'ProductTelemetryRecord',
+    declaration: 'export type ProductTelemetryRecord = OTelEventRecord;',
   },
   {
     name: 'ProfilePnpmInvocation',
@@ -6448,7 +6559,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ReadOnlyReason',
-    declaration: 'export type ReadOnlyReason = \'management-required\' | \'unaddressable\';',
+    declaration: 'export type ReadOnlyReason = \'management-required\' | \'unaddressable\' | \'unsupported-host\';',
   },
   {
     name: 'ReadResultView',
@@ -6501,6 +6612,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RemoteEventHostInfo',
     declaration: 'export interface RemoteEventHostInfo {\n    readonly home: string;\n}',
+  },
+  {
+    name: 'RemoteWorkspacePreset',
+    declaration: 'export interface RemoteWorkspacePreset {\n    presetId: string;\n    canonicalPath: string;\n}',
+  },
+  {
+    name: 'RemoteWorkspaceRequest',
+    declaration: 'export interface RemoteWorkspaceRequest {\n    host: string;\n    path: string;\n}',
   },
   {
     name: 'RenderedDocumentBytes',
@@ -6847,6 +6966,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionCancelValue {\n    readonly accepted: true;\n}',
   },
   {
+    name: 'SessionCommandAdmission',
+    declaration: 'export type SessionCommandAdmission = {\n    readonly operation: \'create\';\n    readonly sessionId: SessionId;\n    readonly cwd: string;\n    readonly existing?: SessionHeader;\n    readonly request: SessionCreateRequest;\n} | {\n    readonly operation: \'fork\' | \'rename\' | \'prompt\' | \'updateQueue\';\n    readonly sessionId: SessionId;\n    readonly cwd?: string;\n};',
+  },
+  {
     name: 'SessionControlBaseline',
     declaration: 'export interface SessionControlBaseline {\n    readonly projections: Readonly<Record<SessionId, SessionProjectionBaseline>>;\n}',
   },
@@ -6931,6 +7054,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionEventWindow {\n    session: SessionHeader;\n    inheritedEventCount: SessionLogOffset;\n    target: SessionEvent;\n    events: SessionEvent[];\n    startSeq: SessionSeq;\n    endSeq: SessionSeq;\n}',
   },
   {
+    name: 'SessionExecution',
+    declaration: 'export type SessionExecution = {\n    readonly kind: \'local\';\n} | {\n    readonly kind: \'ssh\';\n    readonly host: string;\n};',
+  },
+  {
     name: 'SessionFeedbackRecordRequest',
     declaration: 'export interface SessionFeedbackRecordRequest {\n    readonly sessionId: SessionId;\n    readonly text?: string;\n    readonly category?: FeedbackCategory;\n}',
   },
@@ -6988,7 +7115,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionHeader',
-    declaration: 'export interface SessionHeader {\n    readonly version: typeof SESSION_FORMAT_VERSION;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly parentSession?: SessionId;\n    readonly isSeeded: boolean;\n    readonly origin?: \'subagent\';\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
+    declaration: 'export interface SessionHeader {\n    readonly version: typeof SESSION_FORMAT_VERSION;\n    readonly id: SessionId;\n    readonly createdAt: number;\n    readonly cwd?: string;\n    readonly execution?: SessionExecution;\n    readonly parentSession?: SessionId;\n    readonly isSeeded: boolean;\n    readonly origin?: \'subagent\';\n    readonly delegationDepth?: number;\n    readonly agentPreset?: string;\n}',
   },
   {
     name: 'SessionHistoryRecord',
@@ -7021,6 +7148,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionLogOffset',
     declaration: 'export type SessionLogOffset = BrandedNumber<\'SessionLogOffset\'>;',
+  },
+  {
+    name: 'SessionLogOptions',
+    declaration: 'export interface SessionLogOptions {\n    exporter: OTLPExporterNodeConfigBase & {\n        url: string;\n    };\n    processor?: Omit<BatchLogRecordProcessorOptions, \'exporter\'>;\n    maxRequestBytes?: number;\n    scope: {\n        name: string;\n        version?: string;\n    };\n    resourceAttributes: Attributes;\n    onFailure: (message: string, error?: Error) => void;\n}',
+  },
+  {
+    name: 'SessionLogRecord',
+    declaration: 'export interface SessionLogRecord {\n    sessionId: SessionId;\n    event: Omit<SessionEvent, \'data\'> & {\n        data: unknown;\n    };\n    attributes?: Attributes;\n    severityNumber?: SeverityNumber;\n}',
+  },
+  {
+    name: 'SessionLogReporter',
+    declaration: 'export class SessionLogReporter {\n    constructor(options: SessionLogOptions);\n    reportSessionLog(record: SessionLogRecord): void;\n    stopPending(): void;\n    shutdown(): Promise<void>;\n}',
   },
   {
     name: 'SessionLogSnapshot',
@@ -7216,7 +7355,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionSummary',
-    declaration: 'export interface SessionSummary {\n    readonly agentAvailable: boolean;\n    readonly sessionId: SessionId;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly projections?: SessionProjectionHints;\n}',
+    declaration: 'export interface SessionSummary {\n    readonly agentAvailable: boolean;\n    readonly sessionId: SessionId;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly execution?: SessionHeader[\'execution\'];\n    readonly projections?: SessionProjectionHints;\n}',
   },
   {
     name: 'SessionSurface',
@@ -7228,7 +7367,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionTelemetryRecord',
-    declaration: 'export interface SessionTelemetryRecord {\n    channel: \'ledger\' | \'ops\';\n    time: number;\n    severity: SessionTelemetrySeverity;\n    attributes: Record<string, string | number>;\n    body: unknown;\n}',
+    declaration: 'export interface SessionTelemetryRecord {\n    sourceEvent?: {\n        sessionId: SessionId;\n        envelope: Omit<SessionEvent, \'data\'>;\n    };\n    channel: \'ledger\' | \'ops\';\n    time: number;\n    severity: SessionTelemetrySeverity;\n    attributes: Record<string, string | number>;\n    body: unknown;\n}',
   },
   {
     name: 'SessionTelemetrySeverity',
@@ -8376,7 +8515,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Workspace',
-    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
+    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly location: WorkspaceLocation;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\' | \'unknown\'>;\n}',
   },
   {
     name: 'WorkspaceArchiveSessionRequest',
@@ -8408,7 +8547,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceCreateRequest',
-    declaration: 'export interface WorkspaceCreateRequest {\n    readonly path: string;\n}',
+    declaration: 'export type WorkspaceCreateRequest = {\n    readonly path: string;\n    readonly location?: never;\n} | {\n    readonly location: WorkspaceLocation;\n    readonly path?: never;\n};',
   },
   {
     name: 'WorkspaceCreateValue',
@@ -8452,7 +8591,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceFileScope',
-    declaration: 'export interface WorkspaceFileScope {\n    readonly sessionId: SessionId;\n    readonly workspaceRoot: string;\n}',
+    declaration: 'export interface WorkspaceFileScope {\n    readonly sessionId: SessionId;\n    readonly workspaceRoot: string;\n    readonly execution?: {\n        readonly kind: \'ssh\';\n        readonly host: string;\n    };\n}',
   },
   {
     name: 'WorkspaceFileStat',
@@ -8481,6 +8620,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceInsertSessionBeforeRequest',
     declaration: 'export interface WorkspaceInsertSessionBeforeRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n    readonly beforeSessionId?: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceLocation',
+    declaration: 'export type WorkspaceLocation = {\n    readonly kind: \'local\';\n    readonly path: string;\n} | {\n    readonly kind: \'ssh\';\n    readonly host: string;\n    readonly path: string;\n};',
   },
   {
     name: 'WorkspaceOrderValue',
@@ -8512,7 +8655,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly location: WorkspaceLocation;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
 ]
 

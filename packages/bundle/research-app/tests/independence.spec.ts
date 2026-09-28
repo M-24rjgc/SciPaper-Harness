@@ -17,6 +17,7 @@ const RESEARCH_PRESET_PATCH = fileURLToPath(new URL('../presets/research.patch.y
 const layers = [
   loadOverlayPatches('web-app spec', BASE_PATCH),
   loadOverlayPatches('web-app spec', WEB_PATCH),
+  loadOverlayPatches('schedule spec', fileURLToPath(new URL('../../../experimental/schedule-bundle/cordis.patch.yml', import.meta.url))),
   loadOverlayPatches('research-app spec', fileURLToPath(new URL('../cordis.patch.yml', import.meta.url))),
 ]
 const rows = composeEntries(layers)

@@ -159,6 +159,7 @@
     "@deepseek-ai/dsh-native-command": "workspace:*",
     "@deepseek-ai/dsh-research-workbench": "workspace:*",
     "@deepseek-ai/dsh-util-workspace-path": "workspace:*",
-    "@deepseek-ai/dsh-workspace": "workspace:*"
+    "@deepseek-ai/dsh-workspace": "workspace:*",
+    "@deepseek-ai/dsh-otel": "workspace:*"
   }
 }

@@ -101,6 +101,34 @@ declare class SshConnection extends Service {
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxremoteworkspacepresets--remoteworkspacepresets"></a>
+
+### `ctx.remoteWorkspacePresets` — `RemoteWorkspacePresets`
+
+Registry owner for remotely verified and independently mounted SSH Agent presets.
+
+```ts cordis-catalog
+/** Whether this service registered the requested preset for an SSH workspace.
+ * @param id - preset identity to inspect.
+ * @returns whether the preset is mounted or currently mounting here.
+ */
+isRemotePreset(id: string): boolean
+
+/** Verify the directory, install the helper, and register its Agent preset.
+ * @param request - configured OpenSSH alias and absolute POSIX workspace.
+ * @returns the mounted preset identity.
+ */
+async ensure(request: RemoteWorkspaceRequest): Promise<string>
+
+/** Resolve the canonical remote path and mounted preset for a Session header.
+ * @param request - configured OpenSSH alias and absolute POSIX workspace.
+ * @returns preset identity and verified canonical directory.
+ */
+async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset>
+```
+
+Source: [`packages/ssh/remote-workspace-presets/src/index.ts`](../../packages/ssh/remote-workspace-presets/src/index.ts)
+
 <a id="ctxssh--sshconnection"></a>
 
 ### `ctx.ssh` — `SshConnection`

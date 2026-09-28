@@ -24,7 +24,7 @@ export interface Config {
 
 /** Live preferences projected to the browser. */
 export const Config = z.object({
-  [BUSY_ENTER_FIELD]: ConversationSettingsFields[BUSY_ENTER_FIELD].volatile(),
+  busyEnter: ConversationSettingsFields[BUSY_ENTER_FIELD].volatile(),
   showTrajectoryWithoutDeveloperTools: z.boolean().default(false),
 })
 

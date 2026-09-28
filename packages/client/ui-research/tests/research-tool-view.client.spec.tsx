@@ -109,7 +109,9 @@ SNAPSHOT.projects[0]!.sessionId = SESSION
 
 /** The visible text of a row, one part per element, the way a reader meets them. */
 function parts(element: Element | null): string[] {
-  return [...element?.querySelectorAll('span') ?? []].map(span => span.textContent ?? '').filter(text => text !== '')
+  return [...element?.querySelectorAll('span') ?? []]
+    .filter(span => span.childElementCount === 0 && span.closest('[aria-hidden="true"]') === null)
+    .map(span => span.textContent ?? '').filter(text => text !== '')
 }
 
 const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }

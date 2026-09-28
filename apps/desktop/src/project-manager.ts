@@ -35,6 +35,8 @@ const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const RESEARCH_BUNDLE = '@deepseek-ai/dsh-research-app'
 const CUA_BUNDLE = '@deepseek-ai/dsh-computer-use-cua-bundle'
+const SCHEDULE_BUNDLE = '@deepseek-ai/dsh-experimental-schedule-bundle'
+const SCHEDULE_MIGRATION = 'schedule-bundle-v0.2.migrated'
 const WEB_PROFILE: ProfileTemplate = { ...PROFILE_TEMPLATES.web as ProfileTemplate,
   bundles: [...new Set([...(PROFILE_TEMPLATES.web as ProfileTemplate).bundles, RESEARCH_BUNDLE, CUA_BUNDLE])] }
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
@@ -186,19 +188,25 @@ export function createPluginProfile(projectDir: string): void {
   if (!Array.isArray(bundles) || bundles.some(bundle => typeof bundle !== 'string')) {
     throw new Error('SciPaper desktop: profile bundles must be an array of package names')
   }
-  if (bundles.includes(RESEARCH_BUNDLE) && bundles.includes(CUA_BUNDLE)) return
+  const scheduleMarker = join(projectDir, SCHEDULE_MIGRATION)
+  const migrateSchedule = !existsSync(scheduleMarker)
+  const requiredBundles = [RESEARCH_BUNDLE, CUA_BUNDLE, ...migrateSchedule ? [SCHEDULE_BUNDLE] : []]
+  if (requiredBundles.every(bundle => bundles.includes(bundle))) {
+    if (migrateSchedule) writeFileSync(scheduleMarker, '1\n', { flag: 'wx', mode: 0o600 })
+    return
+  }
   const web = bundles.indexOf('@deepseek-ai/dsh-web-app')
   if (web < 0) throw new Error('SciPaper desktop: profile must include the Web application bundle')
   const updated = [...bundles]
   let anchor = web
-  for (const required of [RESEARCH_BUNDLE, CUA_BUNDLE]) {
+  for (const required of requiredBundles) {
     const present = updated.indexOf(required)
     if (present !== -1) { anchor = present; continue }
     updated.splice(anchor + 1, 0, required)
     anchor += 1
   }
   const path = join(projectDir, 'package.json')
-  const backup = join(projectDir, 'package.before-research-bundle.json')
+  const backup = join(projectDir, migrateSchedule ? 'package.before-dsh-0.2.json' : 'package.before-research-bundle.json')
   if (!existsSync(backup)) copyFileSync(path, backup, constants.COPYFILE_EXCL)
   const temporary = join(projectDir, `package.${randomUUID()}.tmp`)
   try {
@@ -206,6 +214,8 @@ export function createPluginProfile(projectDir: string): void {
       profile: { ...profile, bundles: updated },
     } }, undefined, 2)}\n`, { flag: 'wx', mode: 0o600 })
     renameSync(temporary, path)
+    // Commit the migration only after the manifest. A later user disable must survive every restart.
+    if (migrateSchedule) writeFileSync(scheduleMarker, '1\n', { flag: 'wx', mode: 0o600 })
   } finally {
     if (existsSync(temporary)) unlinkSync(temporary)
   }

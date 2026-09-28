@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-agent-default-model",
   "description": "Default model selection shared by Agent entry points",
-  "version": "0.2.0-alpha.4",
+  "version": "0.2.0-alpha.5",
   "publishConfig": {
     "access": "public"
   },
@@ -44,8 +44,8 @@
   "scipaper": {
     "kernel": {
       "name": "deepseek-harness",
-      "version": "0.1.7-rc.2",
-      "revision": "477b4f420553e8a52c2fbccc464d7561b239c443"
+      "version": "0.2.0-rc.1",
+      "revision": "4878cdabd87d4041bdaff61d04c966883b9fd07a"
     }
   }
 }

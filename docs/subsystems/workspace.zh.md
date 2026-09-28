@@ -494,7 +494,7 @@ Durable workspace registry. Startup waits for `sessionPersistence`, builds one c
  * @param title - Display title used only when a new record is created.
  * @returns the existing or newly durable workspace.
  */
-async create(path: string, title?: string): Promise<Workspace>
+async create(path: string | WorkspaceLocation, title?: string): Promise<Workspace>
 
 /**
  * Initialize the default Workspace only while both the registry and Session
@@ -601,7 +601,7 @@ unpinSession(sessionId: SessionId): Promise<void>
  * @param path - Existing directory path in a fully qualified spelling.
  * @returns the workspace owning the canonical path, when one exists.
  */
-async resolveByPath(path: string): Promise<Workspace | undefined>
+async resolveByPath(path: string | WorkspaceLocation): Promise<Workspace | undefined>
 ```
 
 Types: [SessionId](core.zh.md)

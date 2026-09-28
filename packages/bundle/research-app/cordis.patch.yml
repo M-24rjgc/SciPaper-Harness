@@ -16,6 +16,10 @@
 
 - id: session-telemetry-otel
   disabled: true
+- id: desktop-product-telemetry
+  disabled: true
+- id: product-analytics
+  disabled: true
 - id: plugin-package-inventory-deepseek
   disabled: true
 - id: session-log-deepseek
@@ -40,12 +44,6 @@
 
 - id: session-log-download
   disabled: true
-- id: time-context
-  disabled: false
-- id: schedule
-  disabled: false
-- id: ui-schedule
-  disabled: false
 - id: ui-conversation
   config:
     showTrajectoryWithoutDeveloperTools: true

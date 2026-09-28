@@ -2760,7 +2760,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "path": {
       "type": "string",
@@ -2878,7 +2878,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "board": {
       "description": "board-update: the layout, or the parts to change"
@@ -2906,7 +2906,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
   "properties": {
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "scope": {
       "type": "string",
@@ -2934,7 +2934,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "environment": {
       "description": "the environment description"
@@ -2969,7 +2969,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "paths": {
       "type": "array",
@@ -3031,7 +3031,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "requestId": {
       "type": "string",
@@ -3084,7 +3084,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "query": {
       "type": "string",
@@ -3145,7 +3145,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "artifactId": {
       "type": "string",
@@ -3314,7 +3314,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "title": {
       "type": "string",

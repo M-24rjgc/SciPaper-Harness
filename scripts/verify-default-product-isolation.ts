@@ -1,7 +1,8 @@
 /**
  * Keep experimental packages outside default installations, runtime imports, and shipped compositions.
  * The one declared exception is a bundle the launcher names in `OPTIONAL_BUNDLES`: shipped for the person to
- * switch on, selected by no shipped template, its own dependency graph outside the default product's.
+ * switch on, its own dependency graph outside the default product's. SciPaper's research templates
+ * select the official Schedule bundle by default; its dependencies are still fully checked.
  */
 
 import { existsSync, globSync, readFileSync, statSync } from 'node:fs'
@@ -86,6 +87,8 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   const profilePath = resolve(root, PROFILE_SOURCE)
   const selection = existsSync(profilePath) ? profilePackages(readFileSync(profilePath, 'utf8')) : undefined
   const optionalBundles = new Set(selection?.optionalBundles ?? [])
+  const researchScheduleBundle = selection?.packages.includes('@deepseek-ai/dsh-research-app')
+    ? '@deepseek-ai/dsh-experimental-schedule-bundle' : undefined
   for (const name of optionalBundles) {
     if (cli?.manifest.dependencies?.[name] === undefined) {
       failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must be a runtime dependency of apps/cli`)
@@ -107,8 +110,8 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   const sources = new Set<string>()
   const configs = new Set<string>()
   let webPluginCount = 0
-  const isExperimental = (pkg: Package): boolean => pkg.manifest.name.startsWith(EXPERIMENTAL_PREFIX)
-    || display(pkg.directory).startsWith('packages/experimental/')
+  const isExperimental = (pkg: Package): boolean => pkg.manifest.name !== researchScheduleBundle
+    && (pkg.manifest.name.startsWith(EXPERIMENTAL_PREFIX) || display(pkg.directory).startsWith('packages/experimental/'))
   const add = (pkg: Package, origin: string): void => {
     if (isExperimental(pkg)) {
       failures.push(`${origin} -> ${pkg.manifest.name}: default product must not include experimental packages`)
@@ -136,7 +139,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       return
     }
     const packageName = barePackageName(name)
-    if (packageName.startsWith(EXPERIMENTAL_PREFIX)) {
+    if (packageName.startsWith(EXPERIMENTAL_PREFIX) && packageName !== researchScheduleBundle) {
       failures.push(`${origin} -> ${name}: default product must not include experimental packages`)
       return
     }
@@ -246,7 +249,9 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       if (packages.get(name)?.manifest.dsh?.bundle?.patch === undefined) {
         failures.push(`${PROFILE_SOURCE}: default bundle ${name} must declare dsh.bundle.patch`)
       }
-      if (optionalBundles.has(name)) failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
+      if (optionalBundles.has(name) && name !== researchScheduleBundle) {
+        failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
+      }
     }
     const webLayers = selection.webBundles.flatMap((name) => {
       const pkg = packages.get(name)

@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { render, cleanup } from '@testing-library/react'
 import { $getRoot, $isTextNode, PASTE_COMMAND } from 'lexical'
-import { Context } from '@deepseek-ai/cordis'
 import { projectUserText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { registerComposerKeymap } from '../src/client/input/editor/keymap.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -23,7 +22,6 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { createConversationStore } from '../src/client/stores.ts'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
-import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -148,16 +146,10 @@ async function bench(config: ConversationConfig = {}) {
 
 describe('Conversation inject API', () => {
   it('uses the Host page injection to expose trajectory after browser boot with Coding Tools off', async () => {
-    const host = new Context()
-    const fiber = host.plugin({ Config: HostConfig, apply: applyHost }, { showTrajectoryWithoutDeveloperTools: true })
-    await fiber.await()
-    const rows: Array<{ kind: string; name?: string; value?: unknown }> = []
-    host.emit('webserver/index-inject', rows as never)
-    const injection = rows.find(row => row.kind === 'global' && row.name === '__DSH_CONVERSATION__')
-    expect(injection?.value).toEqual({ showTrajectoryWithoutDeveloperTools: true })
+    // config.host.spec.ts verifies the Host producer and its disposal.
     const page = globalThis as { __DSH_CONVERSATION__?: unknown }
     const previous = page.__DSH_CONVERSATION__
-    page.__DSH_CONVERSATION__ = injection?.value
+    page.__DSH_CONVERSATION__ = { showTrajectoryWithoutDeveloperTools: true }
     try {
       const b = await bench()
       try {
@@ -174,7 +166,6 @@ describe('Conversation inject API', () => {
     } finally {
       if (previous === undefined) delete page.__DSH_CONVERSATION__
       else page.__DSH_CONVERSATION__ = previous
-      await fiber.dispose()
     }
   })
 

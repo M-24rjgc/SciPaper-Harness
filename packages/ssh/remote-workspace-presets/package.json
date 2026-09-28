@@ -1,8 +1,10 @@
 {
   "name": "@deepseek-ai/dsh-remote-workspace-presets",
   "description": "Verified SSH workspaces and dynamically mounted remote Agent presets",
-  "version": "0.2.0-alpha.4",
-  "publishConfig": { "access": "public" },
+  "version": "0.2.0-alpha.5",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/M-24rjgc/SciPaper-Harness.git",
@@ -12,11 +14,18 @@
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
   "exports": {
-    ".": { "types": "./lib/types/index.d.ts", "default": "./lib/index.js" },
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
-  "files": ["lib/index.js", "lib/provision-*.js", "lib/types/**/*.d.ts"],
+  "files": [
+    "lib/index.js",
+    "lib/provision-*.js",
+    "lib/types/**/*.d.ts"
+  ],
   "license": "MIT",
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:~",
@@ -40,8 +49,8 @@
   "scipaper": {
     "kernel": {
       "name": "deepseek-harness",
-      "version": "0.1.7-rc.2",
-      "revision": "477b4f420553e8a52c2fbccc464d7561b239c443"
+      "version": "0.2.0-rc.1",
+      "revision": "4878cdabd87d4041bdaff61d04c966883b9fd07a"
     }
   }
 }

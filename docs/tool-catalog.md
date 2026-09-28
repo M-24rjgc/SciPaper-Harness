@@ -2748,7 +2748,7 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "path": {
       "type": "string",
@@ -2866,7 +2866,7 @@ The experiment board the user watches beside the chat. It already shows every ru
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "board": {
       "description": "board-update: the layout, or the parts to change"
@@ -2894,7 +2894,7 @@ Check the paper as it is on disk: citations resolve and are complete, every numb
   "properties": {
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "scope": {
       "type": "string",
@@ -2922,7 +2922,7 @@ Create or bind the Python environment experiments run in. environment {environme
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "environment": {
       "description": "the environment description"
@@ -2957,7 +2957,7 @@ Sources and citations. import {paths}: snapshot files (PDF, DOCX, CSV, JSON, tex
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "paths": {
       "type": "array",
@@ -3019,7 +3019,7 @@ Independent experiment runs that survive the chat and the app. experiment {reque
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "requestId": {
       "type": "string",
@@ -3072,7 +3072,7 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "query": {
       "type": "string",
@@ -3133,7 +3133,7 @@ visual-review {artifactId}: send rendered pages to a separate vision model — o
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "artifactId": {
       "type": "string",
@@ -3302,7 +3302,7 @@ The research around your working directory. current: the brief — the mode and 
     },
     "projectId": {
       "type": "string",
-      "description": "Optional; defaults to the research project containing your working directory."
+      "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "title": {
       "type": "string",

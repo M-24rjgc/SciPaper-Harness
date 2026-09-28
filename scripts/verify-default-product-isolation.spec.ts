@@ -133,6 +133,28 @@ describe('default product isolation', () => {
     expect(verifyDefaultProductIsolation(root).failures.join('\n')).toContain(`@deepseek-ai/dsh dependencies -> ${experimental}`)
   })
 
+  it('allows research to select the official Schedule bundle while checking its dependency graph', () => {
+    const root = fixture()
+    const schedule = '@deepseek-ai/dsh-experimental-schedule-bundle'
+    const research = '@deepseek-ai/dsh-research-app'
+    write(root, 'packages/experimental/schedule-bundle/package.json', {
+      name: schedule, icon: './icon.svg', exports: { './locale/*.json': './locale/*.json' },
+      dependencies: { [core]: 'workspace:^' }, dsh: { bundle: { patch: './cordis.patch.yml' } },
+    })
+    write(root, 'packages/experimental/schedule-bundle/cordis.patch.yml', [])
+    write(root, 'packages/bundle/research-app/package.json', {
+      name: research, dsh: { bundle: { patch: './cordis.patch.yml' } },
+    })
+    write(root, 'packages/bundle/research-app/cordis.patch.yml', [])
+    manifest(root, 'apps/cli/package.json', { dependencies: { [core]: 'workspace:^', [schedule]: 'workspace:^' } })
+    write(root, profile, `export const PROFILE_TEMPLATES = { web: { bundles: ['${base}', '${schedule}', '${research}'] } }\n`
+      + `export const DEFAULT_PROFILE_BUNDLES = ['${base}']\n`
+      + `export const OPTIONAL_BUNDLES = ['${schedule}']\n`)
+    expect(verifyDefaultProductIsolation(root).failures).toEqual([])
+    manifest(root, 'packages/experimental/schedule-bundle/package.json', { dependencies: { [experimental]: 'workspace:^' } })
+    expect(verifyDefaultProductIsolation(root).failures.join('\n')).toContain(`${schedule} dependencies -> ${experimental}`)
+  })
+
   it.each(['dependencies', 'optionalDependencies', 'peerDependencies'])(
     'rejects transitive experimental %s',
     (section) => {

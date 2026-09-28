@@ -1,4 +1,5 @@
 /** Registers the sidebar shell and global panel navigation. */
+import type {} from '@deepseek-ai/dsh-client-product-analytics/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -67,7 +68,10 @@ export function apply(ctx: ClientContext): void {
     startSession: (workspaceId) => { workspaceNavigation.startSession(workspaceId) },
     ...((globalThis as { __DSH_SIDEBAR__?: { brandAction?: unknown } }).__DSH_SIDEBAR__?.brandAction === 'none' ? { brandAction: 'none' as const } : {}),
     toggleSidebar: () => { ctx.layout.toggleSidebar() },
-    selectPanel: (id) => { ctx.layout.selectPanel(id) },
+    selectPanel: (id) => {
+      if (id === 'plugins' || id === 'schedules') ctx.get('productAnalytics')?.track('sidebar_menu_click', { menu_name: id === 'plugins' ? 'plugin' : 'cron' })
+      ctx.layout.selectPanel(id)
+    },
     hooks: { panels, shortcuts: ctx.shortcuts.catalog },
   })
   ctx.slots.inject('sidebar', () => ctx.slots.register({
