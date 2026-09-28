@@ -9,11 +9,12 @@ import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import * as DomainPlugin from '@deepseek-ai/dsh-storage-domain'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, parse, toNamespacedPath } from 'node:path'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { Session } from '@deepseek-ai/dsh-session'
+import { Session } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
@@ -55,6 +56,11 @@ vi.mock('../src/process.ts', async (original) => {
     runProcess: async (command: string, args: readonly string[], options: ProcessOptions = {}): Promise<ProcessResult> => {
       processes.calls.push({ command, args: [...args], options })
       const joined = args.join(' ')
+      if (args[0] === '--version' && /bibtex/.test(path.basename(command))) return ok('BibTeX 0.99d (TeX Live 2026)')
+      if (args[0] === '--version' && /latex/.test(path.basename(command))) {
+        const engine = path.basename(command).startsWith('xe') ? 'XeTeX' : path.basename(command).startsWith('lua') ? 'LuaHBTeX' : 'pdfTeX'
+        return ok(`${engine} (TeX Live 2026)`)
+      }
       if (args[0] === '-c' && joined.includes('importlib.metadata')) return ok(JSON.stringify({ executable: command, version: '3.12' }))
       if (args[0] === '-c') return ok('ready')
       if (joined.includes('experiment_runner.py')) {
@@ -102,7 +108,7 @@ vi.mock('../src/process.ts', async (original) => {
         const source = await read(path.resolve(options.cwd ?? '.', `${stem}.tex`), 'utf8')
         if (source.includes('biblatex')) await write(path.join(build, `${stem}.bcf`), 'bcf')
         else if (source.includes('\\bibliography')) await write(path.join(build, `${stem}.aux`), '\\bibdata{refs}')
-        await write(path.join(build, `${stem}.pdf`), '%PDF')
+        await write(path.join(build, `${stem}.pdf`), '%PDF-1.7\nfixture content\n%%EOF\n')
         if (!processes.noLog) await write(path.join(build, `${stem}.log`), 'LaTeX Warning: Citation `x\' undefined\nOverfull \\hbox')
         return ok('')
       }
@@ -151,7 +157,8 @@ function hold(kind: string): () => void {
 afterEach(async () => {
   vi.unstubAllGlobals()
   await ctx?.fiber.dispose(); ctx = undefined
-  if (root) await rm(root, { recursive: true, force: true }); root = undefined
+  vi.unstubAllEnvs()
+  if (root) await rm(root, { recursive: true }); root = undefined
 })
 
 /** A registered folder as the research service sees it. */
@@ -198,9 +205,21 @@ interface BootOptions {
   researchHome?: string
   /** Independent tool-family plugin declarations. */
   toolModules?: ResearchToolModule[][]
+  /** Explicit home alias used to exercise protected legacy locations on restart. */
+  dataHome?: string
 }
 
+/** Seed histories persist between Loader restarts, independent of attached Session instances. */
+const exampleHistories = new WeakMap<MemoryMediaPool, Map<string, readonly SessionEvent[]>>()
+/** Observe official append results instead of invoking deprecated synchronous Session history readers. */
+const exampleAppendReceipts = vi.spyOn(Session.prototype, 'append')
+
 async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<Harness> {
+  if (root === undefined) throw new Error('Loader fixture needs an isolated root')
+  vi.stubEnv('DSH_HOME', options.dataHome ?? join(root, 'dsh-home'))
+  for (const engine of ['pdflatex', 'xelatex', 'lualatex']) {
+    await write(join(root, 'tex', process.platform === 'win32' ? `${engine}.exe` : engine), '')
+  }
   ctx = new Context()
   ctx.baseUrl = pathToFileURL(root ?? '').href + '/'
   const messages: typeof logs = []
@@ -215,6 +234,15 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   const agents: FakeAgent[] = []
   const goals = new Map<string, GoalView | Error>()
   const live: FakeSession[] = [...options.live ?? []]
+  const attachedExamples = new Map<string, Session>()
+  const initialPrefixes = new WeakMap<Session, readonly SessionEvent[]>()
+  const histories = exampleHistories.get(pool) ?? new Map<string, readonly SessionEvent[]>()
+  exampleHistories.set(pool, histories)
+  const exampleEvents = (session: Session): readonly SessionEvent[] => [
+    ...initialPrefixes.get(session) ?? [],
+    ...exampleAppendReceipts.mock.results.flatMap((result, index) =>
+      exampleAppendReceipts.mock.contexts[index] === session && result.type === 'return' ? [result.value] : []),
+  ]
   const applied = new Map<string, string>()
   const turns = new Set<string>()
   const archived: string[] = []
@@ -262,7 +290,14 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         live.push(session)
         c.emit('session/created', session as unknown as Session)
       }
-      c.provide('sessions', { list: () => [...live] } as unknown as Context['sessions'])
+      c.provide('sessions', {
+        list: () => [...live],
+        get: (id: string) => attachedExamples.get(id),
+        flush: async (session: Session) => {
+          histories.set(session.id, exampleEvents(session))
+          return true
+        },
+      } as unknown as Context['sessions'])
       c.provide('permissionPresets', {
         names: options.presets ?? ['read-only', 'workspace-write', 'research-auto'],
         set: (session: FakeSession, name: string) => {
@@ -271,12 +306,28 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
       } as unknown as Context['permissionPresets'])
       c.provide('sessionController', {
-        create: async ({ workspaceId, agentPreset }: { workspaceId: WorkspaceId; agentPreset?: string }) => {
+        create: async (
+          { workspaceId, agentPreset, sessionId }: { workspaceId: WorkspaceId; agentPreset?: string; sessionId?: SessionId },
+        ) => {
+          if (sessionId !== undefined) {
+            if (!attachedExamples.has(sessionId)) {
+              const session = Session.create(sessionId, histories.get(sessionId))
+              initialPrefixes.set(session, histories.get(sessionId) ?? [])
+              attachedExamples.set(sessionId, session)
+              open(session)
+            }
+            return { sessionId }
+          }
           const id = `session-${sessions.length + 1}`
           sessions.push(id)
           sessionPresets.push(agentPreset)
           open({ id, header: { cwd: workspaceId.slice('workspace:'.length) } })
           return { sessionId: id as SessionId }
+        },
+        inspect: async (id: string) => {
+          const session = attachedExamples.get(id)
+          if (session === undefined) throw new Error(`No fixture Session: ${id}`)
+          return { meta: session.header, events: exampleEvents(session) }
         },
         selectModel: async () => {},
         prompt: async (request: unknown) => { prompts.push(request) },
@@ -334,6 +385,87 @@ function logged(type: 'warn' | 'error', text: string): boolean {
 }
 
 describe('the research service records; it never drives the agent', () => {
+  it('seeds complete examples despite a hidden preference, protects an aliased home, and recovers on restart without duplicate messages', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-shipped-examples-')))
+    const home = join(root, 'home'), alias = join(root, 'selected-home'), pool = new MemoryMediaPool()
+    await mkdir(home)
+    await symlink(home, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    try {
+      const first = await boot(pool, { dataHome: alias })
+      await first.service.configure({ showExamples: false })
+      const snapshots = await Promise.all(Array.from({ length: 4 }, () => first.service.snapshot()))
+      const projects = snapshots[0]!.projects
+      expect(projects).toHaveLength(2)
+      for (const snapshot of snapshots) {
+        expect(snapshot.projects.map(project => project.id)).toEqual(projects.map(project => project.id))
+        expect(snapshot.preferences.showExamples).toBe(false)
+      }
+      const inspected = new Map<string, readonly SessionEvent[]>()
+      for (const project of projects) {
+        expect(project.example).toBe(true)
+        expect(first.applied.get(project.sessionId!)).toBe('read-only')
+        const events = (await ctx!.sessionController.inspect(project.sessionId!)).events
+        inspected.set(project.sessionId!, events)
+        expect(events.filter(event => event.type === 'assistant/message')).toHaveLength(1)
+        expect(events.filter(event => event.type === 'user/message')).toHaveLength(1)
+        const artifactId = project.artifacts.find(artifact => artifact.path === 'paper/paper.zh.md')!.id
+        expect((await first.service.execute({ action: 'read-artifact', projectId: project.id, artifactId }, signal)).content)
+          .toContain('合成')
+        for (const actor of ['user', 'agent'] as const) {
+          await expect(first.service.execute({ action: 'rename', projectId: project.id, title: 'Changed' }, signal, actor))
+            .rejects.toThrow(/read-only/)
+        }
+      }
+      await first.service.configure({ showExamples: true })
+      expect((await first.service.snapshot()).projects.map(project => project.id)).toEqual(projects.map(project => project.id))
+      for (const [id, events] of inspected) expect((await ctx!.sessionController.inspect(id as SessionId)).events).toEqual(events)
+      const removed = projects[0]!
+      await rm(join(removed.root, 'paper/main.pdf'))
+      await ctx!.fiber.dispose(); ctx = undefined
+      const second = await boot(pool, { dataHome: alias })
+      const restored = await second.service.snapshot()
+      expect(restored.preferences.showExamples).toBe(true)
+      expect(restored.projects.map(project => project.id)).toEqual(projects.map(project => project.id))
+      expect((await readFile(join(removed.root, 'paper/main.pdf'))).subarray(0, 5).toString()).toBe('%PDF-')
+      for (const project of restored.projects) {
+        expect(project.example).toBe(true)
+        const events = (await ctx!.sessionController.inspect(project.sessionId!)).events
+        expect(events.filter(event => event.type === 'user/message' || event.type === 'assistant/message'))
+          .toEqual(inspected.get(project.sessionId!)!.filter(event => event.type === 'user/message' || event.type === 'assistant/message'))
+      }
+    } finally {
+      await ctx?.fiber.dispose(); ctx = undefined
+      await unlink(alias)
+    }
+  })
+
+  it('does not rewrite legacy example ledger or inline evidence while adding examples to an existing trial home', async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'research-legacy-example-')))
+    const pool = new MemoryMediaPool(), first = await boot(pool)
+    const legacy = await first.service.create({ title: 'Legacy example', root: join(root, 'demo/old'), brief: 'Existing material' })
+    await write(join(legacy.root, 'notes.md'), 'legacy source\n')
+    await first.service.execute({ action: 'import', projectId: legacy.id, paths: ['notes.md'] }, signal)
+    await ctx!.fiber.dispose(); ctx = undefined
+    const tables = [...pool.media.values()].flatMap((medium) => {
+      const table = medium.tables.get('projects')
+      return table === undefined ? [] : [table]
+    })
+    const stored = tables[0]!.get(legacy.id) as ResearchProject
+    const inline = { ...stored, evidence: stored.evidence.map(evidence => ({ ...evidence, chunks: [{ text: 'legacy inline text', locator: { line: 1 } }] })) }
+    for (const table of tables) table.set(legacy.id, inline)
+    await rm(join(legacy.root, '.research/chunks'), { recursive: true })
+    const second = await boot(pool, { dataHome: root })
+    const snapshot = await second.service.snapshot()
+    expect(snapshot.projects.filter(project => project.example === true)).toHaveLength(3)
+    for (const table of tables) expect(table.get(legacy.id)).toEqual(inline)
+    expect(existsSync(join(legacy.root, '.research/chunks'))).toBe(false)
+    expect(await readFile(join(legacy.root, 'notes.md'), 'utf8')).toBe('legacy source\n')
+    expect((await second.service.execute({ action: 'search-evidence', projectId: legacy.id, query: 'legacy inline' }, signal)).content)
+      .toContain('legacy inline text')
+    await expect(second.service.execute({ action: 'set-mode', projectId: legacy.id, mode: 'general' }, signal))
+      .rejects.toThrow(/read-only/)
+  })
+
   it('loads independent tool families and removes only a disabled plugin contribution', async () => {
     root = await mkdtemp(join(tmpdir(), 'research-modules-'))
     const { service } = await boot(new MemoryMediaPool(), { toolModules: [['project'], ['evidence'], ['checks']] })
@@ -385,7 +517,8 @@ describe('the research service records; it never drives the agent', () => {
     expect(first.prompts).toEqual([])
     await ctx!.fiber.dispose(); ctx = undefined
     const second = await boot(pool)
-    expect((await second.service.snapshot()).projects.map(item => item.title).sort()).toEqual(['Bound', 'Study', 'Twin'])
+    expect((await second.service.snapshot()).projects.filter(item => item.example !== true).map(item => item.title).sort())
+      .toEqual(['Bound', 'Study', 'Twin'])
     expect(second.prompts).toEqual([])
     expect(await second.service.projectAt(join(p.root, 'paper', 'nested'))).toBeUndefined()
     expect((await second.service.projectAt(join(p.root, 'figures')))?.id).toBe(p.id)
@@ -813,7 +946,9 @@ describe('the research service records; it never drives the agent', () => {
       expect(applied.size).toBe(0)
       // Conversations already live when the service starts are aligned then.
       await ctx!.fiber.dispose(); ctx = undefined
-      const restarted = await boot(pool, { live: [{ id: 'resumed', header: { cwd: p.root } }, { id: 'demo-resumed', header: { cwd: example.root } }] })
+      const restarted = await boot(pool, {
+        dataHome: root, live: [{ id: 'resumed', header: { cwd: p.root } }, { id: 'demo-resumed', header: { cwd: example.root } }],
+      })
       expect(Object.fromEntries(restarted.applied)).toEqual({ resumed: 'workspace-write' })
     } finally {
       vi.unstubAllEnvs()
@@ -1144,7 +1279,8 @@ describe('the research service records; it never drives the agent', () => {
     expect(compiled.content).toMatch(/Overfull/)
     const project = service.getProject(p.id)
     expect(project.artifacts.map(a => a.path)).toContain('paper/main.tex')
-    const env = processes.calls.find(call => call.command.endsWith(`xelatex${process.platform === 'win32' ? '.exe' : ''}`))?.options as { env: Record<string, string> }
+    const env = processes.calls.find(call => call.command.endsWith(`xelatex${process.platform === 'win32' ? '.exe' : ''}`)
+      && call.args[0] !== '--version')?.options as { env: Record<string, string> }
     expect(env.env.TEXINPUTS).not.toMatch(/\.research/)
     expect(env.env.BSTINPUTS).toBe(env.env.BIBINPUTS)
     const rendered = await run({ action: 'render-pages', maxPages: 2 })
@@ -1155,7 +1291,7 @@ describe('the research service records; it never drives the agent', () => {
     await expect(run({ action: 'compile', artifactId: 'nope', engine: 'pdflatex' })).rejects.toThrow(/LaTeX manuscript/)
     processes.compileFails = true
     const failed = await run({ action: 'compile', path: 'paper/main.tex', engine: 'pdflatex' })
-    expect(failed.message).toMatch(/No PDF was produced/)
+    expect(failed.message).toMatch(/PDF compilation failed/)
     processes.compileFails = false
     const exported = await run({ action: 'export' })
     expect(exported.message).toMatch(/Draft exported/)
@@ -1185,7 +1321,9 @@ describe('the research service records; it never drives the agent', () => {
     processes.passesBeforeFailure = 1
     processes.noLog = true
     const partial = await run({ action: 'compile', engine: 'pdflatex' })
-    expect(partial.message).toMatch(/PDF built/)
+    expect(partial.message).not.toMatch(/PDF built/)
+    expect(service.getProject(p.id).compilations.at(-1)?.status).toBe('failed')
+    expect(partial.path).toBeUndefined()
     expect(partial.content).toMatch(/Emergency stop/)
     expect(processes.calls.some(call => call.command.includes('bibtex'))).toBe(true)
     processes.passesBeforeFailure = undefined
@@ -1213,11 +1351,11 @@ describe('the research service records; it never drives the agent', () => {
       '! Font \\T1/LinBiolinumT-TLF/m/n/10=LinBiolinumT-tlf-t1 at 10.0pt not loadable: Metric (TFM) file not found.',
       '! LaTeX Error: File `example-image-plain\' not found.',
     )
-    expect((await compileMain()).message).toMatch(/No PDF was produced/)
+    expect((await compileMain()).message).toMatch(/PDF compilation failed/)
     expect(installs.mock.calls.map(call => [call[0], call[2]])).toEqual([['LinBiolinumT-tlf-t1.tfm', false], ['example-image-plain.pdf', false]])
     installs.mockClear()
     processes.latexFailures.push('! LaTeX Error: File `venue.sty\' not found.', '! LaTeX Error: File `venue.sty\' not found.')
-    expect((await compileMain()).message).toMatch(/No PDF was produced/)
+    expect((await compileMain()).message).toMatch(/PDF compilation failed/)
     expect(installs.mock.calls.map(call => [call[0], call[2]])).toEqual([['venue.sty', true]])
   })
 

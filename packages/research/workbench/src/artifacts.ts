@@ -1,7 +1,7 @@
 /** Evidence extraction, editable artifact revisions, LaTeX, page rendering and submission export. */
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, open, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { basename, delimiter, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { zipSync, strToU8 } from 'fflate'
 import { z } from 'zod'
@@ -11,6 +11,7 @@ import { canonicalPath } from './drafts.ts'
 import { atomicWrite, errorText, hashFile, isAttachment, isBinaryFile, isInside, isMetadataPath, keepRevision, projectPath, protectedDirectories, readText } from './files.ts'
 import { bibliographyFiles, findMainManuscript, flattenPaper, graphicReferences, listProjectFiles, paperDigest } from './latex.ts'
 import { checked, runProcess } from './process.ts'
+import type { ProcessResult } from './process.ts'
 import { invalidate, validateLinks } from './project.ts'
 import { locatorSchema } from './schema.ts'
 import type { ArtifactId, ArtifactRecord, CheckReport, CompileRecord, EvidenceId, EvidenceRecord, ResearchCommand, ResearchProject, VisualReview } from './types.ts'
@@ -369,13 +370,13 @@ async function searchPath(project: ResearchProject, from: string): Promise<strin
 
 /**
  * Compile a manuscript and its bibliography in an isolated build directory.
- * The compile succeeded when it produced a PDF; unresolved references and
+ * The compile succeeds when every required process succeeds and produces a PDF; unresolved references and
  * citations are reported in its diagnostics and by the checks. Writes build
  * files without mutating the project record, so it runs without holding the project lock.
  * @param project - project snapshot locating the sources and private build directory.
  * @param artifact - manuscript revision selected by compileTarget.
  * @param engine - TeX engine to invoke.
- * @param components - provider of the managed TeX distribution.
+ * @param components - provider of the selected TeX distribution.
  * @param signal - cancellation for compilation and dependency installation.
  * @param limit - per-source byte ceiling used when flattening the manuscript.
  * @returns compile result and diagnostics for the source digest observed at launch.
@@ -392,7 +393,8 @@ export async function compilePaper(
   const digest = await paperDigest(project.root, await flattenPaper(project.root, artifact.path, limit))
   const build = await projectPath(project.root, `.research/build/${artifact.id}/${artifact.revision}/${digest.slice(0, 16)}`)
   await mkdir(build, { recursive: true })
-  const bin = await components.latex(signal)
+  const runtime = await components.latexRuntime(signal, engine)
+  const bin = runtime.bin
   // TeX Live's Windows environment conversion rejects some Unicode absolute paths.
   // Keep TeX arguments relative to the working directory; Node still owns absolute paths.
   const bibPath = await searchPath(project, build)
@@ -403,60 +405,101 @@ export async function compilePaper(
     BSTINPUTS: bibPath,
   }
   const outputDirectory = relative(dirname(source), build).replaceAll('\\', '/')
-  const args = ['-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', `-output-directory=${outputDirectory}`, basename(source)]
+  const args = [
+    ...runtime.compilerArgs, '-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
+    `-output-directory=${outputDirectory}`, basename(source),
+  ]
   const pdf = join(build, `${basename(source, '.tex')}.pdf`)
   // A PDF left by an earlier compile of the same inputs must not pass for this one.
-  await rm(pdf, { force: true })
+  try { await rm(pdf) } catch (error) {
+    if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error
+  }
   let log = ''
+  let succeeded = false
+  let failure: string | undefined
+  const failed = (stage: string, code: number): void => { failure = `Error: ${stage} failed (exit code ${code})` }
   const installed = new Set<string>()
-  for (let attempt = 0; attempt <= MAX_TEX_INSTALLS; attempt++) {
-    const first = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
-    log += first.stdout + first.stderr
-    if (first.code !== 0) {
-      // Only this pass's output: an earlier pass's missing file is installed already.
-      const missing = missingTexFile(first.stdout + first.stderr)
-      if (missing && !installed.has(missing.file) && attempt < MAX_TEX_INSTALLS) {
-        installed.add(missing.file)
-        if (await components.installTexPackage(missing.file, signal, missing.guess)) continue
+  try {
+    for (let attempt = 0; attempt <= MAX_TEX_INSTALLS; attempt++) {
+      const first = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
+      log += first.stdout + first.stderr
+      if (first.code !== 0) {
+        // Only this pass's output: an earlier pass's missing file is installed already.
+        const missing = missingTexFile(first.stdout + first.stderr)
+        if (missing && !installed.has(missing.file) && attempt < MAX_TEX_INSTALLS) {
+          installed.add(missing.file)
+          if (await components.installTexPackage(missing.file, signal, missing.guess)) continue
+        }
+        failed(`${engine} pass 1`, first.code)
+        break
       }
+      const stem = basename(source, '.tex')
+      const auxPath = join(build, `${stem}.aux`)
+      if (existsSync(join(build, `${stem}.bcf`))) {
+        const result = await runProcess(texExecutable(bin, 'biber'), [...await runtime.bibliographyArgs('biber'), stem], {
+          cwd: build, env, signal, timeoutMs: 180000,
+        })
+        log += result.stdout + result.stderr
+        if (result.code !== 0) { failed('Biber', result.code); break }
+      } else if (existsSync(auxPath) && (await readFile(auxPath, 'utf8')).includes('\\bibdata')) {
+        const bibtexArgs = await runtime.bibliographyArgs('bibtex')
+        const bibtex = (): Promise<ProcessResult> => runProcess(texExecutable(bin, 'bibtex'), [...bibtexArgs, stem], {
+          cwd: build, env, signal, timeoutMs: 180000,
+        })
+        let result = await bibtex()
+        log += result.stdout + result.stderr
+        // A venue's bibliography style may be one the distribution installs on request.
+        const style = /I couldn't open style file ([A-Za-z0-9_-][A-Za-z0-9_.-]*\.bst)/.exec(result.stdout)?.[1]
+        if (style && !installed.has(style)) {
+          installed.add(style)
+          try {
+            if (await components.installTexPackage(style, signal)) {
+              result = await bibtex()
+              log += result.stdout + result.stderr
+            }
+          } catch (error) {
+            signal.throwIfAborted()
+            log += `\nCould not install ${style}: ${errorText(error)}\n`
+          }
+        }
+        if (result.code !== 0) { failed('BibTeX', result.code); break }
+      }
+      for (let round = 0; round < 2; round++) {
+        const result = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
+        log += result.stdout + result.stderr
+        if (result.code !== 0) { failed(`${engine} pass ${round + 2}`, result.code); break }
+      }
+      succeeded = failure === undefined
       break
     }
-    const stem = basename(source, '.tex')
-    const auxPath = join(build, `${stem}.aux`)
-    if (existsSync(join(build, `${stem}.bcf`))) {
-      const result = await runProcess(texExecutable(bin, 'biber'), [stem], { cwd: build, env, signal, timeoutMs: 180000 })
-      log += result.stdout + result.stderr
-    } else if (existsSync(auxPath) && (await readFile(auxPath, 'utf8')).includes('\\bibdata')) {
-      const bibtex = (): Promise<{ stdout: string; stderr: string }> => runProcess(texExecutable(bin, 'bibtex'), [stem], { cwd: build, env, signal, timeoutMs: 180000 })
-      let result = await bibtex()
-      // A venue's bibliography style may be one the distribution installs on request.
-      const style = /I couldn't open style file ([A-Za-z0-9_-][A-Za-z0-9_.-]*\.bst)/.exec(result.stdout)?.[1]
-      if (style && !installed.has(style)) {
-        installed.add(style)
-        try {
-          await components.installTexPackage(style, signal)
-          result = await bibtex()
-        } catch (error) { log += `\nCould not install ${style}: ${errorText(error)}\n` }
-      }
-      log += result.stdout + result.stderr
-    }
-    for (let round = 0; round < 2; round++) {
-      const result = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
-      log += result.stdout + result.stderr
-      if (result.code !== 0) break
-    }
-    break
+  } catch (error) {
+    signal.throwIfAborted()
+    failure = `Error: Compilation failed: ${errorText(error)}`
   }
+  if (succeeded) {
+    try {
+      const file = await open(pdf, 'r')
+      try {
+        const header = Buffer.alloc(8)
+        const result = await file.read(header, 0, header.length, 0)
+        if (result.bytesRead !== header.length || (await file.stat()).size <= header.length || !/^%PDF-\d\.\d$/.test(header.toString())) {
+          failure = 'Error: Compilation did not produce a valid non-empty PDF'
+        }
+      } finally { await file.close() }
+    } catch (error) { failure = `Error: Could not read compiled PDF: ${errorText(error)}` }
+  }
+  if (failure) log += `\n${failure}\n`
   const logPath = join(build, 'compile.log')
   await atomicWrite(logPath, log)
   const finalLogPath = join(build, `${basename(source, '.tex')}.log`)
   const finalLog = existsSync(finalLogPath) ? await readText(finalLogPath, 8 * 1024 * 1024) : log
-  const diagnostics = finalLog.split(/\r?\n/)
+  const diagnosticLog = failure ? `${log}\n${finalLog}` : finalLog
+  const diagnostics = [...new Set([...(failure ? [failure] : []), ...diagnosticLog.split(/\r?\n/)])]
     .filter(line => /(^!|LaTeX Warning|undefined|Overfull|Emergency stop|fatal:|Error:)/i.test(line))
     .slice(0, 100)
   return {
     artifactId: artifact.id, artifactRevision: artifact.revision, inputDigest: digest, engine,
-    status: existsSync(pdf) ? 'completed' : 'failed',
+    status: succeeded && failure === undefined ? 'completed' : 'failed',
     pdfPath: relative(project.root, pdf).replaceAll('\\', '/'),
     logPath: relative(project.root, logPath).replaceAll('\\', '/'),
     diagnostics, createdAt: new Date().toISOString(),

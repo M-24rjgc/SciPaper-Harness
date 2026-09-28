@@ -1,10 +1,10 @@
 /** Contained file access and immutable revisions for ordinary research files. */
 import { createHash, randomUUID } from 'node:crypto'
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, realpathSync } from 'node:fs'
 import { copyFile, mkdir, open, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { defaultDshHome, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
 /**
  * Resolve a project path and reject traversal through existing symlinks.
@@ -192,15 +192,17 @@ export function isMetadataPath(relativePath: string): boolean {
 export const EXAMPLE_READ_ONLY = '这是示例研究，只能查看 / This is an example research and is read-only'
 
 /**
- * Whether a project lives in the product's example folder, `<data home>/demo`,
- * where the example researches shipped for the tutorial are kept. Examples are
- * read-only: nothing is recorded into them, whoever asks.
+ * Whether a project lives in shipped `research/examples` or legacy `demo`.
+ * Legacy examples in the default home stay protected when a trial selects another home.
+ * Examples are read-only: nothing is recorded into them, whoever asks.
  * @param root - the project's absolute root.
  * @param home - the product's data directory.
  * @returns true for an example research.
  */
 export function isExampleRoot(root: string, home: string = resolveDshHome()): boolean {
-  return isInside(join(home, 'demo'), root)
+  const canonical = (path: string): string => existsSync(path) ? realpathSync.native(path) : path
+  return [join(home, 'demo'), join(home, 'research', 'examples'), join(defaultDshHome(), 'demo')]
+    .some(directory => isInside(directory, root) || isInside(canonical(directory), canonical(root)))
 }
 
 /**

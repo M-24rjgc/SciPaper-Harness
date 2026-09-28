@@ -1,0 +1,7 @@
+method,seed,consistency_percent
+baseline,1,86
+baseline,2,87
+baseline,3,88
+evidence_grounded,1,90
+evidence_grounded,2,91
+evidence_grounded,3,92

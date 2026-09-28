@@ -29,6 +29,8 @@ Mount it with the `ui-research` client plugin and the research agent preset thro
 
 A project's autonomy is every one of its conversations' permission preset: the service injects `ctx.permissionPresets` and sets `workspace-write` for `checkpoints` and `research-auto` for `automatic` on each live session of the project, whenever the autonomy is set and as each session becomes live; examples and delegated children are left alone ([details](../../../docs/subsystems/research.md#autonomy-and-permission)). The permission row must configure both presets, as the research-app bundle does, or the service does not load.
 
+The first research snapshot installs two offline examples under `<data home>/research/examples/v1`, with synthetic data, English and Chinese manuscripts, PDF notes, editable SVG figures and durable conversations created through the Session Controller. Installation preserves existing files and records, restores missing material and resumes interrupted registration with stable identities. `showExamples` controls visibility; it does not create or delete examples. Shipped conversations use the `read-only` permission preset, and every research mutation rejects example roots, including aliases of the data home. Legacy `<data home>/demo` and the default home's demo remain read-only and are not rewritten.
+
 新研究 (New research) is the desktop's `start-new` command: it opens the one untouched draft research, or creates one at `<research home>/<yyyy-mm-dd>-<n>` with its folder's Workspace and a blank conversation. `relocate` moves the draft to a folder the person chose, and `discard-draft` removes it with the empty folders it made. The research home is the person's `researchHome` preference, else the configured `researchHome`, else `<profile home>/SciPaper`. The agent cannot send these commands ([details](../../../docs/subsystems/research.md#new-research-draft)).
 
 移出列表 (Remove from list) is the desktop's `archive-project`: it archives the research's conversations and marks the record `archivedAt`, changing nothing on disk, and its runs go unobserved until `unarchive-project` restores it with exactly the conversations it archived. Active conversations refuse archival before any writes. A later archive failure reverses this operation's completed archives; if reversal fails, the record retains the conversations needed for restoration. Archiving never stops independent experiment processes. The agent cannot send these either ([details](../../../docs/subsystems/research.md#remove-from-list)).
@@ -59,6 +61,8 @@ Choose it when the agent should carry a paper from an idea or from existing resu
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-research-workbench) is the exhaustive source for every accepted field.
 
 The platform Python uses an explicitly configured interpreter first, then the bundled interpreter, then the environment under `componentRoot`. Windows absolute executable commands use extended-length paths. Bundled interpreters and newly created local Windows environments normalize their native import paths at startup while preserving existing `sitecustomize` files. When a new environment's base executable exceeds the Windows redirector's path limit, it uses a copy of that base interpreter and its adjacent DLLs; its package isolation remains unchanged. Adopted environments are inspected without modifying their files. Stored preferences, environment records and component status retain ordinary paths; relative commands retain their normal lookup behavior.
+
+TeX uses an explicit `texBin` binding first, then a completed managed distribution, then usable engines on `PATH`. Component status reports the selected source, actual version and available engines; compilation uses that same selection. An invalid binding fails without falling back, and a missing requested engine fails without downloading a second distribution. Without a binding or usable installation, Windows can install private TinyTeX on demand. Missing packages are installed automatically only in the managed distribution; external MiKTeX compiler and BibTeX commands disable its implicit package installer.
 
 ### Adding a mode
 
@@ -97,6 +101,7 @@ A stale editor save commits the revision adopted from disk before reporting the 
 | [`src/prose.ts`](src/prose.ts) | The prose check: tell phrases, defensive framing, hedges, formulaic contrasts, em dashes and promotional words |
 | [`src/venues.ts`](src/venues.ts) | The venue template library: listing venues and applying one to a project |
 | [`runtime/venues/`](runtime/venues) | 139 venues over 16 official style kits, with guides and examples, built by [`scripts/build_venues.py`](scripts/build_venues.py) |
+| [`src/examples.ts`](src/examples.ts), [`runtime/examples/v1/`](runtime/examples/v1) | Non-overwriting installation, stable registration and authored conversations for two synthetic research examples |
 | [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`: loading graphs, recall, novelty, building and naming a project graph |
 | [`src/clustering.ts`](src/clustering.ts) | Tokens, BM25, term vectors, cosine, rank fusion, average-linkage and k-means clustering |
 | [`runtime/kg/`](runtime/kg) | The built-in research-pattern graph, distilled by [`scripts/build_kg.py`](scripts/build_kg.py) |
@@ -179,7 +184,7 @@ These are current constraints of the package, not a task backlog.
 
 No runtime invariant companion is published because every relationship the ledger keeps (revisions, evidence links, run identities) is enforced where it is written, inside each project's one-at-a-time change queue.
 
-- **Windows-first provisioning** — automatic installation of Python, uv, TeX and draw.io targets Windows x64; other platforms bind existing tools in settings.
+- **Windows-first provisioning** — automatic installation of Python, uv, TeX and draw.io targets Windows x64. Existing TeX on `PATH` is detected on every platform; other tools need bindings in settings outside Windows.
 - **SSH without provisioning** — remote runs use explicitly configured OpenSSH authentication and a dedicated remote directory; accounts, cluster schedulers and a server's global Python are never touched.
 - **No draw.io export from the agent** — diagrams are edited in the built-in editor, but a vector export needs the desktop app's main process, which this package does not extend; the agent draws TikZ by default.
 - **NVIDIA-only GPU readings** — the board's machine probe reads GPUs through `nvidia-smi`, and reads no processor or memory use on macOS.

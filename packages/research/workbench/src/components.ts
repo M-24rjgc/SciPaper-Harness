@@ -1,6 +1,6 @@
 /** Versioned tool provisioning in product-owned directories. */
 import { existsSync, createWriteStream } from 'node:fs'
-import { copyFile, mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, join, resolve, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
@@ -8,7 +8,7 @@ import { pipeline } from 'node:stream/promises'
 import extract from 'extract-zip'
 import { hashFile, atomicWrite } from './files.ts'
 import { checked, localExecutable, runProcess } from './process.ts'
-import type { ComponentStatus, ResearchPreferences } from './types.ts'
+import type { CompileRecord, ComponentStatus, ResearchPreferences } from './types.ts'
 
 /** One pinned download: what it is, where it comes from, and the checksum it must match. */
 export interface ComponentRelease { version: string; url: string; sha256: string }
@@ -155,9 +155,38 @@ async function findFile(root: string, name: string, depth = 5): Promise<string |
   return undefined
 }
 
+const TEX_ENGINES = ['pdflatex', 'xelatex', 'lualatex'] as const
+
+interface TexInstallation {
+  status: ComponentStatus
+  miktexEngines: CompileRecord['engine'][]
+}
+
+/** One selected compilation runtime; bibliography arguments are resolved only when used. */
+export interface LatexRuntime {
+  bin: string
+  compilerArgs: readonly string[]
+  /** Prefix arguments for a bibliography program from this same distribution. */
+  bibliographyArgs: (program: 'bibtex' | 'biber') => Promise<readonly string[]>
+}
+
+/** Read the distribution label from a successful engine's own version output. */
+function texVersion(output: string, engine: CompileRecord['engine']): { label: string; miktex: boolean } | undefined {
+  const banner = output.split(/\r?\n/).find(line => line.trim()) ?? ''
+  const names = { pdflatex: /\bpdfTeX\b/i, xelatex: /\bXeTeX\b/i, lualatex: /\bLua(?:HB)?TeX\b/i }
+  if (!names[engine].test(banner)) return undefined
+  const miktex = /\bMiKTeX\s+(\d[\w.-]*)/i.exec(banner)
+  if (miktex) return { label: `MiKTeX ${miktex[1]}`, miktex: true }
+  const texlive = /\bTeX Live\s+(\d{4})\b/i.exec(banner)
+  if (texlive) return { label: `TeX Live ${texlive[1]}`, miktex: false }
+  const version = /\b(pdfTeX|XeTeX|Lua(?:HB)?TeX)[ ,]+(?:Version\s+)?(\d[\w.-]*)/i.exec(banner)
+  return version ? { label: `${version[1]} ${version[2]}`, miktex: false } : undefined
+}
+
 /** Manages app tooling independently of all experiment environments. */
 export class ComponentManager {
   private readonly pending = new Map<string, Promise<string>>()
+  private readonly pendingTex = new Map<string | undefined, Promise<TexInstallation>>()
   constructor(
     readonly root: string,
     private readonly preferences: () => ResearchPreferences,
@@ -187,26 +216,93 @@ export class ComponentManager {
     return localExecutable(python, this.host.platform)
   }
 
+  private async pythonPath(): Promise<string | undefined> {
+    return this.preferences().python
+      || await findFile(this.host.asset('components/platform-python'), 'python.exe', 3)
+      || await findFile(this.host.asset('components/python'), 'python.exe', 3)
+      || await findFile(join(this.root, 'platform-python'), this.host.platform === 'win32' ? 'python.exe' : 'python')
+  }
+
+  private texExecutable(bin: string, engine: CompileRecord['engine'] | 'bibtex' | 'biber'): string {
+    return join(bin, `${engine}${this.host.platform === 'win32' ? '.exe' : ''}`)
+  }
+
+  private async probeTex(
+    bin: string, source: NonNullable<ComponentStatus['source']>, signal?: AbortSignal,
+  ): Promise<TexInstallation> {
+    signal?.throwIfAborted()
+    const detected = await Promise.all(TEX_ENGINES.map(async (engine) => {
+      const executable = this.texExecutable(bin, engine)
+      let info: Awaited<ReturnType<typeof stat>>
+      try { info = await stat(executable) } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return undefined
+        return { engine, version: undefined }
+      }
+      if (!info.isFile()) return { engine, version: undefined }
+      let version: ReturnType<typeof texVersion>
+      try {
+        const result = await runProcess(executable, ['--version'], { signal, timeoutMs: 5000, maxBytes: 65536 })
+        if (result.code === 0) version = texVersion(result.stdout, engine)
+      } catch (error) {
+        // Failed process probes are unavailable tools; cancellation remains an operation failure.
+        signal?.throwIfAborted()
+        if (error instanceof Error && error.name === 'AbortError') throw error
+      }
+      if (!version) return { engine, version: undefined }
+      return { engine, version }
+    }))
+    const usable = detected.flatMap(value => value?.version ? [{ engine: value.engine, version: value.version }] : [])
+    const present = detected.some(value => value !== undefined)
+    return { status: {
+      id: 'latex', installed: usable.length > 0, path: bin, version: usable[0]?.version.label ?? '', source,
+      engines: usable.map(value => value.engine),
+      ...usable.length > 0 ? {} : { problem: present ? 'invalid-executable' : 'missing-executable' },
+    }, miktexEngines: usable.filter(value => value.version.miktex).map(value => value.engine) }
+  }
+
+  private async detectedTex(signal?: AbortSignal): Promise<TexInstallation> {
+    const configured = this.preferences().texBin
+    if (configured) return this.probeTex(configured, 'configured', signal)
+    const managedRoot = join(this.root, 'latex')
+    let unavailable: TexInstallation | undefined
+    if (existsSync(join(managedRoot, '.complete'))) {
+      for (const engine of TEX_ENGINES) {
+        const executable = await findFile(managedRoot, `${engine}${this.host.platform === 'win32' ? '.exe' : ''}`)
+        if (!executable) continue
+        const managed = await this.probeTex(dirname(executable), 'managed', signal)
+        if (managed.status.installed) return managed
+        unavailable = managed
+        break
+      }
+    }
+    const separator = this.host.platform === 'win32' ? ';' : ':'
+    const directories = new Set((process.env.PATH ?? '').split(separator).filter(Boolean).map(value => resolve(value.replace(/^"|"$/g, ''))))
+    for (const bin of directories) {
+      if (!TEX_ENGINES.some(engine => existsSync(this.texExecutable(bin, engine)))) continue
+      const system = await this.probeTex(bin, 'system', signal)
+      if (system.status.installed) return system
+      unavailable ??= system
+    }
+    return unavailable ?? { status: { id: 'latex', installed: false, path: '', version: '', engines: [] }, miktexEngines: [] }
+  }
+
   /**
-   * Describe installed components without downloading or executing them.
-   * @returns installation status and discovered paths for each managed component.
+   * Describe available components without downloading; TeX engines are verified with bounded version commands.
+   * @returns component paths and versions, including the selected TeX distribution's source and available engines.
    */
   async status(): Promise<ComponentStatus[]> {
     const preferences = this.preferences()
-    const platformPython = this.host.platform === 'win32' ? 'python.exe' : 'python'
     const paths: Record<ComponentStatus['id'], string | undefined> = {
       uv: preferences.uv
         || await findFile(join(this.root, 'uv'), 'uv.exe')
         || await findFile(this.host.asset('components/uv'), 'uv.exe'),
-      python: preferences.python
-        || await findFile(this.host.asset('components/platform-python'), 'python.exe', 3)
-        || await findFile(this.host.asset('components/python'), 'python.exe', 3)
-        || await findFile(join(this.root, 'platform-python'), platformPython),
-      latex: preferences.texBin || await findFile(join(this.root, 'latex'), 'pdflatex.exe'),
+      python: await this.pythonPath(),
+      latex: undefined,
       drawio: await findFile(this.host.asset('components/drawio'), 'index.html', 1)
         || await findFile(join(this.root, 'drawio'), 'index.html', 1),
     }
-    return (['uv', 'python', 'latex', 'drawio'] as const).map(id => ({
+    const latex = (await this.detectedTex()).status
+    return (['uv', 'python', 'latex', 'drawio'] as const).map(id => id === 'latex' ? latex : ({
       id,
       installed: paths[id] !== undefined && existsSync(paths[id]),
       path: paths[id] ?? '',
@@ -220,8 +316,8 @@ export class ComponentManager {
    * @returns the interpreter command, with Windows absolute paths in extended-length form, or undefined without one.
    */
   async installedPython(): Promise<string | undefined> {
-    const python = (await this.status()).find(item => item.id === 'python')
-    return python?.installed ? this.pythonCommand(python.path) : undefined
+    const python = await this.pythonPath()
+    return python && existsSync(python) ? this.pythonCommand(python) : undefined
   }
 
   /**
@@ -306,28 +402,86 @@ export class ComponentManager {
   }
 
   /**
-   * Install a relocatable TeX Live distribution or use an explicitly bound binary directory.
+   * Use the configured, managed or system TeX distribution, installing private TeX only when none is usable.
    * @param signal - cancellation for distribution download and verification.
-   * @returns TeX binary directory; unconfigured non-Windows hosts are rejected.
+   * @param engine - compiler required by this operation; absence does not switch distributions or trigger a download.
+   * @returns verified TeX binary directory; unusable explicit bindings are rejected.
    */
-  async latex(signal: AbortSignal): Promise<string> {
-    return this.once('latex', async () => {
-      const configured = this.preferences().texBin
-      if (configured) return configured
-      const target = join(this.root, 'latex')
-      const existing = await findFile(target, 'pdflatex.exe')
-      if (existing && existsSync(join(target, '.complete'))) return dirname(existing)
-      if (this.host.platform !== 'win32') throw new Error('Configure the TeX binary directory on this platform')
-      const release = this.host.releases.latex
-      const archive = join(this.root, 'downloads', `tinytex-${release.version}.zip`)
-      await downloadAsset(release.url, release.sha256, archive, signal)
-      await extract(archive, { dir: resolve(target) })
-      const binary = await findFile(target, 'pdflatex.exe')
-      if (!binary) throw new Error('TeX Live component is missing pdfLaTeX')
-      checked(await runProcess(binary, ['--version'], { signal }), 'TeX Live verification')
-      await atomicWrite(join(target, '.complete'), release.sha256)
-      return dirname(binary)
-    })
+  async latex(signal: AbortSignal, engine?: CompileRecord['engine']): Promise<string> {
+    const selected = await this.selectedTex(signal)
+    if (engine) this.requireTexEngine(selected, engine)
+    return selected.status.path
+  }
+
+  private async selectedTex(signal: AbortSignal): Promise<TexInstallation> {
+    signal.throwIfAborted()
+    const configured = this.preferences().texBin
+    let pending = this.pendingTex.get(configured)
+    if (!pending) {
+      pending = this.resolveTex(signal).finally(() => { this.pendingTex.delete(configured) })
+      this.pendingTex.set(configured, pending)
+    }
+    let selected: TexInstallation
+    try { selected = await pending } catch (error) {
+      signal.throwIfAborted()
+      if (this.preferences().texBin !== configured) return this.selectedTex(signal)
+      throw error
+    }
+    signal.throwIfAborted()
+    if (this.preferences().texBin !== configured) return this.selectedTex(signal)
+    return selected
+  }
+
+  private requireTexEngine(selected: TexInstallation, engine: CompileRecord['engine']): void {
+    if (!selected.status.engines?.includes(engine)) {
+      throw new Error(`Selected TeX distribution does not provide a usable ${engine}: ${selected.status.path}`)
+    }
+  }
+
+  private async resolveTex(signal: AbortSignal): Promise<TexInstallation> {
+    const selected = await this.detectedTex(signal)
+    if (selected.status.installed) return selected
+    if (selected.status.source === 'configured') throw new Error(`Configured TeX directory has no usable compiler: ${selected.status.path}`)
+    const target = join(this.root, 'latex')
+    if (this.host.platform !== 'win32') throw new Error('Configure the TeX binary directory on this platform')
+    const release = this.host.releases.latex
+    const archive = join(this.root, 'downloads', `tinytex-${release.version}.zip`)
+    await downloadAsset(release.url, release.sha256, archive, signal)
+    await extract(archive, { dir: resolve(target) })
+    const binary = await findFile(target, 'pdflatex.exe')
+    if (!binary) throw new Error('TeX Live component is missing pdfLaTeX')
+    const verified = await this.probeTex(dirname(binary), 'managed', signal)
+    if (!verified.status.installed) throw new Error('TeX Live component has no usable compiler')
+    await atomicWrite(join(target, '.complete'), release.sha256)
+    return verified
+  }
+
+  /**
+   * Select and verify a compiler, disabling implicit package installation for external MiKTeX programs.
+   * @param signal - cancellation for selection, provisioning and bibliography verification.
+   * @param engine - the requested compiler; a missing engine rejects without switching distributions.
+   * @returns one binary directory and supported argument prefixes; no bibliography process runs until requested.
+   */
+  async latexRuntime(signal: AbortSignal, engine: CompileRecord['engine']): Promise<LatexRuntime> {
+    const selected = await this.selectedTex(signal)
+    this.requireTexEngine(selected, engine)
+    const bin = selected.status.path
+    const external = selected.status.source === 'configured' || selected.status.source === 'system'
+    let bibliography: Promise<readonly string[]> | undefined
+    return {
+      bin, compilerArgs: external && selected.miktexEngines.includes(engine) ? ['--disable-installer'] : [],
+      bibliographyArgs: (program) => {
+        // Biber is a Perl application; it has no MiKTeX installer switch.
+        if (!external || program === 'biber') return Promise.resolve([])
+        bibliography ??= runProcess(this.texExecutable(bin, 'bibtex'), ['--version'], { signal, timeoutMs: 5000, maxBytes: 65536 })
+          .then((result) => {
+            const output = checked(result, 'BibTeX verification')
+            if (!/\bBibTeX\b/i.test(output)) throw new Error('Selected bibliography program did not report a usable BibTeX')
+            return /^MiKTeX-BibTeX\b.*\bMiKTeX\s+\d/m.test(output) ? ['--disable-installer'] : []
+          })
+        return bibliography
+      },
+    }
   }
 
   /**
@@ -338,11 +492,14 @@ export class ComponentManager {
    * @returns whether a package was installed; false when the file is in no known package and may not be guessed.
    */
   async installTexPackage(file: string, signal: AbortSignal, guess: boolean = true): Promise<boolean> {
-    if (this.preferences().texBin) {
-      throw new Error(`Install ${file} in your configured TeX distribution, or select the managed distribution`)
-    }
     if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(sty|cls|bst|clo|def|fd|tfm|pdf)$/.test(file)) throw new Error('Unsupported TeX dependency name')
+    const selected = (await this.detectedTex(signal)).status
+    if (selected.source === 'configured' || selected.source === 'system') {
+      throw new Error(`Install ${file} in your ${selected.source === 'configured' ? 'configured' : 'system'} TeX distribution, or select the managed distribution`)
+    }
     const bin = await this.latex(signal)
+    const current = (await this.detectedTex(signal)).status
+    if (current.source !== 'managed' || current.path !== bin) throw new Error('TeX package installation requires the selected managed distribution')
     const tlmgr = tlmgrCommand(bin, this.host.platform)
     // tlmgr locates its installation through the first kpsewhich on PATH; another TeX (MiKTeX) must not win.
     const options = { signal, timeoutMs: 600000, env: { PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter) } }

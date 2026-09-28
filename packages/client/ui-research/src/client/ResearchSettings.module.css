@@ -31,8 +31,12 @@
 .componentOn, .componentOff { width: 7px; height: 7px; border-radius: 50%; corner-shape: round; flex-shrink: 0; }
 .componentOn { background: var(--dsw-alias-state-success-primary); }
 .componentOff { border: 0.5px solid var(--dsw-alias-border-l4); box-sizing: border-box; }
+.componentInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.componentSummary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 9px; }
 .componentName { font-size: 12.5px; font-weight: 600; }
 .componentVersion { flex: 1; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+.componentDetail, .componentPath { font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
+.componentPath { font-family: var(--ds-font-family-code); }
 .install { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); padding: 4px 10px; font: inherit; font-size: 11.5px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); white-space: nowrap; }
 .install:hover:enabled { background: var(--dsw-alias-interactive-bg-hover); }
 .install:disabled { opacity: .45; cursor: default; }

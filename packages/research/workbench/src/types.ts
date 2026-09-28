@@ -379,8 +379,8 @@ export interface ResearchProject {
    */
   createdRoot?: boolean | undefined
   /**
-   * True for an example research shipped for the tutorial (its root lies in
-   * `<data home>/demo`), which is read-only. Derived for every snapshot and
+   * True for a shipped example under `<data home>/research/examples` or
+   * legacy `demo`, which is read-only. Derived for every snapshot and
    * brief, never stored; absent for the person's own researches.
    */
   example?: boolean | undefined
@@ -500,6 +500,12 @@ export interface ComponentStatus {
   installed: boolean
   path: string
   version: string
+  /** Where the selected tool is provided; omitted by older component snapshots. */
+  source?: 'configured' | 'managed' | 'system' | 'bundled' | undefined
+  /** Why a discovered or explicitly configured tool could not be used. */
+  problem?: 'missing-executable' | 'invalid-executable' | undefined
+  /** TeX engines whose version command succeeded in the selected binary directory. */
+  engines?: CompileRecord['engine'][] | undefined
 }
 /** A project's mode or route as just recorded; the payload of the `research/mode` event. */
 export interface ResearchModeEvent {

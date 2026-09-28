@@ -9,6 +9,9 @@
  * to the validator the service parses commands with.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { useSyncExternalStore } from 'react'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -16,6 +19,8 @@ import type { WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-work
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
+import { publicProject } from '@deepseek-ai/dsh-research-workbench/src/index.ts'
+import { initializeResearchExamples } from '@deepseek-ai/dsh-research-workbench/src/examples.ts'
 import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
 import type { CreateProjectRequest, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import { ResearchTree, searchable, type ResearchTreeProps } from '../src/client/ResearchTree.tsx'
@@ -25,9 +30,12 @@ import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 import { standingOf } from './fixtures/standing.ts'
 
-afterEach(() => {
+const roots: string[] = []
+afterEach(async () => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllEnvs()
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 
 /** The Chinese dictionary, interpolating `{name}` the way the locale seat does. */
@@ -191,6 +199,64 @@ async function settle(): Promise<void> {
 const R = (project: ResearchProject): string => `research:${project.id}`
 
 describe('what the tree lists', () => {
+  it('lists initialized product examples and restores their read-only conversations when examples are shown again', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'research-ui-examples-'))
+    roots.push(home)
+    vi.stubEnv('DSH_HOME', home)
+    const projects: ResearchProject[] = []
+    const workspaces: WorkspaceView[] = [workspace('w-sparse', sparse.root)]
+    const sessions: SessionSummary[] = []
+    await initializeResearchExamples(home, resolve('packages/research/workbench/runtime/examples/v1'), {
+      find: root => projects.find(project => project.root === root),
+      workspace: (root, title) => {
+        const folder = workspace(`w-example-${workspaces.length}`, root, title)
+        workspaces.push(folder)
+        return Promise.resolve(folder.workspaceId)
+      },
+      put: (project) => { projects.push(project); return Promise.resolve() },
+      conversation: (project, material) => {
+        if (project.sessionId === undefined) throw new Error('Bundled example has no conversation identity')
+        sessions.push(session(project.sessionId, project.root, { displayTitle: material.question }))
+        return Promise.resolve()
+      },
+    })
+    const examples = projects.map(project => publicProject(project))
+    expect(examples).toHaveLength(2)
+    expect(examples.every(project => project.example === true && project.evidence.length > 0 && project.artifacts.length > 0)).toBe(true)
+    const [summary, attention] = examples
+    if (summary === undefined || attention === undefined || summary.sessionId === undefined || attention.sessionId === undefined) {
+      throw new Error('Bundled examples have no readable conversations')
+    }
+    const world: World = {
+      projects: [sparse, ...examples], showExamples: true, current: summary.sessionId, sessions, workspaces,
+    }
+    const tree = mount(world)
+    expect(row('group:examples').getAttribute('aria-expanded')).toBe('true')
+    expect(row(R(summary)).textContent).toContain(summary.title)
+    expect(row(R(attention)).textContent).toContain(attention.title)
+    expect(row(`conversation:${summary.sessionId}`).getAttribute('aria-selected')).toBe('true')
+    openMenu(R(summary))
+    expect(menuItems()).toEqual([zh.folderReveal])
+    openMenu(R(summary))
+    tree.update({ ...world, showExamples: false })
+    expect(keys()).not.toContain('group:examples')
+    expect(keys()).not.toContain(R(summary))
+    expect(keys()).not.toContain(R(attention))
+    expect(keys()).toContain(R(sparse))
+    tree.update({ ...world, showExamples: true })
+    expect(row(R(summary)).textContent).toContain(summary.title)
+    expect(row(R(attention)).textContent).toContain(attention.title)
+    expect(row(`conversation:${summary.sessionId}`).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(row(R(attention)))
+    await settle()
+    expect(tree.face.openSession).toHaveBeenCalledWith(attention.sessionId)
+    expect(tree.face.openWorkspace).not.toHaveBeenCalled()
+    expect(tree.face.startSession).not.toHaveBeenCalled()
+    expect(tree.face.commands).toEqual([])
+    expect(keys()).not.toContain(`add:${summary.id}`)
+    expect(keys()).not.toContain(`add:${attention.id}`)
+  })
+
   it('keeps text and attachment drafts reachable while hiding empty non-current conversations', async () => {
     const world: World = {
       projects: [draft, sparse], current: 'new-draft', workspaces: WORKSPACES,

@@ -12,7 +12,7 @@ import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 /**
- * Check Host startup, its matching frontend, external plugins and real Office-to-PDF conversion.
+ * Check Host startup, shipped research examples, external plugins and real Office-to-PDF conversion.
  * @param root - Materialized dsh resources.
  * @param node - Prepared target Electron executable.
  * @param runtime - Verified resource descriptor.
@@ -125,7 +125,13 @@ export function apply(ctx) {
       result?: {
         ok?: boolean
         value?: {
-          projects?: unknown[]
+          projects?: {
+            id: string
+            title: string
+            sessionId?: string
+            example?: boolean
+            artifacts: { id: string; path: string }[]
+          }[]
           modes?: { id: string }[]
         }
       }
@@ -135,6 +141,49 @@ export function apply(ctx) {
       || !['general', 'spark-to-paper', 'ccfa'].every(id => snapshot.result?.value?.modes?.some(mode => mode.id === id))) {
       throw new Error('desktop runtime: research plugin snapshot or installed research modes are unavailable')
     }
+    const examples = snapshot.result.value?.projects?.filter(project => project.example === true) ?? []
+    const expectedExamples = ['example-v1-ccfa-sparse-attention', 'example-v1-spark-summary-consistency']
+    if (examples.length !== expectedExamples.length
+      || !expectedExamples.every(id => examples.some(project => project.id === id && project.sessionId !== undefined))) {
+      throw new Error('desktop runtime: a fresh home did not receive the shipped research examples and conversations')
+    }
+    for (const project of examples) {
+      const artifact = project.artifacts.find(entry => entry.path === 'paper/paper.md')
+      if (artifact === undefined) throw new Error('desktop runtime: shipped example manuscript is not registered')
+      const commandUrl = new URL('/api/research/command', ready.url)
+      const commandHeaders = { 'content-type': 'application/json', cookie }
+      const read = await fetch(commandUrl, {
+        method: 'POST', headers: commandHeaders,
+        body: JSON.stringify({ type: 'client-request', rpcId: `example-read-${project.id}`,
+          method: 'research/command', payload: { args: { request: {
+            action: 'read-artifact', projectId: project.id, artifactId: artifact.id,
+          } } } }),
+      })
+      const readResult = await read.json() as { result?: { ok?: boolean; value?: { content?: string } } }
+      if (!read.ok || readResult.result?.ok !== true || (readResult.result.value?.content?.length ?? 0) < 100) {
+        throw new Error('desktop runtime: shipped example manuscript cannot be read through the research API')
+      }
+      const update = await fetch(commandUrl, {
+        method: 'POST', headers: commandHeaders,
+        body: JSON.stringify({ type: 'client-request', rpcId: `example-write-${project.id}`,
+          method: 'research/command', payload: { args: { request: {
+            action: 'rename', projectId: project.id, title: 'modified example',
+          } } } }),
+      })
+      const updateResult = await update.json() as { result?: { ok?: boolean } }
+      if (updateResult.result?.ok !== false || !/example research|示例研究/u.test(JSON.stringify(updateResult))) {
+        throw new Error('desktop runtime: shipped example accepted a write or failed for an unrelated reason')
+      }
+    }
+    const again = await fetch(researchUrl, { ...request, headers: { ...request.headers, cookie } })
+    const repeated = await again.json() as typeof snapshot
+    const repeatedExamples = repeated.result?.value?.projects?.filter(project => project.example === true) ?? []
+    if (!again.ok || repeated.result?.ok !== true || repeatedExamples.length !== examples.length
+      || !examples.every(project => repeatedExamples.some(entry => entry.id === project.id
+        && entry.title === project.title && entry.sessionId === project.sessionId))) {
+      throw new Error('desktop runtime: repeated research reads changed or duplicated shipped examples')
+    }
+    console.log('desktop runtime: shipped research examples, manuscript reads and read-only enforcement passed')
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')
     for (const { extension } of inputs) {
@@ -160,6 +209,6 @@ export function apply(ctx) {
   } finally {
     clearTimeout(timer)
     await host.stop()
-    rmSync(home, { recursive: true, force: true })
+    rmSync(home, { recursive: true })
   }
 }

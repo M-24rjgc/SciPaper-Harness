@@ -93,15 +93,34 @@ function Role(props: {
   </details>
 }
 
-/** One managed component, with the action only an absent one offers. */
+const TEX_ENGINE_NAMES = { pdflatex: 'pdfLaTeX', xelatex: 'XeLaTeX', lualatex: 'LuaLaTeX' } as const
+
+/** One detected component, with its selected LaTeX tools and an install action when absent. */
 function Component(props: WorkbenchProps & { component: ComponentStatus }): ReactNode {
   const { component, t } = props
   const installing = useAction()
+  const latex = component.id === 'latex'
+  const version = latex && !component.installed ? '' : component.version
+  const engines = component.engines?.map(engine => TEX_ENGINE_NAMES[engine]).join(' / ')
   return <div className={styles.componentCell}>
     <div className={styles.component}>
       <span className={component.installed ? styles.componentOn : styles.componentOff}></span>
-      <span className={styles.componentName}>{component.id}</span>
-      <span className={styles.componentVersion}>{component.version}</span>
+      <div className={styles.componentInfo}>
+        <div className={styles.componentSummary}>
+          <span className={styles.componentName}>{latex ? 'LaTeX' : component.id}</span>
+          {version && <span className={styles.componentVersion}>{version}</span>}
+        </div>
+        {latex && component.source !== undefined && <span className={styles.componentDetail}>
+          {t('componentSource', { source: t(`componentSource_${component.source}`) })}
+        </span>}
+        {latex && component.installed && engines && <span className={styles.componentDetail}>
+          {t('latexEngines', { engines })}
+        </span>}
+        {latex && component.path && <span className={styles.componentPath}>{component.path}</span>}
+        {latex && !component.installed && component.problem !== undefined && <span className={styles.componentDetail}>
+          {t(`latexProblem_${component.problem}`)}
+        </span>}
+      </div>
       {component.installed
         ? <Tag tone="success">{t('installed')}</Tag>
         : <button
@@ -180,7 +199,7 @@ function ResearchHome(props: WorkbenchProps & { preferences: ResearchPreferences
  * 显示示例研究 (Show example researches): whether the sidebar lists the
  * examples, saved at once with every other preference kept.
  */
-function ShowExamples(props: WorkbenchProps & { preferences: ResearchPreferences }): ReactNode {
+function ShowExamples(props: WorkbenchProps & { preferences: ResearchPreferences; available: boolean | undefined }): ReactNode {
   const { t, preferences } = props
   const saving = useAction()
   const shown = preferences.showExamples !== false
@@ -197,6 +216,7 @@ function ShowExamples(props: WorkbenchProps & { preferences: ResearchPreferences
         onChange={(next) => { saving.start(() => props.configure({ ...preferences, showExamples: next }, NO_KEYS)) }}
       />
     </div>
+    {shown && props.available === false && <p className={styles.groupHint}>{t('showExamplesEmpty')}</p>}
     <ActionError t={t} error={saving.error} />
   </section>
 }
@@ -290,7 +310,8 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
     <p className={styles.subtitle}>{t('settingsSubtitle')}</p>
 
     <ResearchHome {...props} preferences={preferences} home={view.snapshot?.researchHome} />
-    <ShowExamples {...props} preferences={preferences} />
+    <ShowExamples {...props} preferences={preferences}
+      available={view.snapshot?.projects.some(project => project.example === true && project.archived !== true)} />
     <RemovedResearches {...props} projects={view.snapshot?.projects ?? []} />
 
     <form key={JSON.stringify(preferences)} className={styles.group} onSubmit={save}>

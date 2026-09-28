@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="490" viewBox="0 0 900 490" role="img" aria-labelledby="title desc">
+  <title id="title">Summary consistency in synthetic paired data</title>
+  <desc id="desc">Baseline mean 87%, evidence-grounded mean 91%, paired difference 4 percentage points. No model evaluation or annotation study produced these values.</desc>
+  <rect width="900" height="490" fill="#f8fafc"/>
+  <g font-family="Arial, sans-serif" fill="#18283b">
+    <text x="55" y="55" font-size="25" font-weight="700">Source-supported summary statements</text>
+    <text x="55" y="86" font-size="17" fill="#526375">Synthetic demonstration · three paired rows per condition</text>
+    <text x="55" y="140" font-size="16">Mean consistency (%)</text>
+    <g stroke="#dde5ed"><path d="M100 370H810 M100 320H810 M100 270H810 M100 220H810 M100 170H810"/></g>
+    <g font-size="14" fill="#526375"><text x="78" y="375">0</text><text x="65" y="325">25</text><text x="65" y="275">50</text><text x="65" y="225">75</text><text x="58" y="175">100</text></g>
+    <rect x="240" y="196" width="170" height="174" rx="6" fill="#94a3b8"/>
+    <rect x="530" y="188" width="170" height="182" rx="6" fill="#308b91"/>
+    <g font-size="23" font-weight="700" text-anchor="middle"><text x="325" y="181">87</text><text x="615" y="173">91</text></g>
+    <g font-size="18" text-anchor="middle"><text x="325" y="408">Baseline</text><text x="615" y="408">Evidence-grounded</text></g>
+    <text x="55" y="456" font-size="16" fill="#526375">Paired difference: +4 percentage points. Synthetic values do not establish factuality gains.</text>
+  </g>
+</svg>

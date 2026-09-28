@@ -29,6 +29,8 @@ kind: "package-reference"
 
 项目的自主程度就是它每段对话的权限预设：服务注入 `ctx.permissionPresets`，在每次设置自主程度时、以及每个会话上线时，为项目的每个在线会话设置预设，`checkpoints` 对应 `workspace-write`，`automatic` 对应 `research-auto`；示例和委派出的子会话不受影响（[详情](../../../docs/subsystems/research.zh.md#autonomy-and-permission)）。权限配置行必须同时配置这两个预设（research-app bundle 已经如此），否则服务不会加载。
 
+首次读取科研快照时，在 `<data home>/research/examples/v1` 初始化两套离线示例，包含合成数据、中英文正文、PDF 札记、可编辑 SVG 图，以及通过 Session Controller 创建的持久对话。初始化保留已有文件和记录，恢复缺失材料，以稳定标识续接中断的登记。`showExamples` 只控制显示，不创建或删除示例。发布示例的对话采用 `read-only` 权限预设，科研写操作均拒绝示例目录，数据 home 的别名也受保护。旧 `<data home>/demo` 和默认 home 的 demo 保持只读，不会被改写。
+
 「新研究」是桌面端的 `start-new` 命令：它打开唯一一份未动过的草稿研究，没有时在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一份，连同文件夹的 Workspace 和一段空白对话。`relocate` 把草稿移到用户选择的文件夹，`discard-draft` 删除草稿以及它建立的空文件夹。研究存放位置取用户的 `researchHome` 偏好，没有时取配置的 `researchHome`，再没有时取 `<用户目录>/SciPaper`。agent 不能发送这几个命令（[详情](../../../docs/subsystems/research.zh.md#new-research-draft)）。
 
 「移出列表」是桌面端的 `archive-project`：它归档这项研究的对话，并在记录上标记 `archivedAt`，磁盘上的内容都不改变；它的运行不再被观测，直到 `unarchive-project` 恢复它，并恰好取消归档它当初归档的那些对话。存在活跃对话时，操作在任何写入之前拒绝归档；随后发生归档失败时，撤销本次已经完成的归档，如果撤销也失败则保留恢复所需的对话记录。归档不会停止独立实验进程。agent 同样不能发送这两个命令（[详情](../../../docs/subsystems/research.zh.md#remove-from-list)）。
@@ -59,6 +61,8 @@ kind: "package-reference"
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-research-workbench)是全部受支持字段的完整来源。
 
 平台 Python 优先使用显式配置的解释器，其次是内嵌解释器，最后使用 `componentRoot` 下的环境。Windows 下以扩展长度路径执行绝对路径命令。内嵌解释器和新建的本地 Windows 环境在启动时规范原生模块导入路径，同时保留已有的 `sitecustomize` 文件。若新环境的基础解释器路径超过 Windows 重定向启动器的限制，环境会使用该基础解释器及其相邻 DLL 的副本；包隔离方式保持不变。接入已有环境只做检查，不修改其中的文件。保存的偏好设置、环境记录和组件状态保留普通路径；相对命令保留通常的查找方式。
+
+TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发行版，最后检测 `PATH` 中可用的引擎。组件状态报告所选工具的来源、实际版本和可用引擎；编译使用同一选择。无效绑定会报错，不退回其他工具；所选发行版缺少请求的引擎时也会报错，不另行下载第二套发行版。没有绑定或可用安装时，Windows 可按需安装私有 TinyTeX。缺少的宏包只会在托管发行版中自动安装；调用外部 MiKTeX 的编译引擎与 BibTeX 时会禁用其隐式装包功能。
 
 ### 新增一个模式
 
@@ -97,6 +101,7 @@ kind: "package-reference"
 | [`src/prose.ts`](src/prose.ts) | 行文检查：套话、防御性表述、模糊限定、公式化对比、破折号和宣传性词语 |
 | [`src/venues.ts`](src/venues.ts) | 会议模板库：列出会议，并把某个会议的模板应用到项目 |
 | [`runtime/venues/`](runtime/venues) | 139 个会议、16 套官方样式，附指南与示例，由 [`scripts/build_venues.py`](scripts/build_venues.py) 构建 |
+| [`src/examples.ts`](src/examples.ts)、[`runtime/examples/v1/`](runtime/examples/v1) | 两套合成研究示例的保留式安装、稳定登记及成稿对话 |
 | [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`：加载图谱、召回、新颖性、构建并命名项目图谱 |
 | [`src/clustering.ts`](src/clustering.ts) | 分词、BM25、词项向量、余弦、排名融合、平均链接与 k-means 聚类 |
 | [`runtime/kg/`](runtime/kg) | 内置科研模式图谱，由 [`scripts/build_kg.py`](scripts/build_kg.py) 精简而来 |
@@ -179,7 +184,7 @@ kind: "package-reference"
 
 未发布运行时不变量配套插件，因为台账维护的每一种关系（修订号、证据关联、运行标识）都在写入处、在每个项目逐一进行的变更队列中强制保证。
 
-- **优先面向 Windows 的装配**——Python、uv、TeX 与 draw.io 的自动安装面向 Windows x64；其他平台在设置中绑定已有工具。
+- **优先面向 Windows 的装配**——Python、uv、TeX 与 draw.io 的自动安装面向 Windows x64。所有平台都会检测 `PATH` 中已有的 TeX；Windows 之外的其他工具需要在设置中绑定。
 - **SSH 不做任何装配**——远程运行使用显式配置的 OpenSSH 认证和专用远程目录；从不创建账户、不接入集群调度器、不改动服务器的全局 Python。
 - **agent 一侧无法导出 draw.io**——图可以在内置编辑器中编辑，但矢量导出需要桌面应用的主进程，而这个包不扩展主进程；agent 默认用 TikZ 绘图。
 - **GPU 读数只支持 NVIDIA**——看板的机器探针通过 `nvidia-smi` 读取 GPU；在 macOS 上不读取处理器和内存占用。

@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../util/atomic-write" },
     { "path": "../../core/agent" },
     { "path": "../../goal/goal" },
     { "path": "../../interaction/permission-presets" },

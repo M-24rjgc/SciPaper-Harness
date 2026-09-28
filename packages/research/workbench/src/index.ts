@@ -27,6 +27,7 @@ import { createGateRunner, runPackScript } from './gates.ts'
 import { GENERAL_MODE, ModeRegistry } from './modes.ts'
 import { FileTimes, mergeProgress, projectStanding, storedProgress } from './progress.ts'
 import { createEnvironment } from './environments.ts'
+import { appendExampleConversation, initializeResearchExamples } from './examples.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
 import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
 import { auditSvg, exportFigure } from './figures.ts'
@@ -221,6 +222,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   private readonly fileTimes = new FileTimes()
   private venueLibrary: Promise<VenueLibrary> | undefined
   private refreshResourceRoutes!: () => Promise<void>
+  /** One installation shared by all first-snapshot callers and awaited during shutdown. */
+  private examplesReady: Promise<void> | undefined
 
   /** Bind the research API and its private tooling directory. */
   constructor(ctx: Context, readonly config: Config) {
@@ -245,7 +248,12 @@ export class ResearchWorkbench extends TypertRemoteService {
    */
   private async loadEvidenceText(): Promise<void> {
     for (const [id, stored] of this.domain.table('projects').entries()) {
-      if (stored.evidence.some(evidence => evidence.chunks.length > 0)) {
+      if (isExampleRoot(stored.root)) {
+        await Promise.all(stored.evidence.map(async (evidence) => {
+          const chunks = evidence.chunks.length > 0 ? evidence.chunks : await readEvidenceText(stored.root, evidence)
+          this.evidenceText.set(textKey(id, evidence), chunks)
+        }))
+      } else if (stored.evidence.some(evidence => evidence.chunks.length > 0)) {
         await this.domain.table('projects').put(id, await this.withoutText(structuredClone(stored)))
       } else {
         await Promise.all(stored.evidence.map(async (evidence) => {
@@ -278,6 +286,38 @@ export class ResearchWorkbench extends TypertRemoteService {
     this.operations.add(operation)
     const settle = (): void => { this.operations.delete(operation) }
     void operation.then(settle, settle)
+  }
+
+  /** Seed after activation, when a research preset can safely acquire this service. */
+  private ensureExamples(): Promise<void> {
+    if (this.examplesReady !== undefined) return this.examplesReady
+    this.examplesReady = initializeResearchExamples(resolveDshHome(), runtimeAsset('examples/v1'), {
+      find: root => this.projects().find(project => sameDirectory(project.root, root)),
+      workspace: async (root, title) => (await this.ctx.workspaceRegistry.create(root, title)).id,
+      put: async (project) => {
+        const previous = this.domain.table('projects').get(project.id)
+        if (previous !== undefined) throw new Error(`Example identity already belongs to another root: ${project.id}`)
+        await this.domain.table('projects').put(project.id, project)
+      },
+      conversation: async (project, material) => {
+        if (project.sessionId === undefined) throw new Error(`Example has no registered conversation: ${project.id}`)
+        const { sessionId } = await this.ctx.sessionController.create({
+          sessionId: project.sessionId, workspaceId: project.workspaceId, agentPreset: 'research',
+        })
+        const session = this.ctx.sessions.get(sessionId)
+        if (session === undefined) throw new Error(`Example conversation was not attached: ${sessionId}`)
+        this.ctx.permissionPresets.set(session, 'read-only')
+        const inspection = await this.ctx.sessionController.inspect(sessionId, this.lifetime.signal)
+        appendExampleConversation(session, inspection.events, material)
+        await this.ctx.sessions.flush(session)
+        for (const evidence of project.evidence) {
+          const chunks = evidence.chunks.length > 0 ? evidence.chunks : await readEvidenceText(project.root, evidence)
+          this.evidenceText.set(textKey(project.id, evidence), chunks)
+        }
+      },
+    })
+    this.track(this.examplesReady)
+    return this.examplesReady
   }
 
   protected async [Service.init](): Promise<void> {
@@ -324,6 +364,7 @@ export class ResearchWorkbench extends TypertRemoteService {
    */
   @Remote
   async snapshot(): Promise<ResearchSnapshot> {
+    await this.ensureExamples()
     const projects = this.projects()
     const drafts = await this.draftsForView(projects, projects)
     const withStanding = async (project: ResearchProject): Promise<ResearchProject> => {
@@ -1130,8 +1171,10 @@ export class ResearchWorkbench extends TypertRemoteService {
         return (project) => {
           project.compilations.push(result)
           return {
-            message: result.status === 'completed' ? `PDF built: ${result.pdfPath}. Look at it: render-pages, then read_image.` : `No PDF was produced; see the diagnostics and ${result.logPath}`,
-            path: result.pdfPath, content: result.diagnostics.join('\n'),
+            message: result.status === 'completed'
+              ? `PDF built: ${result.pdfPath}. Look at it: render-pages, then read_image.`
+              : `PDF compilation failed; see the diagnostics and ${result.logPath}`,
+            ...(result.status === 'completed' ? { path: result.pdfPath } : {}), content: result.diagnostics.join('\n'),
           }
         }
       }

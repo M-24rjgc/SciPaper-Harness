@@ -14,6 +14,7 @@ import { bibliographyFiles, flattenPaper, paperDigest } from '../src/latex.ts'
 import { migrateProject, researchDomain } from '../src/schema.ts'
 import type { ArtifactId, CheckReport, EnvironmentId, EvidenceId, ExperimentRecord, ExperimentSpec, ResearchProject } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import { defaultDshHome } from '@deepseek-ai/dsh-home-paths'
 
 const roots: string[] = []
 let savedHome: string | undefined
@@ -135,11 +136,15 @@ describe('artifacts are recorded, never refused for being edited elsewhere', () 
     expect(await isBinaryFile(join(p.root, 'absent.woff2'))).toBe(true)
   })
 
-  it('knows an example by its place under the data home\'s demo folder, and nothing else', () => {
+  it('protects shipped and legacy examples with a contained path, including when a trial selects another home', () => {
     const home = join(tmpdir(), 'research-home')
     expect(isExampleRoot(join(home, 'demo', 'sparse'), home)).toBe(true)
     expect(isExampleRoot(join(home, 'demo'), home)).toBe(true)
     expect(isExampleRoot(join(home, 'demo-copy', 'sparse'), home)).toBe(false)
+    expect(isExampleRoot(join(home, 'research/examples/v1/sparse'), home)).toBe(true)
+    expect(isExampleRoot(join(home, 'research/examples-copy/v1/sparse'), home)).toBe(false)
+    expect(isExampleRoot(join(defaultDshHome(), 'demo', 'old'), home)).toBe(true)
+    expect(isExampleRoot(join(defaultDshHome(), 'demo-copy', 'old'), home)).toBe(false)
     expect(isExampleRoot(join(tmpdir(), 'elsewhere', 'demo', 'sparse'), home)).toBe(false)
   })
 

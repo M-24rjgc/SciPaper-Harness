@@ -1,18 +1,20 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, win32 } from 'node:path'
+import { basename, dirname, join, resolve, win32 } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
 import type { ProcessResult } from '../src/process.ts'
 import type { ResearchPreferences } from '../src/types.ts'
 import type { ComponentHost } from '../src/components.ts'
+import { newProject } from '../src/project.ts'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 /** Every process the manager starts, answered by the current script. */
 const scripted = vi.hoisted(() => ({
   calls: [] as { command: string; args: string[]; env: Record<string, string | undefined> | undefined }[],
-  answer: (_command: string, _args: string[]): ProcessResult => ({ code: 0, stdout: '', stderr: '' }),
+  answer: (_command: string, _args: string[]): ProcessResult | Promise<ProcessResult> => ({ code: 0, stdout: '', stderr: '' }),
 }))
 vi.mock('../src/process.ts', async (original) => {
   const actual = await original<typeof import('../src/process.ts')>()
@@ -26,16 +28,27 @@ vi.mock('../src/process.ts', async (original) => {
 })
 
 const { COMPONENT_RELEASES, ComponentManager, downloadAsset, packageForFile, prepareManagedPython, runtimeAsset, tlmgrCommand } = await import('../src/components.ts')
-const { missingTexFile } = await import('../src/artifacts.ts')
+const { compilePaper, missingTexFile, writeArtifact } = await import('../src/artifacts.ts')
 type Host = ComponentHost
 
 const signal = new AbortController().signal
 const roots: string[] = []
+function answer(command: string, args: string[]): ProcessResult {
+  const engine = basename(command).replace(/\.exe$/, '')
+  const banners: Record<string, string> = {
+    pdflatex: 'pdfTeX 3.141592653-2.6-1.40.29 (TeX Live 2026)',
+    xelatex: 'XeTeX 3.141592653-2.6-0.999998 (TeX Live 2026)',
+    lualatex: 'LuaHBTeX, Version 1.24.0 (TeX Live 2026)',
+  }
+  return { code: 0, stdout: args.includes('--version') ? banners[engine] ?? '' : '', stderr: '' }
+}
+beforeEach(() => { vi.stubEnv('PATH', ''); scripted.answer = answer })
 afterEach(async () => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   scripted.calls.length = 0
   scripted.answer = () => ({ code: 0, stdout: '', stderr: '' })
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+  for (const root of roots.splice(0)) await rm(root, { recursive: true })
 })
 
 async function temporary(): Promise<string> {
@@ -136,7 +149,7 @@ describe('managed tools on a Windows x64 host', () => {
     expect(scripted.calls[0]?.args).toEqual(expect.arrayContaining(['svglib==2.2.0', 'reportlab==5.0.1', 'PyYAML==6.0.3']))
     const statuses = await manager.status()
     expect(statuses.map(status => [status.id, status.installed, status.version])).toEqual([
-      ['uv', true, 'uv-test'], ['python', true, '3.12'], ['latex', true, 'latex-test'], ['drawio', true, 'drawio-test'],
+      ['uv', true, 'uv-test'], ['python', true, '3.12'], ['latex', true, 'TeX Live 2026'], ['drawio', true, 'drawio-test'],
     ])
     // A check asks only for an installed Python, and never installs one.
     expect(await manager.installedPython()).toBe(python)
@@ -189,13 +202,15 @@ describe('managed tools on a Windows x64 host', () => {
     await write(join(root, 'latex', 'TinyTeX', 'bin', 'windows', 'pdflatex.exe'))
     await write(join(root, 'latex', '.complete'))
     const manager = new ComponentManager(root, none, windows(await temporary(), {}))
-    scripted.answer = (_command, args) => ({ code: 0, stdout: args.includes('search') ? 'tlmgr: package repository https://mirror\nacmart:\n\ttexmf-dist/tex/latex/acmart/acmart.cls\n' : '', stderr: '' })
+    serve({})
+    scripted.answer = (command, args) => args.includes('--version') ? answer(command, args)
+      : { code: 0, stdout: args.includes('search') ? 'tlmgr: package repository https://mirror\nacmart:\n\ttexmf-dist/tex/latex/acmart/acmart.cls\n' : '', stderr: '' }
     await manager.installTexPackage('acmart.cls', signal)
     const install = scripted.calls.find(call => call.args.includes('install'))!
     expect(install.args.at(-1)).toBe('acmart')
     expect(install.command).toBe(join(root, 'latex', 'TinyTeX', 'tlpkg', 'tlperl', 'bin', 'perl.exe'))
     expect(install.env?.PATH?.startsWith(join(root, 'latex', 'TinyTeX', 'bin', 'windows'))).toBe(true)
-    scripted.answer = () => ({ code: 0, stdout: '', stderr: '' })
+    scripted.answer = (command, args) => args.includes('--version') ? answer(command, args) : { code: 0, stdout: '', stderr: '' }
     await manager.installTexPackage('orphan.sty', signal)
     expect(scripted.calls.at(-1)?.args.at(-1)).toBe('orphan')
     await expect(manager.installTexPackage('../../evil.sty', signal)).rejects.toThrow(/Unsupported TeX dependency/)
@@ -203,10 +218,338 @@ describe('managed tools on a Windows x64 host', () => {
     scripted.calls.length = 0
     expect(await manager.installTexPackage('example-image-plain.pdf', signal, false)).toBe(false)
     expect(scripted.calls.some(call => call.args.includes('install'))).toBe(false)
-    scripted.answer = (_command, args) => ({ code: 0, stdout: args.includes('search') ? 'mwe:\n\ttexmf-dist/tex/latex/mwe/example-image-plain.pdf\n' : '', stderr: '' })
+    scripted.answer = (command, args) => args.includes('--version') ? answer(command, args)
+      : { code: 0, stdout: args.includes('search') ? 'mwe:\n\ttexmf-dist/tex/latex/mwe/example-image-plain.pdf\n' : '', stderr: '' }
     expect(await manager.installTexPackage('example-image-plain.pdf', signal, false)).toBe(true)
     expect(scripted.calls.at(-1)?.args.at(-1)).toBe('mwe')
     await expect(new ComponentManager(root, () => ({ texBin: 'C:/texlive/bin' }), windows(root, {})).installTexPackage('a.sty', signal)).rejects.toThrow(/configured TeX distribution/)
+  })
+})
+
+describe('TeX distribution selection', () => {
+  it('reports no TeX without probing arbitrary commands or downloading', async () => {
+    const requested = serve({})
+    const manager = new ComponentManager(await temporary(), none, windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex'))
+      .toEqual({ id: 'latex', installed: false, path: '', version: '', engines: [] })
+    expect(scripted.calls).toEqual([])
+    expect(requested).toEqual([])
+  })
+
+  it('uses the same detected system distribution for status and each compiler without a download', async () => {
+    const bin = await temporary()
+    for (const engine of ['pdflatex', 'xelatex', 'lualatex']) await write(join(bin, `${engine}.exe`))
+    vi.stubEnv('PATH', `"${bin}"`)
+    scripted.answer = command => ({ code: 0, stderr: '', stdout: ({
+      'pdflatex.exe': 'MiKTeX-pdfTeX 4.23 (MiKTeX 25.12)',
+      'xelatex.exe': 'MiKTeX-XeTeX 4.16 (MiKTeX 25.12)',
+      'lualatex.exe': 'MiKTeX-LuaHBTeX 1.22 (MiKTeX 25.12)',
+    })[basename(command)] ?? '' })
+    const requested = serve({})
+    const root = await temporary()
+    const manager = new ComponentManager(root, none, windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')).toEqual({
+      id: 'latex', installed: true, source: 'system', path: bin, version: 'MiKTeX 25.12',
+      engines: ['pdflatex', 'xelatex', 'lualatex'],
+    })
+    for (const engine of ['pdflatex', 'xelatex', 'lualatex'] as const) expect(await manager.latex(signal, engine)).toBe(bin)
+    expect(scripted.calls).toHaveLength(12)
+    await expect(manager.installTexPackage('acmart.cls', signal)).rejects.toThrow(/system TeX distribution/)
+    expect(scripted.calls.some(call => call.args.includes('search') || call.args.includes('install'))).toBe(false)
+    expect(requested).toEqual([])
+    expect(existsSync(join(root, 'latex'))).toBe(false)
+  })
+
+  it('prefers an explicit binding, then an installed managed distribution, then the system', async () => {
+    const root = await temporary()
+    const system = await temporary()
+    const configured = await temporary()
+    const managed = join(root, 'latex', 'TinyTeX', 'bin', 'windows')
+    for (const bin of [system, configured, managed]) await write(join(bin, 'pdflatex.exe'))
+    await write(join(root, 'latex', '.complete'))
+    vi.stubEnv('PATH', system)
+    const preferences: ResearchPreferences = { texBin: configured }
+    const manager = new ComponentManager(root, () => preferences, windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ path: configured, source: 'configured' })
+    expect(await manager.latex(signal, 'pdflatex')).toBe(configured)
+    delete preferences.texBin
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ path: managed, source: 'managed' })
+    expect(await manager.latex(signal, 'pdflatex')).toBe(managed)
+    await rm(join(root, 'latex', '.complete'))
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ path: system, source: 'system' })
+  })
+
+  it('reports a missing explicit compiler and refuses to silently use the available system', async () => {
+    const configured = await temporary()
+    const system = await temporary()
+    await write(join(system, 'pdflatex.exe'))
+    vi.stubEnv('PATH', system)
+    const requested = serve({})
+    const manager = new ComponentManager(await temporary(), () => ({ texBin: configured }), windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({
+      installed: false, source: 'configured', problem: 'missing-executable', path: configured, version: '', engines: [],
+    })
+    await expect(manager.latex(signal)).rejects.toThrow(/Configured TeX directory/)
+    expect(scripted.calls).toEqual([])
+    expect(requested).toEqual([])
+  })
+
+  it.each(['wrong-banner', 'nonzero', 'spawn-error'] as const)('rejects an unusable explicitly bound engine: %s', async (failure) => {
+    const bin = await temporary()
+    await write(join(bin, 'pdflatex.exe'))
+    scripted.answer = () => {
+      if (failure === 'spawn-error') throw new Error('Invalid executable image')
+      return { code: failure === 'nonzero' ? 1 : 0, stdout: 'Python 3.12', stderr: '' }
+    }
+    const requested = serve({})
+    const manager = new ComponentManager(await temporary(), () => ({ texBin: bin }), windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({
+      installed: false, source: 'configured', problem: 'invalid-executable', version: '', engines: [],
+    })
+    await expect(manager.latex(signal)).rejects.toThrow(/Configured TeX directory/)
+    expect(requested).toEqual([])
+  })
+
+  it('skips a broken managed distribution and broken PATH candidate for a runnable system engine', async () => {
+    const root = await temporary()
+    const managed = join(root, 'latex', 'TinyTeX', 'bin', 'windows')
+    const broken = await temporary()
+    const valid = await temporary()
+    for (const bin of [managed, broken, valid]) await write(join(bin, 'pdflatex.exe'))
+    await write(join(root, 'latex', '.complete'))
+    vi.stubEnv('PATH', [broken, valid].join(';'))
+    scripted.answer = (command, args) => command === join(valid, 'pdflatex.exe')
+      ? answer(command, args) : { code: 1, stdout: '', stderr: 'failed to load' }
+    const manager = new ComponentManager(root, none, windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ installed: true, source: 'system', path: valid })
+    expect(await manager.latex(signal, 'pdflatex')).toBe(valid)
+  })
+
+  it('does not claim a missing XeLaTeX engine or install another distribution for it', async () => {
+    const bin = await temporary()
+    await write(join(bin, 'pdflatex.exe'))
+    vi.stubEnv('PATH', bin)
+    const requested = serve({})
+    const manager = new ComponentManager(await temporary(), none, windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')?.engines).toEqual(['pdflatex'])
+    await expect(manager.latex(signal, 'xelatex')).rejects.toThrow(/does not provide a usable xelatex/)
+    expect(await manager.latex(signal, 'pdflatex')).toBe(bin)
+    expect(requested).toEqual([])
+  })
+
+  it.each([true, false])('reselects a changed binding while an earlier managed download is pending: usable=%s', async (usable) => {
+    const root = await temporary()
+    const bin = await temporary()
+    if (usable) await write(join(bin, 'pdflatex.exe'))
+    const preferences: ResearchPreferences = {}
+    const bytes = archive({ 'TinyTeX/bin/windows/pdflatex.exe': 'managed compiler' })
+    const started = Promise.withResolvers<boolean>()
+    const release = Promise.withResolvers<Response>()
+    vi.stubGlobal('fetch', vi.fn(() => { started.resolve(true); return release.promise }))
+    const manager = new ComponentManager(root, () => preferences, windows(await temporary(), { latex: bytes }))
+    const earlier = manager.latex(signal, 'pdflatex')
+    // Attach both outcomes before changing the binding; no rejected background promise goes unobserved.
+    const outcome = earlier.then(value => ({ value }), (error: unknown) => ({ error }))
+    await started.promise
+    preferences.texBin = bin
+    const current = manager.latex(signal, 'pdflatex')
+    if (usable) expect(await current).toBe(bin)
+    else await expect(current).rejects.toThrow(/Configured TeX directory/)
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ source: 'configured', path: bin, installed: usable })
+    release.resolve(new Response(new Uint8Array(bytes)))
+    const result = await outcome
+    if (usable) expect(result).toEqual({ value: bin })
+    else expect('error' in result && result.error instanceof Error ? result.error.message : '').toMatch(/Configured TeX directory/)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('revalidates a replaced compiler and reports its actual installed version', async () => {
+    const bin = await temporary()
+    const executable = join(bin, 'pdflatex.exe')
+    await write(executable, 'first')
+    const manager = new ComponentManager(await temporary(), () => ({ texBin: bin }), windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')?.version).toBe('TeX Live 2026')
+    await manager.status()
+    expect(scripted.calls).toHaveLength(2)
+    await write(executable, 'replacement compiler')
+    scripted.answer = () => ({ code: 0, stdout: 'pdfTeX 3.141592653-2.6-1.40.30 (TeX Live 2027)', stderr: '' })
+    expect((await manager.status()).find(status => status.id === 'latex')?.version).toBe('TeX Live 2027')
+    expect(scripted.calls).toHaveLength(3)
+  })
+
+  it('rechecks a compiler that becomes unusable without changing its executable file', async () => {
+    const bin = await temporary()
+    await write(join(bin, 'pdflatex.exe'))
+    const manager = new ComponentManager(await temporary(), () => ({ texBin: bin }), windows(await temporary(), {}))
+    expect((await manager.status()).find(status => status.id === 'latex')?.installed).toBe(true)
+    scripted.answer = () => ({ code: 1, stdout: '', stderr: 'supporting library missing' })
+    await expect(manager.latex(signal, 'pdflatex')).rejects.toThrow(/Configured TeX directory/)
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ installed: false, problem: 'invalid-executable' })
+  })
+
+  it('finds an installed Python without running any TeX probes', async () => {
+    const assets = await temporary()
+    const python = join(assets, 'components/platform-python/python.exe')
+    await write(python)
+    const texBin = await temporary()
+    await write(join(texBin, 'pdflatex.exe'))
+    const manager = new ComponentManager(await temporary(), () => ({ texBin }), windows(assets, {}))
+    expect(await manager.installedPython()).toBe(win32.toNamespacedPath(python))
+    expect(scripted.calls).toEqual([])
+  })
+
+  it('uses each verified engine distribution to choose its supported compiler arguments', async () => {
+    const bin = await temporary()
+    for (const program of ['pdflatex', 'xelatex']) await write(join(bin, `${program}.exe`))
+    scripted.answer = (command, args) => basename(command) === 'pdflatex.exe'
+      ? { code: 0, stdout: 'MiKTeX-pdfTeX 4.23 (MiKTeX 25.12)', stderr: '' } : answer(command, args)
+    const manager = new ComponentManager(await temporary(), () => ({ texBin: bin }), windows(bin, {}))
+    expect((await manager.latexRuntime(signal, 'pdflatex')).compilerArgs).toEqual(['--disable-installer'])
+    expect((await manager.latexRuntime(signal, 'xelatex')).compilerArgs).toEqual([])
+  })
+
+  it('does not run an unverified external BibTeX or pass its installer arguments to Biber', async () => {
+    const bin = await temporary()
+    await write(join(bin, 'pdflatex.exe'))
+    await write(join(bin, 'bibtex.exe'))
+    const manager = new ComponentManager(await temporary(), () => ({ texBin: bin }), windows(bin, {}))
+    const runtime = await manager.latexRuntime(signal, 'pdflatex')
+    expect(await runtime.bibliographyArgs('biber')).toEqual([])
+    expect(scripted.calls.some(call => basename(call.command) === 'biber.exe')).toBe(false)
+    await expect(runtime.bibliographyArgs('bibtex')).rejects.toThrow(/did not report a usable BibTeX/)
+    expect(scripted.calls.filter(call => basename(call.command) === 'bibtex.exe')).toHaveLength(1)
+  })
+
+  it.each([
+    ['miktex', 'pdflatex', 'bibtex', 'system'],
+    ['miktex', 'xelatex', 'biber', 'system'],
+    ['miktex', 'lualatex', 'bibtex', 'configured'],
+    ['texlive', 'xelatex', 'bibtex', 'configured'],
+  ] as const)('compiles with supported installer arguments: %s / %s / %s / %s', async (distribution, engine, bibliography, source) => {
+    const root = await temporary()
+    const bin = await temporary()
+    for (const program of ['pdflatex', 'xelatex', 'lualatex', 'bibtex', 'biber']) await write(join(bin, `${program}.exe`))
+    vi.stubEnv('PATH', bin)
+    const requested = serve({})
+    scripted.answer = async (command, args) => {
+      const program = basename(command, '.exe')
+      if (args.includes('--version')) {
+        const names: Record<string, string> = { pdflatex: 'pdfTeX', xelatex: 'XeTeX', lualatex: 'LuaHBTeX', bibtex: 'BibTeX' }
+        return { code: 0, stdout: distribution === 'miktex'
+          ? `MiKTeX-${names[program]} 4.23 (MiKTeX 25.12)` : `${names[program]} 4.23 (TeX Live 2026)`, stderr: '' }
+      }
+      const output = args.find(value => value.startsWith('-output-directory='))
+      if (output) {
+        const build = resolve(root, 'paper', output.slice('-output-directory='.length))
+        await mkdir(build, { recursive: true })
+        await writeFile(join(build, 'main.pdf'), '%PDF-1.7\n%%EOF\n')
+        await writeFile(join(build, `main.${bibliography === 'bibtex' ? 'aux' : 'bcf'}`), bibliography === 'bibtex' ? '\\bibdata{refs}' : 'bcf')
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const components = new ComponentManager(join(root, 'components'), () => source === 'configured' ? { texBin: bin } : {}, windows(bin, {}))
+    const project = newProject({ root, title: 'Compiler options', brief: 'Typeset a formula' }, 'test-workspace' as WorkspaceId)
+    const artifact = await writeArtifact(project, {
+      action: 'save-artifact', projectId: project.id, kind: 'manuscript', path: 'paper/main.tex',
+      content: '\\documentclass{article}\\begin{document}Formula $E=mc^2$.\\end{document}',
+      evidence: [], claimIds: [], inputArtifacts: [],
+    }, 'user', 10000)
+    const result = await compilePaper(project, artifact, engine, components, signal, 10000)
+    expect(result.status).toBe('completed')
+    const compilerCalls = scripted.calls.filter(call => call.args.some(arg => arg.startsWith('-output-directory=')))
+    expect(compilerCalls).toHaveLength(3)
+    expect(compilerCalls.every(call => call.args.includes('--disable-installer') === (distribution === 'miktex'))).toBe(true)
+    const bibliographyCall = scripted.calls.find(call => basename(call.command, '.exe') === bibliography && !call.args.includes('--version'))!
+    expect(bibliographyCall.args.includes('--disable-installer')).toBe(distribution === 'miktex' && bibliography === 'bibtex')
+    expect(requested).toEqual([])
+  })
+
+  it('accepts a configured Unix engine and preserves cancellation', async () => {
+    const root = await temporary()
+    const bin = await temporary()
+    await write(join(bin, 'xelatex'))
+    const manager = new ComponentManager(root, () => ({ texBin: bin }), { ...windows(root, {}), platform: 'linux' })
+    expect((await manager.status()).find(status => status.id === 'latex')).toMatchObject({ installed: true, engines: ['xelatex'] })
+    expect(await manager.latex(signal, 'xelatex')).toBe(bin)
+    const cancelled = new AbortController()
+    cancelled.abort()
+    await expect(manager.latex(cancelled.signal, 'xelatex')).rejects.toThrow()
+  })
+})
+
+describe('compile completion', () => {
+  async function fixture() {
+    const root = await temporary()
+    const bin = await temporary()
+    for (const program of ['pdflatex', 'bibtex', 'biber']) await write(join(bin, `${program}.exe`))
+    const components = new ComponentManager(join(root, 'components'), () => ({ texBin: bin }), windows(bin, {}))
+    const project = newProject({ root, title: 'Compile outcome', brief: 'Typeset a formula' }, 'test-workspace' as WorkspaceId)
+    const artifact = await writeArtifact(project, {
+      action: 'save-artifact', projectId: project.id, kind: 'manuscript', path: 'paper/main.tex',
+      content: '\\documentclass{article}\\begin{document}Formula $E=mc^2$.\\end{document}',
+      evidence: [], claimIds: [], inputArtifacts: [],
+    }, 'user', 10000)
+    serve({})
+    return { root, components, project, artifact }
+  }
+
+  it.each([1, 2, 3])('rejects a partial PDF when compiler pass %s exits unsuccessfully', async (failureRound) => {
+    const { root, components, project, artifact } = await fixture()
+    let rounds = 0
+    scripted.answer = async (command, args) => {
+      if (args.includes('--version')) return answer(command, args)
+      const output = args.find(value => value.startsWith('-output-directory='))!
+      const build = resolve(root, 'paper', output.slice('-output-directory='.length))
+      await mkdir(build, { recursive: true })
+      await writeFile(join(build, 'main.pdf'), '%PDF-1.7\npartial output\n%%EOF\n')
+      await writeFile(join(build, 'main.log'), 'A file was written')
+      return ++rounds === failureRound
+        ? { code: 1, stdout: '', stderr: '! Undefined control sequence.\n' } : { code: 0, stdout: '', stderr: '' }
+    }
+    const result = await compilePaper(project, artifact, 'pdflatex', components, signal, 10000)
+    expect(result.status).toBe('failed')
+    expect(rounds).toBe(failureRound)
+    expect(result.diagnostics).toContain(`Error: pdflatex pass ${failureRound} failed (exit code 1)`)
+    expect(result.diagnostics).toContain('! Undefined control sequence.')
+    expect(await readFile(join(root, result.logPath), 'utf8')).toContain('! Undefined control sequence.')
+    expect(existsSync(join(root, result.pdfPath))).toBe(true)
+  })
+
+  it.each(['bibtex', 'biber'] as const)('rejects the first-pass PDF when %s fails and preserves its diagnostics', async (program) => {
+    const { root, components, project, artifact } = await fixture()
+    scripted.answer = async (command, args) => {
+      if (args.includes('--version')) return basename(command, '.exe') === 'bibtex'
+        ? { code: 0, stdout: 'BibTeX 0.99d (TeX Live 2026)', stderr: '' } : answer(command, args)
+      if (basename(command, '.exe') === program) return { code: 2, stdout: '', stderr: 'Error: bibliography input unavailable\n' }
+      const output = args.find(value => value.startsWith('-output-directory='))!
+      const build = resolve(root, 'paper', output.slice('-output-directory='.length))
+      await mkdir(build, { recursive: true })
+      await writeFile(join(build, 'main.pdf'), '%PDF-1.7\nfirst pass\n%%EOF\n')
+      await writeFile(join(build, program === 'bibtex' ? 'main.aux' : 'main.bcf'), program === 'bibtex' ? '\\bibdata{refs}' : 'bcf')
+      await writeFile(join(build, 'main.log'), 'First pass completed')
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const result = await compilePaper(project, artifact, 'pdflatex', components, signal, 10000)
+    expect(result.status).toBe('failed')
+    expect(scripted.calls.filter(call => call.args.some(arg => arg.startsWith('-output-directory=')))).toHaveLength(1)
+    expect(result.diagnostics).toContain(`Error: ${program === 'bibtex' ? 'BibTeX' : 'Biber'} failed (exit code 2)`)
+    expect(result.diagnostics).toContain('Error: bibliography input unavailable')
+    expect(await readFile(join(root, result.logPath), 'utf8')).toContain('Error: bibliography input unavailable')
+  })
+
+  it.each(['', 'not a PDF', '%PDF-1.7'])('rejects empty or invalid PDF output despite successful processes: %j', async (content) => {
+    const { root, components, project, artifact } = await fixture()
+    scripted.answer = async (command, args) => {
+      if (args.includes('--version')) return answer(command, args)
+      const output = args.find(value => value.startsWith('-output-directory='))!
+      const build = resolve(root, 'paper', output.slice('-output-directory='.length))
+      await mkdir(build, { recursive: true })
+      await writeFile(join(build, 'main.pdf'), content)
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const result = await compilePaper(project, artifact, 'pdflatex', components, signal, 10000)
+    expect(result.status).toBe('failed')
+    expect(result.diagnostics).toContain('Error: Compilation did not produce a valid non-empty PDF')
   })
 })
 
@@ -243,14 +586,17 @@ describe('configured and unsupported hosts', () => {
 
   it('uses tools the user bound, after checking them', async () => {
     const root = await temporary()
-    const manager = new ComponentManager(root, () => ({ uv: 'C:/tools/uv.exe', python: 'C:/py/python.exe', texBin: 'C:/texlive/bin' }), windows(await temporary(), {}))
+    const texBin = join(root, 'tex')
+    await write(join(texBin, 'pdflatex.exe'))
+    const manager = new ComponentManager(root, () => ({ uv: 'C:/tools/uv.exe', python: 'C:/py/python.exe', texBin }), windows(await temporary(), {}))
     expect(await manager.uv(signal)).toBe('C:/tools/uv.exe')
     expect(await manager.python(signal)).toBe('\\\\?\\C:\\py\\python.exe')
-    expect(await manager.latex(signal)).toBe('C:/texlive/bin')
-    expect(scripted.calls.map(call => call.command)).toEqual(['C:/tools/uv.exe', '\\\\?\\C:\\py\\python.exe'])
+    expect(await manager.latex(signal)).toBe(texBin)
+    expect(scripted.calls.map(call => call.command)).toEqual(['C:/tools/uv.exe', '\\\\?\\C:\\py\\python.exe', join(texBin, 'pdflatex.exe')])
     const statuses = await manager.status()
-    expect(statuses.every(status => !status.installed)).toBe(true)
-    expect(statuses.map(status => status.path)).toEqual(['C:/tools/uv.exe', 'C:/py/python.exe', 'C:/texlive/bin', ''])
+    expect(statuses.filter(status => status.id !== 'latex').every(status => !status.installed)).toBe(true)
+    expect(statuses.map(status => status.path)).toEqual(['C:/tools/uv.exe', 'C:/py/python.exe', texBin, ''])
+    expect(statuses.find(status => status.id === 'latex')).toMatchObject({ installed: true, source: 'configured', version: 'TeX Live 2026' })
   })
 
   it.each([

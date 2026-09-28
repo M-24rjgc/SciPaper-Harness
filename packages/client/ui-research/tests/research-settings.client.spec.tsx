@@ -20,7 +20,7 @@ import type {
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchSettingsSection } from '../src/client/ResearchSettings.tsx'
 import type { FolderPick, ResearchView, WorkbenchProps } from '../src/client/contract.ts'
-import { zh } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 
 /** What the page asked the plugin to do, in the order it asked, and the answers still held back. */
 interface Recorded {
@@ -434,6 +434,68 @@ describe('where new researches are kept', () => {
 })
 
 describe('local components', () => {
+  it('shows the detected system LaTeX distribution, engines and path without an install action', () => {
+    const latex: ComponentStatus = {
+      id: 'latex', installed: true, path: 'C:/MiKTeX/miktex/bin/x64', version: 'MiKTeX 25.12', source: 'system',
+      engines: ['pdflatex', 'xelatex', 'lualatex'],
+    }
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [latex] })), recorded)} />)
+    expect(page.getByText(latex.version)).toBeTruthy()
+    expect(page.getByText(latex.path)).toBeTruthy()
+    expect(page.getByText(zh.componentSource.replace('{source}', zh.componentSource_system))).toBeTruthy()
+    expect(page.getByText(zh.latexEngines.replace('{engines}', 'pdfLaTeX / XeLaTeX / LuaLaTeX'))).toBeTruthy()
+    expect(page.getByText(zh.installed).getAttribute('data-tone')).toBe('success')
+    expect(page.queryByRole('button', { name: zh.notInstalled })).toBeNull()
+    expect(recorded.installs).toEqual([])
+  })
+
+  it.each(['configured', 'managed', 'bundled'] as const)('localizes the selected %s LaTeX source', (source) => {
+    const latex: ComponentStatus = { id: 'latex', installed: true, path: '/tex/bin', version: 'TeX Live 2026', source }
+    const props = propsFor(viewOf(snapshotOf({ components: [latex] })), blank())
+    const dictionary: Readonly<Record<string, string>> = en
+    props.t = (key, params) => {
+      const template = dictionary[key] ?? key
+      return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
+    }
+    const page = render(<ResearchSettingsSection {...props} />)
+    expect(page.getByText(en.componentSource.replace('{source}', en[`componentSource_${source}`]))).toBeTruthy()
+    expect(page.getByText(en.installed).getAttribute('data-tone')).toBe('success')
+    expect(page.queryByText(/Available engines:/)).toBeNull()
+  })
+
+  it.each(['missing-executable', 'invalid-executable'] as const)('explains %s and replaces it when a ready snapshot arrives', (problem) => {
+    const recorded = blank()
+    const latex: ComponentStatus = {
+      ...latexMissing, source: 'configured', path: 'C:/tools/tex/bin', problem, engines: [],
+    }
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [latex] })), recorded)} />)
+    expect(page.getByText(zh[`latexProblem_${problem}`])).toBeTruthy()
+    expect(page.getByText(latex.path)).toBeTruthy()
+    expect(page.queryByText(latexMissing.version)).toBeNull()
+    expect(page.getByRole('button', { name: zh.notInstalled })).toBeTruthy()
+    const ready: ComponentStatus = {
+      id: 'latex', installed: true, path: 'C:/MiKTeX/bin', version: 'MiKTeX 25.12', source: 'system', engines: ['pdflatex'],
+    }
+    page.rerender(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [ready] })), recorded)} />)
+    expect(page.queryByText(zh[`latexProblem_${problem}`])).toBeNull()
+    expect(page.queryByText(latex.path)).toBeNull()
+    expect(page.getByText(ready.version)).toBeTruthy()
+    expect(page.getByText(zh.latexEngines.replace('{engines}', 'pdfLaTeX'))).toBeTruthy()
+    expect(page.queryByRole('button', { name: zh.notInstalled })).toBeNull()
+    expect(recorded.installs).toEqual([])
+  })
+
+  it('accepts a ready LaTeX snapshot from before source and engine detection were added', () => {
+    const latex: ComponentStatus = { id: 'latex', installed: true, path: '/tex/bin', version: '2025' }
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [latex] })), blank())} />)
+    expect(page.getByText(latex.version)).toBeTruthy()
+    expect(page.getByText(latex.path)).toBeTruthy()
+    expect(page.getByText(zh.installed)).toBeTruthy()
+    expect(page.queryByText(/^来源：/)).toBeNull()
+    expect(page.queryByText(/^可用引擎：/)).toBeNull()
+  })
+
   it('tags a ready component, and says an absent one is installing until the plugin answers', async () => {
     const recorded = blank()
     const snapshot = snapshotOf({ components: [pythonReady, latexMissing, drawioMissing] })
@@ -442,7 +504,9 @@ describe('local components', () => {
     expect(page.getByText('python')).toBeTruthy()
     expect(page.getByText('3.12.7')).toBeTruthy()
     expect(page.getByText(zh.installed).getAttribute('data-tone')).toBe('success')
-    expect(page.getByText('latex')).toBeTruthy()
+    expect(page.getByText('LaTeX')).toBeTruthy()
+    expect(page.queryByText(latexMissing.version)).toBeNull()
+    expect(page.getByText(drawioMissing.version)).toBeTruthy()
 
     const [latex, drawio] = page.getAllByRole('button', { name: zh.notInstalled })
     fireEvent.click(latex!)
@@ -503,6 +567,23 @@ describe('experiment environments', () => {
 })
 
 describe('which researches the sidebar lists', () => {
+  it('reports an empty example list only after a shown snapshot has loaded', async () => {
+    const recorded = blank()
+    const page = render(<ResearchSettingsSection {...propsFor(viewOf(null), recorded)} />)
+    expect(page.queryByText(zh.showExamplesEmpty)).toBeNull()
+    page.rerender(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({})), recorded)} />)
+    expect(page.getByText(zh.showExamplesEmpty)).toBeTruthy()
+    page.rerender(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences: { showExamples: false } })), recorded)} />)
+    expect(page.queryByText(zh.showExamplesEmpty)).toBeNull()
+    const example = { ...await projectWithEnvironments([]), example: true }
+    page.rerender(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ projects: [example] })), recorded)} />)
+    expect(page.queryByText(zh.showExamplesEmpty)).toBeNull()
+    page.rerender(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ projects: [{ ...example, archived: true }] })), recorded)} />)
+    expect(page.getByText(zh.showExamplesEmpty)).toBeTruthy()
+    expect(recorded.saves).toEqual([])
+    expect(recorded.commands).toEqual([])
+  })
+
   it('shows the examples until the person turns them off, saving the switch with every other preference kept', async () => {
     const recorded = blank()
     const preferences: ResearchPreferences = { python: 'C:/Python312/python.exe', researchHome: 'D:\\Research' }
