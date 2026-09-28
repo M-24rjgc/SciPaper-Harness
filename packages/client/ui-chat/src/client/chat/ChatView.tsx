@@ -99,7 +99,8 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
  */
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot,
-  sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
+  sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt,
+  fileMentions, knownFilePath,
   usePresentation, useComposerBlock, useProjection, t,
 }: ChatViewSlotProps) {
   const readOnly = useComposerBlock(block => block?.readOnly === true)
@@ -246,7 +247,8 @@ export function ChatView({
                 </button>
               </div>
             )}
-            <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile} fileImages={fileImages}>
+            <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile} fileImages={fileImages}
+              knownFilePath={readOnly ? knownFilePath : undefined}>
               <ChatNodeList
                 entries={entries}
                 pendingInputs={pendingInputs}

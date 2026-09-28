@@ -95,31 +95,21 @@ function Role(props: {
 
 const TEX_ENGINE_NAMES = { pdflatex: 'pdfLaTeX', xelatex: 'XeLaTeX', lualatex: 'LuaLaTeX' } as const
 
-/** One detected component, with its selected LaTeX tools and an install action when absent. */
-function Component(props: WorkbenchProps & { component: ComponentStatus }): ReactNode {
+/** One detected component; LaTeX's longer tool information opens below the component grid. */
+function Component(props: WorkbenchProps & { component: ComponentStatus; detailsOpen: boolean; toggleDetails: () => void }): ReactNode {
   const { component, t } = props
   const installing = useAction()
   const latex = component.id === 'latex'
   const version = latex && !component.installed ? '' : component.version
-  const engines = component.engines?.map(engine => TEX_ENGINE_NAMES[engine]).join(' / ')
+  const hasDetails = latex && Boolean(component.source || component.engines?.length || component.path || component.problem)
   return <div className={styles.componentCell}>
     <div className={styles.component}>
-      <span className={component.installed ? styles.componentOn : styles.componentOff}></span>
+      <span className={component.installed ? styles.componentOn : styles.componentOff} aria-hidden="true"></span>
       <div className={styles.componentInfo}>
         <div className={styles.componentSummary}>
-          <span className={styles.componentName}>{latex ? 'LaTeX' : component.id}</span>
+          <span className={styles.componentName}>{latex ? t('componentLatex') : component.id}</span>
           {version && <span className={styles.componentVersion}>{version}</span>}
         </div>
-        {latex && component.source !== undefined && <span className={styles.componentDetail}>
-          {t('componentSource', { source: t(`componentSource_${component.source}`) })}
-        </span>}
-        {latex && component.installed && engines && <span className={styles.componentDetail}>
-          {t('latexEngines', { engines })}
-        </span>}
-        {latex && component.path && <span className={styles.componentPath}>{component.path}</span>}
-        {latex && !component.installed && component.problem !== undefined && <span className={styles.componentDetail}>
-          {t(`latexProblem_${component.problem}`)}
-        </span>}
       </div>
       {component.installed
         ? <Tag tone="success">{t('installed')}</Tag>
@@ -129,8 +119,38 @@ function Component(props: WorkbenchProps & { component: ComponentStatus }): Reac
           disabled={installing.pending}
           onClick={() => { installing.start(() => props.install(component.id)) }}
         >{t(installing.pending ? 'installing' : 'notInstalled')}</button>}
+      {hasDetails && <button
+        type="button"
+        className={props.detailsOpen ? `${styles.componentDisclosure} ${styles.componentDisclosureOpen}` : styles.componentDisclosure}
+        aria-label={t(props.detailsOpen ? 'componentDetailsHide' : 'componentDetailsShow')}
+        aria-controls="research-latex-component-details"
+        aria-expanded={props.detailsOpen}
+        title={t(props.detailsOpen ? 'componentDetailsHide' : 'componentDetailsShow')}
+        onClick={props.toggleDetails}
+      />}
     </div>
     <ActionError t={t} error={installing.error} />
+  </div>
+}
+
+/** The detected TeX source and commands, shown at full width on request. */
+function LatexDetails(props: { component: ComponentStatus; t: WorkbenchProps['t'] }): ReactNode {
+  const { component, t } = props
+  const engines = component.engines?.map(engine => TEX_ENGINE_NAMES[engine]).join(' / ')
+  return <div id="research-latex-component-details" className={styles.componentDetails} role="region" aria-label={t('latexDetails')}>
+    {component.source !== undefined && <div className={styles.componentDetail}>
+      {t('componentSource', { source: t(`componentSource_${component.source}`) })}
+    </div>}
+    {component.installed && engines && <div className={styles.componentDetail}>
+      {t('latexEngines', { engines })}
+    </div>}
+    {component.path && <div className={styles.componentDetail}>
+      <span>{t('componentPath')}</span>
+      <code className={styles.componentPath} title={component.path}>{component.path}</code>
+    </div>}
+    {!component.installed && component.problem !== undefined && <div className={styles.componentDetail}>
+      {t(`latexProblem_${component.problem}`)}
+    </div>}
   </div>
 }
 
@@ -262,7 +282,9 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
   const { t } = props
   const view = props.useResearch(s => s)
   const saving = useAction()
+  const [showLatexDetails, setShowLatexDetails] = useState(false)
   const preferences = view.snapshot?.preferences ?? {}
+  const latex = view.snapshot?.components.find(component => component.id === 'latex')
   const environments = (view.snapshot?.projects ?? []).flatMap(project =>
     project.environments.map(environment => ({ project: project.title, environment })))
   const save = (event: FormEvent<HTMLFormElement>): void => {
@@ -374,8 +396,11 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       <p className={styles.groupHint}>{t('localComponentsNote')}</p>
       <div className={styles.components}>
         {view.snapshot?.components.map(component =>
-          <Component key={component.id} {...props} component={component} />)}
+          <Component key={component.id} {...props} component={component}
+            detailsOpen={component.id === 'latex' && showLatexDetails}
+            toggleDetails={() => { setShowLatexDetails(open => !open) }} />)}
       </div>
+      {showLatexDetails && latex && <LatexDetails component={latex} t={t} />}
     </section>
 
     <section className={styles.group}>

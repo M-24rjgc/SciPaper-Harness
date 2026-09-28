@@ -5,7 +5,8 @@ import type { ComposerBlock } from '@deepseek-ai/dsh-client-ui-conversation/clie
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ResearchView, SessionDirectories } from '../src/client/contract.ts'
-import { guardExampleComposers } from '../src/client/examples.ts'
+import { guardExampleComposers, knownExampleFile } from '../src/client/examples.ts'
+import catalog from '../../../research/workbench/runtime/examples/v1/catalog.json'
 
 const REASON = 'This is an example research and can only be viewed.'
 
@@ -89,5 +90,25 @@ describe('the example guard', () => {
     blocks.set('a' as SessionId, { reason: 'no model' })
     research.set({ snapshot: { projects: [project({ example: false })] } as never, tasks: [] })
     expect(blocks.reason('a')).toBe('no model')
+  })
+})
+
+describe('shipped example file references', () => {
+  it('recognizes every bundled v1 resource from the project ledger and the three companion files', () => {
+    for (const item of catalog) {
+      const research = project({
+        id: `example-v1-${item.id}`, example: true,
+        evidence: item.evidence.map(source => ({ path: source.path })),
+        artifacts: item.artifacts.map(artifact => ({ path: artifact.path })),
+      })
+      expect(item.files).toHaveLength(13)
+      expect(item.files.filter(path => !knownExampleFile(research, path))).toEqual([])
+      expect(knownExampleFile(research, 'data/not-shipped.csv')).toBe(false)
+      expect(knownExampleFile(research, '../paper/main.pdf')).toBe(false)
+      expect(knownExampleFile(research, 'paper/../main.pdf')).toBe(false)
+      expect(knownExampleFile(research, 'C:/paper/main.pdf')).toBe(false)
+      expect(knownExampleFile(project({ ...research, example: false }), 'paper/main.pdf')).toBe(false)
+      expect(knownExampleFile(project({ ...research, id: 'legacy-demo' }), 'paper/main.pdf')).toBe(false)
+    }
   })
 })

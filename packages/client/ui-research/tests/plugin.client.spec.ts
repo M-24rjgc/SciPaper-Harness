@@ -655,6 +655,25 @@ describe('the research plugin', () => {
     expect(storeFor('session-a').getSnapshot()).toBeUndefined()
   })
 
+  it('exposes only files registered for the viewed shipped example session', async () => {
+    const b = await bench()
+    const example = {
+      ...PROJECT, id: 'example-v1-sparse', root: 'C:\\research\\sparse', example: true, sessionId: 'session-a',
+      evidence: [{ path: 'data/results.csv' }], artifacts: [{ path: 'paper/main.pdf' }],
+    } as ResearchProject
+    b.remote.snapshot.mockResolvedValue(ok({ ...LOADED, projects: [example] }))
+    await b.face.refresh()
+    const files = b.ctx.get('chatKnownFilePaths')
+    expect(files?.has('session-a' as SessionId, 'data/results.csv')).toBe(true)
+    expect(files?.has('session-a' as SessionId, 'paper/main.pdf')).toBe(true)
+    expect(files?.has('session-a' as SessionId, 'README.md')).toBe(true)
+    expect(files?.has('session-a' as SessionId, '../paper/main.pdf')).toBe(false)
+    expect(files?.has('session-a' as SessionId, 'paper/missing.pdf')).toBe(false)
+    expect(files?.has('session-b' as SessionId, 'paper/main.pdf')).toBe(false)
+    await stop(b)
+    expect(b.ctx.get('chatKnownFilePaths')).toBeUndefined()
+  })
+
   it('keeps the record and the job list it reads, and nothing about any action\'s progress', async () => {
     const b = await bench()
     b.remote.snapshot.mockResolvedValue(ok(LOADED))

@@ -32,11 +32,17 @@
 .componentOn { background: var(--dsw-alias-state-success-primary); }
 .componentOff { border: 0.5px solid var(--dsw-alias-border-l4); box-sizing: border-box; }
 .componentInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.componentSummary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 9px; }
-.componentName { font-size: 12.5px; font-weight: 600; }
-.componentVersion { flex: 1; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
-.componentDetail, .componentPath { font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-tertiary); overflow-wrap: anywhere; }
-.componentPath { font-family: var(--ds-font-family-code); }
+.componentSummary { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.componentName { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; }
+.componentVersion { min-width: 0; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.componentDisclosure { display: inline-grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; border: 0; border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
+.componentDisclosure::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.componentDisclosureOpen::before { transform: translateY(2px) rotate(225deg); }
+.componentDisclosure:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.componentDisclosure:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.componentDetails { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); }
+.componentDetail { min-width: 0; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-tertiary); }
+.componentPath { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; font-family: var(--ds-font-family-code); font-size: 12px; color: var(--dsw-alias-label-primary); }
 .install { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); padding: 4px 10px; font: inherit; font-size: 11.5px; cursor: pointer; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); white-space: nowrap; }
 .install:hover:enabled { background: var(--dsw-alias-interactive-bg-hover); }
 .install:disabled { opacity: .45; cursor: default; }

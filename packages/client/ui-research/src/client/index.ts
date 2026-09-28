@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
+import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ConversationDrafts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
@@ -23,6 +24,7 @@ import type {
   EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
   SessionDirectories, SourceReference,
 } from './contract.ts'
+import { sessionProject } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
 import { projectFileAddress, researchFileUrl } from './format.ts'
 import { DEFAULT_PRESET_FIELD, PRESET_SETTINGS_NAMESPACE, presetDefaults, type PresetDefaults } from './presets.ts'
@@ -43,7 +45,7 @@ import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { SkipHarnessNotice } from './Onboarding.tsx'
 import { EmptyCell } from './EmptyCell.tsx'
 import { AutonomyChip } from './AutonomyChip.tsx'
-import { guardExampleComposers } from './examples.ts'
+import { guardExampleComposers, knownExampleFile } from './examples.ts'
 import { ResearchCheckCard, ResearchToolCard } from './ResearchToolView.tsx'
 import { en, zh, type ResearchKey } from './locales.ts'
 
@@ -117,6 +119,11 @@ export function apply(ctx: Context): void {
   }
   readDirectories()
   ctx.effect(() => sessions.list.subscribe(readDirectories), 'research.session-directories')
+  ctx.provide('chatKnownFilePaths', {
+    has: (sessionId, path) => knownExampleFile(
+      sessionProject(state.getSnapshot().snapshot?.projects, sessionId, directories.getSnapshot()), path,
+    ),
+  })
   // An example's conversations can be read, not continued; the composer says so where the conversation plugin runs.
   ctx.inject(['conversation'], (scope: Context) => {
     scope.effect(() => guardExampleComposers({

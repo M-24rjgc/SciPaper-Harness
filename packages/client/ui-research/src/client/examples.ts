@@ -7,7 +7,22 @@
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { ComposerBlocks } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import { sessionProject, type ResearchView, type SessionDirectories } from './contract.ts'
+
+// These three files ship in each v1 example but do not appear in its research
+// evidence or artifact ledger. All other previewable paths come from that ledger.
+const EXAMPLE_COMPANION_FILES = new Set(['README.md', 'README.zh.md', 'experiments/design.md'])
+
+/** Whether this exact project-relative file belongs to a shipped example. */
+export function knownExampleFile(project: ResearchProject | undefined, path: string): boolean {
+  if (project?.example !== true || !String(project.id).startsWith('example-v1-')) return false
+  if (!/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/u.test(path)
+    || path.split('/').some(part => part === '.' || part === '..')) return false
+  return EXAMPLE_COMPANION_FILES.has(path)
+    || project.evidence.some(source => source.path === path)
+    || project.artifacts.some(artifact => artifact.path === path)
+}
 
 /** What the guard reads and where it raises its blocks. */
 export interface ExampleGuardSources {

@@ -118,10 +118,18 @@ export interface ChatFileMentions {
   forClosing(owner: TurnTailOwnerProps, sessionId: SessionId): MarkdownFileMentions | undefined
 }
 
+/** Exact relative-file vocabulary supplied by an optional owner of read-only content. */
+export interface ChatKnownFilePaths {
+  /** Whether the path is a registered file in this particular Session. */
+  has(sessionId: SessionId, path: string): boolean
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Optional prose file-mention provider. */
     chatFileMentions: ChatFileMentions
+    /** Optional registered-file vocabulary for settled plain-text references. */
+    chatKnownFilePaths: ChatKnownFilePaths
   }
 }
 
@@ -260,6 +268,8 @@ export interface ChatViewInjected {
   }
   forkAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /** Exact registered-file membership; absent when no owner supplies it. */
+  knownFilePath?: ((path: string) => boolean) | undefined
 }
 
 /** Full Chat view props. */

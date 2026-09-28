@@ -193,6 +193,8 @@ export interface MarkdownRenderContext {
   readonly fileMentions: MarkdownFileMentions | undefined
   /** Local-path image vocabulary; absent wherever no rewriting owner exists. */
   readonly pathImages: MarkdownPathImages | undefined
+  /** Exact owner vocabulary for plain-text file paths in settled content. */
+  readonly knownFilePath?: ((path: string) => boolean) | undefined
   /** Inside an anchor's children: interactive mentions must not nest there. */
   readonly inLink?: boolean
   /** Reference targets visible to this pass. */
@@ -273,7 +275,9 @@ function renderChildren(
 function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderContext): ReactNode {
   switch (node.type) {
     case 'text':
-      return node.value
+      return context.streaming || context.inLink === true || context.knownFilePath === undefined
+        ? node.value
+        : renderKnownFilePaths(node.value, key, context.knownFilePath)
     case 'paragraph':
       return <p key={key}>{renderChildren(node.children, context)}</p>
     case 'heading':
@@ -576,6 +580,34 @@ function renderAnchor(url: string, children: ReactNode[], key: Key, glyph = true
     return <MarkdownFileLink key={key} file={file} glyph={glyph}>{children}</MarkdownFileLink>
   }
   return renderSafeLink(normalizeUri(url), children, key, glyph)
+}
+
+// A path must be one complete plain-text token. Exact existence is decided by
+// the owner; these boundaries keep URL suffixes and traversal components from
+// being mistaken for a shorter, registered relative path.
+const plainPathToken = /[A-Za-z0-9_-]+(?:[/.][A-Za-z0-9_-]+)+/gu
+const pathContinuation = /[A-Za-z0-9_./\\:@%$#&?=+-]/u
+
+/** Link only exact, owner-registered relative paths in settled prose. */
+function renderKnownFilePaths(
+  value: string, key: Key, knownFilePath: (path: string) => boolean,
+): ReactNode {
+  const children: ReactNode[] = []
+  let end = 0
+  for (const match of value.matchAll(plainPathToken)) {
+    const path = match[0]
+    const start = match.index
+    const after = start + path.length
+    if ((start > 0 && pathContinuation.test(value[start - 1] ?? ''))
+      || (after < value.length && pathContinuation.test(value[after] ?? ''))
+      || !knownFilePath(path)) continue
+    if (start > end) children.push(value.slice(end, start))
+    children.push(<MarkdownFileLink key={`${String(key)}:${start}`} file={{ path }} glyph>{[path]}</MarkdownFileLink>)
+    end = after
+  }
+  if (end === 0) return value
+  if (end < value.length) children.push(value.slice(end))
+  return <Fragment key={key}>{children}</Fragment>
 }
 
 function MarkdownFileLink({ file, glyph, children }: {

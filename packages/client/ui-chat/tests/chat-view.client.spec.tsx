@@ -3098,6 +3098,23 @@ describe('ChatView', () => {
     expect(view.getByRole('button', { name: '在新对话中分支' })).toBeTruthy()
   })
 
+  it('enables registered plain-text file previews when an existing example becomes read-only', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'question'), assistant(2, 'See data/results.csv and paper/main.pdf; not data/missing.csv.')],
+      turnEnds: new Map([[1, 3]]),
+    })
+    const knownFilePath = vi.fn((path: string) => path === 'data/results.csv' || path === 'paper/main.pdf')
+    const view = render(<h.ChatView {...h.props} knownFilePath={knownFilePath} />)
+    expect(view.queryByRole('button', { name: 'data/results.csv' })).toBeNull()
+    act(() => { h.composerBlock.set({ reason: 'view only', readOnly: true }) })
+    fireEvent.click(view.getByRole('button', { name: 'data/results.csv' }))
+    fireEvent.click(view.getByRole('button', { name: 'paper/main.pdf' }))
+    expect(h.openFile.mock.calls).toEqual([['data/results.csv'], ['paper/main.pdf']])
+    expect(view.queryByRole('button', { name: 'data/missing.csv' })).toBeNull()
+    act(() => { h.composerBlock.set(undefined) })
+    expect(view.queryByRole('button', { name: 'data/results.csv' })).toBeNull()
+  })
+
   it('disables fork when the indexed Turn has a later steering Node', () => {
     const base = chatSnapshotFixture({
       nodes: [user(1, 'question'), assistant(2, 'answer')],

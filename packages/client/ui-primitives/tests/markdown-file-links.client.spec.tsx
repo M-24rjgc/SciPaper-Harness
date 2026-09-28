@@ -3,10 +3,67 @@ import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownDelegateProvider } from '../src/index.ts'
 import { MarkdownText } from './markdown-test-components.tsx'
+import catalog from '../../../research/workbench/runtime/examples/v1/catalog.json'
 
 afterEach(cleanup)
 
 describe('Markdown file links', () => {
+  it.each(catalog)('previews the registered files named in existing plain-text example %s', (example) => {
+    const openFile = vi.fn()
+    const files = new Set(example.files)
+    const view = render(
+      <MarkdownDelegateProvider openFile={openFile} knownFilePath={path => files.has(path)}>
+        <MarkdownText text={example.conversation.answer} />
+      </MarkdownDelegateProvider>,
+    )
+    const referenced = example.files.filter(path => example.conversation.answer.includes(path))
+    expect(referenced.length).toBeGreaterThanOrEqual(7)
+    for (const path of referenced) {
+      fireEvent.click(view.getByRole('button', { name: path }))
+      expect(openFile).toHaveBeenLastCalledWith(path, undefined)
+    }
+    expect(openFile).toHaveBeenCalledTimes(referenced.length)
+  })
+
+  it('keeps ordinary text and unregistered or out-of-workspace paths inert', () => {
+    const openFile = vi.fn()
+    const knownFilePath = vi.fn(path => path === 'paper/main.pdf' || path === 'README.md')
+    const text = 'missing/data.csv ../paper/main.pdf /paper/main.pdf C:/paper/main.pdf '
+      + 'https://example.org/paper/main.pdf file:///paper/main.pdf data/missing.csv '
+      + 'paper/main.pdf?raw=1 `paper/main.pdf` README.md。paper/main.pdf'
+    const view = render(
+      <MarkdownDelegateProvider openFile={openFile} knownFilePath={knownFilePath}>
+        <MarkdownText text={text} />
+      </MarkdownDelegateProvider>,
+    )
+    expect(view.getAllByRole('button')).toHaveLength(2)
+    fireEvent.click(view.getByRole('button', { name: 'README.md' }))
+    fireEvent.click(view.getByRole('button', { name: 'paper/main.pdf' }))
+    expect(openFile.mock.calls).toEqual([['README.md', undefined], ['paper/main.pdf', undefined]])
+    expect(view.getByText('paper/main.pdf', { selector: 'code' })).toBeTruthy()
+  })
+
+  it('does not promote plain paths while streaming or in an ordinary conversation', () => {
+    const openFile = vi.fn()
+    const text = 'See paper/main.pdf'
+    const knownFilePath = (path: string) => path === 'paper/main.pdf'
+    const view = render(
+      <MarkdownDelegateProvider openFile={openFile} knownFilePath={knownFilePath}>
+        <MarkdownText text={text} streaming />
+      </MarkdownDelegateProvider>,
+    )
+    expect(view.queryByRole('button')).toBeNull()
+    view.rerender(<MarkdownDelegateProvider openFile={openFile}><MarkdownText text={text} /></MarkdownDelegateProvider>)
+    expect(view.queryByRole('button')).toBeNull()
+    view.rerender(
+      <MarkdownDelegateProvider openFile={openFile} knownFilePath={knownFilePath}>
+        <MarkdownText text={text} />
+      </MarkdownDelegateProvider>,
+    )
+    fireEvent.click(view.getByRole('button', { name: 'paper/main.pdf' }))
+    expect(openFile).toHaveBeenCalledExactlyOnceWith('paper/main.pdf', undefined)
+  })
+
   it.each([
     ['src/index.ts', 'src/index.ts', undefined],
     ['/workspace/src/index.ts#L24', '/workspace/src/index.ts', { line: 24 }],

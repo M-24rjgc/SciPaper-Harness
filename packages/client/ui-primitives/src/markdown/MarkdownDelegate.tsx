@@ -24,6 +24,8 @@ export interface MarkdownDelegate {
    * @param options - First line to reveal when the destination specifies a line or range.
    */
   readonly openFile?: ((path: string, options?: { line?: number }) => void) | undefined
+  /** Resolve an authored plain-text path only when its owner knows that exact file. */
+  readonly knownFilePath?: ((path: string) => boolean) | undefined
 }
 
 const MarkdownDelegateContext = createContext<MarkdownDelegate>({})
@@ -44,8 +46,12 @@ export function MarkdownDelegateProvider({
   openExternalLink,
   openFile,
   fileImages,
+  knownFilePath,
 }: MarkdownDelegateProviderProps): ReactNode {
-  const delegate = useMemo(() => ({ openExternalLink, openFile, fileImages }), [openExternalLink, openFile, fileImages])
+  const delegate = useMemo(
+    () => ({ openExternalLink, openFile, fileImages, knownFilePath }),
+    [openExternalLink, openFile, fileImages, knownFilePath],
+  )
   return (
     <MarkdownDelegateContext.Provider value={delegate}>
       {children}

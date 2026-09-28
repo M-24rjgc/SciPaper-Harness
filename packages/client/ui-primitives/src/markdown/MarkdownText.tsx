@@ -16,6 +16,7 @@ import type { ReactNode } from 'react'
 import clsx from 'clsx'
 import { IncrementalMarkdownParser } from './incremental.ts'
 import { parseGfm, parseGfmWithMath } from './parse.ts'
+import { useMarkdownDelegate } from './MarkdownDelegate.tsx'
 import {
   collectReferenceTargets, createReferenceTargets, renderBlocks, renderFootnoteSection,
   wrapBlockChildren,
@@ -32,6 +33,7 @@ function renderSettled(
   labels: MarkdownLabels,
   fileMentions: MarkdownFileMentions | undefined,
   pathImages: MarkdownPathImages | undefined,
+  knownFilePath: ((path: string) => boolean) | undefined,
 ): ReactNode[] {
   const root = parseGfmWithMath(text)
   const targets = createReferenceTargets()
@@ -41,6 +43,7 @@ function renderSettled(
     labels,
     fileMentions,
     pathImages,
+    knownFilePath,
     targets,
     footnoteOrder: [],
     footnoteCounts: new Map(),
@@ -181,19 +184,20 @@ export const MarkdownText = memo(function MarkdownText({
   pathImages?: MarkdownPathImages | undefined
   variant?: 'body' | 'compact'
 }) {
+  const { knownFilePath, openFile } = useMarkdownDelegate()
   const streamRef = useRef<StreamingRenderer | null>(null)
   const streamLabelsRef = useRef<MarkdownLabels>(labels)
   const children = useMemo(() => {
     if (!streaming) {
       streamRef.current = null
-      return renderSettled(text, labels, fileMentions, pathImages)
+      return renderSettled(text, labels, fileMentions, pathImages, openFile === undefined ? undefined : knownFilePath)
     }
     if (streamRef.current === null || streamLabelsRef.current !== labels) {
       streamRef.current = new StreamingRenderer(labels)
       streamLabelsRef.current = labels
     }
     return streamRef.current.render(text)
-  }, [text, streaming, labels, fileMentions, pathImages])
+  }, [text, streaming, labels, fileMentions, pathImages, knownFilePath, openFile])
   return <div className={clsx(css.markdown, variant === 'compact' && css.compact)}
     data-markdown-variant={variant === 'compact' ? variant : undefined}>{children}</div>
 })

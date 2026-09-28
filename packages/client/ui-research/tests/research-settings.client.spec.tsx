@@ -442,11 +442,20 @@ describe('local components', () => {
     const recorded = blank()
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [latex] })), recorded)} />)
     expect(page.getByText(latex.version)).toBeTruthy()
+    expect(page.queryByText(latex.path)).toBeNull()
+    const details = page.getByRole('button', { name: zh.componentDetailsShow })
+    expect(details.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(details)
+    expect(page.getByRole('button', { name: zh.componentDetailsHide }).getAttribute('aria-expanded')).toBe('true')
+    expect(page.getByRole('region', { name: zh.latexDetails })).toBeTruthy()
     expect(page.getByText(latex.path)).toBeTruthy()
+    expect(page.getByText(zh.componentPath)).toBeTruthy()
     expect(page.getByText(zh.componentSource.replace('{source}', zh.componentSource_system))).toBeTruthy()
     expect(page.getByText(zh.latexEngines.replace('{engines}', 'pdfLaTeX / XeLaTeX / LuaLaTeX'))).toBeTruthy()
     expect(page.getByText(zh.installed).getAttribute('data-tone')).toBe('success')
     expect(page.queryByRole('button', { name: zh.notInstalled })).toBeNull()
+    fireEvent.click(page.getByRole('button', { name: zh.componentDetailsHide }))
+    expect(page.queryByText(latex.path)).toBeNull()
     expect(recorded.installs).toEqual([])
   })
 
@@ -459,6 +468,7 @@ describe('local components', () => {
       return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
     }
     const page = render(<ResearchSettingsSection {...props} />)
+    fireEvent.click(page.getByRole('button', { name: en.componentDetailsShow }))
     expect(page.getByText(en.componentSource.replace('{source}', en[`componentSource_${source}`]))).toBeTruthy()
     expect(page.getByText(en.installed).getAttribute('data-tone')).toBe('success')
     expect(page.queryByText(/Available engines:/)).toBeNull()
@@ -470,6 +480,7 @@ describe('local components', () => {
       ...latexMissing, source: 'configured', path: 'C:/tools/tex/bin', problem, engines: [],
     }
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [latex] })), recorded)} />)
+    fireEvent.click(page.getByRole('button', { name: zh.componentDetailsShow }))
     expect(page.getByText(zh[`latexProblem_${problem}`])).toBeTruthy()
     expect(page.getByText(latex.path)).toBeTruthy()
     expect(page.queryByText(latexMissing.version)).toBeNull()
@@ -489,6 +500,7 @@ describe('local components', () => {
   it('accepts a ready LaTeX snapshot from before source and engine detection were added', () => {
     const latex: ComponentStatus = { id: 'latex', installed: true, path: '/tex/bin', version: '2025' }
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ components: [latex] })), blank())} />)
+    fireEvent.click(page.getByRole('button', { name: zh.componentDetailsShow }))
     expect(page.getByText(latex.version)).toBeTruthy()
     expect(page.getByText(latex.path)).toBeTruthy()
     expect(page.getByText(zh.installed)).toBeTruthy()
