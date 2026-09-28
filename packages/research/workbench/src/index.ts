@@ -16,7 +16,7 @@ import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
-import type { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-permission-presets'
 import { ComponentManager, runtimeAsset } from './components.ts'
 import { AUTONOMY_PRESETS, autonomies, commandSchema, locatorSchema, MODE_DECISION_KEY, preferencesSchema, researchDomain } from './schema.ts'
@@ -302,7 +302,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       conversation: async (project, material) => {
         if (project.sessionId === undefined) throw new Error(`Example has no registered conversation: ${project.id}`)
         const { sessionId } = await this.ctx.sessionController.create({
-          sessionId: project.sessionId, workspaceId: project.workspaceId, agentPreset: 'research',
+          sessionId: SessionId(project.sessionId), workspaceId: project.workspaceId, agentPreset: 'research',
         })
         const session = this.ctx.sessions.get(sessionId)
         if (session === undefined) throw new Error(`Example conversation was not attached: ${sessionId}`)

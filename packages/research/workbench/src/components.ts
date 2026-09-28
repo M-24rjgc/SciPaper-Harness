@@ -241,7 +241,9 @@ export class ComponentManager {
       if (!info.isFile()) return { engine, version: undefined }
       let version: ReturnType<typeof texVersion>
       try {
-        const result = await runProcess(executable, ['--version'], { signal, timeoutMs: 5000, maxBytes: 65536 })
+        const result = await runProcess(executable, ['--version'], {
+          ...(signal === undefined ? {} : { signal }), timeoutMs: 5000, maxBytes: 65536,
+        })
         if (result.code === 0) version = texVersion(result.stdout, engine)
       } catch (error) {
         // Failed process probes are unavailable tools; cancellation remains an operation failure.
