@@ -66,7 +66,7 @@ function registration(): {
     find: root => [...records.values()].find(project => project.root === root), workspace, put,
     conversation: async (project, material) => {
       if (project.sessionId === undefined) throw new Error('No example conversation')
-      const session = sessions.get(project.sessionId) ?? Session.create(project.sessionId)
+      const session = sessions.get(project.sessionId) ?? Session.create(SessionId(project.sessionId))
       sessions.set(session.id, session)
       appendExampleConversation(session, history(session), material)
     },

@@ -12,8 +12,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, parse, toNamespacedPath } from 'node:path'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { Session } from '@deepseek-ai/dsh-session'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
@@ -404,12 +403,12 @@ describe('the research service records; it never drives the agent', () => {
       for (const project of projects) {
         expect(project.example).toBe(true)
         expect(first.applied.get(project.sessionId!)).toBe('read-only')
-        const events = (await ctx!.sessionController.inspect(project.sessionId!)).events
+        const events = (await ctx!.sessionController.inspect(SessionId(project.sessionId!))).events
         inspected.set(project.sessionId!, events)
         expect(events.filter(event => event.type === 'assistant/message')).toHaveLength(1)
         expect(events.filter(event => event.type === 'user/message')).toHaveLength(1)
         const artifactId = project.artifacts.find(artifact => artifact.path === 'paper/paper.zh.md')!.id
-        expect((await first.service.execute({ action: 'read-artifact', projectId: project.id, artifactId }, signal)).content)
+        expect((await first.service.execute({ action: 'read-artifact', projectId: project.id, artifactId }, signal, 'user')).content)
           .toContain('合成')
         for (const actor of ['user', 'agent'] as const) {
           await expect(first.service.execute({ action: 'rename', projectId: project.id, title: 'Changed' }, signal, actor))
@@ -429,7 +428,7 @@ describe('the research service records; it never drives the agent', () => {
       expect((await readFile(join(removed.root, 'paper/main.pdf'))).subarray(0, 5).toString()).toBe('%PDF-')
       for (const project of restored.projects) {
         expect(project.example).toBe(true)
-        const events = (await ctx!.sessionController.inspect(project.sessionId!)).events
+        const events = (await ctx!.sessionController.inspect(SessionId(project.sessionId!))).events
         expect(events.filter(event => event.type === 'user/message' || event.type === 'assistant/message'))
           .toEqual(inspected.get(project.sessionId!)!.filter(event => event.type === 'user/message' || event.type === 'assistant/message'))
       }
@@ -444,7 +443,7 @@ describe('the research service records; it never drives the agent', () => {
     const pool = new MemoryMediaPool(), first = await boot(pool)
     const legacy = await first.service.create({ title: 'Legacy example', root: join(root, 'demo/old'), brief: 'Existing material' })
     await write(join(legacy.root, 'notes.md'), 'legacy source\n')
-    await first.service.execute({ action: 'import', projectId: legacy.id, paths: ['notes.md'] }, signal)
+    await first.service.execute({ action: 'import', projectId: legacy.id, paths: ['notes.md'] }, signal, 'agent')
     await ctx!.fiber.dispose(); ctx = undefined
     const tables = [...pool.media.values()].flatMap((medium) => {
       const table = medium.tables.get('projects')
@@ -460,9 +459,9 @@ describe('the research service records; it never drives the agent', () => {
     for (const table of tables) expect(table.get(legacy.id)).toEqual(inline)
     expect(existsSync(join(legacy.root, '.research/chunks'))).toBe(false)
     expect(await readFile(join(legacy.root, 'notes.md'), 'utf8')).toBe('legacy source\n')
-    expect((await second.service.execute({ action: 'search-evidence', projectId: legacy.id, query: 'legacy inline' }, signal)).content)
+    expect((await second.service.execute({ action: 'search-evidence', projectId: legacy.id, query: 'legacy inline' }, signal, 'user')).content)
       .toContain('legacy inline text')
-    await expect(second.service.execute({ action: 'set-mode', projectId: legacy.id, mode: 'general' }, signal))
+    await expect(second.service.execute({ action: 'set-mode', projectId: legacy.id, mode: 'general' }, signal, 'user'))
       .rejects.toThrow(/read-only/)
   })
 
