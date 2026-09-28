@@ -40,6 +40,9 @@ interface Workspace {
    */
   readonly path: string
 
+  /** Location identity; the path alone is not unique across SSH hosts. */
+  readonly location: WorkspaceLocation
+
   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
   readonly title: string
 
@@ -109,7 +112,7 @@ interface Workspace {
    * directory may only be temporarily moved.
    * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
    */
-  status(): Promise<'ok' | 'missing-dir'>
+  status(): Promise<'ok' | 'missing-dir' | 'unknown'>
 }
 ```
 

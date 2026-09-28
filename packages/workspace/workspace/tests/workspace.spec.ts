@@ -20,7 +20,7 @@ import WorkspaceRegistry, {
   WorkspaceOrderInvalidError,
 } from '../src/index.ts'
 import type { WorkspaceDomainState, WorkspaceRecord } from '../src/index.ts'
-import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath } from '../src/paths.ts'
+import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath, normalizeSshWorkspacePath } from '../src/paths.ts'
 
 const DOMAIN_VERSION = 2
 
@@ -191,6 +191,32 @@ afterEach(async () => {
 })
 
 describe('WorkspaceRegistry lifecycle and bootstrap', () => {
+  it('keeps same POSIX directory on different SSH hosts as separate offline workspaces', async () => {
+    const remote = (id: string, host: string): SessionHeader => ({
+      ...header(id, '/srv/research', 10), execution: { kind: 'ssh', host },
+    })
+    const result = await harness({ sessions: [remote('a', 'alpha'), remote('b', 'beta')] })
+    const workspaces = result.registry.list()
+    expect(workspaces).toHaveLength(2)
+    const byHost = new Map(workspaces.map(workspace => [workspace.location.kind === 'ssh' ? workspace.location.host : '', workspace]))
+    expect([...byHost.keys()].sort()).toEqual(['alpha', 'beta'])
+    expect(byHost.get('alpha')?.location).toEqual({ kind: 'ssh', host: 'alpha', path: '/srv/research' })
+    expect(byHost.get('beta')?.location).toEqual({ kind: 'ssh', host: 'beta', path: '/srv/research' })
+    expect(byHost.get('alpha')?.sessionIds).toEqual(['a'])
+    expect(byHost.get('beta')?.sessionIds).toEqual(['b'])
+    expect(await result.registry.create({ kind: 'ssh', host: 'alpha', path: '/srv/./research/' }))
+      .toBe(byHost.get('alpha'))
+    expect(await result.registry.resolveByPath({ kind: 'ssh', host: 'beta', path: '/srv/research/' }))
+      .toBe(byHost.get('beta'))
+    expect(await workspaces[0]!.status()).toBe('unknown')
+  })
+
+  it('validates SSH paths with POSIX semantics on a Windows Host', () => {
+    expect(normalizeSshWorkspacePath('/srv/a/../b/')).toBe('/srv/b')
+    expect(() => normalizeSshWorkspacePath('C:\\research')).toThrow(/absolute POSIX/)
+    expect(() => normalizeSshWorkspacePath('relative')).toThrow(/absolute POSIX/)
+  })
+
   it('stays pending without sessionPersistence and never opens or marks the domain', async () => {
     const pool = new MemoryMediaPool()
     const ctx = await storageContext(pool)
@@ -1055,6 +1081,7 @@ describe('registry-global session archive', () => {
     )
     const upgraded = await harness({ pool: legacy })
     expect(upgraded.registry.archivedSessionIds).toEqual([])
+    expect(upgraded.registry.get(legacyId)?.location).toEqual({ kind: 'local', path: dir })
   })
 })
 

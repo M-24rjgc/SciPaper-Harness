@@ -16,7 +16,7 @@ import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { EvidenceId, ExperimentRecord, ResearchCommand, ResearchGoal, ResearchProject, RunStatus } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchRail, ResearchRailTitle } from '../src/client/Rail.tsx'
-import type { WorkbenchProps } from '../src/client/contract.ts'
+import { sessionDirectoriesOf, type SessionDirectories, type WorkbenchProps } from '../src/client/contract.ts'
 import type { PresetDefaults } from '../src/client/presets.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
@@ -97,13 +97,12 @@ function seat(projects: ResearchProject[], host: Host): { props: ResearchTabProp
   ]))
   const input = { draft: host.draft ?? '' }
   const presets = host.presets === undefined ? { research: 'research' } : host.presets
-  // Every listed conversation works in the research folder, as the plugin's directory store reports it.
-  const directories = Object.fromEntries(sessions.map(item => [item.id, ROOT]))
+  const directories = sessionDirectoriesOf(list.byId)
   const props = {
     sessionId: SESSION,
     t,
     useResearch: (select: (value: typeof view) => unknown) => select(view),
-    useDirectories: (select: (value: Record<string, string>) => unknown) => select(directories),
+    useDirectories: (select: (value: SessionDirectories) => unknown) => select(directories),
     useSessions: (select: (value: SessionListState) => unknown) => select(list),
     useSessionStatus: (select: (value: typeof pending) => unknown) => select(pending),
     useInput: (select: (value: typeof input) => unknown) => select(input),
@@ -125,7 +124,7 @@ function seat(projects: ResearchProject[], host: Host): { props: ResearchTabProp
       return host.openConversation?.() ?? Promise.resolve()
     },
     resetDefaultPreset: () => { log.resets += 1; return host.resetDefaultPreset?.() ?? Promise.resolve() },
-  } as unknown as ResearchTabProps
+  } as ResearchTabProps
   return { props, log }
 }
 
@@ -151,6 +150,19 @@ describe('the research record names the research', () => {
     stranger.sessionId = 'elsewhere'
     stranger.root = 'D:\\elsewhere'
     expect(mount([stranger]).rail.getByText(zh.railNoProject)).toBeTruthy()
+  })
+
+  it('shows a local research ledger beside its uniquely configured SSH conversation', () => {
+    const record = project()
+    record.sessionId = undefined
+    record.environments.push({
+      id: 'environment-ssh' as never, name: 'Lab', kind: 'existing', target: 'ssh', python: 'python3',
+      sshHost: 'lab', remoteRoot: '/srv/sparse', requirements: [], fingerprint: 'remote', status: 'ready', details: '', isDefault: true,
+    })
+    const { rail } = mount([record], { sessions: [session(SESSION, { cwd: '/srv/sparse/code', execution: { kind: 'ssh', host: 'lab' } })] })
+    expect(rail.getByText('Sparse attention scaling study')).toBeTruthy()
+    expect(rail.getByText(ROOT)).toBeTruthy()
+    expect(rail.queryByText(zh.railNoProject)).toBeNull()
   })
 
   it('names the research and its folder, and shows the folder in the file manager where the host can', async () => {

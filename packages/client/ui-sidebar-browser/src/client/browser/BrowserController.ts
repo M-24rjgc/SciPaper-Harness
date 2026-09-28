@@ -15,6 +15,8 @@ export interface BrowserControllerState {
   readonly restoreTarget: BrowserTarget | undefined
   readonly addressFailure: BrowserAddressFailure | undefined
   readonly addressRevision: number
+  /** Whether this page can clear its workspace's saved website data. */
+  readonly siteDataClearAvailable: boolean
 }
 
 /** Construction inputs for one tab occurrence. */
@@ -59,7 +61,8 @@ export class BrowserController implements HostObservable<BrowserControllerState>
       },
     })
     this.store = createSnapshotStore({ frame: this.page.frame.getSnapshot(),
-      restoreTarget: currentBrowserTarget(this.checkpoint), addressFailure: undefined, addressRevision: 0 })
+      restoreTarget: currentBrowserTarget(this.checkpoint), addressFailure: undefined, addressRevision: 0,
+      siteDataClearAvailable: this.page.frame.clearWorkspaceData !== undefined })
     this.unsubscribe = this.page.frame.subscribe(() => {
       if (this.disposed) return
       const current = this.store.getSnapshot()
@@ -67,7 +70,7 @@ export class BrowserController implements HostObservable<BrowserControllerState>
       const changed = frame.target?.url !== current.frame.target?.url
       this.store.set({ frame, restoreTarget: frame.target === undefined ? currentBrowserTarget(this.checkpoint) : undefined,
         addressFailure: changed ? undefined : current.addressFailure,
-        addressRevision: current.addressRevision + Number(changed) })
+        addressRevision: current.addressRevision + Number(changed), siteDataClearAvailable: current.siteDataClearAvailable })
     })
     options.signal.addEventListener('abort', this.abort, { once: true })
   }
@@ -131,6 +134,12 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   setSandbox(enabled: boolean): void {
     const sandbox = this.page.frame.sandbox
     if (sandbox !== undefined) this.command(() => { sandbox.setEnabled(enabled) })
+  }
+
+  /** Clear the current workspace's saved website data through its provider. */
+  async clearWorkspaceData(): Promise<void> {
+    if (this.disposed) return
+    await this.page.frame.clearWorkspaceData?.()
   }
 
   /**
@@ -202,6 +211,8 @@ export interface BrowserInjected {
   reload(tabId: TabId): void
   /** @param tabId - owning tab. @param enabled - provider's optional sandbox control. */
   setSandbox(tabId: TabId, enabled: boolean): void
+  /** @param tabId - owning tab. @returns after its workspace website data is cleared. */
+  clearWorkspaceData(tabId: TabId): Promise<void>
 }
 
 /**
@@ -263,5 +274,6 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
     goForward: (id) => { controller(id)?.goForward() },
     reload: (id) => { controller(id)?.reload() },
     setSandbox: (id, enabled) => { controller(id)?.setSandbox(enabled) },
+    clearWorkspaceData: async (id) => { await controller(id)?.clearWorkspaceData() },
   }
 }

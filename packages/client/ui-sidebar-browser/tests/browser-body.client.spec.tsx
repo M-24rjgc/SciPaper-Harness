@@ -51,6 +51,7 @@ function mountBrowser(navigation?: { readonly url?: string },
     & Omit<BrowserInjected, 'keyedHooks'> = {
       sessionId: SESSION,
       useTabInfo: () => ({
+        sessionId: SESSION,
         sidebar: { expanded: true, fullscreen: false }, panel: { id: 'pane' as PaneId },
         tab: {
           id: TAB, kind: 'browser', title: 'Browser', contentId: 'sidebar://browser/1', visible: true,
@@ -87,6 +88,28 @@ afterEach(async () => {
 })
 
 describe('BrowserBody', () => {
+  it('keeps site-data clearing exclusive to the Electron provider and requires confirmation', async () => {
+    const iframe = mountBrowser()
+    expect(iframe.view.queryByRole('button', { name: zh['siteData.clear'] })).toBeNull()
+    const snapshot = createSnapshotStore<BrowserFrameState>(emptyBrowserFrame())
+    const clear = vi.fn(async () => {})
+    const native = mountBrowser(undefined, { createPage: () => ({
+      presentation: { mount: () => () => {} },
+      frame: {
+        getSnapshot: () => snapshot.getSnapshot(), subscribe: listener => snapshot.subscribe(listener),
+        loadUrl: vi.fn(), goBack: vi.fn(), goForward: vi.fn(), reload: vi.fn(), dispose: async () => {},
+        clearWorkspaceData: clear,
+      },
+    }) })
+    fireEvent.click(native.view.getByRole('button', { name: zh['siteData.clear'] }))
+    expect(native.view.getByText(zh['siteData.confirm'])).toBeDefined()
+    fireEvent.click(native.view.getByRole('button', { name: zh['siteData.cancel'] }))
+    expect(clear).not.toHaveBeenCalled()
+    fireEvent.click(native.view.getByRole('button', { name: zh['siteData.clear'] }))
+    fireEvent.click(native.view.getAllByRole('button', { name: zh['siteData.clear'] })[1]!)
+    await waitFor(() => { expect(clear).toHaveBeenCalledOnce() })
+    await waitFor(() => { expect(native.view.queryByText(zh['siteData.confirm'])).toBeNull() })
+  })
   it('displays the effective browser refresh accelerator', () => {
     const mounted = mountBrowser(undefined, { refreshShortcut: { id: 'page.refresh' as never,
       label: 'Refresh', aliases: [], binding: null, keys: ['Ctrl', 'R'], aria: 'Control+R',

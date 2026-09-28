@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bundle/ssh-remote-bundle/README.md
+/:
+  en: 2129ee7a4376136c
+  zh: 2b28b5a7d16d4b74
+/deepseek-ai-dsh-ssh-remote-bundle:
+  en: 5bfdf7ce80dc4969
+  zh: ef171af2e1cacd1a
+/deepseek-ai-dsh-ssh-remote-bundle/summary:
+  en: a50e7017885220c0
+  zh: 8faae5821d256f85
+/deepseek-ai-dsh-ssh-remote-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: a2c8ed897863284b
+/deepseek-ai-dsh-ssh-remote-bundle/use-this-package:
+  en: d46bc1ff2de03144
+  zh: de37386010d22288
+/deepseek-ai-dsh-ssh-remote-bundle/understand-the-implementation:
+  en: ebe11eebca570c8d
+  zh: cc4c49ea8ed49789
+/deepseek-ai-dsh-ssh-remote-bundle/further-exploration:
+  en: 3d83d5f3b8b5f94f
+  zh: 8a562774cd42431e
+/deepseek-ai-dsh-ssh-remote-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-ssh-remote-bundle/model-experience/remote-execution:
+  en: ead97a7cbd5d1ef7
+  zh: ae31571c0e60eea4
+/deepseek-ai-dsh-ssh-remote-bundle/model-experience/remote-execution/what-the-model-sees:
+  en: f04ac3beb90e9314
+  zh: 3314498e41500200
+/deepseek-ai-dsh-ssh-remote-bundle/model-experience/remote-execution/token-effect:
+  en: 06f86a4c4ee6ef0b
+  zh: d498634a31105824
+/deepseek-ai-dsh-ssh-remote-bundle/model-experience/remote-execution/kv-cache-effect:
+  en: 65387d9c973f677a
+  zh: 0339a7e5746634e2
+/deepseek-ai-dsh-ssh-remote-bundle/known-limitations-and-deferred-work:
+  en: 1ce1722910678ca3
+  zh: d6d3a010b0d117de
+/deepseek-ai-dsh-ssh-remote-bundle/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

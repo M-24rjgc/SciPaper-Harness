@@ -11,7 +11,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { load } from 'js-yaml'
@@ -34,6 +34,22 @@ export interface GitHubReleasePlan {
  */
 export function updateChannel(version: string): string {
   return /^\d+\.\d+\.\d+-([0-9A-Za-z-]+)/u.exec(version)?.[1] ?? 'latest'
+}
+
+/** Locate one unsigned installer without crossing into another build run. */
+export function findUnsignedArtifactDirectory(root: string, version: string, shortRunsRoot?: string): string {
+  const installer = scipaperInstallerName(version)
+  const candidates = [root]
+  for (const runsRoot of [join(root, 'runs'), shortRunsRoot]) {
+    if (runsRoot !== undefined && existsSync(runsRoot)) {
+      for (const entry of readdirSync(runsRoot, { withFileTypes: true })) {
+        if (entry.isDirectory()) candidates.push(join(runsRoot, entry.name))
+      }
+    }
+  }
+  const matches = candidates.filter(directory => existsSync(join(directory, installer)))
+  if (matches.length > 1) throw new Error(`release: multiple unsigned builds contain ${installer}; select one build directory explicitly`)
+  return matches[0] ?? root
 }
 
 /** Verify the fields the updater actually consumes, including both modern and legacy download entries. */
@@ -97,10 +113,12 @@ export function ghReleaseArguments(plan: GitHubReleasePlan, notesFile: string | 
 }
 
 function main(): void {
-  const { values } = parseArgs({ options: { 'notes-file': { type: 'string' } } })
+  const { values } = parseArgs({ options: { 'notes-file': { type: 'string' }, 'artifacts-dir': { type: 'string' } } })
   const appRoot = resolve(import.meta.dirname, '..')
   const version = (JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')) as { version: string }).version
-  const plan = planGitHubRelease(join(desktopTargetBuildPaths('win-x64').root, 'unsigned-artifacts'), version)
+  const paths = desktopTargetBuildPaths('win-x64')
+  const plan = planGitHubRelease(values['artifacts-dir']
+    ?? findUnsignedArtifactDirectory(paths.unsignedArtifacts, version, paths.unsignedRuns), version)
   const result = spawnSync('gh', ghReleaseArguments(plan, values['notes-file']), { stdio: 'inherit' })
   if (result.status !== 0) throw new Error(`release: gh release create exited with ${String(result.status ?? result.error)}`)
 }

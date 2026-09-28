@@ -162,6 +162,8 @@ export interface SidebarRightTabActions {
 
 /** Live information shared by a tab's body, title, and guide replacement. */
 export interface SidebarRightTabInfo {
+  /** Session that owns this tab; file media requests use its execution world. */
+  readonly sessionId: string
   readonly sidebar: {
     readonly expanded: boolean
     /** Presentation selected by manual mode or viewport width; preserved while collapsed. */

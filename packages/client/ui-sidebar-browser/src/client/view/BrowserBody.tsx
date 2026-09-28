@@ -8,6 +8,7 @@ import {
   IconLinkOutlineRegular,
   IconRefreshOutlineRegular, Tooltip,
   IconRightUpOutlineRegular,
+  IconTrashOutlineRegular,
   SHIELD_OUTLINE_PATH,
   ICON_REGULAR_STROKE,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -45,7 +46,8 @@ function useBrowserDraft(url: string | undefined, revision: number): readonly [s
 
 /** Render provider-neutral navigation state and optional controls. */
 export function BrowserBody(props: BrowserBodyProps): ReactNode {
-  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, useBrowserState, useStore, useTabInfo, t } = props
+  const { mount, loadUrl, restore, goBack, goForward, reload, setSandbox, clearWorkspaceData } = props
+  const { useBrowserState, useStore, useTabInfo, t } = props
   const { tab } = useTabInfo()
   useEffect(() => tab.actions.bindCommands({ refresh: () => { reload(tab.id) } }), [tab.actions, tab.id, reload])
   const saved = useStore(state => state.byTab[tab.id])
@@ -58,6 +60,9 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   const restoreTarget = state === undefined ? currentBrowserTarget(initial.current) : state.restoreTarget
   const target = frame.target ?? restoreTarget
   const [draft, setDraft] = useBrowserDraft(target?.url ?? initialUrl.current, state?.addressRevision ?? 0)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [clearFailed, setClearFailed] = useState(false)
 
   useLayoutEffect(() => {
     const hide = mount({
@@ -75,6 +80,18 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
   const failure = state?.addressFailure
   const error = frame.error
   const submit = (event: FormEvent): void => { event.preventDefault(); loadUrl(tab.id, draft) }
+  const clear = async (): Promise<void> => {
+    setClearing(true)
+    setClearFailed(false)
+    try {
+      await clearWorkspaceData(tab.id)
+      setConfirmClear(false)
+    } catch {
+      setClearFailed(true)
+    } finally {
+      setClearing(false)
+    }
+  }
 
   return (
     <div className={css.root}>
@@ -99,6 +116,10 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
         <button type="button" className={css.tool} aria-label={t('external')} title={t('external')} disabled={externalUrl === undefined}
           onClick={externalUrl === undefined ? undefined : () => { window.open(externalUrl, '_blank', 'noopener,noreferrer') }}
         ><IconRightUpOutlineRegular size={14} /></button>
+        {state?.siteDataClearAvailable === true && <button type="button" className={css.tool}
+          aria-label={t('siteData.clear')} title={t('siteData.clear')} disabled={clearing}
+          onClick={() => { setConfirmClear(value => !value); setClearFailed(false) }}
+        ><IconTrashOutlineRegular size={14} /></button>}
         {sandboxed !== undefined && <button
           type="button"
           className={[css.tool, sandboxed ? '' : css.sandboxOff].join(' ')}
@@ -108,6 +129,14 @@ export function BrowserBody(props: BrowserBodyProps): ReactNode {
           onClick={() => { setSandbox(tab.id, !sandboxed) }}
         ><SandboxPolicyIcon sandboxed={sandboxed} /></button>}
       </form>
+      {confirmClear && <div className={css.clearConfirm} role="group" aria-label={t('siteData.clear')}>
+        <span>{t('siteData.confirm')}</span>
+        <Button variant="ghost" size="sm" disabled={clearing} onClick={() => { setConfirmClear(false); setClearFailed(false) }}>{t('siteData.cancel')}</Button>
+        <Button variant="outline" size="sm" disabled={clearing} onClick={() => { void clear() }}>
+          {t(clearing ? 'siteData.clearing' : 'siteData.clear')}
+        </Button>
+      </div>}
+      {clearFailed && <div className={css.failure} role="alert">{t('siteData.failed')}</div>}
       {sandboxed === false && <div className={css.sandboxWarning} role="status">{t('sandbox.warning')}</div>}
       {error !== undefined && <div className={css.failure} role="status">{error.code !== undefined && error.description !== undefined
         ? t('load.failed.detail', { code: String(error.code), description: error.description })

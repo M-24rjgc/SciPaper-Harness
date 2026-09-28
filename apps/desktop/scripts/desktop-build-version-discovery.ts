@@ -18,6 +18,7 @@
  */
 
 import { readdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { parse } from 'semver'
 import { desktopBuildVersionPrefix, validateDesktopBuildVersion } from './desktop-build-version.mjs'
 import { DESKTOP_AUTO_UPDATE_ENV, resolveDesktopUploadConfig } from './desktop-auto-update-environment.mjs'
@@ -30,8 +31,11 @@ const LISTING_DEADLINE_MS = 8_000
 /** Objects one listing page may return. */
 const LISTING_PAGE_SIZE = 1000
 
-/** Artifact name electron-builder writes for one build, on either platform; unsigned Windows builds add a suffix. */
-const ARTIFACT = /(?:^|\/)deepseek-harness-(?<version>.+)-(?:mac|win)-(?:arm64|x64)(?:-unsigned)?\.(?:exe|dmg|zip)$/u
+/** Current release prefix, matching electron-builder's SciPaper artifact name. */
+const CURRENT_ARTIFACT_PREFIX = 'scipaper-harness-'
+
+/** SciPaper artifacts and local legacy Harness builds that may have taken a version. */
+const ARTIFACT = /(?:^|\/)(?:scipaper|deepseek)-harness-(?<version>.+)-(?:mac|win)-(?:arm64|x64)(?:-unsigned)?\.(?:exe|dmg|zip)$/u
 
 /** Inputs that decide which versions are already taken. */
 export interface DesktopBuildVersionSuggestionOptions {
@@ -42,6 +46,8 @@ export interface DesktopBuildVersionSuggestionOptions {
   readonly date?: string
   /** Directory electron-builder writes installers into for this build. */
   readonly artifactsRoot: string
+  /** Short Windows output root; each child directory holds one unsigned run. */
+  readonly unsignedRunsRoot?: string
 }
 
 /**
@@ -75,9 +81,19 @@ function sequenceNumbers(versions: Iterable<string>, prefix: string): number[] {
  * @param artifactsRoot - Directory electron-builder wrote installers into.
  * @returns Versions parsed from artifact names.
  */
-async function localVersions(artifactsRoot: string): Promise<string[]> {
-  const entries = await readdir(artifactsRoot).catch(() => [])
-  return entries.map(entry => ARTIFACT.exec(entry)?.groups?.version)
+async function localVersions(artifactsRoot: string, unsignedRunsRoot?: string): Promise<string[]> {
+  const entries = await readdir(artifactsRoot, { withFileTypes: true }).catch(() => [])
+  const names = entries.filter(entry => entry.isFile()).map(entry => entry.name)
+  for (const runsRoot of [join(artifactsRoot, 'runs'), unsignedRunsRoot]) {
+    if (runsRoot === undefined) continue
+    const runs = await readdir(runsRoot, { withFileTypes: true }).catch(() => [])
+    for (const run of runs) {
+      if (!run.isDirectory()) continue
+      const files = await readdir(join(runsRoot, run.name), { withFileTypes: true }).catch(() => [])
+      names.push(...files.filter(file => file.isFile()).map(file => file.name))
+    }
+  }
+  return names.map(entry => ARTIFACT.exec(entry)?.groups?.version)
     .filter((version): version is string => version !== undefined && parse(version) !== null)
 }
 
@@ -107,7 +123,7 @@ async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Pr
         new Promise<{ keys: string[]; next: string | undefined }>((resolveListing, rejectListing) => {
           cos.getBucket({
             Bucket: update.bucket, Region: DESKTOP_COS_REGION, MaxKeys: LISTING_PAGE_SIZE,
-            Prefix: `${update.binaryKeyPrefix}/deepseek-harness-`, ...marker === undefined ? {} : { Marker: marker },
+            Prefix: `${update.binaryKeyPrefix}/${CURRENT_ARTIFACT_PREFIX}`, ...marker === undefined ? {} : { Marker: marker },
           }, (error, data) => {
             if (error !== null && error !== undefined) rejectListing(error instanceof Error ? error : new Error(String(error)))
             else {
@@ -146,11 +162,13 @@ async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Pr
 export async function suggestDesktopBuildVersion(options: DesktopBuildVersionSuggestionOptions): Promise<string> {
   const prefix = `${desktopBuildVersionPrefix(options.productVersion)}${options.date ?? desktopBuildDateSegment()}.`
   const published = await remoteVersions(options)
-  const taken = published ?? await localVersions(options.artifactsRoot)
+  // An unsigned or otherwise unuploaded local build still owns its filename even
+  // when the update bucket is reachable, so both sources must reserve it.
+  const taken = [...published ?? [], ...await localVersions(options.artifactsRoot, options.unsignedRunsRoot)]
   const used = sequenceNumbers(taken, prefix)
   const next = used.length === 0 ? 1 : Math.max(...used) + 1
   const suggestion = validateDesktopBuildVersion(`${prefix}${String(next)}`, options.productVersion)
-  process.stdout.write(`desktop package: numbering ${suggestion} after ${String(used.length)} ${
-    published === undefined ? 'local artifact' : 'published build'}${used.length === 1 ? '' : 's'} for ${prefix}*\n`)
+  process.stdout.write(`desktop package: numbering ${suggestion} after ${String(used.length)} existing artifact${
+    used.length === 1 ? '' : 's'} for ${prefix}*\n`)
   return suggestion
 }

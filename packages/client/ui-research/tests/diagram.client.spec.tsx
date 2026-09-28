@@ -13,6 +13,7 @@ import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts
 import type { ArtifactId, ArtifactRecord, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { diagramTitle, ResearchDiagramTab } from '../src/client/Diagram.tsx'
+import type { SessionDirectories } from '../src/client/contract.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import type { Translate } from '../src/client/format.ts'
 import { zh } from '../src/client/locales.ts'
@@ -55,7 +56,7 @@ interface Harness {
 
 function mount(project: ResearchProject | undefined, options: {
   address?: string
-  directories?: Record<string, string>
+  directories?: SessionDirectories
   installed?: boolean
   respond?: (command: ResearchCommand) => ResearchResponse | Promise<ResearchResponse> | undefined
   install?: () => Promise<void>
@@ -71,7 +72,7 @@ function mount(project: ResearchProject | undefined, options: {
     sessionId: SESSION,
     t,
     useResearch: (select: (value: typeof view) => unknown) => select(view),
-    useDirectories: (select: (value: Record<string, string>) => unknown) => select(options.directories ?? { [SESSION]: ROOT }),
+    useDirectories: (select: (value: SessionDirectories) => unknown) => select(options.directories ?? { [SESSION]: ROOT }),
     useTabInfo: () => ({ tab: { contentId: options.address ?? ADDRESS } }),
     run: (command: ResearchCommand) => {
       commands.push(command)
@@ -83,7 +84,7 @@ function mount(project: ResearchProject | undefined, options: {
       return Promise.resolve({ message: '' })
     },
     install: (component: string) => { installs.push(component); return options.install?.() ?? Promise.resolve() },
-  } as unknown as ResearchTabProps
+  } as ResearchTabProps
   const rendered = render(<ResearchDiagramTab {...props} />)
   return { props, commands, installs, view: rendered, redraw: () => { rendered.rerender(<ResearchDiagramTab {...props} />) } }
 }
@@ -315,5 +316,21 @@ describe('the draw.io editor tab', () => {
     const inSession = mount(project, { address: `dsh-resource://file/session/${SESSION}/C:/research/sparse/figures/architecture.drawio`, directories: {} })
     await settle()
     expect(inSession.commands).toEqual([{ action: 'read-artifact', projectId: project.id, artifactId: 'arch' }])
+  })
+
+  it('does not treat a remote file address as an artifact in the local ledger', () => {
+    const project = research()
+    project.environments.push({
+      id: 'environment-ssh' as never, name: 'Lab', kind: 'existing', target: 'ssh', python: 'python3',
+      sshHost: 'lab', remoteRoot: '/srv/sparse', requirements: [], fingerprint: 'remote', status: 'ready', details: '', isDefault: true,
+    })
+    const directories = { [SESSION]: { kind: 'ssh' as const, host: 'lab', cwd: '/srv/sparse' } }
+    const inSession = mount(project, { address: `dsh-resource://file/session/${SESSION}/C:/research/sparse/figures/architecture.drawio`, directories })
+    expect(inSession.view.getByText(zh.diagramOutside)).toBeTruthy()
+    expect(inSession.commands).toEqual([])
+    cleanup()
+    const absolute = mount(project, { address: 'dsh-resource://file/absolute/C:/research/sparse/figures/architecture.drawio', directories })
+    expect(absolute.view.getByText(zh.diagramOutside)).toBeTruthy()
+    expect(absolute.commands).toEqual([])
   })
 })

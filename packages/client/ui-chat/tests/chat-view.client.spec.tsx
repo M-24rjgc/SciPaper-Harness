@@ -332,7 +332,7 @@ function makeHarness(
     const { turnData, disclosureReset } = opts?.hookContext as ChatNodeHookContext
     const useTurnData: UseChatNodeTurnData = dataKey => useTurnDataValue(turnData, dataKey)
     const useDisclosure = bindDisclosure(disclosureReset)
-    const nodeProps = { ...props, ...nodeOwner, useTurnData, useDisclosure, __renders: undefined }
+    const nodeProps = { ...props, ...nodeOwner, sessionId: props.sessionId, useTurnData, useDisclosure, __renders: undefined }
     switch (nodeOwner.node.kind) {
       case 'user':
         return <UserMessageNodeView {...nodeProps} node={nodeOwner.node} />

@@ -1,5 +1,6 @@
 /** Resolve build-owned Desktop paths without sharing mutable state across release targets. */
 
+import { createHash } from 'node:crypto'
 import { join, resolve } from 'node:path'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
@@ -38,7 +39,7 @@ function assertSupportedTarget(target) {
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
  * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Supported Desktop target name.
- * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, runtime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
+ * @returns {{ root: string, artifacts: string, unsignedArtifacts: string, unsignedRuns: string, runtime: string, packageSet: string, dsh: string, dshPnpm: string, electron: string, packedDsh: string, packedVendor: string, packedLandlock: string, downloads: string }} Target paths plus the shared immutable download cache.
  */
 export function desktopTargetBuildPaths(target) {
   assertSupportedTarget(target)
@@ -48,6 +49,7 @@ export function desktopTargetBuildPaths(target) {
     root,
     artifacts: join(root, 'artifacts'),
     unsignedArtifacts: join(root, 'unsigned-artifacts'),
+    unsignedRuns: join(BUILD_ROOT, 'u'),
     runtime: join(root, 'runtime'),
     packageSet: join(root, 'package-set'),
     dsh: join(root, 'dsh'),
@@ -72,6 +74,29 @@ export function desktopTargetPlatform(target) {
     platform: /** @type {'darwin' | 'win32'} */ (target === 'win-x64' ? 'win32' : 'darwin'),
     arch: /** @type {'arm64' | 'x64'} */ (target === 'mac-arm64' ? 'arm64' : 'x64'),
   }
+}
+
+/**
+ * Select the independently bundled Node executable used for package preparation.
+ * @param {string} runtimeRoot - Prepared external runtime directory.
+ * @param {'mac-arm64' | 'mac-x64' | 'win-x64'} target - Desktop release target.
+ * @returns {string} Path to the primary runtime Node executable.
+ */
+export function primaryRuntimeNodeExecutable(runtimeRoot, target) {
+  assertSupportedTarget(target)
+  return join(runtimeRoot, 'primary-runtime', 'dependencies', 'node', 'bin', target === 'win-x64' ? 'node.exe' : 'node')
+}
+
+/** Isolate unsigned builds without exceeding Windows' executable path limit. */
+export function desktopUnsignedArtifactDirectory(artifactsRoot, runId) {
+  if (typeof runId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(runId)
+    || /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(runId)) {
+    throw new Error('desktop package: invalid unsigned run id')
+  }
+  // Keep both the base and run name short: a long build path made packaged
+  // rg.exe and the Cua native modules unreachable to Windows process loading.
+  const key = createHash('sha256').update(runId).digest('hex').slice(0, 16)
+  return join(artifactsRoot, key)
 }
 
 /**

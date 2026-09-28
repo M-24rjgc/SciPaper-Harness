@@ -1,5 +1,5 @@
 import { officePackageDirectories } from '../../../scripts/libreoffice-packages.mjs'
-import { X509Certificate } from 'node:crypto'
+import { randomUUID, X509Certificate } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
@@ -22,7 +22,7 @@ import {
 import { SCIPAPER_APP_ID, SCIPAPER_RELEASES } from './scipaper-identity.mjs'
 import { resolveDesktopBuildCommit } from './desktop-build-commit.mjs'
 import { resolveDesktopBuildVersion } from './desktop-build-version.mjs'
-import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
+import { desktopTargetBuildPaths, desktopUnsignedArtifactDirectory, resolveDesktopBuildTarget } from './desktop-build-paths.mjs'
 import { installWindowsDirectoryInstaller } from './windows-directory-installer.mjs'
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
@@ -100,7 +100,9 @@ export function createElectronBuilderConfig(
     },
     productName: 'SciPaper Harness',
     artifactName: 'scipaper-harness-${version}-${os}-${arch}.${ext}',
-    directories: { output: unsigned ? buildPaths.unsignedArtifacts : buildPaths.artifacts },
+    directories: { output: unsigned
+      ? desktopUnsignedArtifactDirectory(buildPaths.unsignedRuns, env.DSH_DESKTOP_UNSIGNED_RUN_ID ?? randomUUID())
+      : buildPaths.artifacts },
     asar: true,
     electronDist: buildPaths.electron,
     electronFuses: { runAsNode: true },

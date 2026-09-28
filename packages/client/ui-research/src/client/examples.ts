@@ -14,7 +14,12 @@ import { sessionProject, type ResearchView, type SessionDirectories } from './co
 // evidence or artifact ledger. All other previewable paths come from that ledger.
 const EXAMPLE_COMPANION_FILES = new Set(['README.md', 'README.zh.md', 'experiments/design.md'])
 
-/** Whether this exact project-relative file belongs to a shipped example. */
+/**
+ * Whether this exact project-relative file belongs to a shipped example.
+ * @param project - research record containing the example file index.
+ * @param path - candidate path relative to the example root.
+ * @returns true only for a shipped companion or indexed file.
+ */
 export function knownExampleFile(project: ResearchProject | undefined, path: string): boolean {
   if (project?.example !== true || !String(project.id).startsWith('example-v1-')) return false
   if (!/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/u.test(path)

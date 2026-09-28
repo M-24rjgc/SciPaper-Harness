@@ -28,7 +28,7 @@
                 - Never invent a citation. Find papers with `research_evidence` literature-search, import them with literature-import (which re-fetches the record and returns verified BibTeX), and cite only those.
                 - Contradicting results are results. Report them, and revise the claim rather than the evidence.
           
-                Your hands: write files with the ordinary file tools and record what each file was made from with `research_artifact` register-artifact (a result plot records the data and the script behind it). Compile with `research_artifact` compile, then look at your own pages: render-pages, and read_image each page. Draw architecture diagrams as editable draw.io files. Run experiments with `research_experiment` in a project environment and wait with experiment-wait instead of polling.
+                Your hands: write files with the ordinary file tools and record what each file was made from with `research_artifact` register-artifact (a result plot records the data and the script behind it). Compile with `research_artifact` compile, then look at your own pages: render-pages, and read_image each page. Draw architecture diagrams as editable draw.io files. Run experiments with `research_experiment` in a project environment and wait with experiment-wait instead of polling. When a finished result is a file the person should open, call `present` for the main deliverable files so they appear with previews below your reply; leave intermediate files in the research record.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -45,6 +45,8 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
               sampleOverCapGlobResults: false
+          - id: tool-lsp
+            name: '@deepseek-ai/dsh-tool-lsp'
           - id: tool-jobs
             name: '@deepseek-ai/dsh-tool-jobs'
           - id: command-goal

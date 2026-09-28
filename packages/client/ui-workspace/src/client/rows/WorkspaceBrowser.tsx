@@ -314,11 +314,14 @@ function SessionTree({
   }, [current, currentGroup, setGroupExpanded, groupExpansion])
   const parents = useMemo(() => {
     if (!nestWorkspaces) return new Map<string, WorkspaceId | undefined>()
-    const keysByPath = new Map(workspaces.map(workspace => [workspace.path, workspace.workspaceId]))
-    const paths = [...keysByPath.keys()]
     return new Map<string, WorkspaceId | undefined>(workspaces.map((workspace) => {
-      const path = owningParentFolder(workspace.path, paths)
-      return [workspace.workspaceId, path === undefined ? undefined : keysByPath.get(path)]
+      const location = workspace.location
+      const peers = workspaces.filter((candidate) => {
+        const peer = candidate.location
+        return peer.kind === location.kind && (peer.kind === 'local' || (location.kind === 'ssh' && peer.host === location.host))
+      })
+      const path = owningParentFolder(workspace.path, peers.map(candidate => candidate.path))
+      return [workspace.workspaceId, peers.find(candidate => candidate.path === path)?.workspaceId]
     }))
   }, [nestWorkspaces, workspaces])
   const currentAncestors = useMemo(() => {
@@ -887,9 +890,6 @@ export function WorkspaceBrowser({
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
   const pinnedSessionIds = useWorkspaces(state => state.pinnedSessionIds)
-  // Live occupancy of this surface's directory-flow hole (the same source the
-  // flow reads): a composition without a picking affordance can add nothing.
-  const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
   const groupBy = useStore(s => s.groupBy)
   const orderBy = useStore(s => s.orderBy)
   // Persisted view blobs written before the archived filter existed rehydrate
@@ -1281,25 +1281,20 @@ export function WorkspaceBrowser({
               t={t}
             />
           )}
-          {/* Adding is the button's one action, so a composition with no
-              picking affordance has nothing to offer here: the region hides the
-              button rather than leaving a dead one in the header. */}
-          {directoryFlowAvailable && (
-            <Tooltip label={t('workspace.add')} shortcutKeys={addShortcut?.keys} side="bottom" delayMs={500}>
-              <button
-                ref={wsPlusRef}
-                type="button"
-                className={css.iconButton}
-                aria-label={t('workspace.add')}
-                aria-keyshortcuts={addShortcut?.aria}
-                onClick={() => {
-                  requestAddWorkspace()
-                }}
-              >
-                <IconProjectAddOutlineRegular size={wide ? 16 : 18} />
-              </button>
-            </Tooltip>
-          )}
+          <Tooltip label={t('workspace.add')} shortcutKeys={addShortcut?.keys} side="bottom" delayMs={500}>
+            <button
+              ref={wsPlusRef}
+              type="button"
+              className={css.iconButton}
+              aria-label={t('workspace.add')}
+              aria-keyshortcuts={addShortcut?.aria}
+              onClick={() => {
+                requestAddWorkspace()
+              }}
+            >
+              <IconProjectAddOutlineRegular size={wide ? 16 : 18} />
+            </button>
+          </Tooltip>
         </div>
         {/* Add flow + its error dialog (same package — direct composition). */}
         <WorkspacePickFlow

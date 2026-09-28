@@ -40,17 +40,18 @@
 
 - id: session-log-download
   disabled: true
-- id: open-in-app
-  disabled: true
-- id: ui-open-in-app
-  disabled: true
-- id: ui-sidebar-terminal
-  disabled: true
+- id: time-context
+  disabled: false
+- id: schedule
+  disabled: false
+- id: ui-schedule
+  disabled: false
+- id: ui-conversation
+  config:
+    showTrajectoryWithoutDeveloperTools: true
 - id: ui-cordis
   disabled: true
 - id: ui-agent-preset
-  disabled: true
-- id: ui-trajectory
   disabled: true
 
 - id: ui-sidebar
@@ -79,6 +80,36 @@
         description: 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。
 
 - insert:
+    - id: lsp
+      name: '@deepseek-ai/dsh-lsp'
+    - id: lsp-stdio
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          typescript:
+            command: !!js process.execPath
+            args:
+              - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('typescript-language-server/package.json')), 'lib/cli.mjs')
+              - --stdio
+            extensionToLanguage:
+              '.ts': typescript
+              '.tsx': typescriptreact
+              '.js': javascript
+              '.jsx': javascriptreact
+              '.mjs': javascript
+              '.cjs': javascript
+    - id: browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+    - id: browser-use-playwright
+      name: '@deepseek-ai/dsh-browser-use-playwright-mcp'
+      config:
+        mode: launch
+        headless: false
+        persistentProfile: true
+    - id: remote-workspace-presets
+      name: '@deepseek-ai/dsh-remote-workspace-presets'
+      config:
+        researchTools: true
     - id: research-workbench
       name: '@deepseek-ai/dsh-research-workbench'
       config:

@@ -24,6 +24,7 @@ function content(pageTexts: readonly string[], eof: boolean): DocumentContent {
 function props(value: DocumentContent, t: MarkdownBodyProps['t'] = makeTranslate(en), absolutePath?: string): MarkdownBodyProps {
   return {
     resourceAddress: 'dsh-resource://file/session/markdown/notes.md', content: value, wrap: false, t,
+    useTabInfo: () => ({ sessionId: 'session-remote' }),
     useResource: () => ({
       status: absolutePath === undefined ? 'loading' : 'live',
       value: absolutePath === undefined ? undefined : { absolutePath, version: 'v1' },
@@ -39,6 +40,8 @@ describe('MarkdownBody', () => {
     const view = render(<MarkdownBody {...props(content([text], true), undefined, '/work/guide/notes.md')} />)
     expect(new URL(view.getByAltText('relative').getAttribute('src')!).searchParams.get('path'))
       .toBe('/work/guide/images/a.png')
+    expect(new URL(view.getByAltText('relative').getAttribute('src')!).searchParams.get('sessionId'))
+      .toBe('session-remote')
     expect(new URL(view.getByAltText('absolute').getAttribute('src')!).searchParams.get('path')).toBe('/tmp/a.png')
     expect(new URL(view.getByAltText('relative').getAttribute('src')!).protocol).toBe(new URL(base).protocol)
     expect(view.getByAltText('external').getAttribute('src')).toBe('https://example.test/a.png')

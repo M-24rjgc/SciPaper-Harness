@@ -99,6 +99,16 @@ describe('SandboxPolicyService', () => {
     })
   })
 
+  it('keeps an SSH session workspace in POSIX spelling on a Windows host', async () => {
+    const ctx = await mounted({ mode: 'workspace-write' })
+    const id = SessionId('ssh-workspace')
+    const remote = Session.create(id, undefined, {
+      version: SESSION_FORMAT_VERSION, id, createdAt: 0, isSeeded: false,
+      cwd: '/srv/research', execution: { kind: 'ssh', host: 'campus' },
+    })
+    expect(ctx.sandboxPolicy.resolve({ session: remote }).workspaceRoot).toBe('/srv/research')
+  })
+
   it.skipIf(process.platform === 'win32')('preserves symlink-sensitive session cwd for its enforcing provider', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-policy-cwd-'))
     try {

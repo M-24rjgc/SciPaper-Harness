@@ -5,7 +5,7 @@ export const name = 'computer-use-native-fixture'
 export const inject = ['computerUse', 'tools', 'systemPrompt']
 
 export async function apply(ctx) {
-  const fixture = new URL('../../../packages/experimental/computer-use-cua-driver-native/tests/fixtures/cua-driver.ts', import.meta.url).href
+  const fixture = new URL('../../../packages/computer-use/computer-use-cua-driver-native/tests/fixtures/cua-driver.ts', import.meta.url).href
   ctx.effect(() => {
     const hooks = registerHooks({
       resolve(specifier, context, nextResolve) {
@@ -16,6 +16,6 @@ export async function apply(ctx) {
     })
     return () => hooks.deregister()
   }, 'computer-use-native-fixture.module')
-  const provider = await import('@deepseek-ai/dsh-experimental-computer-use-cua-driver-native')
+  const provider = await import('@deepseek-ai/dsh-computer-use-cua-driver-native')
   await ctx.plugin(provider)
 }

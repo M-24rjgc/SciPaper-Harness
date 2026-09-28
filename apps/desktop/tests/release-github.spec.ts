@@ -1,12 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ghReleaseArguments, planGitHubRelease, updateChannel } from '../scripts/release-github.ts'
+import { findUnsignedArtifactDirectory, ghReleaseArguments, planGitHubRelease, updateChannel } from '../scripts/release-github.ts'
 
 let dir: string | undefined
-afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }) })
+afterEach(() => { const current = dir; dir = undefined; if (current) rmSync(current, { recursive: true }) })
 
 function build(version: string, channels: Record<string, string>): string {
   dir = mkdtempSync(join(tmpdir(), 'release-github-'))
@@ -24,6 +24,26 @@ const metadata = (version: string): string => [
 ].join('\n')
 
 describe('the GitHub release of a Windows build', () => {
+  it('locates a single isolated unsigned run and refuses an ambiguous version', () => {
+    dir = mkdtempSync(join(tmpdir(), 'release-runs-'))
+    const run = join(dir, 'runs', 'trial-1')
+    mkdirSync(run, { recursive: true })
+    const installer = 'scipaper-harness-1.0.0-win-x64.exe'
+    writeFileSync(join(run, installer), 'installer')
+    expect(findUnsignedArtifactDirectory(dir, '1.0.0')).toBe(run)
+    writeFileSync(join(dir, installer), 'older installer')
+    expect(() => findUnsignedArtifactDirectory(dir!, '1.0.0')).toThrow(/multiple unsigned builds/u)
+  })
+
+  it('finds a shortened unsigned run without confusing it with legacy runs', () => {
+    dir = mkdtempSync(join(tmpdir(), 'release-short-runs-'))
+    const shortRunsRoot = join(dir, 'short')
+    const run = join(shortRunsRoot, 'a1b2c3')
+    mkdirSync(run, { recursive: true })
+    writeFileSync(join(run, 'scipaper-harness-1.0.0-win-x64.exe'), 'installer')
+    expect(findUnsignedArtifactDirectory(dir, '1.0.0', shortRunsRoot)).toBe(run)
+  })
+
   it('reads the channel from the prerelease name', () => {
     expect(updateChannel('0.2.0-alpha.1')).toBe('alpha')
     expect(updateChannel('1.0.0')).toBe('latest')

@@ -10,6 +10,7 @@ import { apply, inject } from '../src/client/index.ts'
 import { apply as applyNode } from '../src/index.ts'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import { createScope } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ScheduleId, ScheduleCatalogEntry, ScheduleUpdateRequest, ScheduleUpdateResult } from '@deepseek-ai/dsh-schedule/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
@@ -110,9 +111,10 @@ async function baseContext(
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessions, subscribe: () => () => {} },
     binding: () => undefined,
+    scope: () => undefined,
   } as never)
   ctx.provide('workspaces', { list: { getSnapshot: () => workspaces } } as never)
-  ctx.provide('conversation', {} as never)
+  ctx.provide('conversation', { input: { for: () => undefined } } as never)
   await ctx.plugin({ inject: localeInject, apply: applyLocale }).await()
   return ctx
 }
@@ -300,7 +302,7 @@ describe('ui-schedule browser half', () => {
     }
   })
 
-  it('binds the shown task to the Session committed tabs and starts a new task from the panel', async () => {
+  it('binds the shown task to the Session committed tabs and requires an existing conversation', async () => {
     const sidebar = sidebarStubs()
     const ctx = await baseContext(undefined, sidebar)
     const owner = ctx.slots.register({
@@ -330,14 +332,60 @@ describe('ui-schedule browser half', () => {
       ) as ScheduleTaskCatalogInjected & ScheduleTaskBindingInjected
       expect(chip.taskBindings).toBe(body.taskBindings)
       expect(chip.hooks.catalog).toBe(body.hooks.catalog)
-      // The panel starts a new reminder in a Session rather than opening a creation form.
+      // No selected conversation means the panel cannot silently create a new research.
       const panel = injectedFace(ctx.slots.entries('main')[0]!, undefined as never) as TaskManagerInjected
-      panel.onNewTask()
-      expect(startSession).toHaveBeenCalledOnce()
+      expect(panel.onNewTask()).toBe(false)
+      expect(startSession).not.toHaveBeenCalled()
     } finally {
       await fiber.dispose()
       owner()
       await ctx.fiber.dispose()
+    }
+  })
+
+  it('returns to the selected conversation and seeds only an empty draft', async () => {
+    const ctx = await baseContext()
+    const current = 'current-research' as SessionId
+    const initial = ctx.sessions.list.getSnapshot()
+    vi.spyOn(ctx.sessions.list, 'getSnapshot').mockReturnValue({
+      ...initial,
+      ids: [current],
+      byId: { [current]: {
+        id: current, displayTitle: current, running: false, blank: false, updatedAt: 0,
+        retainedBy: { mainView: 1 },
+      } },
+    })
+    const { ctx: scope, fiber: scopeFiber } = createScope(ctx, current)
+    vi.spyOn(ctx.sessions, 'scope').mockReturnValue(scope)
+    const state = { draft: '', attachmentIds: [], phase: 'plain' }
+    const input = { state: { getSnapshot: () => state }, setDraft: vi.fn() }
+    vi.spyOn(ctx.conversation.input, 'for').mockReturnValue(input as never)
+    const openSession = vi.spyOn(ctx.uiWorkspace, 'openSession')
+    const startSession = vi.spyOn(ctx.uiWorkspace, 'startSession')
+    const owner = ctx.slots.register({
+      name: 'root', children: { main: { kind: 'keyed', scope: 'root' } },
+    } as never, Empty)
+    const fiber = ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    try {
+      const panel = injectedFace(ctx.slots.entries('main')[0]!, undefined as never) as TaskManagerInjected
+      expect(panel.onNewTask()).toBe(true)
+      expect(openSession).toHaveBeenCalledWith(current)
+      expect(startSession).not.toHaveBeenCalled()
+      expect(input.setDraft).toHaveBeenCalledWith(ctx.locale.bind('schedule.manager')('new.draft'))
+      state.draft = 'Existing draft'
+      input.setDraft.mockClear()
+      expect(panel.onNewTask()).toBe(true)
+      expect(input.setDraft).not.toHaveBeenCalled()
+      state.draft = ''
+      state.attachmentIds.push('existing-attachment' as never)
+      expect(panel.onNewTask()).toBe(true)
+      expect(input.setDraft).not.toHaveBeenCalled()
+    } finally {
+      await fiber.dispose()
+      owner()
+      await ctx.fiber.dispose()
+      await scopeFiber.dispose()
     }
   })
 

@@ -171,8 +171,26 @@ export function apply(ctx: ClientContext): void {
     locale: MANAGER_NS,
     inject: (): TaskManagerInjected => ({
       ...detail,
-      // The page has no creation form: a new reminder starts in a Session.
-      onNewTask: () => { ctx.uiWorkspace.startSession() },
+      // Schedule creation belongs to the Agent in the selected Session. The
+      // unscoped New Session action may invoke a product entry policy and
+      // create an unrelated workspace, so return to the retained Session.
+      onNewTask: () => {
+        const sessions = ctx.sessions.list.getSnapshot()
+        const workspaces = ctx.workspaces.list.getSnapshot()
+        const current = Object.values(sessions.byId)
+          .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
+        if (current === undefined || sessionLinkState(current, sessions, workspaces) !== 'available') return false
+        ctx.uiWorkspace.openSession(current)
+        const scope = ctx.sessions.scope(current)
+        if (scope !== undefined) {
+          const input = ctx.conversation.input.for(scope)
+          const state = input.state.getSnapshot()
+          if (state.draft === '' && state.attachmentIds.length === 0 && state.phase === 'plain') {
+            input.setDraft(t('new.draft'))
+          }
+        }
+        return true
+      },
     }),
   }, TaskManagerPage))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({

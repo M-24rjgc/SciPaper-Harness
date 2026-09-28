@@ -13,6 +13,7 @@ export function desktopNodeEnvironment(executable: string, bin: string | undefin
   return {
     ...environment,
     ELECTRON_RUN_AS_NODE: '1',
+    DSH_DESKTOP_HOST: '1',
     DSH_TELEMETRY_DISABLED: '1',
     ...(bin === undefined ? {} : { DSH_DESKTOP_NODE_EXECUTABLE: executable, PATH: `${bin}${delimiter}${environment.PATH ?? ''}` }),
   }

@@ -86,7 +86,12 @@ export type OptionalSessionSeq = SessionSeq | null
  * immutable prior-generation, and current fast-path rules are recorded in
  * `.agents/notes/implemented/architecture/2026-08-31-released-session-format-migrations.md`.
  */
-export const SESSION_FORMAT_VERSION = 4
+export const SESSION_FORMAT_VERSION = 5
+
+/** Execution identity is independent of the Host path spelling. */
+export type SessionExecution =
+  | { readonly kind: 'local' }
+  | { readonly kind: 'ssh'; readonly host: string }
 
 /**
  * Immutable validated storage metadata, kept outside the conversation event log.
@@ -103,6 +108,8 @@ export interface SessionHeader {
   readonly createdAt: number
   /** Absolute working directory the session was created in (if any). */
   readonly cwd?: string
+  /** Where this session's filesystem, processes, and language services execute. */
+  readonly execution?: SessionExecution
   /** The session this one was forked from (seed lineage), if any. */
   readonly parentSession?: SessionId
   /**
@@ -150,6 +157,7 @@ export interface CreateSessionOptions {
    */
   readonly meta?: {
     readonly cwd?: string
+    readonly execution?: SessionExecution
     readonly parentSession?: SessionId
     readonly createdAt?: number
     readonly isSeeded?: boolean

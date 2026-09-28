@@ -12,11 +12,11 @@ Status: implemented
 
 [`dsh-browser-use`](../../../../packages/browser-use/browser-use/README.zh.md) 拥有 `ctx.browserUse`，注册一个提供方拥有的名称并返回其 effect 清理器。第二次注册无论名称为何都会失败。服务不包含浏览器对象、共享操作类型、分派方法、资源生命周期或运行时选择器。[计算机操作注册决策](2026-09-12-computer-use-provider-registration.zh.md)仍独立拥有桌面提供方注册与共享桌面协调规则。
 
-[Playwright MCP](../../../../packages/experimental/browser-use-playwright-mcp/README.zh.md)、[Chrome DevTools MCP](../../../../packages/experimental/browser-use-chrome-devtools-mcp/README.zh.md) 与[原生 Stagehand](../../../../packages/experimental/browser-use-stagehand-native/README.zh.md) 拥有自己的浏览器工具，并通过常规 DSH 工具管线集成。它们是公共实验性可选功能。DSH 拥有任务规划与任务循环；Stagehand 提供单项 AI（人工智能）辅助操作。Profile 或 preset 配置为每次提供方激活选择启动或附加模式。
+[Playwright MCP](../../../../packages/browser-use/browser-use-playwright-mcp/README.zh.md)、[Chrome DevTools MCP](../../../../packages/experimental/browser-use-chrome-devtools-mcp/README.zh.md) 与[原生 Stagehand](../../../../packages/experimental/browser-use-stagehand-native/README.zh.md) 拥有自己的浏览器工具，并通过常规 DSH 工具管线集成。它们是公共实验性可选功能。DSH 拥有任务规划与任务循环；Stagehand 提供单项 AI（人工智能）辅助操作。Profile 或 preset 配置为每次提供方激活选择启动或附加模式。
 
 浏览器资源属于确切的实时 Agent 与 Session，而非仅凭可复用的 Session id。调用跨轮次保留状态。运行时释放会关闭启动的资源，重新加载或 fork 不会继承启动的 profile。附加保留现有浏览器状态，并在该提供方实例内将外部浏览器独占保留给一个 Session。清理断开连接而不关闭外部浏览器。
 
-[实验性运行时辅助库](../../../../packages/experimental/browser-use-runtime/README.zh.md)拥有共享资源生命周期与附加保留机制，而不向浏览器操作服务引入这些方法。取消调用方对资源获取的等待后，初始化及其保留仍归 Session 所有。活动操作收到 Agent 释放的取消信号时，在 Agent 等待空闲之前启动资源关闭，因为浏览器调用可能只有在连接关闭后才能结束。提供方清理停止接收工具调用，并保留注册，直到资源清理与活动调用完成。服务保持独立于所有实验包。
+[实验性运行时辅助库](../../../../packages/browser-use/browser-use-runtime/README.zh.md)拥有共享资源生命周期与附加保留机制，而不向浏览器操作服务引入这些方法。取消调用方对资源获取的等待后，初始化及其保留仍归 Session 所有。活动操作收到 Agent 释放的取消信号时，在 Agent 等待空闲之前启动资源关闭，因为浏览器调用可能只有在连接关闭后才能结束。提供方清理停止接收工具调用，并保留注册，直到资源清理与活动调用完成。服务保持独立于所有实验包。
 
 Stagehand 的启动器继承其进程环境，SDK 初始化可能在清理完成前超时。提供方 Host 使用 `@puppeteer/browsers` 在 CDP 或 SDK 就绪前取得所启动 Chromium 及其临时 profile 的所有权，并清理子进程环境。启动和附加模式都由隔离的 Worker 运行 SDK，且只通过 CDP 连接。原生推理不接受 abort signal。SDK 关闭会等待活动工作；清理成功后可重新连接并保留浏览器状态。SDK 工作未能结束时，只要 Chromium 仍在运行，就阻止复用。最终清理可在自有 Chromium 和 Worker 终止后释放启动浏览器的占用。附加模式下 SDK 工作未能结束、Worker 终止失败或自有进程清理失败时，保留占用。Host 仅终止自己拥有的 Chromium 进程，等待子进程关闭后才删除 profile；外部拥有的浏览器保持运行。
 

@@ -3,11 +3,11 @@
 import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import {
   desktopBuildRecordFilename,
 } from './desktop-auto-update-environment.mjs'
-import { desktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { desktopTargetBuildPaths, desktopUnsignedArtifactDirectory } from './desktop-build-paths.mjs'
 import { packageMacOSArtifacts, type DesktopPrepackagedArtifact } from './package-macos.ts'
 import { loadDesktopPackageEnvironment, validateDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { createPackagingRun, recordPackagingEvent } from './packaging-run.mjs'
@@ -327,8 +327,9 @@ async function resolveRequestedBuildVersion(
   const paths = desktopTargetBuildPaths(invocation.target.name)
   return suggestDesktopBuildVersion({
     productVersion, target: invocation.target.name, environment,
-    // Unsigned builds land beside the signed output, so numbering has to read the directory this run writes.
+    // Count legacy unsigned installers as well as the short-path run output.
     artifactsRoot: invocation.unsigned ? paths.unsignedArtifacts : paths.artifacts,
+    ...invocation.unsigned ? { unsignedRunsRoot: paths.unsignedRuns } : {},
   })
 }
 
@@ -405,6 +406,8 @@ export async function packageTarget(
   const mac = target.platform === 'darwin' ? resolveMacOSPackageSettings(environment) : undefined
   const packArguments = mac === undefined ? [] : ['--concurrency', String(mac.packConcurrency)]
   const buildPaths = desktopTargetBuildPaths(target.name)
+  if (invocation.unsigned && run === undefined) throw new Error('desktop package: unsigned builds require a supervised run')
+  const unsignedRunId = invocation.unsigned ? basename(run!.directory) : undefined
   const releaseRecordPath = join(buildPaths.artifacts, desktopBuildRecordFilename(target.name))
   if (!invocation.prepareOnly && !invocation.unsigned) {
     removeOwnedBuildFile(releaseRecordPath, join(APP_ROOT, '.desktop-build'))
@@ -415,6 +418,7 @@ export async function packageTarget(
     ...buildEnv,
     DSH_DESKTOP_TARGET_PLATFORM: target.platform,
     DSH_DESKTOP_TARGET_ARCH: target.arch,
+    ...unsignedRunId === undefined ? {} : { DSH_DESKTOP_UNSIGNED_RUN_ID: unsignedRunId },
   }
   const downloadEnv = macOSDownloadEnvironment(targetEnv, mac?.downloadProxy)
   const electronBuilderEnv = desktopElectronBuilderEnvironment(downloadEnv, invocation.unsigned)
@@ -498,6 +502,9 @@ export async function packageTarget(
   } else {
     await signedStage('artifacts', () => execute(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv))
     await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts', ...(invocation.unsigned ? ['--unsigned'] : [])], targetEnv)
+    if (unsignedRunId !== undefined) {
+      process.stdout.write(`DESKTOP_UNSIGNED_ARTIFACTS ${desktopUnsignedArtifactDirectory(buildPaths.unsignedRuns, unsignedRunId)}\n`)
+    }
   }
   if (!invocation.directory && !invocation.unsigned) writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
   if (journal) recordPackagingEvent(journal, { type: 'artifacts', directory: buildPaths.artifacts })

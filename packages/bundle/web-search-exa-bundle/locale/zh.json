@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Exa 搜索",
+    "description": "通过 Exa 检索网络。需要 API key；未配置前不可使用。"
+  }
+}

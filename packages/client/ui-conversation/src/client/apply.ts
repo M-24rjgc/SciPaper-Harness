@@ -60,11 +60,14 @@ export const inject = [
 export interface Config {
   /** Maximum generic-file uploads allowed to run concurrently in browser Workers. */
   maxConcurrentFileUploads?: number
+  /** Keep the trajectory view available independently of Coding Tools. */
+  showTrajectoryWithoutDeveloperTools?: boolean
 }
 
 /** Validated Conversation runtime configuration. */
 export const Config: z<Config> = z.object({
   maxConcurrentFileUploads: z.natural().min(1).default(2),
+  showTrajectoryWithoutDeveloperTools: z.boolean().default(false),
 })
 
 // Stable no-session sources keep the renderer's observable-hook cache and
@@ -154,6 +157,11 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   const slots = ctx.slots
   // Schemastery's field default is materialized before Cordis calls apply.
   const maxConcurrentFileUploads = config.maxConcurrentFileUploads as number
+  const pageSetting = (globalThis as {
+    __DSH_CONVERSATION__?: { showTrajectoryWithoutDeveloperTools?: unknown }
+  }).__DSH_CONVERSATION__?.showTrajectoryWithoutDeveloperTools
+  const showTrajectoryWithoutDeveloperTools = typeof pageSetting === 'boolean'
+    ? pageSetting : config.showTrajectoryWithoutDeveloperTools === true
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   const uiConversation = new UiConversation(ctx, sessions)
 
@@ -182,7 +190,9 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     for (const entry of slots.entries('conversation.view')) {
       /* v8 ignore next -- list registration validates id at load. */
       if (entry.options.id === undefined) continue
-      if (!ctx.configForms.developerTools.enabled.getSnapshot() && entry.options.id === TRAJECTORY_VIEW_ID) continue
+      if (!showTrajectoryWithoutDeveloperTools
+        && !ctx.configForms.developerTools.enabled.getSnapshot()
+        && entry.options.id === TRAJECTORY_VIEW_ID) continue
       tabs.push({
         id: entry.options.id,
         label: resolveSlotLabel(entry.options.label) ?? entry.options.id,

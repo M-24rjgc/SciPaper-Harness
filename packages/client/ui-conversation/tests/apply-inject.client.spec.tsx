@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { render, cleanup } from '@testing-library/react'
 import { $getRoot, $isTextNode, PASTE_COMMAND } from 'lexical'
+import { Context } from '@deepseek-ai/cordis'
 import { projectUserText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { registerComposerKeymap } from '../src/client/input/editor/keymap.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -15,12 +16,14 @@ import {
 import type { SessionBehaviorOverrides } from '@deepseek-ai/dsh-client-test-runtime'
 import {
   apply, inject, type ComposerBarInjected, type ConversationInjected,
-  type ConversationSessionHeaderInjected, type ConversationSessionInjected, type ViewTab,
+  type ConversationSessionHeaderInjected, type ConversationSessionInjected, type ViewTab, Config,
+  type ConversationConfig,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { createConversationStore } from '../src/client/stores.ts'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
+import { apply as applyHost, Config as HostConfig } from '../src/index.ts'
 
 usePinnedBrowserLanguages('zh-CN')
 
@@ -37,7 +40,7 @@ function sessionFakeFor() {
   } satisfies SessionBehaviorOverrides
 }
 
-async function bench() {
+async function bench(config: ConversationConfig = {}) {
   const runtime = await SlotTestRuntime.create()
   const rootUpload = vi.fn(() => Promise.resolve({
     ok: true as const,
@@ -99,7 +102,7 @@ async function bench() {
     'main': { kind: 'keyed', scope: 'root' },
   }, (_props: { renderSlot?: unknown }) => null)
 
-  const feature = await runtime.mount({ inject: [...inject], apply })
+  const feature = await runtime.mount({ inject: [...inject], apply: (ctx) => { apply(ctx, Config(config)) } })
   runtime.renderRoot()
   const entryOf = (key: 'main.conversation' | 'conversation.session' | 'conversation.session.header' | 'conversation.composer.bar') =>
     runtime.slots.entries(key)[0]!
@@ -144,6 +147,49 @@ async function bench() {
 }
 
 describe('Conversation inject API', () => {
+  it('uses the Host page injection to expose trajectory after browser boot with Coding Tools off', async () => {
+    const host = new Context()
+    const fiber = host.plugin({ Config: HostConfig, apply: applyHost }, { showTrajectoryWithoutDeveloperTools: true })
+    await fiber.await()
+    const rows: Array<{ kind: string; name?: string; value?: unknown }> = []
+    host.emit('webserver/index-inject', rows as never)
+    const injection = rows.find(row => row.kind === 'global' && row.name === '__DSH_CONVERSATION__')
+    expect(injection?.value).toEqual({ showTrajectoryWithoutDeveloperTools: true })
+    const page = globalThis as { __DSH_CONVERSATION__?: unknown }
+    const previous = page.__DSH_CONVERSATION__
+    page.__DSH_CONVERSATION__ = injection?.value
+    try {
+      const b = await bench()
+      try {
+        const removeView = b.slots.register(
+          { name: 'conversation.view', id: 'trajectory', label: 'Trajectory' }, (() => null) as never,
+        )
+        await b.runtime.flush()
+        await b.runtime.ctx.configForms.developerTools.setEnabled(false)
+        expect(b.viewSource(ROOT).getSnapshot()).toEqual([{ id: 'trajectory', label: 'Trajectory' }])
+        removeView()
+      } finally {
+        await b.runtime.dispose()
+      }
+    } finally {
+      if (previous === undefined) delete page.__DSH_CONVERSATION__
+      else page.__DSH_CONVERSATION__ = previous
+      await fiber.dispose()
+    }
+  })
+
+  it('keeps trajectory available when the product opts out of the Coding Tools gate', async () => {
+    const b = await bench({ showTrajectoryWithoutDeveloperTools: true })
+    const removeView = b.slots.register(
+      { name: 'conversation.view', id: 'trajectory', label: 'Trajectory' }, (() => null) as never,
+    )
+    await b.runtime.flush()
+    await b.runtime.ctx.configForms.developerTools.setEnabled(false)
+    expect(b.viewSource(ROOT).getSnapshot()).toEqual([{ id: 'trajectory', label: 'Trajectory' }])
+    removeView()
+    await b.runtime.dispose()
+  })
+
   it('owns the File action, reads its mounted composer availability, and unregisters on disposal', async () => {
     const b = await bench()
     onTestFinished(() => b.runtime.dispose())

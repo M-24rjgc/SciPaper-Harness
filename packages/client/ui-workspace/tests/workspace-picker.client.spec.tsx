@@ -27,7 +27,7 @@ const t: WorkspacePickerProps['t'] = makeTranslate(zh, commonZh)
 const wid = (id: string) => id as WorkspaceId
 function workspace(id: string, title = id): WorkspaceView {
   return {
-    workspaceId: wid(id), path: `/projects/${id}`, title, sessionIds: [],
+    workspaceId: wid(id), path: `/projects/${id}`, location: { kind: 'local', path: `/projects/${id}` }, title, sessionIds: [],
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   }
 }
@@ -147,14 +147,33 @@ describe('WorkspacePicker', () => {
     expect(screen.queryByTestId('directory-flow')).toBeNull()
   })
 
-  it('raises the flow straight from the anchor gesture when adding is the only entry', () => {
-    // Nothing to list and one action left: a one-row menu would offer no
-    // choice, so the owner's open request lands in the flow itself.
+  it('offers local and SSH creation when no workspace is registered', () => {
     const b = mount([])
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '添加工作区…' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: '添加 SSH 工作区…' })).toBeTruthy()
+    chooseAdd()
     expect(b.onClose).toHaveBeenCalled()
     expect(screen.getByTestId('directory-flow')).toBeTruthy()
+  })
+
+  it('creates an SSH workspace using its host and remote path, then selects it', async () => {
+    const created = { ...workspace('remote'), path: '/home/user/code', location: { kind: 'ssh' as const, host: 'lab', path: '/home/user/code' } }
+    const createWorkspace = vi.fn(async () => created)
+    const b = mount([], createWorkspace)
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加 SSH 工作区…' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'SSH 主机别名' }), { target: { value: 'lab' } })
+    fireEvent.change(screen.getByRole('textbox', { name: '远端绝对路径' }), { target: { value: '/home/user/code' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加工作区' }))
+    await waitFor(() => { expect(createWorkspace).toHaveBeenCalledWith({ location: { kind: 'ssh', host: 'lab', path: '/home/user/code' } }) })
+    await waitFor(() => { expect(b.onPick).toHaveBeenCalledWith(created.workspaceId) })
+  })
+
+  it('distinguishes identical remote paths by host in the picker', () => {
+    const a = { ...workspace('a', 'Code'), path: '/code', location: { kind: 'ssh' as const, host: 'alpha', path: '/code' } }
+    const b = { ...workspace('b', 'Code'), path: '/code', location: { kind: 'ssh' as const, host: 'beta', path: '/code' } }
+    mount([a, b])
+    expect(screen.getByRole('menuitem', { name: 'Code · alpha:/code' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Code · beta:/code' })).toBeTruthy()
   })
 
   it('treats flow cancellation as a silent no-op', () => {
@@ -253,12 +272,9 @@ describe('WorkspacePicker', () => {
     expect(screen.getByRole('menuitem', { name: '添加工作区…' })).toBeTruthy()
   })
 
-  it('shows no popover at all when nothing is listed and nothing can be added', () => {
-    // A composition mounting this package without any directory-picker: the
-    // hero anchor has neither a Workspace to pick nor a way to add one, so it
-    // must not claim a choice with an empty menu.
+  it('offers SSH creation even without a local directory picker', () => {
     const b = mount([], vi.fn(), occupancySource(false))
-    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '添加 SSH 工作区…' })).toBeTruthy()
     expect(screen.queryByTestId('directory-flow')).toBeNull()
     expect(b.createWorkspace).not.toHaveBeenCalled()
   })

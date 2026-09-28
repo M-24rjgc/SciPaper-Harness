@@ -1,6 +1,5 @@
 /** Filesystem provider preserving remote identities and helper-owned atomic mutations. */
 import { posix } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { FileSystem, FsError } from '@deepseek-ai/dsh-fs'
 import type { FsDirEntry, FsEditOutcome, FsEditRequest, FsErrorCode, FsInfo, FsPathInfo, FsTarget, FsVersion, FsWriteIntent, FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
@@ -29,7 +28,11 @@ export class SshFileSystem extends FileSystem {
   override processPath(target: FsTarget): string { return String(target.targetKey) }
 
   override fileUrl(target: FsTarget): string {
-    return pathToFileURL(this.processPath(target)).href
+    // The target is a POSIX path on the SSH host even when this process runs
+    // on Windows. pathToFileURL would reinterpret it as a Windows local path.
+    const remote = this.processPath(target)
+    if (!posix.isAbsolute(remote)) throw new FsError('SSH target is not an absolute POSIX path', 'FS_IO_ERROR')
+    return `file://${remote.split('/').map(encodeURIComponent).join('/')}`
   }
 
   override contains(parent: FsTarget, child: FsTarget): boolean {

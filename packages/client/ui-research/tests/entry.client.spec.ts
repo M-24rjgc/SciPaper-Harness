@@ -43,7 +43,7 @@ function session(id: string, cwd: string, extra: Partial<SessionSummary> = {}): 
 }
 
 function workspace(id: string, path: string, sessionIds: string[]): WorkspaceView {
-  return { workspaceId: id as WorkspaceId, path, title: path, sessionIds: sessionIds as SessionId[], createdAt: '2026-09-26T00:00:00.000Z', updatedAt: '2026-09-26T00:00:00.000Z' }
+  return { workspaceId: id as WorkspaceId, path, location: { kind: 'local', path }, title: path, sessionIds: sessionIds as SessionId[], createdAt: '2026-09-26T00:00:00.000Z', updatedAt: '2026-09-26T00:00:00.000Z' }
 }
 
 function listOf(sessions: SessionSummary[], current?: string, phase: SessionListState['phase'] = 'ready'): SessionFixture {

@@ -73,6 +73,8 @@ export const inject = ['tools', 'systemPrompt', 'subprocess']
 export interface Config {
   /** Whether an over-cap `glob` page is sampled across top-level entries instead of taking the modification-time head. */
   sampleOverCapGlobResults: boolean
+  /** Executable in the subprocess provider's filesystem; omit for the packaged local ripgrep binary. */
+  rgPath?: string
   /** Max paths one `glob` call retains inline; later paths go to the formatted spill file. */
   globMaxResults?: number
   /** Max flat matches one `grep` call retains inline; later matches go to the formatted spill file. */
@@ -96,6 +98,7 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   sampleOverCapGlobResults: z.boolean().required(),
+  rgPath: z.string(),
   globMaxResults: z.number().default(GLOB_MAX_RESULTS),
   grepMaxMatches: z.number().default(GREP_MAX_MATCHES),
   grepMaxLineBytes: z.number().default(GREP_MAX_LINE_BYTES),
@@ -107,7 +110,7 @@ export const Config: z<Config> = z.object({
 })
 
 /** The shape after schemastery applied the defaults. */
-type ResolvedConfig = Required<Config>
+type ResolvedConfig = Required<Omit<Config, 'rgPath'>> & Pick<Config, 'rgPath'>
 
 /** Every search cap counts items/bytes/milliseconds — a positive integer, or retention and timeout arithmetic misbehaves silently. */
 function assertPositiveInteger(name: string, value: number): void {
@@ -139,7 +142,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   assertPositiveInteger('stderrMaxBytes', resolved.stderrMaxBytes)
   assertPositiveInteger('timeoutMs', resolved.timeoutMs)
+  if (resolved.rgPath !== undefined && resolved.rgPath.trim().length === 0) throw new Error('tool-fs-search: rgPath must be non-empty')
   applyGlobTool(ctx, {
+    rgPath: resolved.rgPath,
     sampleOverCapGlobResults: resolved.sampleOverCapGlobResults,
     maxResults: resolved.globMaxResults,
     maxMetaBytes: resolved.searchMetaMaxBytes,
@@ -149,6 +154,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     timeoutMs: resolved.timeoutMs,
   })
   applyGrepTool(ctx, {
+    rgPath: resolved.rgPath,
     maxMatches: resolved.grepMaxMatches,
     maxLineBytes: resolved.grepMaxLineBytes,
     maxMetaBytes: resolved.searchMetaMaxBytes,

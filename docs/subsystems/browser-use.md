@@ -10,7 +10,7 @@ Mount [`dsh-browser-use`](../../packages/browser-use/browser-use/README.md) and 
 
 | Provider | Integration |
 |---|---|
-| [Playwright MCP](../../packages/experimental/browser-use-playwright-mcp/README.md) | Playwright's browser-control MCP tools |
+| [Playwright MCP](../../packages/browser-use/browser-use-playwright-mcp/README.md) | Playwright's browser-control MCP tools |
 | [Chrome DevTools MCP](../../packages/experimental/browser-use-chrome-devtools-mcp/README.md) | Chrome DevTools inspection and control through MCP |
 | [Stagehand](../../packages/experimental/browser-use-stagehand-native/README.md) | Native browser operations with AI-assisted actions, observation, and extraction |
 
@@ -28,7 +28,7 @@ Provider shutdown stops tool admission and waits for owned work and resource cle
 
 An MCP provider initializes one client for each live Agent created after the provider loads. The existing serial `agent/created` event awaits connection and discovery before creation or resume completes and queued input runs. The client remains with the Session across turns. Startup failure or cancellation rejects creation or resume and triggers client cleanup.
 
-If an attachment is busy, that activation continues without the browser and does not retry on later turns. After release, a newly created or resumed activation can acquire it. Loading or reloading the provider does not adopt already active Sessions; the [shared runtime](../../packages/experimental/browser-use-runtime/README.md) owns these initialization rules.
+If an attachment is busy, that activation continues without the browser and does not retry on later turns. After release, a newly created or resumed activation can acquire it. Loading or reloading the provider does not adopt already active Sessions; the [shared runtime](../../packages/browser-use/browser-use-runtime/README.md) owns these initialization rules.
 
 ## Tools and recorded results
 

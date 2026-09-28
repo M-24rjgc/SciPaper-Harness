@@ -18,6 +18,7 @@ export interface SessionFormatHeader extends SessionFormatJsonObject {
   readonly id: string
   readonly createdAt: number
   readonly cwd?: string
+  readonly execution?: { readonly kind: 'local' } | { readonly kind: 'ssh'; readonly host: string }
   readonly parentSession?: string
   readonly isSeeded: boolean
   readonly origin?: 'subagent'

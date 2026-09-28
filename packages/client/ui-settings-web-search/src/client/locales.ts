@@ -9,6 +9,8 @@ export type WebSearchSettingsLocaleKey =
   | 'baseUrl' | 'baseUrlHint' | 'maxUses' | 'maxUsesHint'
   | 'overridden' | 'reset' | 'readOnly' | 'unavailable'
   | 'save' | 'saving' | 'saveFailed' | 'invalidNumber'
+  | 'backendDescription' | 'backendChecking' | 'backendUnknown' | 'backendPending' | 'backendEnabledPending' | 'backendReady' | 'backendSelection'
+  | 'providerExa' | 'providerPerplexity'
 
 /** English copy. */
 export const en: Record<WebSearchSettingsLocaleKey, string> = {
@@ -30,6 +32,15 @@ export const en: Record<WebSearchSettingsLocaleKey, string> = {
   saving: 'Saving…',
   saveFailed: 'The deployment did not accept these values; they were left for you to correct.',
   invalidNumber: 'Enter a number, or leave blank to use the default.',
+  backendDescription: 'Configure the API key for {name} search. The key is kept in the credential store.',
+  backendChecking: 'Checking key',
+  backendUnknown: 'Key status unknown',
+  backendPending: 'Awaiting API key',
+  backendEnabledPending: 'Enabled, awaiting API key',
+  backendReady: 'API key configured',
+  backendSelection: 'Enabling this backend replaces DeepSeek search and turns off the other optional search backend.',
+  providerExa: 'Exa',
+  providerPerplexity: 'Perplexity',
 }
 
 /** Simplified Chinese copy. */
@@ -52,6 +63,15 @@ export const zh: Record<WebSearchSettingsLocaleKey, string> = {
   saving: '保存中…',
   saveFailed: '本部署没有接受这些值，已保留供你修改。',
   invalidNumber: '请填数字；留空表示使用默认值。',
+  backendDescription: '配置 {name} 搜索的 API key。密钥保存在凭据库中。',
+  backendChecking: '正在检查密钥',
+  backendUnknown: '密钥状态未知',
+  backendPending: '待配置 API key',
+  backendEnabledPending: '已启用，待配置 API key',
+  backendReady: '已配置 API key',
+  backendSelection: '启用后会替代 DeepSeek 搜索，并自动关闭另一个可选搜索后端。',
+  providerExa: 'Exa',
+  providerPerplexity: 'Perplexity',
 }
 
 /**

@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import type { ArtifactRecord, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
-import { pathInProject, useSessionProject } from './contract.ts'
+import { pathInProject, useSessionProject, type SessionDirectories } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { ExampleBanner, NoResearch, type ResearchTabProps } from './Tabs.tsx'
 import tabs from './Tabs.module.css'
@@ -32,12 +32,17 @@ function isAbsolute(path: string): boolean {
  * itself, a session address against that conversation's working directory.
  * @returns the path, or undefined when the address names no file or its conversation's folder is unknown.
  */
-function fileOf(address: string, directories: Readonly<Record<string, string>>): string | undefined {
+function fileOf(address: string, directories: SessionDirectories, currentSession: string): string | undefined {
   const file = parseFileAddress(address)
   if (file === undefined) return undefined
-  if (file.scope === 'absolute' || isAbsolute(file.path)) return file.path
+  if (file.scope === 'absolute') {
+    const current = directories[currentSession]
+    return current !== undefined && typeof current !== 'string' ? undefined : file.path
+  }
   const cwd = directories[file.sessionId]
-  return cwd === undefined ? undefined : `${cwd.replace(/[\\/]+$/, '')}/${file.path}`
+  if (cwd !== undefined && typeof cwd !== 'string') return undefined
+  if (isAbsolute(file.path)) return file.path
+  return typeof cwd !== 'string' ? undefined : `${cwd.replace(/[\\/]+$/, '')}/${file.path}`
 }
 
 /**
@@ -72,7 +77,7 @@ export function ResearchDiagramTab(props: ResearchTabProps): ReactNode {
   const directories = props.useDirectories(s => s)
   const { tab } = props.useTabInfo()
   if (!project) return <NoResearch t={t} />
-  const file = fileOf(tab.contentId, directories)
+  const file = fileOf(tab.contentId, directories, props.sessionId)
   const path = file === undefined ? undefined : pathInProject(project.root, file)
   if (path === undefined) return <div className={tabs.root}><p className={tabs.empty}>{t('diagramOutside')}</p></div>
   return <DiagramFile key={`${project.id}\n${path}`} {...props} project={project} path={path} />

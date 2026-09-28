@@ -62,6 +62,8 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
   ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
+  const remoteInspect = vi.fn(async ({ path }: { host: string; path: string }) => ({ canonicalPath: path }))
+  ctx.provide('remoteWorkspacePresets', { inspect: remoteInspect } as never)
   await ctx.plugin(WorkspaceRegistry)
   const dispose = (): void => {}
   ctx.provide('typert', {
@@ -69,7 +71,7 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
     contexts: { configureHost: () => dispose },
   } as never)
   const controller = new WorkspaceController(ctx, options.systemDocuments === true ? {} : { documentsDirectory: root })
-  return { controller, ctx, root, storageDomain }
+  return { controller, ctx, root, storageDomain, remoteInspect }
 }
 
 function stageDir(root: string, name: string): string {
@@ -87,6 +89,27 @@ async function nextFrame(
 }
 
 describe('WorkspaceController commands', () => {
+  it('keeps the same remote path on separate SSH hosts as distinct workspaces', async () => {
+    const { controller } = await harness()
+    const first = await controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/research' } })
+    const second = await controller.create({ location: { kind: 'ssh', host: 'beta', path: '/srv/research' } })
+    const again = await controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/research' } })
+    expect(first.workspace.location).toEqual({ kind: 'ssh', host: 'alpha', path: '/srv/research' })
+    expect(second.workspace.location).toEqual({ kind: 'ssh', host: 'beta', path: '/srv/research' })
+    expect(second.workspace.workspaceId).not.toBe(first.workspace.workspaceId)
+    expect(again).toMatchObject({ created: false, workspace: { workspaceId: first.workspace.workspaceId } })
+  })
+
+  it('registers a verified canonical SSH directory and rejects an inaccessible remote root', async () => {
+    const { controller, remoteInspect } = await harness()
+    remoteInspect.mockResolvedValueOnce({ canonicalPath: '/srv/canonical' })
+      .mockRejectedValueOnce(new Error('SSH directory is inaccessible'))
+    const created = await controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/link' } })
+    expect(created.workspace.location).toEqual({ kind: 'ssh', host: 'alpha', path: '/srv/canonical' })
+    await expect(controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/missing' } }))
+      .rejects.toMatchObject({ code: 'workspace/invalid-path' })
+  })
+
   it('serializes concurrent path adoption and preserves an existing title', async () => {
     const { controller, root } = await harness()
     const path = stageDir(root, 'alpha')

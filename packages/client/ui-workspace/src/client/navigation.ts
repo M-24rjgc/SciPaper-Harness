@@ -8,6 +8,7 @@ import type {
   SessionReference,
   SessionTarget,
   SessionListState,
+  SessionSummary,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
@@ -23,6 +24,14 @@ import type { WorkspaceViewStoreActions } from './stores.ts'
 interface MainSelection {
   readonly sessionId?: SessionId
   readonly subagentAddress?: SubagentAddress
+}
+
+/** A blank Session can be reused only in the directory and execution host that created it. */
+function belongsToWorkspace(summary: SessionSummary, workspace: WorkspaceView): boolean {
+  if (summary.cwd !== workspace.path) return false
+  const location = workspace.location
+  if (location.kind === 'local') return summary.execution?.kind !== 'ssh'
+  return summary.execution?.kind === 'ssh' && summary.execution.host === location.host
 }
 
 /** Deployment-selected startup and unscoped New Session behavior. */
@@ -207,7 +216,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const sessions = this.sessions.list.getSnapshot()
     for (const id of sessions.ids) {
       const summary = sessions.byId[id]
-      if (summary === undefined || !summary.blank || summary.cwd !== workspace.path
+      if (summary === undefined || !summary.blank || !belongsToWorkspace(summary, workspace)
         || !workspace.sessionIds.includes(id) || archived.includes(id)) continue
       return this.reuseBlank(workspace.workspaceId, id)
     }
@@ -429,7 +438,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     }
     const navigation = AbortSignal.any([this.ctx.layout.beginNavigation(), this.lifetime.signal])
     let sessionId: SessionId | undefined
-    if (summary !== undefined && workspace !== undefined && summary.cwd === workspace.path
+    if (summary !== undefined && workspace !== undefined && belongsToWorkspace(summary, workspace)
       && !workspaces.archivedSessionIds.includes(summary.id)) {
       sessionId = await this.reuseBlank(workspace.workspaceId, summary.id)
     }

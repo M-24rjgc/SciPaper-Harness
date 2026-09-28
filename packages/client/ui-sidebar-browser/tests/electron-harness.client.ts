@@ -14,6 +14,7 @@ export function electronFixture(initial?: BrowserTabState) {
   const bridge = {
     acquire: vi.fn(async (_workspace: string) => reservation),
     release: vi.fn(async (_lease: DesktopBrowserLeaseId) => {}),
+    clearWorkspaceData: vi.fn(async (_workspace: string) => {}),
     onOpenRequested: vi.fn((_lease: DesktopBrowserLeaseId, listener: (url: string) => void) => {
       opens.add(listener)
       return () => { opens.delete(listener) }
@@ -22,7 +23,7 @@ export function electronFixture(initial?: BrowserTabState) {
   const workspace = vi.fn(async (_signal: AbortSignal) => 'cwd:/workspace')
   const persist = vi.fn()
   const openRequested = vi.fn()
-  const page = createElectronPage({ initial, persist, openRequested }, bridge, workspace)
+  const page = createElectronPage({ initial, persist, openRequested }, bridge, 'session-test', workspace)
   const presentation = page.presentation
   if (!(presentation instanceof ElectronWebviewPresentation)) throw new Error('expected the Electron presentation')
   const create = presentation.createElement.bind(presentation)

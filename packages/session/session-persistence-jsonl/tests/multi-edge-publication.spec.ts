@@ -150,7 +150,8 @@ function assertRequests(events: readonly SessionEvent[], header: SessionHeader) 
 
 function assertMigrated(result: Awaited<ReturnType<typeof readSession>>) {
   const { events, header, cut, session } = result
-  expect(header).toEqual({ version: SESSION_FORMAT_VERSION, id, createdAt: 1, parentSession: 'parent', delegationDepth: 0, isSeeded: true })
+  expect(header).toEqual({ version: SESSION_FORMAT_VERSION, id, createdAt: 1,
+    execution: { kind: 'local' }, parentSession: 'parent', delegationDepth: 0, isSeeded: true })
   expect(events.map(event => event.seq)).toEqual(Array.from({ length: 23 }, (_, seq) => seq))
   expect(events.filter(event => event.type.startsWith('assistant/'))).toEqual([{
     type: 'assistant/message', seq: 6, time: 108, surfaceOp: 'append',

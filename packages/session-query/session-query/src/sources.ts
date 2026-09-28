@@ -13,6 +13,9 @@ export function assertSessionHeadersCompatible(a: SessionHeader, b: SessionHeade
     a.id !== b.id
     || a.createdAt !== b.createdAt
     || a.cwd !== b.cwd
+    || (a.execution?.kind ?? 'local') !== (b.execution?.kind ?? 'local')
+    || (a.execution?.kind === 'ssh' && b.execution?.kind === 'ssh'
+      && a.execution.host !== b.execution.host)
     || a.parentSession !== b.parentSession
     || a.isSeeded !== b.isSeeded
     || (a.delegationDepth ?? 0) !== (b.delegationDepth ?? 0)

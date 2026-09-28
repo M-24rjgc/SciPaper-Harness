@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { createConnection } from 'node:net'
 import type { Readable, Writable } from 'node:stream'
 import { Context } from '@deepseek-ai/cordis'
 import { FsError, type FsTarget, type FsWriteIntent, type FsVersion } from '@deepseek-ai/dsh-fs'
@@ -44,6 +45,51 @@ export interface HelperTransport {
   entryPath: string
   /** Process termination joins the same cleanup as transport loss. */
   signal: AbortSignal
+}
+
+/** A second SSH channel carries one already-reserved stream on Windows clients. */
+export interface SshStreamBridgeTransport extends HelperTransport {
+  /** Socket path returned by the primary helper's authenticated RPC channel. */
+  path: string
+  /** The digest verified during the primary helper handshake. */
+  helperHash: string
+}
+
+/**
+ * Bridge SSH stdio to one remote Unix socket. The stream still requires the
+ * per-reservation TLS-PSK capability from the primary RPC channel.
+ * @param transport - verified helper identity, reserved socket, and process streams.
+ */
+export async function runSshStreamBridge(transport: SshStreamBridgeTransport): Promise<void> {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') throw new Error('SSH stream bridge requires a POSIX host')
+  transport.signal.throwIfAborted()
+  const path = remotePath.parse(transport.path)
+  if (!/^[0-9a-f]{64}$/u.test(transport.helperHash)) throw new Error('SSH stream bridge received an invalid helper digest')
+  const digest = createHash('sha256').update(readFileSync(transport.entryPath)).digest('hex')
+  if (digest !== transport.helperHash) throw new Error('SSH stream bridge helper digest differs from the verified artifact')
+  const socket = createConnection({ path, allowHalfOpen: true })
+  const aborted = (): void => {
+    socket.destroy(transport.signal.reason instanceof Error ? transport.signal.reason : new Error('SSH stream bridge aborted'))
+  }
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const connected = (): void => {
+        transport.input.pipe(socket)
+        socket.pipe(transport.output, { end: false })
+      }
+      transport.signal.addEventListener('abort', aborted, { once: true })
+      socket.once('connect', connected)
+      socket.once('error', reject)
+      socket.once('close', resolve)
+      if (transport.signal.aborted) aborted()
+    })
+  } finally {
+    transport.signal.removeEventListener('abort', aborted)
+    transport.input.unpipe(socket)
+    socket.unpipe(transport.output)
+    socket.destroy()
+    transport.output.end()
+  }
 }
 
 /**

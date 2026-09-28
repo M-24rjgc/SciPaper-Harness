@@ -1,27 +1,26 @@
 /**
  * Workspace pick/add flow. WorkspacePickFlow is the reusable core (menu +
- * path error dialog) consumed directly by WorkspaceBrowser (same package) and
+ * path error dialogs) consumed directly by WorkspaceBrowser (same package) and
  * wrapped by WorkspacePicker for the conversation empty-state slot
- * registration. Directory picking itself lives in the composed flow package's
- * slot occupant (see the contract module doc): this core only opens the flow,
- * adopts the picked path, and owns the error surface. Adding a workspace has
- * exactly one route — pick a host directory, new or existing — because the
- * occupant's own create-folder affordance already covers creating one.
+ * registration. Local directory picking lives in a composed flow package's
+ * slot occupant. SSH workspaces use the host alias and path form here.
  */
-import type { ReactNode, RefObject } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import type { FormEvent, ReactNode, RefObject } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import {
   Button, IconFolderCloseRegular, IconPlusOutlineRegular, Menu, Modal, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { WorkspaceCreateRequest } from '@deepseek-ai/dsh-api-workspace-controller/types'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DirectoryFlowOwnerProps, WorkspacePickerProps } from './contract/slots.ts'
 import css from './WorkspacePicker.module.css'
 
 const ADD_WORKSPACE = '::add-workspace'
+const ADD_SSH_WORKSPACE = '::add-ssh-workspace'
 
 /** Core flow props: the owner supplies popover control and pick semantics. */
 export interface WorkspacePickFlowProps {
@@ -34,8 +33,8 @@ export interface WorkspacePickFlowProps {
   /** Selector hook over the workspace list (framework standard hook). */
   useWorkspaces: <S>(selector: (state: WorkspaceSnapshot) => S) => S
   /** Adopt a picked host directory as a real Workspace. */
-  createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
-  /** Bound occupancy selector hook for this surface's directory-flow hole (empty leaves the surface with no add action). */
+  createWorkspace: (input: WorkspaceCreateRequest) => Promise<WorkspaceView>
+  /** Bound occupancy selector hook for this surface's local directory-flow hole. */
   useDirectoryFlow: SnapshotSelectorHook<boolean>
   /** Render this surface's directory-flow hole with the owner conversation (the entry's narrowed renderSlot). */
   renderDirectoryFlow: (owner: DirectoryFlowOwnerProps) => ReactNode
@@ -83,11 +82,17 @@ export function WorkspacePickFlow({
   const [modalError, setModalError] = useState<string | null>(null)
   const [flowOpen, setFlowOpen] = useState(false)
   const [pickingFolder, setPickingFolder] = useState(false)
+  const [sshOpen, setSshOpen] = useState(false)
+  const [sshHost, setSshHost] = useState('')
+  const [sshPath, setSshPath] = useState('')
+  const [sshError, setSshError] = useState<string | null>(null)
+  const [sshSaving, setSshSaving] = useState(false)
+  const sshFormId = useId()
   // One picking interaction at a time: while the flow is open (native chooser
   // pending, browse dialog up) or its pick is being adopted, every other
   // menu action stays disabled — a late outcome must not race a concurrent
   // selection or adoption.
-  const flowBusy = flowOpen || pickingFolder
+  const flowBusy = flowOpen || pickingFolder || sshOpen || sshSaving
   useEffect(() => { onBusyChange?.(flowBusy) }, [flowBusy, onBusyChange])
 
   // The occupied hole gates the picking affordance: with no composed flow the
@@ -103,23 +108,26 @@ export function WorkspacePickFlow({
   useEffect(() => {
     if (flowOpen && !flowAvailable) setFlowOpen(false)
   }, [flowOpen, flowAvailable])
-  const addEntries: MenuEntry[] = flowAvailable
-    ? [{ id: ADD_WORKSPACE, label: t('menu.addWorkspace'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy }]
-    : []
+  const addEntries: MenuEntry[] = [
+    ...(flowAvailable
+      ? [{ id: ADD_WORKSPACE, label: t('menu.addWorkspace'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy }]
+      : []),
+    { id: ADD_SSH_WORKSPACE, label: t('menu.addSshWorkspace'), icon: <IconPlusOutlineRegular size={16} />, disabled: flowBusy },
+  ]
   // With workspaces listed, the add action pins below the scroll region
   // (divider + always visible); otherwise it IS the menu.
   const pinAdd = !addOnly && workspaces.length > 0
   const items: MenuEntry[] = pinAdd
     ? workspaces.map(workspace => ({
       id: workspace.workspaceId,
-      label: workspaceDisplayTitle(workspace.title, t('workspace.defaultName')),
+      label: workspace.location.kind === 'ssh'
+        ? `${workspaceDisplayTitle(workspace.title, t('workspace.defaultName'))} · ${workspace.location.host}:${workspace.path}`
+        : workspaceDisplayTitle(workspace.title, t('workspace.defaultName')),
       icon: <IconFolderCloseRegular size={16} />,
       disabled: flowBusy,
     }))
     : addEntries
-  // Nothing listed and nothing to add with (a composition that mounts this
-  // package without any directory-picker): an empty popover would claim a
-  // choice that does not exist, so the anchor gesture shows nothing at all.
+  // SSH registration stays available when no local picker is composed.
   const menuIsEmpty = items.length === 0
 
   const closeModal = (): void => {
@@ -145,21 +153,28 @@ export function WorkspacePickFlow({
     setFlowOpen(true)
   }, [onClose])
 
-  // A menu exists to disambiguate between targets. With no workspaces listed
-  // and the add action the only entry left, the anchor gesture IS that action:
-  // a one-row popover would cost a click and offer nothing to choose between.
-  // The owner's open request is consumed the same way selecting the entry
-  // would consume it (close the popover, raise the flow). An empty list is
-  // only final once the baseline lands — until then the menu stays up with its
-  // loading status instead of jumping into a flow the arriving list would have
-  // made unnecessary; the add-only surface lists nothing and never waits.
-  const listSettled = addOnly || workspaceSnapshot.phase === 'ready'
-  const addIsTheOnlyEntry = !pinAdd && listSettled && addEntries.length === 1
-  // `flowBusy` gates this exactly as it disables the equivalent menu entry: a
-  // pick still being adopted owns the surface until it settles.
-  useEffect(() => {
-    if (open && addIsTheOnlyEntry && !flowBusy) openDirectoryFlow()
-  }, [open, addIsTheOnlyEntry, flowBusy, openDirectoryFlow])
+  const openSshFlow = (): void => {
+    onClose()
+    setSshError(null)
+    setSshOpen(true)
+  }
+  const submitSsh = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    const host = sshHost.trim()
+    const path = sshPath.trim()
+    if (host === '' || !path.startsWith('/')) {
+      setSshError(t('ssh.invalid'))
+      return
+    }
+    setSshSaving(true)
+    setSshError(null)
+    void createWorkspace({ location: { kind: 'ssh', host, path } }).then((workspace) => {
+      setSshOpen(false)
+      onPick(workspace.workspaceId)
+    }).catch((reason: unknown) => {
+      setSshError(reason instanceof Error ? reason.message : String(reason))
+    }).finally(() => { setSshSaving(false) })
+  }
 
   /** Owner side of the flow conversation: adopt keeps the flow open (busy) until the Host answers. */
   const flowOwner: DirectoryFlowOwnerProps = {
@@ -182,13 +197,17 @@ export function WorkspacePickFlow({
       openDirectoryFlow()
       return
     }
+    if (id === ADD_SSH_WORKSPACE) {
+      openSshFlow()
+      return
+    }
     onPick(id as WorkspaceId)
   }
 
   return (
     <>
       <Menu
-        open={open && !addIsTheOnlyEntry && !menuIsEmpty}
+        open={open && !menuIsEmpty}
         anchor={null}
         items={items}
         {...pinAdd ? { footer: addEntries } : {}}
@@ -199,8 +218,30 @@ export function WorkspacePickFlow({
         portal
         getAnchorRect={getAnchorRect}
       />
-      {open && !addIsTheOnlyEntry && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && <div className={css.menuStatus} role="status">{t('picker.loading')}</div>}
+      {open && !menuIsEmpty && workspaceSnapshot.phase === 'pending' && <div className={css.menuStatus} role="status">{t('picker.loading')}</div>}
       {renderDirectoryFlow(flowOwner)}
+      <Modal
+        open={sshOpen}
+        onClose={() => { if (!sshSaving) setSshOpen(false) }}
+        closeLabel={t('close')}
+        title={t('ssh.title')}
+        footer={<>
+          <Button variant="outline" className={css.modalAction} disabled={sshSaving} onClick={() => { setSshOpen(false) }}>{t('cancel')}</Button>
+          <Button variant="primary" className={css.modalAction} type="submit" form={sshFormId} disabled={sshSaving}>{t('ssh.add')}</Button>
+        </>}
+      >
+        <form id={sshFormId} className={css.sshForm} onSubmit={submitSsh}>
+          <label className={css.sshField}>
+            <span>{t('ssh.host')}</span>
+            <input autoFocus required spellCheck={false} value={sshHost} disabled={sshSaving} onChange={(event) => { setSshHost(event.target.value) }} placeholder={t('ssh.hostPlaceholder')} />
+          </label>
+          <label className={css.sshField}>
+            <span>{t('ssh.path')}</span>
+            <input required spellCheck={false} value={sshPath} disabled={sshSaving} onChange={(event) => { setSshPath(event.target.value) }} placeholder={t('ssh.pathPlaceholder')} />
+          </label>
+          {sshError !== null && <div className={css.modalError} role="alert">{sshError}</div>}
+        </form>
+      </Modal>
       <Modal
         open={errorOpen}
         onClose={closeModal}

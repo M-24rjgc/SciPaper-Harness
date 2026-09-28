@@ -75,6 +75,7 @@ describe('ui-sidebar-browser apply', () => {
     const bridge: DesktopBrowserBridge = {
       acquire,
       release: vi.fn(async () => {}),
+      clearWorkspaceData: vi.fn(async () => {}),
       onOpenRequested: vi.fn(() => () => {}),
     }
     vi.stubGlobal('dshDesktop', { protocolVersion, browser: bridge })

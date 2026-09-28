@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SSH backend (headless profiles)",
+    "description": "Switches file, process, and sandbox services only for configured non-desktop profiles. For remote files, terminal, and LSP in Desktop, choose Add SSH Workspace in the sidebar."
+  }
+}

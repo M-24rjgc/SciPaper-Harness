@@ -37,6 +37,7 @@ function workspace(
   return {
     workspaceId: wid(id),
     path: `/w/${id}`,
+    location: { kind: 'local', path: `/w/${id}` },
     title: id,
     sessionIds,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -72,7 +73,7 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   readonly initializeDefault = vi.fn<WorkspaceRemote['initializeDefault']>(async () => remoteOk({ workspace: workspace('default') }))
   readonly calls: Array<{ readonly method: string; readonly request: unknown }> = []
   onCreate: (request: WorkspaceCreateRequest) => Promise<RemoteResult<WorkspaceCreateValue>> = request =>
-    Promise.resolve(remoteOk({ workspace: workspace(request.path.split('/').pop() ?? 'workspace'), created: true }))
+    Promise.resolve(remoteOk({ workspace: workspace((request.location?.path ?? request.path)?.split('/').pop() ?? 'workspace'), created: true }))
   onRename: (request: WorkspaceRenameRequest) => Promise<RemoteResult<WorkspaceValue>> = request =>
     Promise.resolve(remoteOk({ workspace: { ...workspace(String(request.workspaceId)), title: request.title } }))
   onDelete: (_request: WorkspaceDeleteRequest) => Promise<RemoteResult<WorkspaceDeleteValue>> = () =>
@@ -228,7 +229,7 @@ describe('ClientWorkspaceModel', () => {
     const model = modelFor(remote)
     remote.onCreate = request => Promise.resolve(remoteOk({
       workspace: workspace('created', [], '2026-02-01T00:00:00.000Z'),
-      created: request.path === '/w/created',
+      created: (request.location?.path ?? request.path) === '/w/created',
     }))
     await expect(model.create({ path: '/w/created' })).resolves.toMatchObject({ ok: true })
     expect(remote.calls).toContainEqual({ method: 'create', request: { path: '/w/created' } })

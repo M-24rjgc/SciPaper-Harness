@@ -39,7 +39,7 @@ const t: WorkspaceBrowserProps['t'] = makeTranslate(zh, commonZh)
 const sid = (id: string) => id as SessionId
 const wid = (id: string) => id as WorkspaceId
 const summary = (id: string, updatedAt: number, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
-  id: sid(id), displayTitle: id, running: false, blank: false, updatedAt, ...overrides,
+  id: sid(id), displayTitle: id, execution: { kind: 'local' }, running: false, blank: false, updatedAt, ...overrides,
   retainedBy: overrides.retainedBy ?? {},
 })
 const sessionState = (
@@ -63,7 +63,7 @@ const sessionState = (
   }
 }
 const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
-  workspaceId: wid(id), path: `/projects/${id}`, title,
+  workspaceId: wid(id), path: `/projects/${id}`, location: { kind: 'local', path: `/projects/${id}` }, title,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaceState = (
@@ -284,6 +284,7 @@ describe('WorkspaceBrowser', () => {
     add.focus()
     fireEvent.click(add)
     expect(document.activeElement).toBe(add)
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加工作区…' }))
     expect(screen.getByTestId('directory-flow')).toBeTruthy()
     expect(panelInfo.activePanelId).toBe('panel-a')
     expect(b.props.open).not.toHaveBeenCalled()
@@ -1837,25 +1838,26 @@ describe('WorkspaceBrowser', () => {
     }
   })
 
-  it('rail add-workspace raises the directory flow in place, with no menu and no expansion', () => {
+  it('rail add-workspace offers local and SSH choices without expanding the sidebar', () => {
     const expandSidebar = vi.fn()
     mount({ wide: false, expandSidebar, useWorkspaces: hook(workspaceState([workspace('alpha', [])])) })
     fireEvent.click(screen.getByRole('button', { name: '添加工作区' }))
     expect(expandSidebar).not.toHaveBeenCalled()
-    // Adding is the header's only action, so the gesture IS that action: no
-    // one-row popover, and existing workspaces stay in the tree below.
-    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '添加工作区…' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: '添加 SSH 工作区…' })).toBeTruthy()
     expect(screen.queryByRole('menuitem', { name: 'alpha' })).toBeNull()
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加工作区…' }))
     expect(screen.getByTestId('directory-flow')).toBeTruthy()
   })
 
-  it('hides the add button when no directory-flow occupant is composed', () => {
+  it('keeps SSH creation available when no local directory-flow occupant is composed', () => {
     mount({
       useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
       useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => false, subscribe: () => () => {} }),
     })
-    // Nothing to add with, so the header offers no dead button.
-    expect(screen.queryByRole('button', { name: '添加工作区' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '添加工作区' }))
+    expect(screen.queryByRole('menuitem', { name: '添加工作区…' })).toBeNull()
+    expect(screen.getByRole('menuitem', { name: '添加 SSH 工作区…' })).toBeTruthy()
     expect(screen.getByText('alpha')).toBeTruthy()
   })
 
@@ -2417,6 +2419,22 @@ describe('Workspace tree grouping', () => {
   const child = { ...workspace('child', ['child-session'], 'Child'), path: '/projects/team/child' }
   const section = (title: string) => screen.getByText(title).closest<HTMLElement>('[class*="groupSection"]')!
 
+  it('nests only remote folders from the same SSH host', () => {
+    const remote = (id: string, host: string, path: string, title: string): WorkspaceView => ({
+      ...workspace(id, [], title), path, location: { kind: 'ssh', host, path },
+    })
+    mount({ useWorkspaces: hook(workspaceState([
+      remote('root-a', 'alpha', '/code', 'Remote alpha'),
+      remote('child-a', 'alpha', '/code/src', 'Child alpha'),
+      remote('child-b', 'beta', '/code/src', 'Child beta'),
+      { ...workspace('local', [], 'Local'), path: '/code', location: { kind: 'local', path: '/code' } },
+    ])) })
+    expect(within(section('Remote alpha · alpha')).getByText('Child alpha · alpha')).toBeTruthy()
+    expect(within(section('Remote alpha · alpha')).queryByText('Child beta · beta')).toBeNull()
+    expect(within(section('Local')).queryByText('Child alpha · alpha')).toBeNull()
+    expect(screen.getByText('Child beta · beta')).toBeTruthy()
+  })
+
   it('adopts a parent directory and opens its Session without confirmation', async () => {
     const b = mount({
       useWorkspaces: hook(workspaceState([child])),
@@ -2425,6 +2443,7 @@ describe('Workspace tree grouping', () => {
         ? <button onClick={() => { owner.onPicked('/projects') }}>Pick directory</button> : null) as WorkspaceBrowserProps['renderSlot'],
     })
     fireEvent.click(screen.getByRole('button', { name: '添加工作区' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '添加工作区…' }))
     fireEvent.click(screen.getByRole('button', { name: 'Pick directory' }))
     await waitFor(() => { expect(b.props.startSession).toHaveBeenCalledWith(wid('root')) })
     expect(b.props.createWorkspace).toHaveBeenCalledWith({ path: '/projects' })

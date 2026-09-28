@@ -230,6 +230,13 @@ export const en = {
   treeMakeResearchTitle: 'Make “{name}” a research',
   treeMakeResearchHint: 'The folder becomes a research with its own record. Paper, figures and other subfolders are added; the files already there stay as they are.',
   treeMakeResearchSubmit: 'Make it a research',
+  treeSshAdd: 'Add SSH workspace',
+  treeSshTitle: 'Add SSH workspace',
+  treeSshHost: 'SSH host alias',
+  treeSshHostPlaceholder: 'For example, research-server',
+  treeSshPath: 'Absolute remote path',
+  treeSshPathPlaceholder: '/home/user/project',
+  treeSshInvalid: 'Enter a host alias and an absolute path beginning with /.',
   treeSearch: 'Search researches and conversations',
   treeSearchPlaceholder: 'Names and conversation text',
   treeSearchClear: 'Clear the search',
@@ -241,6 +248,8 @@ export const en = {
 
   // Research context rail: the tools row
   researchFiles: 'Research files',
+  localResearchFileUnavailable: 'The local research file is unavailable from this SSH conversation. Open the local research workspace to view it.',
+  localResearchFilesTabUnavailable: 'Research files are kept in the local ledger. Open its local workspace to browse them.',
 
   // The secondary tools' tabs beside the conversation: Sources and the draw.io editor
   sourcesTab: 'Sources',
@@ -821,6 +830,13 @@ export const zh: Record<ResearchKey, string> = {
   treeMakeResearchTitle: '把「{name}」设为研究',
   treeMakeResearchHint: '这个文件夹会成为一项研究，有自己的研究记录。会新建 paper、figures 等子文件夹，原有文件不会被改动。',
   treeMakeResearchSubmit: '设为研究',
+  treeSshAdd: '添加 SSH 工作区',
+  treeSshTitle: '添加 SSH 工作区',
+  treeSshHost: 'SSH 主机别名',
+  treeSshHostPlaceholder: '例如 research-server',
+  treeSshPath: '远端绝对路径',
+  treeSshPathPlaceholder: '/home/user/project',
+  treeSshInvalid: '请输入主机别名和以 / 开头的绝对路径。',
   treeSearch: '搜索研究和对话',
   treeSearchPlaceholder: '名称或对话内容',
   treeSearchClear: '清除搜索',
@@ -832,6 +848,8 @@ export const zh: Record<ResearchKey, string> = {
 
   // 研究进展侧栏：工具行
   researchFiles: '研究文件',
+  localResearchFileUnavailable: '无法从此 SSH 对话读取本地科研台账文件。请打开本地科研工作区查看。',
+  localResearchFilesTabUnavailable: '研究文件保存在本地台账中。请打开本地科研工作区浏览。',
 
   // 对话旁的次要工具标签页：资料与 draw.io 编辑器
   sourcesTab: '资料',

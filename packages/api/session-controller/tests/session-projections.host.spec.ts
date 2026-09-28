@@ -191,6 +191,7 @@ describe('session.history projections block', () => {
       cwd: '/workspace',
       parentSession: parent.id,
       isSeeded: true,
+      execution: { kind: 'local' },
     })
     expect(snapshot.header).not.toHaveProperty('seedLength')
   })

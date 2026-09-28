@@ -156,6 +156,8 @@ interface SessionHeader {
   readonly createdAt: number
   /** Absolute working directory the session was created in (if any). */
   readonly cwd?: string
+  /** Where this session's filesystem, processes, and language services execute. */
+  readonly execution?: SessionExecution
   /** The session this one was forked from (seed lineage), if any. */
   readonly parentSession?: SessionId
   /**
@@ -213,6 +215,7 @@ interface CreateSessionOptions {
    */
   readonly meta?: {
     readonly cwd?: string
+    readonly execution?: SessionExecution
     readonly parentSession?: SessionId
     readonly createdAt?: number
     readonly isSeeded?: boolean

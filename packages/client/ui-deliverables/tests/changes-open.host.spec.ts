@@ -8,6 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { HostConnectionService } from '@deepseek-ai/dsh-client-connection'
 import type { BrowserAuth } from '@deepseek-ai/dsh-client-connection/src/browser-auth.ts'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
 import type { SessionEventReadRequest } from '@deepseek-ai/dsh-session-query'
 import type { WorkspaceChangedFile, WorkspaceChangesSummary, WorkspaceFileDiff } from '@deepseek-ai/dsh-workspace-changes/types'
@@ -48,8 +49,11 @@ async function fixture() {
     inject: ['fs', 'sandboxPolicy'],
     apply: (scope) => { new WorkspaceFiles(scope, { maxBytes: 1024, maxFileBytes: 1024, maxLines: 100, maxEntries: 100 }) },
   })
-  const readEvent = vi.fn(async (_request: SessionEventReadRequest) => {
-    throw new SessionQueryError('missing', 'SESSION_QUERY_EVENT_NOT_FOUND')
+  const session: { cwd: string; execution?: { kind: 'local' } | { kind: 'ssh'; host: string } } = { cwd }
+  const readEvent = vi.fn(async (request: SessionEventReadRequest) => {
+    if (request.sessionId !== 'owner') throw new SessionQueryError('missing', 'SESSION_QUERY_SESSION_NOT_FOUND')
+    if (request.seq !== 9) throw new SessionQueryError('missing', 'SESSION_QUERY_EVENT_NOT_FOUND')
+    return { session, target: { type: 'workspace/changes', data: { turn: 1 } } as SessionEvent }
   })
   ctx.provide('sessionQuery', { readEvent } as never)
   const summary = vi.fn((sessionId: SessionId, seq: number) => sessionId === 'owner' && seq === 9 ? data : undefined)
@@ -72,7 +76,10 @@ async function fixture() {
   const open = (query = '?sessionId=owner&seq=9&index=0') => handler.fetch(new Request(`http://localhost${CHANGES_OPEN_PATH}${query}`, { method: 'POST' }))
   const read = (query = '?sessionId=owner&seq=9') => handler.fetch(new Request(`http://localhost${CHANGED_FILES_PATH}${query}`))
   const compare = (query = '?sessionId=owner&seq=9&index=0') => handler.fetch(new Request(`http://localhost${CHANGES_DIFF_PATH}${query}`))
-  return { handler, applications, root, cwd, ctx, data, readEvent, open, read, compare, comparison, diff, opener, outside, summary }
+  return {
+    handler, applications, root, cwd, ctx, data, session, readEvent, open, read,
+    compare, comparison, diff, opener, outside, summary,
+  }
 }
 
 describe('change summary route', () => {
@@ -131,6 +138,19 @@ describe('change comparison route', () => {
 })
 
 describe('changed files native open route', () => {
+  it('refuses Host applications and opening for an SSH Session even when the same local file exists', async () => {
+    const { ctx, session, open, opener, applications, handler } = await fixture()
+    session.execution = { kind: 'ssh', host: 'lab' }
+    const stat = vi.spyOn(ctx.workspaceFiles, 'stat')
+    const url = `http://localhost${CHANGES_OPEN_PATH}?sessionId=owner&seq=9&index=0`
+    expect((await handler.fetch(new Request(url))).status).toBe(422)
+    expect((await open()).status).toBe(422)
+    expect((await open('?sessionId=owner&seq=9&index=0&action=reveal')).status).toBe(422)
+    expect(stat).not.toHaveBeenCalled()
+    expect(applications).not.toHaveBeenCalled()
+    expect(opener).not.toHaveBeenCalled()
+  })
+
   it('opens a listed file inside or outside the workspace with its verified Host path', async () => {
     const { cwd, open, opener, outside } = await fixture()
     expect(changedFileUrl(SessionId('owner'), 9, 0)).toBe('api/changes.open?sessionId=owner&seq=9&index=0')
@@ -157,6 +177,15 @@ describe('changed files native open route', () => {
     expect(readEvent).not.toHaveBeenCalled()
     await unlink(join(cwd, 'src', 'lib', 'a.ts'))
     expect((await open()).status).toBe(404)
+    expect(opener).not.toHaveBeenCalled()
+  })
+
+  it('requires the addressed event to announce the served change summary', async () => {
+    const { session, readEvent, open, opener, ctx } = await fixture()
+    const stat = vi.spyOn(ctx.workspaceFiles, 'stat')
+    readEvent.mockResolvedValueOnce({ session, target: { type: 'turn/start' } as SessionEvent })
+    expect((await open()).status).toBe(404)
+    expect(stat).not.toHaveBeenCalled()
     expect(opener).not.toHaveBeenCalled()
   })
 

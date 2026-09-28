@@ -101,6 +101,14 @@ it.each(['--unsigned', '--prepare-only'])('keeps %s hardware-free and creates no
   for (const call of run.run.mock.calls) expect(call[3].env).not.toHaveProperty('DSH_DESKTOP_WINDOWS_TOKEN_PIN')
   expect(writeFileSync).not.toHaveBeenCalled()
   expect(stages.includes('exec tsx scripts/smoke-packaged-runtime.ts --unsigned')).toBe(mode === '--unsigned')
+  const builder = run.run.mock.calls.find(call => call[0].startsWith('exec electron-builder'))
+  const smoke = run.run.mock.calls.find(call => call[0].includes('smoke-packaged-runtime'))
+  if (mode === '--unsigned') {
+    expect(builder?.[3].env.DSH_DESKTOP_UNSIGNED_RUN_ID).toBe('fixture-record')
+    expect(smoke?.[3].env.DSH_DESKTOP_UNSIGNED_RUN_ID).toBe('fixture-record')
+  } else {
+    expect(builder?.[3].env.DSH_DESKTOP_UNSIGNED_RUN_ID).toBeUndefined()
+  }
 })
 
 it('checks the assembled macOS runtime before notarizing and recording the release', async () => {

@@ -1,5 +1,6 @@
 /** Host registration for browser conversation preferences. */
 import type {} from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-host-webserver'
 
 import type { Volatile, Context } from '@deepseek-ai/cordis'
 import type { BusyEnterBehavior } from './submission-settings.ts'
@@ -17,16 +18,27 @@ export {
 export interface Config {
   /** Enter key behavior while a turn is running. */
   busyEnter: Volatile<BusyEnterBehavior>
+  /** Keep the trajectory view available independently of Coding Tools. */
+  showTrajectoryWithoutDeveloperTools?: boolean
 }
 
 /** Live preferences projected to the browser. */
 export const Config = z.object({
   [BUSY_ENTER_FIELD]: ConversationSettingsFields[BUSY_ENTER_FIELD].volatile(),
+  showTrajectoryWithoutDeveloperTools: z.boolean().default(false),
 })
 
 /** Host preferences are consumed through the configuration form projection.
  * @param ctx Plugin context used for optional settings presentation.
  */
-export function apply(ctx: Context): void {
+export function apply(ctx: Context, config: Config = Config({})): void {
   ctx.inject(['settings'], (child) => { child.effect(() => child.settings.configure({ auto: false }, ctx.fiber)) })
+  const showTrajectoryWithoutDeveloperTools = config.showTrajectoryWithoutDeveloperTools === true
+  ctx.on('webserver/index-inject', (table) => {
+    table.push({
+      kind: 'global',
+      name: '__DSH_CONVERSATION__',
+      value: { showTrajectoryWithoutDeveloperTools },
+    })
+  })
 }

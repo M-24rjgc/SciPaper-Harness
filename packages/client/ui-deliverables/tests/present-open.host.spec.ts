@@ -31,7 +31,7 @@ async function fixture() {
   await writeFile(join(cwd, file.path), Uint8Array.of(80, 75, 0, 255))
   const ctx = new Context()
   cleanups.push(() => ctx.fiber.dispose())
-  const session: { cwd?: string } = { cwd }
+  const session: { cwd?: string; execution?: { kind: 'local' } | { kind: 'ssh'; host: string } } = { cwd }
   await ctx.plugin(LocalFileSystem, { cwd })
   ctx.provide('sandboxPolicy', { workspaceRoot: cwd } as never)
   await ctx.plugin({
@@ -59,6 +59,19 @@ async function fixture() {
 }
 
 describe('Presented workspace file native open route', () => {
+  it('refuses Host applications and opening for an SSH Session even when the same local file exists', async () => {
+    const { ctx, session, open, opener, applications, handler } = await fixture()
+    session.execution = { kind: 'ssh', host: 'lab' }
+    const stat = vi.spyOn(ctx.workspaceFiles, 'stat')
+    const url = `http://localhost${PRESENT_OPEN_PATH}?sessionId=owner&seq=7&index=0`
+    expect((await handler.fetch(new Request(url))).status).toBe(422)
+    expect((await open()).status).toBe(422)
+    expect((await open('?sessionId=owner&seq=7&index=0&action=reveal')).status).toBe(422)
+    expect(stat).not.toHaveBeenCalled()
+    expect(applications).not.toHaveBeenCalled()
+    expect(opener).not.toHaveBeenCalled()
+  })
+
   it('opens the source itself with current bytes and leaves it intact at disposal', async () => {
     const { cwd, open, file, fiber, opener, handler, ctx } = await fixture()
     const source = await realpath(join(cwd, file.path))

@@ -5,6 +5,41 @@
 
 import { realpath } from 'node:fs/promises'
 import { posix, win32 } from 'node:path'
+import type { WorkspaceLocation } from './types.ts'
+
+/**
+ * Stable identity for a canonical location, without delimiter collisions.
+ * @param location - Canonical local or SSH Workspace location.
+ * @returns A stable key that includes the execution host.
+ */
+export function workspaceLocationKey(location: WorkspaceLocation): string {
+  return JSON.stringify(location.kind === 'local'
+    ? ['local', location.path]
+    : ['ssh', location.host, location.path])
+}
+
+/**
+ * Validate and normalize a POSIX directory without consulting the Windows Host filesystem.
+ * @param path - Remote directory path to validate.
+ * @returns The canonical absolute POSIX path.
+ */
+export function normalizeSshWorkspacePath(path: string): string {
+  if (typeof path !== 'string' || !posix.isAbsolute(path) || path.includes('\0')) {
+    throw new TypeError(`SSH Workspace path must be absolute POSIX: '${path}'`)
+  }
+  return posix.normalize(path).replace(/\/+$/, '') || '/'
+}
+
+/**
+ * Build a canonical SSH workspace identity from an SSH config host key and path.
+ * @param host - SSH config host key.
+ * @param path - Absolute remote directory path.
+ * @returns The normalized SSH Workspace location.
+ */
+export function sshWorkspaceLocation(host: string, path: string): WorkspaceLocation {
+  if (typeof host !== 'string' || host.trim() === '') throw new TypeError('SSH Workspace host is required')
+  return { kind: 'ssh', host, path: normalizeSshWorkspacePath(path) }
+}
 
 /**
  * Check whether a path names one fixed Host location without process cwd or

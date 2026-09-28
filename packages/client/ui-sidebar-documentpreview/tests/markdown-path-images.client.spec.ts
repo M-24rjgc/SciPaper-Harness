@@ -4,6 +4,10 @@ import { markdownImageUrl } from '../src/client/markdown/path-images.ts'
 const BASE = 'https://example.test/tools/dsh/'
 
 describe('Markdown preview image URLs', () => {
+  it('includes the owning session for remote file media', () => {
+    const url = new URL(markdownImageUrl(BASE, '/work/guide/notes.md', 'images/a.png', 'remote-session')!)
+    expect(url.searchParams.get('sessionId')).toBe('remote-session')
+  })
   it.each([
     ['images/a.png', '/work/guide/images/a.png'],
     ['./images/a.png', '/work/guide/./images/a.png'],

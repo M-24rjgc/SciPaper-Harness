@@ -29,5 +29,8 @@ export async function browserWorkspace(source: WorkspaceSource, sessionId: strin
   }
   signal.throwIfAborted()
   const workspace = source.getSnapshot().items.find(item => item.sessionIds.some(id => id === sessionId))
-  return workspace === undefined ? `session:${sessionId}` : `cwd:${workspace.path}`
+  if (workspace === undefined) return `session:${sessionId}`
+  return workspace.location.kind === 'ssh'
+    ? `ssh:${JSON.stringify([workspace.location.host, workspace.location.path])}`
+    : `cwd:${workspace.location.path}`
 }

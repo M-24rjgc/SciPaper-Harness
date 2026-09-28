@@ -293,6 +293,13 @@ describe('registration', () => {
 })
 
 describe('config validation', () => {
+  it('uses the subprocess provider filesystem for an explicit ripgrep executable', async () => {
+    const { ctx, subprocess } = await setup({ config: { rgPath: '/usr/bin/rg' } })
+    await call(ctx, 'glob', { pattern: '*.ts' }, { agent: agent('/srv/research') })
+    expect(subprocess.spawns[0]?.argv[0]).toBe('/usr/bin/rg')
+    expect(subprocess.spawns[0]?.cwd).toBe('/srv/research')
+  })
+
   it('requires an explicit over-cap glob sampling choice', () => {
     expect(() => new ToolFsSearch.Config()).toThrow(/sampleOverCapGlobResults/)
     expect(new ToolFsSearch.Config({ sampleOverCapGlobResults: false })).toMatchObject({
@@ -1190,7 +1197,7 @@ describe('presentation', () => {
 
 describe('helpers', () => {
   it('toWorkdirRelative maps inside-workdir absolutes and passes everything else through', () => {
-    expect(toWorkdirRelative('/w/a/b.ts', '/w')).toBe(join('a', 'b.ts'))
+    expect(toWorkdirRelative('/w/a/b.ts', '/w')).toBe('a/b.ts')
     expect(toWorkdirRelative('/w', '/w')).toBe('.')
     expect(toWorkdirRelative('/other/b.ts', '/w')).toBe('/other/b.ts')
     expect(toWorkdirRelative('/w-sibling/b.ts', '/w')).toBe('/w-sibling/b.ts')

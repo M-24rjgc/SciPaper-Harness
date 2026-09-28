@@ -71,6 +71,11 @@ function researchName(project: ResearchProject, t: Translate): string {
   return project.untitled === true ? t('treeUntitled') : project.title
 }
 
+/** Identify remote folders by host as well as path wherever the sidebar names one. */
+function folderName(folder: TreeFolder): string {
+  return folder.location.kind === 'ssh' ? `${folder.title} · ${folder.location.host}:${folder.path}` : folder.title
+}
+
 /** Started conversations use their title; unsent drafts show their text or attachment count. */
 function conversationName(conversation: TreeConversation, t: Translate): string {
   if (conversation.blank && conversation.draft !== undefined) {
@@ -352,14 +357,16 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
     case 'folder': {
       const { folder } = row
       return {
-        label: folder.title,
+        label: folderName(folder),
         lead: <Arrow open={row.expanded} current={folder.current} />,
         signal: folder.signal,
         selected: false,
         className: styles.research,
         menu: {
           items: [
-            { id: 'make', label: t('treeMakeResearch'), icon: <IconProjectAddOutlineRegular /> },
+            ...(folder.location.kind === 'local'
+              ? [{ id: 'make', label: t('treeMakeResearch'), icon: <IconProjectAddOutlineRegular /> }]
+              : [{ id: 'new', label: t('treeAddConversation'), icon: <IconPlusOutlineRegular size={16} /> }]),
             { id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutlineRegular size={16} /> },
           ],
           choose: (id) => {
@@ -367,6 +374,7 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
               props.openDialog({ kind: 'make-research', folder })
               return undefined
             }
+            if (id === 'new') return () => { props.startSession(folder.workspaceId) }
             return () => props.removeFolder(folder.workspaceId)
           },
         },
@@ -435,7 +443,7 @@ function TreeBody(props: BodyProps): ReactNode {
 function placeName(place: SearchPlace, t: Translate): string {
   switch (place.kind) {
     case 'research': return researchName(place.research.project, t)
-    case 'folder': return place.folder.title
+    case 'folder': return folderName(place.folder)
     case 'loose': return t('treeLoose')
   }
 }
@@ -571,6 +579,54 @@ function NameDialog(props: {
   </Modal>
 }
 
+/** Register a remote directory using an OpenSSH host alias and POSIX path. */
+function SshWorkspaceDialog(props: {
+  t: Translate
+  create(host: string, path: string): Promise<unknown>
+  onClose(): void
+}): ReactNode {
+  const { t } = props
+  const saving = useAction()
+  const formId = useId()
+  const [host, setHost] = useState('')
+  const [path, setPath] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const submit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    const chosenHost = host.trim()
+    const chosenPath = path.trim()
+    if (chosenHost === '' || !chosenPath.startsWith('/')) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
+    saving.start(async () => {
+      await props.create(chosenHost, chosenPath)
+      props.onClose()
+    })
+  }
+  const close = (): void => { if (!saving.pending) props.onClose() }
+  return <Modal open onClose={close} closeLabel={t('close')} title={t('treeSshTitle')} footer={<>
+    <Button variant="outline" disabled={saving.pending} onClick={close}>{t('cancel')}</Button>
+    <Button variant="primary" type="submit" form={formId} disabled={saving.pending}>{t('treeSshAdd')}</Button>
+  </>}>
+    <form id={formId} className={styles.form} onSubmit={submit}>
+      <label className={styles.field}>
+        <span>{t('treeSshHost')}</span>
+        <input className={styles.input} autoFocus required spellCheck={false} value={host} disabled={saving.pending}
+          placeholder={t('treeSshHostPlaceholder')} onChange={(event) => { setHost(event.target.value) }} />
+      </label>
+      <label className={styles.field}>
+        <span>{t('treeSshPath')}</span>
+        <input className={styles.input} required spellCheck={false} value={path} disabled={saving.pending}
+          placeholder={t('treeSshPathPlaceholder')} onChange={(event) => { setPath(event.target.value) }} />
+      </label>
+      {invalid && <p className={styles.hint} role="alert">{t('treeSshInvalid')}</p>}
+      <ActionError t={t} error={saving.error} />
+    </form>
+  </Modal>
+}
+
 /**
  * The research tree in the sidebar's browsing seat: its header and search,
  * the rows, and the dialogs its menus open; on the collapsed rail, the search
@@ -595,6 +651,7 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
   const selectedId = panelActive ? undefined : current
 
   const [dialog, setDialog] = useState<TreeDialog | null>(null)
+  const [sshOpen, setSshOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const normalized = searchable(query).trim()
@@ -687,6 +744,11 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
     </div>
     : <>
       <span className={styles.heading}>{t('treeTitle')}</span>
+      <Tooltip label={t('treeSshAdd')} side="bottom" delayMs={500}>
+        <button type="button" className={styles.iconButton} aria-label={t('treeSshAdd')} onClick={() => { setSshOpen(true) }}>
+          <IconPlusOutlineRegular size={14} />
+        </button>
+      </Tooltip>
       <Tooltip label={t('treeSearch')} side="bottom" delayMs={500}>
         <button type="button" className={styles.iconButton} aria-label={t('treeSearch')} onClick={() => { setSearchOpen(true) }}>
           <IconSearchOutlineRegular size={14} />
@@ -719,6 +781,10 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
           openResearch={openResearch} openConversation={openConversation}
         />)}
     </div>
+    {sshOpen && <SshWorkspaceDialog t={t} create={async (host, path) => {
+      const workspaceId = await props.createSshWorkspace(host, path)
+      await props.openWorkspace(workspaceId)
+    }} onClose={() => { setSshOpen(false) }} />}
     {dialog?.kind === 'rename-research' && <NameDialog
       t={t}
       title={t('treeRenameResearchTitle')}
@@ -736,7 +802,7 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
       work={name => props.renameConversation(dialog.conversation.id, name)}
       onClose={() => { setDialog(null) }}
     />}
-    {dialog?.kind === 'make-research' && <NameDialog
+    {dialog?.kind === 'make-research' && dialog.folder.location.kind === 'local' && <NameDialog
       t={t}
       title={t('treeMakeResearchTitle', { name: dialog.folder.title })}
       hint={t('treeMakeResearchHint')}

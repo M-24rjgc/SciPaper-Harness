@@ -1,0 +1,10 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/research/workbench/runtime/examples/v1/ccfa-sparse-attention/README.md
+/content-adaptive-sparse-attention:
+  en: 48e2028604cb23da
+  zh: 6ba431504a2fcab5
+/content-adaptive-sparse-attention/contents:
+  en: e2ef6b8a9cad637b
+  zh: 5a036582fa71a08a

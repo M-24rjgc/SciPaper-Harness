@@ -38,7 +38,7 @@ describe('the research preset', () => {
     expect(preset.config?.id).toBe('research')
     const research = preset.config!.plugins!
     const standard = (await declaration(STANDARD)).config!.plugins!
-    const added = [...RESEARCH_TOOL_MODULES.map(module => `research-${module}`), 'research-mode-skills']
+    const added = [...RESEARCH_TOOL_MODULES.map(module => `research-${module}`), 'research-mode-skills', 'tool-lsp']
     expect(research.map(row => row.id).sort()).toEqual([...standard.map(row => row.id), ...added].sort())
     // The tools belong to this preset's agents; the host-wide service registers none.
     for (const module of RESEARCH_TOOL_MODULES) {

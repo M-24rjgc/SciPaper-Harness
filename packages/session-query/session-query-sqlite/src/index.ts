@@ -172,6 +172,8 @@ interface SessionHeaderRow {
   version: number
   created_at: number
   cwd: string | null
+  execution_kind: 'local' | 'ssh'
+  execution_host: string | null
   parent_session: string | null
   seed_length: number | null
   delegation_depth: number | null
@@ -588,8 +590,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     db.prepare(`
       INSERT INTO persisted_sessions
-        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, revision, generation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, version, created_at, cwd, execution_kind, execution_host, parent_session, seed_length, delegation_depth, agent_preset, revision, generation)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       ...headerBindings(entry.header, entry.inheritedEventCount),
       revision,
@@ -618,8 +620,8 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     db.prepare(`
       INSERT INTO temp.live_sessions
-        (id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, fingerprint, persisted, generation)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, version, created_at, cwd, execution_kind, execution_host, parent_session, seed_length, delegation_depth, agent_preset, fingerprint, persisted, generation)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       ...headerBindings(entry.header, entry.inheritedEventCount),
       entry.fingerprint,
@@ -714,7 +716,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     const db = this._requireDb()
     const live = db.prepare(
       `SELECT
-        id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, generation
+        id AS session_id, version, created_at, cwd, execution_kind, execution_host, parent_session, seed_length, delegation_depth, agent_preset, generation
       FROM temp.live_sessions
       WHERE id = ?`,
     ).get(sessionId) as (SessionHeaderRow & { generation: number }) | undefined
@@ -724,7 +726,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
     if (persistenceBinding.service !== undefined) {
       const persisted = db.prepare(
         `SELECT
-          id AS session_id, version, created_at, cwd, parent_session, seed_length, delegation_depth, agent_preset, generation
+          id AS session_id, version, created_at, cwd, execution_kind, execution_host, parent_session, seed_length, delegation_depth, agent_preset, generation
         FROM persisted_sessions
         WHERE id = ?`,
       ).get(sessionId) as (SessionHeaderRow & { generation: number }) | undefined
@@ -787,6 +789,8 @@ function headerBindings(
     header.version,
     header.createdAt,
     header.cwd ?? null,
+    header.execution?.kind ?? 'local',
+    header.execution?.kind === 'ssh' ? header.execution.host : null,
     header.parentSession ?? null,
     header.isSeeded ? inheritedEventCount : null,
     header.delegationDepth ?? null,
@@ -802,6 +806,8 @@ function selectedDocumentsSql(): { sql: string } {
         ps.version AS version,
         ps.created_at AS created_at,
         ps.cwd AS cwd,
+        ps.execution_kind AS execution_kind,
+        ps.execution_host AS execution_host,
         ps.parent_session AS parent_session,
         ps.seed_length AS seed_length,
         ps.delegation_depth AS delegation_depth,
@@ -825,6 +831,8 @@ function selectedDocumentsSql(): { sql: string } {
         ls.version AS version,
         ls.created_at AS created_at,
         ls.cwd AS cwd,
+        ls.execution_kind AS execution_kind,
+        ls.execution_host AS execution_host,
         ls.parent_session AS parent_session,
         ls.seed_length AS seed_length,
         ls.delegation_depth AS delegation_depth,
@@ -939,6 +947,8 @@ function sameHeader(a: SessionHeader, b: SessionHeader): boolean {
   return a.id === b.id
     && a.createdAt === b.createdAt
     && a.cwd === b.cwd
+    && (a.execution?.kind ?? 'local') === (b.execution?.kind ?? 'local')
+    && (a.execution?.kind !== 'ssh' || (b.execution?.kind === 'ssh' && a.execution.host === b.execution.host))
     && a.parentSession === b.parentSession
     && a.isSeeded === b.isSeeded
     && (a.delegationDepth ?? 0) === (b.delegationDepth ?? 0)
@@ -951,6 +961,9 @@ function rowHeader(row: SessionHeaderRow): SessionHeader {
     id: row.session_id as SessionId,
     createdAt: row.created_at,
     ...row.cwd === null ? {} : { cwd: row.cwd },
+    execution: row.execution_kind === 'ssh' && row.execution_host !== null
+      ? { kind: 'ssh', host: row.execution_host }
+      : { kind: 'local' },
     ...row.parent_session === null ? {} : { parentSession: row.parent_session as SessionId },
     isSeeded: row.seed_length !== null,
     ...row.delegation_depth === null ? {} : { delegationDepth: row.delegation_depth },

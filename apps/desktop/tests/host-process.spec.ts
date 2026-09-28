@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError, QUIT_INSPECTION_DEADLINE_MS } from '../src/host-process.ts'
 
@@ -30,6 +30,12 @@ server.listen(0, '127.0.0.1', () => {
   process.send({ type: 'ready', url: 'http://127.0.0.1:' + server.address().port + '/?token=fixture' })
 })
 process.on('message', message => {
+  if (message.type === 'browser-authorize') {
+    process.send({ type: 'browser-authorize', requestId: message.requestId,
+      ...message.sessionId === 'unknown' ? { error: 'desktop browser: conversation is unavailable' }
+        : { storageKey: 'cwd:C:/Research/Study' } })
+    return
+  }
   if (message.type === 'update-tasks') {
     process.send({ type: 'update-tasks', requestId: message.requestId, active: message.action === 'lock' })
     return
@@ -69,10 +75,49 @@ function hostProcess(
 
 afterEach(async () => {
   await Promise.all(hosts.splice(0).map(host => host.stop()))
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const root of roots.splice(0)) {
+    if (!existsSync(root)) continue
+    const resolved = realpathSync(root)
+    if (dirname(resolved) !== realpathSync(tmpdir())
+      || !['dsh-desktop-host-test-', 'desktop-external-profile-'].some(prefix => basename(resolved).startsWith(prefix))) {
+      throw new Error('Refusing to remove a directory outside the test temp roots')
+    }
+    rmSync(resolved, { recursive: true })
+  }
 })
 
 describe('desktop host process', () => {
+  it('propagates a browser operation cancellation from Host IPC to the active Main signal', async () => {
+    const runtime = projectWithHost(`
+      process.send({ type: 'ready', url: 'http://127.0.0.1:3080/' })
+      process.send({ type: 'browser-operation', requestId: 7,
+        operation: { action: 'navigate', sessionId: 'session-a', url: 'https://example.test/' } })
+      setTimeout(() => { process.send({ type: 'browser-operation-cancel', requestId: 7 }) }, 80)
+      process.on('message', message => {
+        if (message.type === 'shutdown') process.send({ type: 'shutdown-complete' }, () => process.disconnect())
+      })
+    `)
+    const canceled = vi.fn()
+    const host = new DesktopHostProcess(process.execPath, runtime, runtime, undefined, process.env,
+      undefined, undefined, undefined, undefined, async (_operation, signal) => {
+        await new Promise<void>((resolve) => {
+          signal.addEventListener('abort', () => { resolve() }, { once: true })
+        })
+        canceled()
+      })
+    hosts.push(host)
+    await host.start()
+    await vi.waitFor(() => { expect(canceled).toHaveBeenCalledOnce() })
+  })
+
+  it('receives Host-approved browser storage and refuses unknown conversations', async () => {
+    const host = hostProcess(projectWithHost())
+    await expect(host.authorizeBrowser('session-a')).rejects.toThrow('Host is unavailable')
+    await host.start()
+    expect(await host.authorizeBrowser('session-a')).toBe('cwd:C:/Research/Study')
+    await expect(host.authorizeBrowser('unknown')).rejects.toThrow('conversation is unavailable')
+    await expect(host.authorizeBrowser('')).rejects.toThrow('invalid conversation identity')
+  })
   it('correlates task inspections and admission changes over private IPC', async () => {
     const host = hostProcess(projectWithHost())
     await expect(host.updateTasks('inspect')).rejects.toThrow('Host is unavailable')

@@ -1,0 +1,7 @@
+- id: web
+  config:
+    searchProvider: perplexity
+    fetchProvider: http
+- insert:
+    - id: web-search-perplexity
+      name: '@deepseek-ai/dsh-web-search-perplexity'

@@ -28,6 +28,7 @@ export interface SessionListEntry {
   /** Coarse durable origin for navigation filtering; not a continuation capability. */
   origin?: 'subagent'
   cwd?: string
+  execution?: SessionSummary['execution']
   /** Current host-computed projection values for list consumers. */
   projectionValues?: Readonly<Partial<SessionProjectionMap>>
   /** Lineage indent depth: root = 0; the UI just multiplies by the indent width. */

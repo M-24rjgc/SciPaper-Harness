@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { JSDOM } from 'jsdom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { DesktopBrowserLeaseId } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { installMandatoryUpdateOverlay } from '../src/preload-mandatory-overlay.ts'
 import { syncWindowsAppearance } from '../src/preload-windows.ts'
 import { DESKTOP_IPC, type DshDesktopProductApi } from '../src/ipc.ts'
@@ -174,6 +175,16 @@ it('withholds the product API from same-origin child frames', async () => {
   vi.stubGlobal('process', { ...process, isMainFrame: false })
   await import('../src/preload-app.ts')
   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith('dshDesktop', { protocolVersion: 1 })
+})
+
+it('forwards only the approved browser storage clear operation to the main process', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  await api.browser.clearWorkspaceData('cwd:C:\\Research\\Study', 'session-1', 'lease-1' as DesktopBrowserLeaseId)
+  expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith(
+    DESKTOP_IPC.browserClearWorkspaceData, 'cwd:C:\\Research\\Study', 'session-1', 'lease-1',
+  )
 })
 
 it('forwards only the focused product iframe and releases native input subscriptions', async () => {

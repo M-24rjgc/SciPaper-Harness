@@ -34,6 +34,8 @@ const USER_AGENT = 'scipaper-harness (+https://github.com/M-24rjgc/SciPaper-Harn
 export interface ExaSearchProviderOptions {
   /** Exa API key. Empty/absent makes the provider unavailable. */
   apiKey: string
+  /** Resolve a managed credential for each request when no literal or environment key was supplied. */
+  resolveApiKey?: () => Promise<string | undefined>
   /** Endpoint base; `/search` is appended. */
   baseURL: string
   /** Retrieval mode sent as Exa's `type`. */
@@ -87,13 +89,17 @@ export class ExaSearchProvider implements WebSearchProvider {
   constructor(private readonly options: ExaSearchProviderOptions) {}
 
   available(): boolean {
-    return this.options.apiKey.length > 0
+    return (this.options.apiKey.length > 0 || this.options.resolveApiKey !== undefined)
       && isValidBaseUrl(this.options.baseURL)
       && isPositiveInteger(this.options.highlightsPerResult)
       && (this.options.numResults === undefined || isPositiveInteger(this.options.numResults))
   }
 
   async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
+    const apiKey = this.options.apiKey || await this.options.resolveApiKey?.() || ''
+    if (apiKey.length === 0) {
+      throw new WebError('Exa search requires EXA_API_KEY', 'WEB_PROVIDER_CREDENTIAL_MISSING')
+    }
     // A per-request bound wins over the configured default; either may be absent.
     const numResults = request.maxResults ?? this.options.numResults
     let response: Response
@@ -102,7 +108,7 @@ export class ExaSearchProvider implements WebSearchProvider {
         method: 'POST',
         redirect: 'error',
         headers: {
-          'authorization': `Bearer ${this.options.apiKey}`,
+          'authorization': `Bearer ${apiKey}`,
           'content-type': 'application/json',
           'accept': 'application/json',
           'user-agent': USER_AGENT,

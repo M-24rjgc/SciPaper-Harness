@@ -1,7 +1,7 @@
 /** Workspace command implementation and stable Remote failure mapping. */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import type { Workspace, WorkspaceLocation } from '@deepseek-ai/dsh-workspace'
 import {
   WorkspaceActiveSessionError,
   WorkspaceArchivedSessionPinError,
@@ -30,6 +30,14 @@ import type {
   WorkspaceValue,
 } from './types.ts'
 
+/** Interpret the legacy local path payload alongside explicit location identity. */
+function requestedLocation(request: WorkspaceCreateRequest): WorkspaceLocation {
+  const candidate: { location?: WorkspaceLocation; path?: string } = request
+  if (candidate.location !== undefined) return candidate.location
+  if (candidate.path !== undefined) return { kind: 'local', path: candidate.path }
+  throw new RemoteError('gateway/bad-request', 'Workspace location is required', {})
+}
+
 /** Implements Workspace mutations against the authoritative registry. */
 export class WorkspaceCommands {
   private operationTail = Promise.resolve()
@@ -44,19 +52,29 @@ export class WorkspaceCommands {
    */
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
     return this.enqueue(async () => {
+      let location = requestedLocation(request)
       try {
-        const existing = await this.ctx.workspaceRegistry.resolveByPath(request.path)
+        if (location.kind === 'ssh') {
+          const services: { get(name: string): unknown } = this.ctx
+          const remote = services.get('remoteWorkspacePresets') as
+            | { inspect(input: { host: string; path: string }): Promise<{ canonicalPath: string }> }
+            | undefined
+          if (remote === undefined) throw new Error('SSH workspace backend is unavailable')
+          const verified = await remote.inspect({ host: location.host, path: location.path })
+          location = { ...location, path: verified.canonicalPath }
+        }
+        const existing = await this.ctx.workspaceRegistry.resolveByPath(location)
         if (existing !== undefined) {
           return { workspace: workspaceView(existing), created: false }
         }
-        const workspace = await this.ctx.workspaceRegistry.create(request.path)
+        const workspace = await this.ctx.workspaceRegistry.create(location)
         return { workspace: workspaceView(workspace), created: true }
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
         throw new RemoteError(
           'workspace/invalid-path',
-          `cannot create a Workspace at "${request.path}": ${errorMessage(error)}`,
-          { path: request.path },
+          `cannot create a Workspace at "${location.kind === 'ssh' ? `${location.host}:` : ''}${location.path}": ${errorMessage(error)}`,
+          { path: location.path },
           { cause: error },
         )
       }

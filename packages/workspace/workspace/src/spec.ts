@@ -6,10 +6,22 @@
  */
 
 import { z } from 'zod'
+import { posix } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type { WorkspaceId } from './types.ts'
+
+/** An older v2 record has no location and implicitly belongs to the local Host. */
+export const workspaceLocation = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('local'), path: z.string() }),
+  z.object({
+    kind: z.literal('ssh'),
+    host: z.string().refine(host => host.trim().length > 0),
+    path: z.string().refine(path => posix.isAbsolute(path)
+      && !path.includes('\0') && (posix.normalize(path).replace(/\/+$/, '') || '/') === path),
+  }),
+])
 
 /** Workspace id schema at the durable boundary; branding has no runtime representation. */
 const workspaceId = z.string().transform(value => value as WorkspaceId)
@@ -23,11 +35,13 @@ const sessionId = z.string().transform(value => brandString<SessionId>(value))
  */
 export const workspaceRecord = z.object({
   path: z.string(),
+  location: workspaceLocation.optional(),
   title: z.string(),
   sessionIds: z.array(sessionId),
   createdAt: z.string(),
   updatedAt: z.string(),
-})
+}).refine(record => record.location === undefined || record.location.path === record.path,
+  'workspace location path must match path')
 
 /** One stored workspace record, inferred from {@link workspaceRecord}. */
 export type WorkspaceRecord = z.infer<typeof workspaceRecord>

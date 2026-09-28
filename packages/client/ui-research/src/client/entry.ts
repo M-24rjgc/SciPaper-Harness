@@ -14,7 +14,8 @@ import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ProjectId, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import {
-  sessionProject, type CarryDraft, type EntryNotice, type EntryView, type MoveRequest, type ResearchView, type SessionDirectories,
+  sessionDirectoriesOf, sessionProject, type CarryDraft, type EntryNotice, type EntryView, type MoveRequest,
+  type ResearchView, type SessionDirectories,
 } from './contract.ts'
 import type { Translate } from './format.ts'
 
@@ -105,9 +106,7 @@ export function until(
 
 /** Each listed session's working directory, as {@link sessionProject} reads it. */
 function directoriesOf(list: SessionListState): SessionDirectories {
-  const directories: Record<string, string> = {}
-  for (const [id, summary] of Object.entries(list.byId)) if (summary.cwd !== undefined) directories[id] = summary.cwd
-  return directories
+  return sessionDirectoriesOf(list.byId)
 }
 
 /** Where a landing goes: a research's conversation, or its folder's blank one when it has none worth opening. */

@@ -1,0 +1,7 @@
+- id: web
+  config:
+    searchProvider: exa
+    fetchProvider: http
+- insert:
+    - id: web-search-exa
+      name: '@deepseek-ai/dsh-web-search-exa'

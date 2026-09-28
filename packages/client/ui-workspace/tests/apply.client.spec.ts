@@ -39,7 +39,7 @@ const sessionState = (items: readonly SessionSummary[]): SessionListState => ({
   projectionsBySession: {},
 })
 const workspace = (id: string, sessionIds: readonly string[]): WorkspaceView => ({
-  workspaceId: id as WorkspaceId, path: `/projects/${id}`, title: id,
+  workspaceId: id as WorkspaceId, path: `/projects/${id}`, location: { kind: 'local', path: `/projects/${id}` }, title: id,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaceState = (

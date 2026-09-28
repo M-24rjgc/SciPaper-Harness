@@ -86,7 +86,7 @@ env -u NODE_USE_ENV_PROXY DSH_STAGEHAND_E2E=1 pnpm exec vitest run --config vite
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-[SessionResources](../browser-use-runtime/README.md) owns lazy acquisition, serialization, and teardown for each exact live Agent. The provider retains the browser-use registration until cleanup settles. The [native provider](src/index.ts) registers its tools through the existing MCP result adapter, which saves screenshots as durable attachments.
+[SessionResources](../../browser-use/browser-use-runtime/README.md) owns lazy acquisition, serialization, and teardown for each exact live Agent. The provider retains the browser-use registration until cleanup settles. The [native provider](src/index.ts) registers its tools through the existing MCP result adapter, which saves screenshots as durable attachments.
 
 The host owns each launched Chromium process and its temporary profile before waiting for CDP readiness. Chromium receives the standard scrubbed child environment, preserving paths, locale, and proxy settings while excluding credential-shaped variables and DSH identity. Both modes connect the SDK inside a dedicated Worker. The Worker receives no ambient environment except the explicit source TypeScript configuration path, so its CDP connection does not inherit host proxy settings. SDK close waits for active operations. Cleanup terminates the connection Worker after the configured SDK grace; launch also kills and awaits its owned Chromium process before removing the profile. Attached external browsers remain open. Cleanup failures follow the [ownership limits](#known-limitations-and-deferred-work) below.
 

@@ -33,8 +33,10 @@ import {
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
+const RESEARCH_BUNDLE = '@deepseek-ai/dsh-research-app'
+const CUA_BUNDLE = '@deepseek-ai/dsh-computer-use-cua-bundle'
 const WEB_PROFILE: ProfileTemplate = { ...PROFILE_TEMPLATES.web as ProfileTemplate,
-  bundles: [...new Set([...(PROFILE_TEMPLATES.web as ProfileTemplate).bundles, '@deepseek-ai/dsh-research-app'])] }
+  bundles: [...new Set([...(PROFILE_TEMPLATES.web as ProfileTemplate).bundles, RESEARCH_BUNDLE, CUA_BUNDLE])] }
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
@@ -184,17 +186,24 @@ export function createPluginProfile(projectDir: string): void {
   if (!Array.isArray(bundles) || bundles.some(bundle => typeof bundle !== 'string')) {
     throw new Error('SciPaper desktop: profile bundles must be an array of package names')
   }
-  const research = '@deepseek-ai/dsh-research-app'
-  if (bundles.includes(research)) return
+  if (bundles.includes(RESEARCH_BUNDLE) && bundles.includes(CUA_BUNDLE)) return
   const web = bundles.indexOf('@deepseek-ai/dsh-web-app')
   if (web < 0) throw new Error('SciPaper desktop: profile must include the Web application bundle')
+  const updated = [...bundles]
+  let anchor = web
+  for (const required of [RESEARCH_BUNDLE, CUA_BUNDLE]) {
+    const present = updated.indexOf(required)
+    if (present !== -1) { anchor = present; continue }
+    updated.splice(anchor + 1, 0, required)
+    anchor += 1
+  }
   const path = join(projectDir, 'package.json')
   const backup = join(projectDir, 'package.before-research-bundle.json')
   if (!existsSync(backup)) copyFileSync(path, backup, constants.COPYFILE_EXCL)
   const temporary = join(projectDir, `package.${randomUUID()}.tmp`)
   try {
     writeFileSync(temporary, `${JSON.stringify({ ...manifest, dsh: { ...manifest.dsh,
-      profile: { ...profile, bundles: [...bundles.slice(0, web + 1), research, ...bundles.slice(web + 1)] },
+      profile: { ...profile, bundles: updated },
     } }, undefined, 2)}\n`, { flag: 'wx', mode: 0o600 })
     renameSync(temporary, path)
   } finally {

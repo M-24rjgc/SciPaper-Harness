@@ -7,6 +7,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { FileSystem, FsObservation, FsTarget } from '@deepseek-ai/dsh-fs'
 import { FsVersion } from '@deepseek-ai/dsh-fs'
 import { WorkspaceFiles } from '../src/index.ts'
+import { WorkspaceChangeFeed } from '../src/changes.ts'
 import { failureOf, openWorkspace, type Harness } from './harness.ts'
 
 let harness: Harness
@@ -262,6 +263,35 @@ describe('workspaceFiles.changes — target frames', () => {
 })
 
 describe('workspaceFiles.changes — backends and access', () => {
+  it('polls an SSH target when the provider has no native watch', async () => {
+    const path = join(harness.workspace, 'ssh-figure.svg')
+    await writeFile(path, '<svg/>')
+    const fs = harness.ctx.fs
+    const target = await fs.resolve(path)
+    const originalStat = fs.stat.bind(fs)
+    let current = FsVersion('before')
+    vi.spyOn(fs, 'stat').mockImplementation(async (resolved, signal) => {
+      const info = await originalStat(resolved, signal)
+      return info === undefined ? undefined : { ...info, version: current }
+    })
+    const feed = new WorkspaceChangeFeed(harness.ctx)
+    const controller = new AbortController()
+    const stream = feed.follow(fs, harness.workspace, path, controller.signal, true)[Symbol.asyncIterator]()
+    try {
+      await expect(stream.next()).resolves.toEqual({ done: false, value: { kind: 'ready' } })
+      const changed = stream.next()
+      current = FsVersion('after')
+      await expect(changed).resolves.toEqual({
+        done: false,
+        value: { kind: 'change', change: { absolutePath: fs.processPath(target), version: current } },
+      })
+      expect(watch).not.toHaveBeenCalled()
+    } finally {
+      controller.abort()
+      await stream.return?.()
+    }
+  })
+
   it('reports unsupported watching as a Remote error without preventing file reads', async () => {
     const unsupported = new Error('Remote watch is unavailable')
     watch.mockImplementation(() => { throw unsupported })

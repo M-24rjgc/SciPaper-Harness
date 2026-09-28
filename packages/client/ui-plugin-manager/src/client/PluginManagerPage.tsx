@@ -346,10 +346,11 @@ function DetailTop({ crumbLabel, crumbText, onBack, icon, actions }: {
 }
 
 /** One package as a card that opens its page: its name, its one-liner, its tags, and its bundle switch. */
-function PackageCard({ pkg, t, resolveText, busy, highlighted, onOpen, onSetEnabled }: {
+function PackageCard({ pkg, t, resolveText, renderSlot, busy, highlighted, onOpen, onSetEnabled }: {
   readonly pkg: PackageView
   readonly t: Translate
   readonly resolveText: ResolveText
+  readonly renderSlot: RenderConfig
   readonly busy: boolean
   readonly highlighted: boolean
   readonly onOpen: () => void
@@ -373,6 +374,7 @@ function PackageCard({ pkg, t, resolveText, busy, highlighted, onOpen, onSetEnab
           <>
             {beta ? <Tag className={css.statusTag} tone="info">{t('statusBeta')}</Tag> : null}
             {status === 'problem' ? <Tag className={css.statusTag} tone="danger">{t('statusProblem')}</Tag> : null}
+            {renderSlot('plugins.detail.badge', { subject: { kind: 'bundle', pkg: packageRef(pkg) } })}
           </>
         )}
         description={description}
@@ -1197,6 +1199,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
       pkg={pkg}
       t={t}
       resolveText={resolveText}
+      renderSlot={renderSlot}
       busy={state.busy.includes(pkg.name)}
       highlighted={state.highlight === pkg.name}
       onOpen={() => { setActivation(null); setView({ kind: 'package', name: pkg.name }) }}

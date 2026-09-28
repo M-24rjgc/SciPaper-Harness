@@ -379,7 +379,7 @@ async function main(): Promise<void> {
   const applicationUrl = `${SCHEME}://app/`
   let hostUrl: string | undefined
   let hostCookie: string | undefined
-  const browserGuests = new DesktopBrowserGuests(() => hostUrl)
+  const browserGuests = new DesktopBrowserGuests(() => hostUrl, activeProject)
   let injections: readonly unknown[] = []
   let welcomeBackend: DesktopWelcomeBackend | undefined
   let stopAccount: (() => void) | undefined
@@ -416,7 +416,7 @@ async function main(): Promise<void> {
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
       hostInspectPort, process.env, onFailure,
       primaryRuntime,
-      resources, (next) => { platformView.setSession(next) })
+      resources, (next) => { platformView.setSession(next) }, (operation, signal) => browserGuests.operate(operation, signal))
     return {
       start: async () => {
         const ready = await host.start()
@@ -474,6 +474,7 @@ async function main(): Promise<void> {
       },
       updateTasks: (action: 'inspect' | 'lock' | 'unlock') => host.updateTasks(action),
       inspectQuit: () => host.inspectQuit(),
+      authorizeBrowser: (sessionId: string) => host.authorizeBrowser(sessionId),
     }
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
@@ -659,13 +660,25 @@ async function main(): Promise<void> {
     reportFatal(new Error(message), 'web-boot')
   })
 
-  ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown) => {
+  ipcMain.handle(DESKTOP_IPC.browserAcquire, async (event, _workspace: unknown, sessionId: unknown) => {
     assertProductSender(event)
-    return browserGuests.acquire(event.sender, workspace)
+    if (typeof sessionId !== 'string') throw new Error('desktop browser: invalid conversation identity')
+    const storageKey = await backend.host?.authorizeBrowser(sessionId)
+    if (storageKey === undefined) throw new Error('desktop browser: Host is unavailable')
+    assertProductSender(event)
+    return browserGuests.acquire(event.sender, storageKey, sessionId)
   })
   ipcMain.handle(DESKTOP_IPC.browserRelease, (event, lease: unknown) => {
     assertProductSender(event)
     return browserGuests.release(event.sender, lease)
+  })
+  ipcMain.handle(DESKTOP_IPC.browserClearWorkspaceData, async (event, _workspace: unknown, sessionId: unknown, lease: unknown) => {
+    assertProductSender(event)
+    if (typeof sessionId !== 'string') throw new Error('desktop browser: invalid conversation identity')
+    const storageKey = await backend.host?.authorizeBrowser(sessionId)
+    if (storageKey === undefined) throw new Error('desktop browser: Host is unavailable')
+    assertProductSender(event)
+    return browserGuests.clearWorkspaceData(event.sender, storageKey, sessionId, lease)
   })
 
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {

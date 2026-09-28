@@ -5,11 +5,26 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { FileRouteAction } from '../src/client/FileRouteAction.tsx'
 import { en } from '../src/client/locales.ts'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 const apps = [{ id: 'music', name: 'Music', default: true, icon: null }]
-const props = () => ({ actionUrl: 'api/present.open?sessionId=s&seq=2&index=0', available: true, pending: false,
+const sessionId = 's' as SessionId
+const props = (remote = false) => ({ actionUrl: 'api/present.open?sessionId=s&seq=2&index=0', available: true, pending: false,
+  sessionId,
+  useSessions: <S,>(select: (state: SessionListState) => S): S => select({ ids: [sessionId],
+    byId: { [sessionId]: { id: sessionId, displayTitle: 'Workspace', execution: remote ? { kind: 'ssh', host: 'lab' } : { kind: 'local' },
+      running: false, retainedBy: {}, blank: false, updatedAt: 0 } }, projectionsBySession: {}, phase: 'ready' }),
   onAction: vi.fn(async () => null), t: makeTranslate(en) })
+
+it('does not expose local file actions or query handlers for an SSH session', () => {
+  const fetcher = vi.fn()
+  vi.stubGlobal('fetch', fetcher)
+  const p = props(true)
+  expect(render(<FileRouteAction {...p} />).container.innerHTML).toBe('')
+  expect(fetcher).not.toHaveBeenCalled()
+})
 
 it('queries the authorized route, selects a handler, and keeps reveal last', async () => {
   const fetcher = vi.fn(async () => Response.json(apps))

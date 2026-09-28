@@ -27,6 +27,7 @@ import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
+  ApiSessionExecutionConflict,
   ApiSessionNotFound,
   ApiSessionPresetConflict,
   ApiSessionSubagentOwnership,
@@ -119,6 +120,10 @@ export class SessionCommandController {
       }
     }
     const cwd = workspace?.path ?? requestedCwd ?? this.defaultCwd
+    const location = workspace?.location
+    const execution = location?.kind === 'ssh'
+      ? { kind: 'ssh' as const, host: location.host }
+      : { kind: 'local' as const }
     const existing = requestedId === undefined ? undefined : await this.commandHeader(sessionId)
     await this.admit({ operation: 'create', sessionId, cwd, request, ...(existing === undefined ? {} : { existing }) })
     let adopted: Agent
@@ -128,6 +133,7 @@ export class SessionCommandController {
         cwd,
         requestedId !== undefined,
         requestedPreset,
+        execution,
       )
     } catch (error) {
       this.rejectCreation(sessionId, error)
@@ -275,7 +281,9 @@ export class SessionCommandController {
       )
     }
     const childId = brandString<SessionId>(`session-${randomUUID()}`)
-    const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
+    const composition = await this.agents.composeAgent(
+      this.agents.presetForObservation(source), source.header.execution, source.header.cwd,
+    )
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
       await this.ctx.agents.create({
@@ -284,6 +292,7 @@ export class SessionCommandController {
         inheritedEventCount: SessionLogOffset(boundary + 1),
         meta: {
           ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+          execution: source.header.execution ?? { kind: 'local' },
           parentSession: source.header.id,
           isSeeded: true,
           ...(composition.agentPreset === undefined
@@ -586,6 +595,9 @@ export class SessionCommandController {
         requestedCwd: error.requestedCwd,
         ...(error.existingCwd === undefined ? {} : { existingCwd: error.existingCwd }),
       })
+    }
+    if (error instanceof ApiSessionExecutionConflict) {
+      throw new RemoteError('session/execution-conflict', error.message, { sessionId: error.sessionId })
     }
     if (error instanceof ApiSessionSubagentOwnership) {
       throw apiSessionSubagentOwnershipError(error.sessionId)

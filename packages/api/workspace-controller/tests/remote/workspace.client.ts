@@ -50,9 +50,11 @@ export function err<T>(error: RemoteFailure): RemoteResult<T> {
  * @returns the row.
  */
 export function workspace(id: string, overrides: Partial<WorkspaceView> = {}): WorkspaceView {
+  const path = overrides.path ?? `/work/${id}`
   return {
     workspaceId: id as WorkspaceId,
-    path: `/work/${id}`,
+    path,
+    location: overrides.location ?? { kind: 'local', path },
     title: id,
     sessionIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -92,9 +94,14 @@ export function followGenerations(generations: readonly StreamScript[]): StreamS
 export const workspaceWorld: RemoteTable = {
   unary: {
     'workspace/initializeDefault': (): RemoteResult<WorkspaceValue> => ok({ workspace: workspace('default') }),
-    'workspace/create': (request: WorkspaceCreateRequest): RemoteResult<WorkspaceCreateValue> => ok({
-      workspace: workspace('created', { path: request.path }), created: true,
-    }),
+    'workspace/create': (request: WorkspaceCreateRequest): RemoteResult<WorkspaceCreateValue> => {
+      const path = request.location?.path ?? request.path
+      if (path === undefined) throw new Error('Workspace create request has no path')
+      return ok({
+        workspace: workspace('created', { path, location: request.location ?? { kind: 'local', path } }),
+        created: true,
+      })
+    },
     'workspace/rename': (request: WorkspaceRenameRequest): RemoteResult<WorkspaceValue> => ok({
       workspace: workspace(String(request.workspaceId), { title: request.title }),
     }),

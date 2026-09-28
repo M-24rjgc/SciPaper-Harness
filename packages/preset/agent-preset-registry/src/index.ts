@@ -322,6 +322,25 @@ export class AgentPresetRegistry extends TypertRemoteService {
       if (boundary !== undefined && (boundary.openTurnStartSeq !== null || boundary.lastTurn > 0)) {
         throw new RemoteError('agent-preset/locked', 'This session has already started', { sessionId: agent.id, agentPreset })
       }
+      // An SSH session's header fixes its execution realm for the entire
+      // session. Rebinding only its tools would make a remote session execute
+      // against the Host's local filesystem before its first turn.
+      if (agent.session.header.execution?.kind === 'ssh') {
+        if (agentPreset !== agent.session.header.agentPreset
+          || this.composedPreset(agent.ctx) !== agent.session.header.agentPreset) {
+          throw new RemoteError('agent-preset/locked', 'SSH workspace preset is fixed for this session',
+            { sessionId: agent.id, agentPreset })
+        }
+        return agentPreset
+      }
+      const services: { get(name: string): unknown } = this.owner
+      const remote = services.get('remoteWorkspacePresets') as
+        | { isRemotePreset(id: string): boolean }
+        | undefined
+      if (remote?.isRemotePreset(agentPreset)) {
+        throw new RemoteError('agent-preset/locked', 'SSH workspace preset cannot be used by a local session',
+          { sessionId: agent.id, agentPreset })
+      }
       const preset = await this.recompose(agent.ctx, agentPreset)
       agent.session.append('agent-preset/selected', { agentPreset: preset.id })
       return preset.id

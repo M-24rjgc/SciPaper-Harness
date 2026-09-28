@@ -20,10 +20,10 @@ export interface TaskManagerInjected extends TaskDetailInjected {
   /** Host task catalog with its query and deletion state. */
   readonly hooks: { readonly catalog: HostObservable<CatalogSnapshot<ScheduleCatalogEntry>> }
   /**
-   * Start a new Session, where a reminder is created by asking the model to
-   * schedule it. The page deliberately has no creation form of its own.
+   * Open the selected Session for Agent-based task creation. Returns false
+   * when no available Session is selected.
    */
-  readonly onNewTask: () => void
+  readonly onNewTask: () => boolean
 }
 
 /** Root-scoped task catalog props derived from the framework and injected actions. */
@@ -45,6 +45,8 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [selectedId, setSelectedId] = useState<ScheduleId | null>(null)
+  const [needsSession, setNeedsSession] = useState(false)
+  const beginNewTask = (): void => { setNeedsSession(!onNewTask()) }
   // The rows state how long remains, so they read the shared ticking clock
   // rather than a value sampled at mount: a catalog refresh can move the target
   // this text describes.
@@ -117,9 +119,10 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
             <div className={css.pageHeading}>
               <h1 ref={headingRef} tabIndex={-1}>{t('title')}</h1>
               <div className={css.creationActions}>
-                <Button variant="primary" size="sm" className={css.newButton} icon={<IconPlusOutlineRegular size={13} />} onClick={onNewTask}>{t('new.action')}</Button>
+                <Button variant="primary" size="sm" className={css.newButton} icon={<IconPlusOutlineRegular size={13} />} onClick={beginNewTask}>{t('new.action')}</Button>
               </div>
             </div>
+            {needsSession && <p role="status" className={css.creationNotice}>{t('new.needsSession')}</p>}
             <div className={css.filters}>
               <div className={css.filterTabs} role="group" aria-label={t('statusFilter.label')}>
                 {(['all', 'active', 'inactive'] as const).map(value => (
@@ -153,7 +156,7 @@ export function TaskManagerPage(props: TaskManagerPageProps) {
               {status === 'ready' && rows.length === 0 && <div className={css.empty} role="status">
                 <IconClockOutlineRegular size={24} className={css.emptyGlyph} />
                 <h2>{t(emptyTitle)}</h2>
-                <Button variant="outline" className={css.emptyAction} onClick={onNewTask}>
+                <Button variant="outline" className={css.emptyAction} onClick={beginNewTask}>
                   {t('empty.action')}
                 </Button>
               </div>}

@@ -6,9 +6,10 @@
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { SessionActivity, WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { SessionActivity, WorkspaceId, WorkspaceLocation } from '@deepseek-ai/dsh-workspace/types'
 
 export type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+export type { WorkspaceLocation } from '@deepseek-ai/dsh-workspace/types'
 export type {
   SessionActivity, SessionActivityItem, SessionActivityKind, SessionActivityKindMap,
 } from '@deepseek-ai/dsh-workspace/types'
@@ -17,8 +18,10 @@ export type { DirectoryEntry, DirectoryListing } from '@deepseek-ai/dsh-host-dir
 /** One durable Workspace projected for browser consumers. */
 export interface WorkspaceView {
   readonly workspaceId: WorkspaceId
-  /** Canonical host directory path. */
+  /** Canonical directory path in the workspace's execution environment. */
   readonly path: string
+  /** Canonical path and execution host; paths on different SSH hosts are distinct. */
+  readonly location: WorkspaceLocation
   /** User-visible title. */
   readonly title: string
   /** Sessions accounted to this Workspace in manual order. */
@@ -61,10 +64,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
 }
 
-/** Existing directory requested for Workspace adoption. */
-export interface WorkspaceCreateRequest {
-  readonly path: string
-}
+/** Directory requested for Workspace registration; legacy path means local. */
+export type WorkspaceCreateRequest =
+  | { readonly path: string; readonly location?: never }
+  | { readonly location: WorkspaceLocation; readonly path?: never }
 
 /** Created or previously registered Workspace. */
 export interface WorkspaceCreateValue {

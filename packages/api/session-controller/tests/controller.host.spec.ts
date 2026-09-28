@@ -31,6 +31,7 @@ describe('SessionController facade', () => {
       createdAt: 1,
       cwd: '/workspace',
       isSeeded: false,
+      execution: { kind: 'local' },
     }
     const events: SessionEvent[] = []
     const inspect = vi.fn(() => Promise.resolve({

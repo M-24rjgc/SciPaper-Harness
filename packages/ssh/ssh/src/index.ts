@@ -4,6 +4,7 @@ import { spawn, execFile, type ChildProcessWithoutNullStreams } from 'node:child
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createConnection, type Socket } from 'node:net'
+import { Duplex } from 'node:stream'
 import { Context, Service } from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
 import { z } from 'zod'
@@ -12,6 +13,13 @@ import { helloSchema, type SshStreamEndpoint } from './schemas.ts'
 import { authenticateStream } from './stream-security.ts'
 
 type Hello = z.infer<typeof helloSchema>
+
+const SSH_OPTIONS = [
+  '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no',
+  '-o', 'ClearAllForwardings=yes', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
+] as const
+
+function quoteRemoteArgument(value: string): string { return `'${value.replaceAll("'", "'\\''")}'` }
 
 /** Deployment-owned SSH identity and installed helper; no model argument selects these values. */
 export interface Config {
@@ -66,13 +74,16 @@ export class SshConnection extends Service {
   private disposal: Promise<void> | undefined
   private failure: Error | undefined
   private sockets = new Set<Socket>()
+  private streamChildren = new Set<ChildProcessWithoutNullStreams>()
   private nextSocket = 0
   private readonly config: Required<Omit<Config, 'bootstrapPath' | 'bootstrapHash'>> & Pick<Config, 'bootstrapPath' | 'bootstrapHash'>
   private remote: Hello | undefined
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'ssh')
-    if (process.platform !== 'linux' && process.platform !== 'darwin') throw new Error('SSH runtime requires a POSIX client')
+    if (process.platform !== 'linux' && process.platform !== 'darwin' && process.platform !== 'win32') {
+      throw new Error('SSH runtime requires Linux, macOS, or Windows')
+    }
     this.config = z.object({
       host: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$/),
       node: z.string().startsWith('/'), helper: z.string().startsWith('/'), helperHash: z.string().regex(/^[0-9a-f]{64}$/),
@@ -139,6 +150,7 @@ export class SshConnection extends Service {
     const remote = endpoint.path
     if (!remote.startsWith(`${hello.root}/`) || /[:\r\n\0]/u.test(remote)) throw new Error('SSH helper returned an invalid stream path')
     signal.throwIfAborted()
+    if (process.platform === 'win32') return this.establishWindowsStream(endpoint, signal)
     const local = join(this.directory as string, `s${this.nextSocket++}`)
     const forward = `${local}:${remote}`
     const cancelForward = async (): Promise<void> => {
@@ -179,6 +191,43 @@ export class SshConnection extends Service {
     return authenticated
   }
 
+  /** Windows OpenSSH has no dependable Unix-socket control master. Each stream
+   * uses its own SSH exec channel and the verified remote helper bridges stdio
+   * into the reserved Unix socket. TLS-PSK still authenticates the stream. */
+  private async establishWindowsStream(endpoint: SshStreamEndpoint, signal: AbortSignal): Promise<Socket> {
+    const command = [
+      this.config.node, '--disable-sigusr1', this.config.helper,
+      '--stream', endpoint.path, this.config.helperHash,
+    ].map(quoteRemoteArgument).join(' ')
+    const child = spawn('ssh', ['-T', ...SSH_OPTIONS, this.config.host, command], { stdio: ['pipe', 'pipe', 'pipe'] })
+    this.streamChildren.add(child)
+    child.once('close', () => { this.streamChildren.delete(child) })
+    child.stderr.resume()
+    const raw = Duplex.from({ readable: child.stdout, writable: child.stdin })
+    // Duplex.from reports premature child-pipe closure on this wrapper. TLS
+    // observes the same closure; retain a listener so teardown cannot emit an
+    // uncaught process-level stream error after an abort or failed handshake.
+    raw.on('error', () => {})
+    child.stdin.on('error', (error) => { raw.destroy(error) })
+    child.stdout.on('error', (error) => { raw.destroy(error) })
+    child.once('error', (error) => { raw.destroy(error) })
+    child.once('close', (code) => {
+      if (!raw.destroyed) raw.destroy(new Error(`SSH stream channel closed before its socket (exit ${String(code)})`))
+    })
+    raw.once('close', () => { if (!child.killed) child.kill('SIGTERM') })
+    try {
+      const authenticated = await authenticateStream(raw, endpoint.capability, this.config.requestTimeoutMs, signal)
+      this.sockets.add(authenticated)
+      authenticated.on('error', () => { authenticated.destroy() })
+      authenticated.once('close', () => { this.sockets.delete(authenticated); raw.destroy() })
+      return authenticated
+    } catch (error) {
+      raw.destroy()
+      if (!child.killed) child.kill('SIGTERM')
+      throw error
+    }
+  }
+
   /** Tear down the helper's remote managed ranges before releasing the SSH master when reachable. */
   dispose(): Promise<void> {
     this.disposal ??= this.disposeOnce()
@@ -203,6 +252,12 @@ export class SshConnection extends Service {
       const force = setTimeout(() => { this.child?.kill('SIGKILL') }, this.config.requestTimeoutMs)
       try { await this.childClosed } finally { clearTimeout(force) }
       await Promise.all(socketClosures)
+      const streamClosures = [...this.streamChildren].map(child => new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => { child.kill('SIGKILL') }, this.config.requestTimeoutMs)
+        child.once('close', () => { clearTimeout(timeout); resolve() })
+        child.kill('SIGTERM')
+      }))
+      await Promise.all(streamClosures)
       while (this.operations.size > 0) await Promise.allSettled([...this.operations])
       if (this.directory !== undefined) await rm(this.directory, { recursive: true, force: true })
     }
@@ -256,14 +311,12 @@ export class SshConnection extends Service {
   }
 
   private async start(): Promise<Hello> {
-    this.directory = await mkdtemp('/tmp/dsh-ssh-')
+    if (process.platform !== 'win32') this.directory = await mkdtemp('/tmp/dsh-ssh-')
     if (this.closed) throw new Error('SSH connection closed before startup')
-    const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`
-    const command = [this.config.node, '--disable-sigusr1', this.config.helper].map(quote).join(' ')
+    const command = [this.config.node, '--disable-sigusr1', this.config.helper].map(quoteRemoteArgument).join(' ')
     const child = spawn('ssh', [
-      '-T', '-M', '-S', this.controlPath(), '-o', 'ControlPersist=no', '-o', 'BatchMode=yes',
-      '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no', '-o', 'ClearAllForwardings=yes',
-      '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3', this.config.host, command,
+      '-T', ...(process.platform === 'win32' ? [] : ['-M', '-S', this.controlPath(), '-o', 'ControlPersist=no']),
+      ...SSH_OPTIONS, this.config.host, command,
     ], { stdio: ['pipe', 'pipe', 'pipe'] })
     this.child = child
     this.childClosed = new Promise((resolve) => { child.once('close', () => { resolve() }) })

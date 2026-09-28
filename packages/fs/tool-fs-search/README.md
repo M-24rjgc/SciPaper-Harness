@@ -52,11 +52,12 @@ Routine budgets stay out of the model-facing schema: a model that needs surround
 
 ### Configuration
 
-`sampleOverCapGlobResults` is required; the remaining keys are optional search caps with the defaults below.
+`sampleOverCapGlobResults` is required; the remaining keys select the executable or bound search output.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `sampleOverCapGlobResults` | none (required) | `true` samples an over-cap `glob` page across top-level entries; `false` keeps the modification-time-ordered head |
+| `rgPath` | packaged binary | Executable path in the selected subprocess provider's filesystem; remote compositions set the remote `rg` path |
 | `globMaxResults` | `100` | Max paths one `glob` call shows inline |
 | `grepMaxMatches` | `250` | Max flat matches one `grep` call retains inline; later matches go to the formatted spill artifact |
 | `grepMaxLineBytes` | `2000` | Byte cap per matched-line preview, preserving UTF-8 boundaries |
@@ -70,7 +71,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Deployment requirement
 
-Node deployments receive the `@vscode/ripgrep` platform package on supported macOS, Linux, and Windows targets; Python SDK wheels copy the target-native binary beside the single-file runtime as a `-rg` sidecar. No carrier requires a host `rg`. Returned paths are displayed relative to the resolved workdir (the calling session's cwd when present) and are follow-up-readable with `read` only when that workdir and the filesystem root are the same workspace.
+Node deployments receive the `@vscode/ripgrep` platform package on supported macOS, Linux, and Windows targets; Python SDK wheels copy the target-native binary beside the single-file runtime as a `-rg` sidecar. A remote subprocess composition sets `rgPath` to an executable installed on its remote host. Returned paths are displayed relative to the resolved workdir (the calling session's cwd when present) and are follow-up-readable with `read` only when that workdir and the filesystem root are the same workspace.
 
 ### Failures and recovery
 

@@ -52,11 +52,11 @@ function research(title: string, root: string, workspaceId: string, extra: Parti
 }
 
 function session(id: string, cwd: string, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionId, displayTitle: id, cwd, running: false, retainedBy: {}, blank: false, updatedAt: day(2), ...extra }
+  return { id: id as SessionId, displayTitle: id, cwd, execution: { kind: 'local' }, running: false, retainedBy: {}, blank: false, updatedAt: day(2), ...extra }
 }
 
 function workspace(id: string, path: string, title = path): WorkspaceView {
-  return { workspaceId: id as WorkspaceId, path, title, sessionIds: [], createdAt: iso(1), updatedAt: iso(1) }
+  return { workspaceId: id as WorkspaceId, path, location: { kind: 'local', path }, title, sessionIds: [], createdAt: iso(1), updatedAt: iso(1) }
 }
 
 const draft = research('新研究', '/home/SciPaper/2026-09-26-1', 'w-draft', { draft: true, untitled: true, updatedAt: iso(26) })
@@ -141,6 +141,7 @@ function faceOf() {
     openSession: vi.fn(),
     openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()),
     startSession: vi.fn(),
+    createSshWorkspace: vi.fn(async () => 'w-ssh' as WorkspaceId),
     run: vi.fn((command: ResearchCommand): Promise<ResearchResponse> => {
       commands.push(command)
       expect(commandSchema.parse(command)).toBeTruthy()
@@ -510,6 +511,47 @@ describe('the keyboard', () => {
 })
 
 describe('the row menus', () => {
+  it('adds an SSH workspace from the research sidebar and opens its first conversation', async () => {
+    const tree = mount()
+    fireEvent.click(tree.getByRole('button', { name: zh.treeSshAdd }))
+    const dialog = tree.getByRole('dialog', { name: zh.treeSshTitle })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshHost }), { target: { value: 'lab' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPath }), { target: { value: '/home/research' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(tree.face.createSshWorkspace).toHaveBeenCalledWith('lab', '/home/research')
+    expect(tree.face.openWorkspace).toHaveBeenCalledWith('w-ssh')
+    expect(tree.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps the SSH form open with the connection error when the remote session cannot open', async () => {
+    const tree = mount()
+    tree.face.openWorkspace.mockRejectedValueOnce(new Error('SSH host unavailable'))
+    fireEvent.click(tree.getByRole('button', { name: zh.treeSshAdd }))
+    const dialog = tree.getByRole('dialog', { name: zh.treeSshTitle })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshHost }), { target: { value: 'lab' } })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPath }), { target: { value: '/home/research' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(within(dialog).getByRole('alert').textContent).toContain('SSH host unavailable')
+    expect(tree.getByRole('dialog', { name: zh.treeSshTitle })).toBeTruthy()
+  })
+
+  it('shows the host on an SSH folder and offers a conversation without local research creation', async () => {
+    const remote = { ...workspace('w-ssh', '/home/research', 'Research'),
+      location: { kind: 'ssh' as const, host: 'lab', path: '/home/research' } }
+    const tree = mount({ projects: [], sessions: [], workspaces: [remote] })
+    fireEvent.click(row('group:others'))
+    await settle()
+    expect(within(row('folder:w-ssh')).getByText('Research · lab:/home/research')).toBeTruthy()
+    openMenu('folder:w-ssh')
+    expect(menuItems()).toEqual([zh.treeAddConversation, zh.treeRemove])
+    fireEvent.click(menuItem(zh.treeAddConversation))
+    await settle()
+    expect(tree.face.startSession).toHaveBeenCalledWith(remote.workspaceId)
+    expect(tree.face.create).not.toHaveBeenCalled()
+  })
+
   it('offers each kind of row what it may do', () => {
     const tree = mount({ current: 's-example', projects: [draft, sparse, example] })
     openMenu(R(sparse))

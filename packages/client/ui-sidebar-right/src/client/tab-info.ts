@@ -39,6 +39,7 @@ export const tabInfoFactory: SlotHookFactory<'sidebar.right.pane.tab', UseSideba
       }
       const pane = findTabPane(layout, tabId)
       return {
+        sessionId,
         sidebar: { expanded: layout.expanded, fullscreen },
         panel: { id: pane.id },
         tab: {
@@ -50,7 +51,7 @@ export const tabInfoFactory: SlotHookFactory<'sidebar.right.pane.tab', UseSideba
           refreshShortcut: shortcuts.find(row => row.id === 'page.refresh'),
         },
       }
-    }, [layout, navigation, tabId, title, fullscreen, active, signal, actions, shortcuts])
+    }, [layout, navigation, sessionId, tabId, title, fullscreen, active, signal, actions, shortcuts])
   }
 }
 

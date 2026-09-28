@@ -12,8 +12,17 @@ import { stat } from 'node:fs/promises'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import type { WorkspaceRecord } from './spec.ts'
-import type { Workspace, WorkspaceId } from './types.ts'
-import { realpathNormalize } from './paths.ts'
+import type { Workspace, WorkspaceId, WorkspaceLocation } from './types.ts'
+import { realpathNormalize, sshWorkspaceLocation, workspaceLocationKey } from './paths.ts'
+
+/**
+ * Older workspace records predate location identity and always belong to this Host.
+ * @param record - Stored Workspace record, including legacy records without a location.
+ * @returns The record's location or its legacy local path.
+ */
+export function recordLocation(record: WorkspaceRecord): WorkspaceLocation {
+  return record.location ?? { kind: 'local', path: record.path }
+}
 
 /** An insertSessionBefore request named a session or anchor not on the account (storage failures stay plain errors). */
 export class WorkspaceMoveInvalidError extends Error {
@@ -86,6 +95,10 @@ export class WorkspaceEntity implements Workspace {
     return this.record.path
   }
 
+  get location(): WorkspaceLocation {
+    return recordLocation(this.record)
+  }
+
   get title(): string {
     return this.record.title
   }
@@ -99,7 +112,8 @@ export class WorkspaceEntity implements Workspace {
   }
 
   get sessionIds(): readonly SessionId[] {
-    return this.record.sessionIds.filter(id => this.host.sessionPath(id) === this.record.path)
+    const key = workspaceLocationKey(this.location)
+    return this.record.sessionIds.filter(id => this.host.sessionPath(id) === key)
   }
 
   async setTitle(title: string): Promise<void> {
@@ -119,29 +133,35 @@ export class WorkspaceEntity implements Workspace {
           + 'its stored header carries no cwd to validate against',
         )
       }
-      let cwd: string
-      try {
-        cwd = await realpathNormalize(header.cwd)
-      } catch (error) {
+      let location: WorkspaceLocation
+      if (header.execution?.kind === 'ssh') {
+        location = sshWorkspaceLocation(header.execution.host, header.cwd)
+      } else {
+        let cwd: string
+        try {
+          cwd = await realpathNormalize(header.cwd)
+        } catch (error) {
+          throw new Error(
+            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+            + `its cwd '${header.cwd}' does not resolve, so it cannot be validated`,
+            { cause: error },
+          )
+        }
+        if (!(await stat(cwd)).isDirectory()) {
+          throw new Error(
+            `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
+            + `its cwd '${header.cwd}' is not a directory`,
+          )
+        }
+        location = { kind: 'local', path: cwd }
+      }
+      if (workspaceLocationKey(location) !== workspaceLocationKey(this.location)) {
         throw new Error(
           `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-          + `its cwd '${header.cwd}' does not resolve, so it cannot be validated`,
-          { cause: error },
+          + `its cwd resolves to '${location.path}' on a different execution host or directory`,
         )
       }
-      if (!(await stat(cwd)).isDirectory()) {
-        throw new Error(
-          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-          + `its cwd '${header.cwd}' is not a directory`,
-        )
-      }
-      if (cwd !== this.record.path) {
-        throw new Error(
-          `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
-          + `its cwd resolves to '${cwd}'`,
-        )
-      }
-      this.host.rememberSessionPath(sessionId, cwd)
+      this.host.rememberSessionPath(sessionId, workspaceLocationKey(location))
     }
     await this.mutate(record => record.sessionIds.includes(sessionId)
       ? record
@@ -177,7 +197,8 @@ export class WorkspaceEntity implements Workspace {
       : record)
   }
 
-  async status(): Promise<'ok' | 'missing-dir'> {
+  async status(): Promise<'ok' | 'missing-dir' | 'unknown'> {
+    if (this.location.kind === 'ssh') return 'unknown'
     try {
       return (await stat(this.record.path)).isDirectory() ? 'ok' : 'missing-dir'
     } catch {
@@ -205,7 +226,7 @@ export class WorkspaceEntity implements Workspace {
       next = await this.host.table().update(this.id, (current) => {
         const changed = fn(current)
         const sessionIds = changed.sessionIds.filter(
-          id => this.host.sessionPath(id) === changed.path,
+          id => this.host.sessionPath(id) === workspaceLocationKey(recordLocation(changed)),
         )
         if (changed === current && sessionIds.length === current.sessionIds.length) {
           throw unchangedSentinel

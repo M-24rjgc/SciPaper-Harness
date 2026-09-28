@@ -105,8 +105,9 @@ const useChat: SessionSlotProps['useChat'] = () => { throw new Error('unused') }
 const useTrajectory: SessionSlotProps['useTrajectory'] = () => { throw new Error('unused') }
 
 function workspace(id = 'w1'): WorkspaceView {
+  const path = `/projects/${id}`
   return {
-    workspaceId: wid(id), path: `/projects/${id}`, title: id, sessionIds: [],
+    workspaceId: wid(id), path, location: { kind: 'local', path }, title: id, sessionIds: [],
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   }
 }

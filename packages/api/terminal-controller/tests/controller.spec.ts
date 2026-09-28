@@ -25,6 +25,12 @@ function owner(ctx: Context, id = 'session', cwd?: string): Agent {
   return { id: id as SessionId, ctx, session: { id: id as SessionId, header: { cwd } } } as unknown as Agent
 }
 
+function sshOwner(ctx: Context, id: string, cwd: string, host: string): Agent {
+  const agent = owner(ctx, id, cwd)
+  Object.assign(agent.session.header, { execution: { kind: 'ssh', host } })
+  return agent
+}
+
 function fixture(overrides: Partial<Config> = {}) {
   const ctx = new Context()
   roots.push(ctx)
@@ -60,6 +66,36 @@ describe('TerminalController', () => {
     expect(controller.environment(agent, signal())).toMatchObject({ cwd: '/workspace' })
     await controller.create(agent, request, signal())
     await controller.close(agent, id)
+  })
+
+  it('uses the isolated SSH preset subprocess even when the Agent can see a local Host subprocess', async () => {
+    const { ctx, controller, subprocess: local, handle } = fixture()
+    const remote = {
+      terminalEnvironment: vi.fn(async () => ({ platform: 'posix' as const, defaultShell: '/bin/bash' })),
+      resolveExecutable: vi.fn(async (path: string) => path),
+      spawnTerminal: vi.fn(async () => handle),
+    }
+    const serviceFor = vi.fn((_agent: Agent, name: string) => name === 'subprocess' ? remote : undefined)
+    ctx.provide('agentPresets', { serviceFor } as never)
+    const agent = sshOwner(ctx, 'ssh-session', '/srv/research', 'campus')
+    expect(agent.ctx.get('subprocess')).toBe(local)
+    expect(controller.environment(agent, signal()).cwd).toBe('/srv/research')
+    expect(await controller.shells(agent, signal())).toEqual(expect.arrayContaining([expect.objectContaining({ path: '/bin/bash' })]))
+    await controller.create(agent, request, signal())
+    expect(serviceFor).toHaveBeenCalledWith(agent, 'subprocess')
+    expect(remote.spawnTerminal).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/srv/research' }))
+    expect(local.spawnTerminal).not.toHaveBeenCalled()
+    expect(local.resolveExecutable).not.toHaveBeenCalled()
+    await controller.close(agent, id)
+  })
+
+  it('refuses an SSH terminal when its isolated subprocess is absent or aliases the local Host provider', () => {
+    const { ctx, controller, subprocess: local } = fixture()
+    const agent = sshOwner(ctx, 'ssh-session', '/srv/research', 'campus')
+    expect(() => controller.environment(agent, signal())).toThrow('SSH Session subprocess provider is unavailable')
+    ctx.provide('agentPresets', { serviceFor: () => local } as never)
+    expect(() => controller.environment(agent, signal())).toThrow('SSH Session subprocess provider is unavailable')
+    expect(local.spawnTerminal).not.toHaveBeenCalled()
   })
 
   it('creates the environment default shell and keeps an existing identity when that default changes', async () => {

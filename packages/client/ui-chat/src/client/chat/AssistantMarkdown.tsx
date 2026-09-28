@@ -20,14 +20,16 @@ import css from './AssistantMarkdown.module.css'
  * @returns an absolute Web or Desktop file-API URL, or undefined for unsupported
  * protocols and non-local paths.
  */
-export function localPathMediaUrl(base: string, value: string): string | undefined {
+export function localPathMediaUrl(base: string, value: string, sessionId?: string): string | undefined {
   let path: string
   try { path = decodeURIComponent(value.split(/[?#]/u)[0] ?? '') }
   catch { return undefined } // Malformed URL escapes cannot identify a file.
-  return fileMediaUrl(base, path)
+  return fileMediaUrl(base, path, sessionId)
 }
 
 export interface AssistantMarkdownProps {
+  /** Source Session for file URL resolution on remote workspaces. */
+  sessionId?: string | undefined
   /** Render only the requested business portion, preserving original block indexes. */
   groupPart?: string | undefined
   /** Stable Hook forwarded to each independently expandable reasoning block. */
@@ -53,15 +55,15 @@ export interface AssistantMarkdownProps {
 /** Reasoning block as the Think variant summary row (figma 39:28304). */
 export const AssistantMarkdown = memo(function AssistantMarkdown({
   blocks, streaming, interrupted, renderMessageImages, groupPart, useDisclosure,
-  reasoningHidden = false, usePresentation, revealProcess, mentions, t,
+  reasoningHidden = false, usePresentation, revealProcess, mentions, sessionId, t,
 }: AssistantMarkdownProps) {
   // Stable per locale revision (t identity changes on switch): a fresh object
   // per render would rebuild MarkdownText's component table every chunk.
   const labels = useMemo(() => markdownLabels(t), [t])
   // MarkdownText memoizes its vocabulary; keep its identity stable across renders.
   const pathImages = useMemo<MarkdownPathImages>(() => {
-    return { resolve: value => localPathMediaUrl(document.baseURI, value) }
-  }, [])
+    return { resolve: value => localPathMediaUrl(document.baseURI, value, sessionId) }
+  }, [sessionId])
   const last = blocks.length - 1
   // Tool-call heads render as tool rows in the chat view's grouping pass, so
   // a node that is only those heads (or empty) would paint an empty root

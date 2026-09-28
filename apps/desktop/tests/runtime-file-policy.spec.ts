@@ -49,6 +49,8 @@ it('omits development artifacts while preserving executable modules, assets and 
     '@deepseek-ai/libreoffice-kit-win32-x64/bin/libreoffice-kit.exe',
     '@deepseek-ai/libreoffice-kit-win32-x64/sources/core-source.json',
     '@deepseek-ai/libreoffice-kit-win32-x64/licenses/MPL-2.0.txt',
+    'typescript/lib/lib.es5.d.ts', 'typescript/lib/lib.dom.d.ts',
+    'typescript/lib/typescript.d.ts',
   ]
   try {
     const runtime = runtimeFixture(source)
@@ -67,7 +69,7 @@ it('omits development artifacts while preserving executable modules, assets and 
     expect(await verifyDesktopRuntime(output, runtime.release.version)).toEqual(sealed)
     expect(readFileSync(join(modules, removed[0]!), 'utf8')).toBe(`payload:${removed[0]}`)
   } finally {
-    rmSync(root, { recursive: true, force: true })
+    rmSync(root, { recursive: true })
   }
 })
 
@@ -76,6 +78,8 @@ it('applies package-specific rules inside scoped and nested dependency container
   expect(desktopRuntimeFileExclusion('outer\\node_modules\\node-pty\\prebuilds\\win32-arm64\\conpty.node', windows, 'win32-x64')).toBeDefined()
   expect(desktopRuntimeFileExclusion('outer/node_modules/unrelated/test/data.html', windows, 'win32-x64')).toBeUndefined()
   expect(desktopRuntimeFileExclusion('outer/fs-ext/build/Release/fs_ext.lib', windows, 'win32-x64')).toBeUndefined()
+  expect(desktopRuntimeFileExclusion('outer/node_modules/typescript/lib/lib.es5.d.ts', windows, 'win32-x64')).toBeUndefined()
+  expect(desktopRuntimeFileExclusion('outer/node_modules/@types/node/index.d.ts', windows, 'win32-x64')).toBeDefined()
 })
 
 it('retains native prebuilds for the selected macOS architecture', () => {

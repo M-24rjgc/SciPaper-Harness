@@ -27,7 +27,7 @@ export type OpenPathActionProps =
   & InjectFace<OpenPathInjected>
 
 /** File inputs shared by the document header and its unpreviewable state. */
-type FileOpenTargetProps = Pick<OpenPathActionProps, 'absolutePath' | 'useOpenInAppDesktop' | 'loadDesktop' | 'openPath' | 'applications' | 't'> & {
+type FileOpenTargetProps = Pick<OpenPathActionProps, 'sessionId' | 'useSessions' | 'absolutePath' | 'useOpenInAppDesktop' | 'loadDesktop' | 'openPath' | 'applications' | 't'> & {
   empty?: boolean
 }
 
@@ -37,12 +37,16 @@ type FileOpenTargetProps = Pick<OpenPathActionProps, 'absolutePath' | 'useOpenIn
  * @returns the shared opening control, or null without a desktop.
  */
 export function FileOpenTarget(props: FileOpenTargetProps): ReactNode {
+  const local = props.useSessions((state) => {
+    const session = state.byId[props.sessionId]
+    return session !== undefined && session.execution?.kind !== 'ssh'
+  })
   const desktop = props.useOpenInAppDesktop(value => value)
-  const association = useFileApplications(props.absolutePath, props.applications, desktop === true)
+  const association = useFileApplications(props.absolutePath, props.applications, local && desktop === true)
   useEffect(() => {
     if (desktop === null) void props.loadDesktop()
   }, [desktop, props.loadDesktop])
-  if (desktop !== true) return null
+  if (!local || desktop !== true) return null
   const { apps } = association
   return (
     <OpenTargetButton

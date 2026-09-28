@@ -8,20 +8,19 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdtemp, mkdir, rm, writeFile, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import Lsp, { type LspQueryRequest, type LspQueryResult } from '@deepseek-ai/dsh-lsp'
 import * as LspLocal from '@deepseek-ai/dsh-lsp-stdio'
 
-// The server binary is a dev dependency of this package; resolve its pnpm-hoisted .bin path.
-const serverBin = join(
-  new URL('..', import.meta.url).pathname,
-  'node_modules',
-  '.bin',
-  'typescript-language-server',
-)
+// The product launches the server entry through its own Node-mode executable,
+// which works on Windows without relying on a shell .cmd shim.
+const serverCli = process.env.DSH_PACKAGED_LSP_SERVER
+  ?? join(dirname(createRequire(import.meta.url).resolve('typescript-language-server/package.json')), 'lib/cli.mjs')
+const serverExecutable = process.env.DSH_PACKAGED_NODE ?? process.execPath
 
 let root: string
 let ws: string
@@ -59,8 +58,8 @@ beforeAll(async () => {
   await ctx.plugin(LspLocal, {
     servers: {
       typescript: {
-        command: serverBin,
-        args: ['--stdio'],
+        command: serverExecutable,
+        args: [serverCli, '--stdio'],
         extensionToLanguage: { '.ts': 'typescript', '.tsx': 'typescriptreact' },
       },
     },
@@ -69,7 +68,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (ctx) await ctx.fiber.dispose()
-  if (root) await rm(root, { recursive: true, force: true })
+  if (root) await rm(root, { recursive: true })
 })
 
 /** One-based helper mirroring the model contract, converted to the seam's zero-based position. */

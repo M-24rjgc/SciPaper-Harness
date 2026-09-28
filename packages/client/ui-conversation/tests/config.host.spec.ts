@@ -13,11 +13,29 @@ describe('ui-conversation host', () => {
     const ctx = new Context()
     const configuration = await liveConfig(ctx, { Config, apply })
     const { fiber } = configuration
-    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR })
+    expect(plainConfig(configuration.fiber.config)).toEqual({
+      busyEnter: DEFAULT_BUSY_ENTER_BEHAVIOR, showTrajectoryWithoutDeveloperTools: false,
+    })
     await configuration.update({ busyEnter: 'steer' })
-    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer' })
+    expect(plainConfig(configuration.fiber.config)).toEqual({ busyEnter: 'steer', showTrajectoryWithoutDeveloperTools: false })
     await expect(configuration.update({ busyEnter: 'invalid' })).rejects.toThrow()
     await fiber.dispose()
+  })
+
+  it.each([true, false])('injects the trajectory preference into the served page and retracts it (%s)', async (enabled) => {
+    const ctx = new Context()
+    const fiber = ctx.plugin({ Config, apply }, { showTrajectoryWithoutDeveloperTools: enabled })
+    await fiber.await()
+    const rows: unknown[] = []
+    ctx.emit('webserver/index-inject', rows as never)
+    expect(rows).toEqual([{
+      kind: 'global', name: '__DSH_CONVERSATION__',
+      value: { showTrajectoryWithoutDeveloperTools: enabled },
+    }])
+    await fiber.dispose()
+    const after: unknown[] = []
+    ctx.emit('webserver/index-inject', after as never)
+    expect(after).toEqual([])
   })
 })
 

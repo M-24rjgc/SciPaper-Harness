@@ -1133,6 +1133,7 @@ describe('Session', () => {
       cwd: '/accepted',
       parentSession: 'parent',
       isSeeded: true,
+      execution: { kind: 'local' },
     })
     expect(session.header).not.toBe(input)
     expect(Object.isFrozen(session.header)).toBe(true)

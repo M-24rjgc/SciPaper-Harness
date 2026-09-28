@@ -115,10 +115,13 @@ export function relativizeToCwd(text: string, cwd: string | undefined): string {
  * Address a decoded absolute file path through the authenticated file route.
  * @param base - HTTP(S) application base, including its deployment prefix, or `dsh-app://app/`.
  * @param path - Native file path; URL escapes in authored Markdown must already be decoded.
+ * @param sessionId - optional Session identity selecting an isolated SSH filesystem.
  * @returns File URL, or undefined for unsupported transports and non-absolute paths.
  */
-export function fileMediaUrl(base: string, path: string): string | undefined {
+export function fileMediaUrl(base: string, path: string, sessionId?: string): string | undefined {
   if ((!/^https?:/u.test(base) && !base.startsWith('dsh-app://app/')) || !isAbsoluteWorkspacePath(path)
     || /^[/\\]{2}/u.test(path) || /[\u0000-\u001f\u007f]/u.test(path)) return undefined
-  return new URL(`api/file?path=${encodeURIComponent(path)}`, base).href
+  const url = new URL(`api/file?path=${encodeURIComponent(path)}`, base)
+  if (sessionId !== undefined) url.searchParams.set('sessionId', sessionId)
+  return url.href
 }

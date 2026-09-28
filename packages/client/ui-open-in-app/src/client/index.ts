@@ -54,7 +54,8 @@ export function apply(ctx: ClientContext): void {
     const session = Object.values(ctx.sessions.list.getSnapshot().byId)
       .find(row => (row.retainedBy.mainView ?? 0) > 0)
     const appId = controller.currentApp()
-    return session?.cwd && appId !== undefined ? { appId, path: session.cwd } : undefined
+    return session?.execution?.kind !== 'ssh' && session?.cwd && appId !== undefined
+      ? { appId, path: session.cwd } : undefined
   }
   ctx.effect(() => ctx.shortcuts.register({
     id: 'workspace.openLocal' as ShortcutCommandId, label: () => t('open.tooltip'), aliases: ['open workspace locally', 'open in app'],

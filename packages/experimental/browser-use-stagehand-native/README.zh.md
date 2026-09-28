@@ -86,7 +86,7 @@ env -u NODE_USE_ENV_PROXY DSH_STAGEHAND_E2E=1 pnpm exec vitest run --config vite
 <details>
 <summary>实现细节——点击展开</summary>
 
-[SessionResources](../browser-use-runtime/README.zh.md) 为每个确切的活动 Agent 管理延迟获取、串行执行和资源释放。Provider 保留浏览器使用注册，直到清理完成。[原生 Provider](src/index.ts) 通过现有 MCP 结果适配器注册工具，由该适配器把截图保存为持久附件。
+[SessionResources](../../browser-use/browser-use-runtime/README.zh.md) 为每个确切的活动 Agent 管理延迟获取、串行执行和资源释放。Provider 保留浏览器使用注册，直到清理完成。[原生 Provider](src/index.ts) 通过现有 MCP 结果适配器注册工具，由该适配器把截图保存为持久附件。
 
 宿主在等待 CDP 就绪前即拥有启动的 Chromium 进程及其临时配置目录。Chromium 接收标准清理后的子进程环境，保留路径、区域设置和代理配置，排除凭据形式的变量及 DSH 身份信息。两种模式都在独立 Worker 中连接 SDK。Worker 除显式的源码 TypeScript 配置路径外不接收宿主环境，因此其 CDP 连接不继承宿主代理设置。SDK 关闭会等待活动操作。清理在配置的 SDK 宽限时间后终止连接 Worker；启动模式还会终止并等待自有 Chromium 进程退出，再移除配置目录。外部连接的浏览器保持运行。清理失败遵循下方的[所有权限制](#known-limitations-and-deferred-work)。
 

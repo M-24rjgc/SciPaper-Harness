@@ -5,6 +5,7 @@ export interface DesktopTargetBuildPaths {
   readonly root: string
   readonly artifacts: string
   readonly unsignedArtifacts: string
+  readonly unsignedRuns: string
   readonly runtime: string
   readonly packageSet: string
   readonly dsh: string
@@ -46,6 +47,12 @@ export function desktopTargetPlatform(target: DesktopAutoUpdateTarget): {
   readonly platform: 'darwin' | 'win32'
   readonly arch: 'arm64' | 'x64'
 }
+
+/** Node executable carried by the prepared primary runtime for this release target. */
+export function primaryRuntimeNodeExecutable(runtimeRoot: string, target: DesktopAutoUpdateTarget): string
+
+/** Isolate unsigned builds under a short path so native executables remain launchable on Windows. */
+export function desktopUnsignedArtifactDirectory(artifactsRoot: string, runId: string): string
 
 /**
  * Resolve the paths owned by the target selected in a packaging environment.

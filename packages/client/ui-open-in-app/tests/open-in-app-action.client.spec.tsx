@@ -30,12 +30,15 @@ function bench(over: {
   apps?: readonly string[] | null
   choice?: string
   cwd?: string
+  remote?: boolean
   shortcuts?: readonly ShortcutCatalogEntry[]
   launch?: (appId: string, path: string) => Promise<void>
 } = {}): Bench {
   const state: SessionListState = {
     ids: [SESSION],
-    byId: over.cwd === undefined ? {} : { [SESSION]: { id: SESSION, displayTitle: 'Workspace', cwd: over.cwd, running: false, retainedBy: {}, blank: false, updatedAt: 0 } },
+    byId: over.cwd === undefined ? {} : { [SESSION]: { id: SESSION, displayTitle: 'Workspace', cwd: over.cwd,
+      execution: over.remote === true ? { kind: 'ssh', host: 'lab' } : { kind: 'local' },
+      running: false, retainedBy: {}, blank: false, updatedAt: 0 } },
     phase: 'ready',
     projectionsBySession: {},
   }
@@ -70,6 +73,11 @@ function bench(over: {
 }
 
 describe('OpenInAppAction visibility', () => {
+  it('hides native application opening for an SSH session', () => {
+    const b = bench({ apps: ['finder'], cwd: '/home/research', remote: true })
+    expect(render(<OpenInAppAction {...b.props} />).container.innerHTML).toBe('')
+    expect(b.launch).not.toHaveBeenCalled()
+  })
   it('advertises the configured workspace accelerator', () => {
     render(<OpenInAppAction {...bench({ apps: ['finder'], cwd: '/w', shortcuts: [{
       id: 'workspace.openLocal' as ShortcutCommandId, label: 'Open', aliases: [], binding: null,

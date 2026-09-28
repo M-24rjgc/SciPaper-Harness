@@ -173,7 +173,7 @@ function mount(
     useResource: () => { throw new Error('The task manager does not load document resources') },
     onDelete: vi.fn<TaskManagerPageProps['onDelete']>(async () => 'deleted'),
     onRetry: vi.fn(async () => {}),
-    onNewTask: vi.fn(),
+    onNewTask: vi.fn(() => true),
     onUpdateTiming: vi.fn<TaskManagerPageProps['onUpdateTiming']>(async ({ expected }) => ({
       ok: true, value: { id: expected.id, updated: false, record: expected },
     })),
@@ -612,13 +612,20 @@ it('updates original Session navigation as metadata arrives and archive state ch
 })
 
 describe('Task manager catalog', () => {
-  it('starts a new Session instead of offering a page creation form', () => {
+  it('opens the selected conversation for Agent-based task creation', () => {
     const h = mount({ records: [at] })
     // The heading's compact action and the empty state's named action are the
     // mock's two creation entries; only the heading's shows while a row exists.
     fireEvent.click(screen.getByRole('button', { name: en['new.action'] }))
     expect(h.props.onNewTask).toHaveBeenCalledOnce()
     expect(screen.queryByRole('button', { name: en['empty.action'] })).toBeNull()
+  })
+
+  it('asks for a research conversation when none is selected', () => {
+    const h = mount({ records: [] }, en, { onNewTask: vi.fn(() => false) })
+    fireEvent.click(screen.getByRole('button', { name: en['empty.action'] }))
+    expect(h.props.onNewTask).toHaveBeenCalledOnce()
+    expect(screen.getByText(en['new.needsSession'])).toBeTruthy()
   })
 
   it('lays the page out on the mock content column, heading, search field, and rows', () => {

@@ -6,7 +6,7 @@ export type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types
 import type { PluginEntryId } from '@deepseek-ai/dsh-host-plugin-inventory/types'
 
 /** Reasons a profile control cannot modify its target. */
-export type ReadOnlyReason = 'management-required' | 'unaddressable'
+export type ReadOnlyReason = 'management-required' | 'unaddressable' | 'unsupported-host'
 
 /** A package whose declared DSH peers reject the running DSH version, without an exemption for the exact pair. */
 export interface IncompatiblePlugin {

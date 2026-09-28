@@ -353,8 +353,11 @@ function groupByWorkspace(
     // a Workspace without archived Sessions contributes no group.
     if (archivedFilter === 'only' && members.length === 0) continue
     groups.push(buildGroup(
-      workspace.workspaceId, workspace.workspaceId, workspace.path,
-      Date.parse(workspace.createdAt), workspace.title, members,
+      workspace.workspaceId, workspace.workspaceId,
+      workspace.location.kind === 'ssh' ? `${workspace.location.host}:${workspace.path}` : workspace.path,
+      Date.parse(workspace.createdAt),
+      workspace.location.kind === 'ssh' ? `${workspace.title} · ${workspace.location.host}` : workspace.title,
+      members,
     ))
   }
   const stray = list.ids
@@ -556,11 +559,13 @@ export function deriveSearchResults(
   const workspaceBySession = new Map<SessionId, string>()
   for (const workspace of workspaces) {
     for (const sessionId of workspace.sessionIds) {
-      if (!workspaceBySession.has(sessionId)) workspaceBySession.set(sessionId, workspace.title)
+      if (!workspaceBySession.has(sessionId)) workspaceBySession.set(sessionId,
+        workspace.location.kind === 'ssh' ? `${workspace.title} · ${workspace.location.host}` : workspace.title)
     }
   }
   const labelOf = (summary: SessionSummary): string =>
-    workspaceBySession.get(summary.id) ?? workspaceLabel(summary.cwd)
+    workspaceBySession.get(summary.id) ?? (summary.execution?.kind === 'ssh'
+      ? `${summary.execution.host}:${summary.cwd ?? ''}` : workspaceLabel(summary.cwd))
   const contentBySession = new Map<SessionId, SessionSearchResultItem>()
   for (const item of content.items) {
     if (!contentBySession.has(item.sessionId)) contentBySession.set(item.sessionId, item)

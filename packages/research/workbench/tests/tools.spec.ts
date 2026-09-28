@@ -63,17 +63,59 @@ function harness() {
     on: (name: string, listener: PreExecute) => { if (name === 'tools/pre-execute') hook = listener },
   } as unknown as Context
   registerResearchTools(ctx, service)
-  const exec = (cwd: string | undefined, name = 'research_project') => ({
+  const exec = (cwd: string | undefined, name = 'research_project', execution?: { kind: 'ssh'; host: string }) => ({
     name, signal: new AbortController().signal,
-    ...(cwd === undefined ? {} : { agent: { session: { id: 'agent-session', header: { cwd } } } }),
+    ...(cwd === undefined ? {} : { agent: { session: { id: 'agent-session', header: { cwd, ...(execution === undefined ? {} : { execution }) } } } }),
   })
   /** `null` runs the call without an agent session, as a non-agent caller would. */
-  const call = (name: string, args: Record<string, unknown>, cwd: string | null = root) =>
-    tools.get(name)!.execute(args, exec(cwd ?? undefined, name))
+  const call = (name: string, args: Record<string, unknown>, cwd: string | null = root, execution?: { kind: 'ssh'; host: string }) =>
+    tools.get(name)!.execute(args, exec(cwd ?? undefined, name, execution))
   return { project, foreign, executed, created, goals, tools, call, exec, hook: () => hook! }
 }
 
 describe('research tools find the project from the working directory', () => {
+  it('uses an unambiguous SSH environment to reach the local ledger without treating remote cwd as local', async () => {
+    const h = harness()
+    h.project.environments.push({
+      id: 'remote' as ResearchProject['environments'][number]['id'], name: 'Remote', kind: 'existing', target: 'ssh',
+      python: '/usr/bin/python3', sshHost: 'alpha', remoteRoot: '/srv/study', requirements: [],
+      fingerprint: 'test', status: 'ready', details: '', isDefault: false,
+    })
+    const execution = { kind: 'ssh' as const, host: 'alpha' }
+    const current = await h.call('research_project', { action: 'current' }, '/srv/study/code', execution)
+    expect(current).toMatchObject({ id: h.project.id, root, coordinates: {
+      ledger: { kind: 'local', path: root }, execution: { kind: 'ssh', host: 'alpha', path: '/srv/study/code' },
+    } })
+    await h.call('research_check', {}, '/srv/study/code', execution)
+    expect(h.executed.at(-1)?.request).toMatchObject({ action: 'check', projectId: h.project.id })
+    await expect(h.call('research_evidence', { action: 'import', paths: ['/srv/study/data.csv'] }, '/srv/study/code', execution))
+      .rejects.toThrow(/project-relative paths, not absolute remote paths/)
+    await expect(h.call('research_artifact', { action: 'save-artifact', path: '/srv/study/paper.tex', content: 'x', kind: 'manuscript' }, '/srv/study/code', execution))
+      .rejects.toThrow(/project-relative paths, not absolute remote paths/)
+    await expect(h.call('research_project', { action: 'create', title: 'Wrong' }, '/srv/study/code', execution))
+      .rejects.toThrow(/SSH directory cannot become a local research ledger/)
+    expect(h.created).toHaveLength(0)
+    await expect(h.call('research_check', { projectId: h.foreign.id }, '/srv/study/code', execution))
+      .rejects.toThrow(/does not belong/)
+    const wrongHost = await h.call(
+      'research_project', { action: 'current' }, '/srv/study/code', { kind: 'ssh', host: 'beta' },
+    ) as { project: null; hint: string }
+    expect(wrongHost.project).toBeNull()
+    expect(wrongHost.hint).toMatch(/No local research is linked/)
+    const localPath = await h.call(
+      'research_project', { action: 'current' }, root, execution,
+    ) as { project: null; hint: string }
+    expect(localPath.project).toBeNull()
+    expect(localPath.hint).toMatch(/No local research is linked/)
+    h.foreign.environments.push({ ...h.project.environments[0]!, id: 'foreign' as ResearchProject['environments'][number]['id'] })
+    const ambiguous = await h.call(
+      'research_project', { action: 'current' }, '/srv/study/code', execution,
+    ) as { project: null; hint: string }
+    expect(ambiguous.project).toBeNull()
+    expect(ambiguous.hint).toMatch(/Multiple research projects/)
+    await expect(h.call('research_check', {}, '/srv/study/code', execution)).rejects.toThrow(/Multiple research projects/)
+  })
+
   it('reports the current project with its route, autonomy guidance and phases', async () => {
     const h = harness()
     type Brief = { id: string; guide: string[]; mode: string; route: string; phases: unknown[] }

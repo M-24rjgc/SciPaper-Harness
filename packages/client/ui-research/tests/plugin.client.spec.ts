@@ -267,7 +267,8 @@ async function bench(services: BenchServices = {}) {
   const select = (id: string | undefined): void => { current.set(id as SessionId | undefined) }
   const workspaceList = createSnapshotStore<WorkspaceSnapshot>({
     items: (services.workspaces ?? []).map(([workspaceId, path, ids]) => ({
-      workspaceId: workspaceId as WorkspaceId, path, title: path, sessionIds: ids as SessionId[], createdAt: '', updatedAt: '',
+      workspaceId: workspaceId as WorkspaceId, path, location: { kind: 'local', path },
+      title: path, sessionIds: ids as SessionId[], createdAt: '', updatedAt: '',
     })),
     pinnedSessionIds: [], archivedSessionIds: (services.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
   })
@@ -526,13 +527,16 @@ describe('the research plugin', () => {
     ])
     expect(b.tabs[0]!.guide!.map(entry => [entry.id, entry.order, entry.title(), entry.description(), entry.icon]))
       .toEqual([['research', 15, en.railGuideTitle, en.railGuideDescription, ResearchHeroMark]])
-    // The draw.io editor claims `.drawio` file addresses of either scope, named by the file.
+    // The local editor claims local diagrams; SSH diagrams remain readable through the generic text preview.
     const drawio = b.tabs[4]!
     expect(drawio.patterns).toEqual(['*.drawio'])
-    expect(drawio.canOpen!('dsh-resource://file/session/s1/figures/arch.drawio')).toBe(true)
+    expect(drawio.canOpen!('dsh-resource://file/session/session-a/figures/arch.drawio')).toBe(true)
+    expect(drawio.canOpen!('dsh-resource://file/session/unknown/figures/arch.drawio')).toBe(false)
     expect(drawio.canOpen!('dsh-resource://file/absolute/C:/r/arch.drawio')).toBe(true)
     expect(drawio.canOpen!('dsh-resource://file/elsewhere/arch.drawio')).toBe(false)
-    expect(drawio.title('dsh-resource://file/session/s1/figures/arch%20v2.drawio')).toBe('arch v2.drawio')
+    b.publishSessions({ remote: { cwd: '/srv/research', execution: { kind: 'ssh', host: 'lab' } } })
+    expect(drawio.canOpen!('dsh-resource://file/session/remote/figures/arch.drawio')).toBe(false)
+    expect(drawio.title('dsh-resource://file/session/session-a/figures/arch%20v2.drawio')).toBe('arch v2.drawio')
 
     // Nothing takes the main panel: the research is not a second application beside the conversation.
     expect(b.ctx.slots.entriesOfSlot('sidebar.panellist')).toHaveLength(0)
@@ -977,6 +981,32 @@ describe('the face a research seat acts through', () => {
     expect(() => { b.face.openFile('/r', 'x.pdf') }).toThrow('No conversation is on screen')
   })
 
+  it('maps an SSH conversation to the local ledger without reading local files through the remote session', async () => {
+    const project = newProject({ root: 'C:\\research\\sparse', title: 'Sparse attention', brief: '', mode: 'general' }, 'workspace-sparse' as WorkspaceId)
+    project.sessionId = 'local'
+    project.environments.push({
+      id: 'environment-ssh' as never, name: 'Lab', kind: 'existing', target: 'ssh', python: 'python3',
+      sshHost: 'lab', remoteRoot: '/srv/sparse', requirements: [], fingerprint: 'remote', status: 'ready', details: '', isDefault: true,
+    })
+    const b = await bench({
+      current: 'remote', snapshot: { ...BLANK, projects: [project] },
+      sessions: {
+        local: { cwd: project.root, execution: { kind: 'local' } },
+        remote: { cwd: '/srv/sparse/code', execution: { kind: 'ssh', host: 'lab' } },
+      },
+    })
+    expect(b.face.hooks.directories.getSnapshot()).toEqual({
+      local: project.root, remote: { kind: 'ssh', host: 'lab', cwd: '/srv/sparse/code' },
+    })
+    b.face.openFile(project.root, 'paper/main.pdf')
+    expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/session/local/C:/research/sparse/paper/main.pdf')
+    expect(() => { b.face.openFiles() }).toThrow(en.localResearchFilesTabUnavailable)
+    expect(b.sidebarRight.openTab).not.toHaveBeenCalledWith('files')
+    b.publishSessions({ remote: { cwd: '/srv/sparse/code', execution: { kind: 'ssh', host: 'lab' } } })
+    expect(() => { b.face.openFile(project.root, 'paper/main.pdf') }).toThrow(en.localResearchFileUnavailable)
+    expect(b.sidebarRight.openResource).toHaveBeenCalledTimes(1)
+  })
+
   it('hands a research tool card the record and the same way into a project file', async () => {
     const b = await bench({ current: 'session-a' })
     const card = (b.seat('tool.call.toolview', 'research_check').inject as unknown as () => ResearchToolInjected)()
@@ -1094,7 +1124,10 @@ describe('where startup and 新研究 go', () => {
     b.publishSessions({ 's-moved': { cwd: '/picked', blank: true } })
     b.workspaceList.set({
       ...b.workspaceList.getSnapshot(),
-      items: [{ workspaceId: 'w-moved' as WorkspaceId, path: '/picked', title: 'picked', sessionIds: ['s-moved' as SessionId], createdAt: '', updatedAt: '' }],
+      items: [{
+        workspaceId: 'w-moved' as WorkspaceId, path: '/picked', location: { kind: 'local', path: '/picked' },
+        title: 'picked', sessionIds: ['s-moved' as SessionId], createdAt: '', updatedAt: '',
+      }],
     })
     expect(await moving).toMatchObject({ outcome: 'moved' })
     expect(carry).toHaveBeenCalledWith('w-moved')

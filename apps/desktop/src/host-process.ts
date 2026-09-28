@@ -3,6 +3,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
+import type { DesktopBrowserOperation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { desktopNodeEnvironment } from './node-environment.ts'
 
 interface ReadyEvent {
@@ -23,18 +24,35 @@ interface PlatformSessionEvent {
   readonly session: PlatformSession | null
 }
 
-type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | { readonly type: 'shutdown-complete' } | {
-  readonly type: 'update-tasks'
+interface BrowserOperationEvent {
+  readonly type: 'browser-operation'
   readonly requestId: number
-  readonly active: boolean
-  readonly error?: string
-} | {
-  readonly type: 'quit-inspection'
-  readonly requestId: number
-  readonly activeTasks: boolean
-  readonly scheduledTasks: boolean
-  readonly error?: string
+  readonly operation: DesktopBrowserOperation
 }
+
+interface BrowserOperationCancelEvent {
+  readonly type: 'browser-operation-cancel'
+  readonly requestId: number
+}
+
+type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | BrowserOperationEvent
+  | BrowserOperationCancelEvent | { readonly type: 'shutdown-complete' } | {
+    readonly type: 'browser-authorize'
+    readonly requestId: number
+    readonly storageKey?: string
+    readonly error?: string
+  } | {
+    readonly type: 'update-tasks'
+    readonly requestId: number
+    readonly active: boolean
+    readonly error?: string
+  } | {
+    readonly type: 'quit-inspection'
+    readonly requestId: number
+    readonly activeTasks: boolean
+    readonly scheduledTasks: boolean
+    readonly error?: string
+  }
 
 /** Correlated answer to one shell control request. */
 type DesktopHostControlResponse = Extract<DesktopHostEvent, { readonly requestId: number }>
@@ -49,6 +67,23 @@ export interface DesktopQuitInspection {
 export const QUIT_INSPECTION_DEADLINE_MS = 2_000
 
 const MAX_HOST_DIAGNOSTIC_CHARS = 64 * 1024
+
+function isBrowserOperation(value: unknown): value is DesktopBrowserOperation {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const candidate = value as Record<string, unknown>
+  if (typeof candidate.sessionId !== 'string' || candidate.sessionId.length === 0 || candidate.sessionId.length > 256
+    || (candidate.tabId !== undefined && (typeof candidate.tabId !== 'string' || candidate.tabId.length > 128))) return false
+  switch (candidate.action) {
+    case 'list': case 'inspect': case 'screenshot': return true
+    case 'click': return typeof candidate.selector === 'string' && candidate.selector.length > 0 && candidate.selector.length <= 1024
+    case 'type': return typeof candidate.selector === 'string' && candidate.selector.length > 0 && candidate.selector.length <= 1024
+      && typeof candidate.text === 'string' && candidate.text.length <= 4096
+    case 'scroll': return typeof candidate.deltaY === 'number' && Number.isFinite(candidate.deltaY)
+      && Math.abs(candidate.deltaY) <= 3000
+    case 'navigate': return typeof candidate.url === 'string' && candidate.url.length <= 4096
+    default: return false
+  }
+}
 
 function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
   if (typeof message !== 'object' || message === null || !('type' in message)) return false
@@ -85,6 +120,14 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     case 'quit-inspection':
       return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === 'boolean'
         && typeof candidate.scheduledTasks === 'boolean' && (candidate.error === undefined || typeof candidate.error === 'string')
+    case 'browser-operation':
+      return Number.isSafeInteger(candidate.requestId) && isBrowserOperation(candidate.operation)
+    case 'browser-operation-cancel':
+      return Number.isSafeInteger(candidate.requestId)
+    case 'browser-authorize':
+      return Number.isSafeInteger(candidate.requestId)
+        && ((typeof candidate.storageKey === 'string' && candidate.storageKey.length > 0 && candidate.error === undefined)
+          || (typeof candidate.error === 'string' && candidate.storageKey === undefined))
     default:
       return false
   }
@@ -153,6 +196,7 @@ export class DesktopHostProcess {
     resolve: (response: DesktopHostControlResponse) => void
     reject: (error: Error) => void
   }>()
+  private readonly browserOperations = new Map<number, AbortController>()
 
   /**
    * @param node - Absolute Electron executable in Node mode.
@@ -177,6 +221,7 @@ export class DesktopHostProcess {
     private readonly packageManager?: { readonly pnpm: string; readonly nodeBin: string },
 
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
+    private readonly onBrowserOperation?: (operation: DesktopBrowserOperation, signal: AbortSignal) => Promise<unknown>,
   ) {}
 
   /**
@@ -217,6 +262,26 @@ export class DesktopHostProcess {
         else this.fail(new Error('dsh desktop host acknowledged an unrequested shutdown'))
       }
       else if (message.type === 'fatal') this.fail(new DesktopHostFatalError(message.message, message.diagnostic))
+      else if (message.type === 'browser-operation') {
+        if (this.browserOperations.has(message.requestId)) {
+          this.fail(new Error('dsh desktop host reused a browser operation ID'))
+          child.kill('SIGTERM')
+          return
+        }
+        const controller = new AbortController()
+        this.browserOperations.set(message.requestId, controller)
+        void Promise.resolve().then(() => {
+          if (this.stopping || this.onBrowserOperation === undefined) throw new Error('desktop browser: Host is unavailable')
+          controller.signal.throwIfAborted()
+          return this.onBrowserOperation(message.operation, controller.signal)
+        }).then((value) => {
+          if (child.connected) child.send({ type: 'browser-operation-result', requestId: message.requestId, value })
+        }, (error: unknown) => {
+          if (child.connected) child.send({ type: 'browser-operation-result', requestId: message.requestId,
+            error: error instanceof Error ? error.message : String(error) })
+        }).finally(() => { this.browserOperations.delete(message.requestId) })
+      }
+      else if (message.type === 'browser-operation-cancel') this.browserOperations.get(message.requestId)?.abort()
       else {
         const request = this.controlRequests.get(message.requestId)
         if (message.error === undefined) request?.resolve(message)
@@ -258,13 +323,26 @@ export class DesktopHostProcess {
     return { activeTasks: response.activeTasks, scheduledTasks: response.scheduledTasks }
   }
 
+  /** Ask the Host for a real conversation's canonical browser storage identity. */
+  async authorizeBrowser(sessionId: string): Promise<string> {
+    if (!sessionId || sessionId.length > 256) throw new Error('desktop browser: invalid conversation identity')
+    const response = await this.control({ type: 'browser-authorize', sessionId }, 10_000,
+      'desktop browser: authorization timed out')
+    if (response.type !== 'browser-authorize' || response.storageKey === undefined) {
+      throw new Error('desktop browser: Host answered with a different control response')
+    }
+    return response.storageKey
+  }
+
   private async control(
-    request: { readonly type: 'update-tasks'; readonly action: 'inspect' | 'lock' | 'unlock' } | { readonly type: 'quit-inspection' },
+    request: { readonly type: 'update-tasks'; readonly action: 'inspect' | 'lock' | 'unlock' }
+      | { readonly type: 'quit-inspection' } | { readonly type: 'browser-authorize'; readonly sessionId: string },
     deadlineMs: number, deadlineMessage: string,
   ): Promise<DesktopHostControlResponse> {
     const child = this.child
     if (child === undefined || !child.connected || this.failureReported || this.stopping) {
-      throw new Error(`${request.type === 'update-tasks' ? 'desktop update' : 'desktop quit'}: Host is unavailable`)
+      throw new Error(`${request.type === 'update-tasks' ? 'desktop update'
+        : request.type === 'browser-authorize' ? 'desktop browser' : 'desktop quit'}: Host is unavailable`)
     }
     const requestId = this.nextControlId++
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -272,7 +350,7 @@ export class DesktopHostProcess {
       return await new Promise<DesktopHostControlResponse>((resolve, reject) => {
         this.controlRequests.set(requestId, { resolve, reject })
         timer = setTimeout(() => { reject(new Error(deadlineMessage)) }, deadlineMs)
-        child.send({ ...request, requestId }, (error) => { if (error !== null) reject(error) })
+        child.send({ ...request, requestId }, (error) => { if (error != null) reject(error) })
       })
     } finally {
       clearTimeout(timer)
@@ -290,6 +368,7 @@ export class DesktopHostProcess {
     const child = this.child
     if (child === undefined) return
     this.stopping = true
+    for (const controller of this.browserOperations.values()) controller.abort()
     this.onPlatformSession?.(null)
     if (child.connected) child.send({ type: 'shutdown' }, (error) => { if (error !== null) this.fail(error) })
     const exited = this.exitPromise ?? Promise.resolve()
@@ -309,6 +388,7 @@ export class DesktopHostProcess {
   }
 
   private fail(error: Error): void {
+    for (const controller of this.browserOperations.values()) controller.abort()
     this.onPlatformSession?.(null)
     this.readyReject(error)
     for (const request of this.controlRequests.values()) request.reject(error)

@@ -53,6 +53,7 @@ function workspace(
   return {
     workspaceId: wid(id),
     path: `/w/${id}`,
+    location: { kind: 'local', path: `/w/${id}` },
     title: id,
     sessionIds,
     createdAt,
@@ -64,6 +65,7 @@ function summary(id: string, overrides: Partial<SessionSummary> = {}): SessionSu
   return {
     id: sid(id),
     displayTitle: id,
+    execution: { kind: 'local' },
     running: false,
     blank: false,
     updatedAt: 0,
@@ -645,6 +647,19 @@ describe('UiWorkspaceService', () => {
     await expect(Promise.all([first, second])).resolves.toEqual([sid('new'), sid('new')])
     await expect(b.uiWorkspace.connectWorkspace(wid('missing'))).rejects.toThrow('unknown workspace')
     expect(b.sessions.retain).not.toHaveBeenCalled()
+  })
+
+  it('does not reuse a blank from another SSH host at the same path', async () => {
+    const remote = (id: string, host: string): WorkspaceView => ({
+      ...workspace(id, [sid('blank')]), path: '/code', location: { kind: 'ssh', host, path: '/code' },
+    })
+    const b = bench({
+      sessions: sessionState([summary('blank', { blank: true, cwd: '/code', execution: { kind: 'ssh', host: 'alpha' } })], 'pending'),
+      workspaces: workspaceState([remote('beta', 'beta')]),
+    })
+    await b.uiWorkspace.connectWorkspace(wid('beta'))
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('beta') })
+    expect(b.sessions.create).not.toHaveBeenCalledWith({ workspaceId: wid('beta'), sessionId: sid('blank') })
   })
 
   it('reports a refused explicit Session creation through the Workspace notice', async () => {

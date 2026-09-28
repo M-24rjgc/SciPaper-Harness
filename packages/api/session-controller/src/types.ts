@@ -184,6 +184,8 @@ export interface SessionSummary {
   readonly parentSessionId?: SessionId
   readonly origin?: 'subagent'
   readonly cwd?: string
+  /** The immutable execution location retained by both live and cold Sessions. */
+  readonly execution?: SessionHeader['execution']
   readonly projections?: SessionProjectionHints
 }
 
@@ -209,6 +211,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
       readonly requestedCwd: string
       readonly existingCwd?: string
     }
+    'session/execution-conflict': { readonly sessionId: SessionId }
     'session/projections-unavailable': Record<string, never>
     'session/writer-held': { readonly sessionId: SessionId }
     'session/agent-busy': { readonly reason: string }

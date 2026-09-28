@@ -125,7 +125,7 @@ describe('Session command admission', () => {
     })
     ctx.on('api-session/command-admission', (_admission, next) => { order.push('second'); return next() })
     expect(await controller.create(request)).toEqual({ sessionId: SessionId('new'), agentPreset: 'research' })
-    expect(ensureSession).toHaveBeenCalledWith(SessionId('new'), '/ordinary', true, 'research')
+    expect(ensureSession).toHaveBeenCalledWith(SessionId('new'), '/ordinary', true, 'research', { kind: 'local' })
     expect(order).toEqual(['first', 'second'])
   })
 

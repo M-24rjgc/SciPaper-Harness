@@ -53,6 +53,7 @@ function header(id: string, cwd: string | null = '/workspace'): SessionHeader {
     id: SessionId(id),
     createdAt: 1,
     isSeeded: false,
+    execution: { kind: 'local' },
     ...(cwd === null ? {} : { cwd }),
   }
 }

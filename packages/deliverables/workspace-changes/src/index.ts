@@ -56,8 +56,8 @@ export const Config: z<Config> = z.object({
 })
 
 function eligible(session: Session): string | undefined {
-  const { cwd, origin, delegationDepth } = session.header
-  return origin === 'subagent' || (delegationDepth ?? 0) > 0 ? undefined : cwd
+  const { cwd, origin, delegationDepth, execution } = session.header
+  return execution?.kind === 'ssh' || origin === 'subagent' || (delegationDepth ?? 0) > 0 ? undefined : cwd
 }
 
 /**

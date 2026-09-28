@@ -457,12 +457,13 @@ describe('workspace-changes without a repository', () => {
     expect(session.snapshotEvents().filter(event => event.type === 'workspace/changes' && event.data.turn === 3)).toEqual([])
   })
 
-  it('ignores subagent sessions and sessions without a working directory', async () => {
+  it('ignores subagent and SSH sessions and sessions without a working directory', async () => {
     const cwd = await repository()
     const { ctx } = await boot()
     const sessions = [
       ctx.sessions.create(SessionId('child'), { meta: { cwd, delegationDepth: 1 } }),
       ctx.sessions.create(SessionId('origin'), { meta: { cwd, origin: 'subagent' } }),
+      ctx.sessions.create(SessionId('ssh'), { meta: { cwd: '/srv/lab', execution: { kind: 'ssh', host: 'lab' } } }),
       ctx.sessions.create(SessionId('nowhere')),
     ]
     for (const session of sessions) {

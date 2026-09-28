@@ -109,6 +109,17 @@ describe('session.create Agent preset identity', () => {
     expect(response).toMatchObject({ ok: false, error: { code: 'agent-preset/not-found' } })
   })
 
+  it('rejects a registered remote workspace preset for a local session', async () => {
+    const { ctx, remote } = await harness(['standard', 'ssh-workspace'])
+    ctx.effect(() => ctx.reflect.provide('remoteWorkspacePresets', {
+      isRemotePreset: (id: string) => id === 'ssh-workspace',
+    }))
+
+    const response = await remote.create({ sessionId: SessionId('local-remote-preset'), agentPreset: 'ssh-workspace' })
+    expect(response).toMatchObject({ ok: false, error: { code: 'agent-preset/invalid' } })
+    expect(ctx.sessions.get(SessionId('local-remote-preset'))).toBeUndefined()
+  })
+
   it('refuses to adopt a live Session under a different preset', async () => {
     const { remote } = await harness(['standard', 'minimal'])
     await remote.create({ sessionId: SessionId('s4'), agentPreset: 'minimal' })

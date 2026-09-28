@@ -416,6 +416,7 @@ describe('JsonlSessionPersistence: format helpers', () => {
       id: SessionId('full-header'),
       createdAt: 5,
       cwd: '/w',
+      execution: { kind: 'local' },
       parentSession: SessionId('parent'),
       isSeeded: true,
       origin: 'subagent',
@@ -433,6 +434,19 @@ describe('JsonlSessionPersistence: format helpers', () => {
     ))
     expect(scan.meta).toEqual(full)
     expect(scan.inheritedEventCount).toBe(3)
+  })
+
+  it('round-trips an SSH execution header with a POSIX cwd on Windows', () => {
+    const remote: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: SessionId('remote-header'),
+      createdAt: 5,
+      cwd: '/srv/research',
+      execution: { kind: 'ssh', host: 'gpu-a' },
+      isSeeded: false,
+    }
+    expect(scanLog(Buffer.from(`${JSON.stringify(toHeaderLine(remote))}\n`)).meta)
+      .toMatchObject(remote)
   })
 
   it.each([
@@ -460,6 +474,7 @@ describe('JsonlSessionPersistence: format helpers', () => {
       createdAt: 1000,
       isSeeded,
       delegationDepth: 0,
+      execution: { kind: 'local' },
     }
     const bytes = `${[line, ...events].map(value => JSON.stringify(value)).join('\n')}\n`
 
@@ -709,7 +724,7 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
     const path = generationLogPath(root, header.cwd, header.id, version, 'none')
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, [
-      { ...toHeaderLine(header), version },
+      { ...toHeaderLine(header), version, ...(version < 5 ? { execution: undefined } : {}) },
       { type: 'external/frozen-json', seq: 0, time: 1, ignorable: true, data },
     ].map(row => JSON.stringify(row) + '\n').join(''))
 
@@ -959,7 +974,7 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
     const currentPath = rawLogPath(root, header.cwd, header.id)
     const message = { id: 'original', role: 'user', content: [{ type: 'text', text: 'question' }], source: { kind: 'user' } }
     const source = Buffer.from([
-      JSON.stringify({ ...toHeaderLine(header), version: 2 }),
+      JSON.stringify({ ...toHeaderLine(header), version: 2, execution: undefined }),
       ...[
         { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
         { type: 'step/start', seq: 1, time: 2, data: { turn: 1, step: 1 } },

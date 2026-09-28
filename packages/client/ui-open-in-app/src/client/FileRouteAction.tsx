@@ -24,10 +24,14 @@ async function queryRoute(url: string, signal: AbortSignal): Promise<readonly Se
  * @returns the shared compact control, or null without a desktop.
  */
 export function FileRouteAction(
-  props: Pick<PropsRuntime<'deliverables.file.actions'>, 'actionUrl' | 'available' | 'pending' | 'onAction'> & PropsLocale<typeof NS>,
+  props: Pick<PropsRuntime<'deliverables.file.actions'>, 'sessionId' | 'useSessions' | 'actionUrl' | 'available' | 'pending' | 'onAction'> & PropsLocale<typeof NS>,
 ) {
-  const association = useFileApplications(props.actionUrl, queryRoute, props.available)
-  if (!props.available) return null
+  const local = props.useSessions((state) => {
+    const session = state.byId[props.sessionId]
+    return session !== undefined && session.execution?.kind !== 'ssh'
+  })
+  const association = useFileApplications(props.actionUrl, queryRoute, local && props.available)
+  if (!local || !props.available) return null
   return <OpenTargetButton key={props.actionUrl} kind="file" applications={association.apps}
     defaultId={association.apps.find(app => app.default)?.id} failed={association.failed}
     loading={association.loading} busy={props.pending} refresh={association.refresh} t={props.t}

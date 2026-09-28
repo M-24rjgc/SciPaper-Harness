@@ -187,6 +187,7 @@ export const zh = {
   reasonStaleApproval: '待允许的安装脚本列表已变化，请重新安装以刷新',
   reasonIncompatibleVersion: '{plugin} 与 DSH {runtime} 不兼容（要求 {peers}），运行它可能导致崩溃或数据丢失。请安装与当前 DSH 兼容的插件版本。',
   reasonIncompatibleVersionUnnamed: '这个插件与当前 DSH 版本不兼容，运行它可能导致崩溃或数据丢失',
+  reasonUnsupportedHost: '这个组合包用于把整个 Host 切换到 SSH，在桌面版不生效。请从研究侧栏添加 SSH 工作区。',
   reasonOperationError: 'Host 报告了一个错误',
 } satisfies Record<string, string>
 
@@ -380,5 +381,6 @@ export const en = {
   reasonStaleApproval: 'The pending script approvals changed; install again to refresh them.',
   reasonIncompatibleVersion: '{plugin} is incompatible with DSH {runtime} (requires {peers}); running it may cause crashes or data loss. Install a plugin version compatible with this DSH.',
   reasonIncompatibleVersionUnnamed: 'This plugin is incompatible with the running DSH version; running it may cause crashes or data loss.',
+  reasonUnsupportedHost: 'This bundle switches the entire Host to SSH and does not work in Desktop. Add an SSH workspace from the research sidebar instead.',
   reasonOperationError: 'The Host reported an error.',
 } satisfies Record<PluginManagerLocaleKey, string>

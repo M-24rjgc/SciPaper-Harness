@@ -120,7 +120,7 @@ function mount(
     useResource: () => { throw new Error('The task manager does not load document resources') },
     onDelete: vi.fn<TaskManagerPageProps['onDelete']>(async () => 'deleted'),
     onRetry: vi.fn(async () => {}),
-    onNewTask: vi.fn(),
+    onNewTask: vi.fn(() => true),
     onUpdateTiming: vi.fn<TaskManagerPageProps['onUpdateTiming']>(async ({ expected }) => ({
       ok: true, value: { id: expected.id, updated: false, record: expected },
     })),

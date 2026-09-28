@@ -18,12 +18,14 @@ export function desktopRuntimeFileExclusion(
   }
   const file = parts.at(-1) ?? ''
   if (/\.(?:[cm]?[jt]s|css)\.map$/u.test(file)) return 'source map'
-  if (/\.d\.[cm]?ts$/u.test(file)) return 'TypeScript declaration'
   if (/\.tsbuildinfo$/u.test(file)) return 'TypeScript build cache'
   const packageParts = parts.slice(parts.lastIndexOf('node_modules') + 1)
   const nameParts = packageParts[0]?.startsWith('@') ? 2 : 1
   const name = packageParts.slice(0, nameParts).join('/')
   const entry = packageParts.slice(nameParts).join('/')
+  if (/\.d\.[cm]?ts$/u.test(file) && !(name === 'typescript' && entry.startsWith('lib/'))) {
+    return 'TypeScript declaration'
+  }
   if (name.startsWith('@deepseek-ai/libreoffice-kit-')) {
     if (name !== `@deepseek-ai/libreoffice-kit-${officeEngine}`) return 'LibreOffice other platform'
   }

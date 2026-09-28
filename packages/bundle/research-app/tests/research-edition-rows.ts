@@ -10,16 +10,21 @@ export const TELEMETRY_ROWS: readonly string[] = [
   'session-telemetry-otel', 'command-feedback', 'message-feedback', 'ui-message-feedback',
 ]
 
-/** Open In, both halves; the Web e2e scaffold switches these on a scenario's own launch facts. */
-export const OPEN_IN_APP_ROWS: readonly string[] = ['open-in-app', 'ui-open-in-app']
+/** Official capabilities intentionally enabled in the research edition. */
+export const USER_SURFACE_ROWS: readonly string[] = [
+  'open-in-app', 'ui-open-in-app', 'ui-sidebar-terminal', 'ui-trajectory',
+  'time-context', 'schedule', 'ui-schedule',
+  'browser-use', 'browser-use-playwright',
+  'lsp', 'lsp-stdio',
+]
 
-/** The other developer controls: Session-log download, Cordis badge, preset and plugin pages, terminal, trajectory. */
+/** Developer controls the research edition keeps out of its product surface. */
 export const DEVELOPER_ROWS: readonly string[] = [
-  'session-log-download', 'ui-cordis', 'ui-agent-preset', 'ui-sidebar-terminal', 'ui-trajectory',
+  'session-log-download', 'ui-cordis', 'ui-agent-preset',
 ]
 
 /**
- * The disabled rows that the inherited Web scenarios compose again so they
- * keep exercising those plugins: every row above except Open In.
+ * The disabled rows that inherited Web scenarios temporarily compose again
+ * to keep exercising those plugins.
  */
 export const INHERITED_SCENARIO_ROWS: readonly string[] = [...TELEMETRY_ROWS, ...DEVELOPER_ROWS]

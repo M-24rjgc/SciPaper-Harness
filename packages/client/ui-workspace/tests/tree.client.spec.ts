@@ -40,7 +40,7 @@ const withMain = (state: SessionListState, id: SessionId): SessionListState => (
   },
 })
 const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
-  workspaceId: wid(id), path: `/projects/${id}`, title,
+  workspaceId: wid(id), path: `/projects/${id}`, location: { kind: 'local', path: `/projects/${id}` }, title,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly string[]) => ({
@@ -624,6 +624,20 @@ describe('deriveSearchResults archive filtering', () => {
 })
 
 describe('deriveSearchResults', () => {
+  it('shows and matches the SSH host for remote sessions', () => {
+    const attached = { ...summary('attached', 2, '/code'), execution: { kind: 'ssh' as const, host: 'alpha' } }
+    const loose = { ...summary('loose', 1, '/other'), execution: { kind: 'ssh' as const, host: 'alpha' } }
+    const remote: WorkspaceView = {
+      ...workspace('remote', ['attached'], 'Project'), path: '/code',
+      location: { kind: 'ssh', host: 'alpha', path: '/code' },
+    }
+    const result = deriveSearchResults(list(attached, loose), [remote], 'alpha', noArchive, 'default', noAttention,
+      { items: [], hasMore: false }, 10)
+    expect(result.items.map(item => [item.id, item.workspace])).toEqual([
+      [sid('attached'), 'Project · alpha'], [sid('loose'), 'alpha:/other'],
+    ])
+  })
+
   it('merges local title/Workspace matches before ranked content hits and enriches duplicates', () => {
     const titleHit = summary('title-hit', 30, '/projects/a')
     titleHit.displayTitle = 'Needle title'

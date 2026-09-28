@@ -11,7 +11,7 @@ Mount [`dsh-computer-use`](../../packages/computer-use/computer-use/README.md) a
 | Provider | Runtime |
 |---|---|
 | [Cua Driver MCP](../../packages/experimental/computer-use-cua-driver-mcp/README.md) | An already installed `cua-driver` executable connected through MCP |
-| [Cua Driver native](../../packages/experimental/computer-use-cua-driver-native/README.md) | The platform-native runtime installed with the npm dependency |
+| [Cua Driver native](../../packages/computer-use/computer-use-cua-driver-native/README.md) | The platform-native runtime installed with the npm dependency |
 
 Each provider supplies its upstream tool catalog. The shared service registers only a name and rejects any second provider, including another instance with the same name. It has no common desktop-operation methods or model-controlled selector.
 

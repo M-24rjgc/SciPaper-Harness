@@ -61,6 +61,7 @@ export function callState(block: ToolCallBlock): CallState {
 /**
  * The call's argument text as the model wrote it.
  * @param block - the call as the conversation holds it.
+ * @param partial - argument prefix available during preparation.
  * @returns the raw JSON text; empty when a result arrived without its call.
  */
 export function callArgsRaw(block: ToolCallBlock, partial = ''): string {
@@ -70,6 +71,7 @@ export function callArgsRaw(block: ToolCallBlock, partial = ''): string {
 /**
  * The call's arguments.
  * @param block - the call as the conversation holds it.
+ * @param partial - argument prefix available during preparation.
  * @returns the argument object, or undefined while it is incomplete or when it is no object.
  */
 export function callArgs(block: ToolCallBlock, partial = ''): Fields | undefined {

@@ -6,7 +6,8 @@ import { browserWorkspace } from '../src/client/electron/workspace.ts'
 
 const SESSION = 'session' as SessionId
 const workspace = (id: string, path: string, sessionIds: readonly SessionId[]): WorkspaceView => ({
-  workspaceId: id as WorkspaceId, path, title: path, sessionIds, createdAt: '', updatedAt: '',
+  workspaceId: id as WorkspaceId, path, location: { kind: 'local', path }, title: path, sessionIds,
+  createdAt: '', updatedAt: '',
 })
 const snapshot = (phase: WorkspaceSnapshot['phase'], items: readonly WorkspaceView[] = []): WorkspaceSnapshot => ({
   phase, items, state: 'idle', error: null, archivedSessionIds: [], pinnedSessionIds: [],
@@ -23,6 +24,21 @@ it('groups resolved Sessions by canonical CWD rather than Workspace identity', a
   source.set(snapshot('ready', [workspace('renamed', '/canonical', [SESSION])]))
   await expect(browserWorkspace(source, SESSION, signal)).resolves.toBe('cwd:/canonical')
   await expect(browserWorkspace(source, 'unaccounted', signal)).resolves.toBe('session:unaccounted')
+})
+
+it('separates local and SSH browser storage when directory names coincide', async () => {
+  const ssh = (id: string, host: string): WorkspaceView => ({
+    ...workspace(id, '/canonical', [id as SessionId]), location: { kind: 'ssh', host, path: '/canonical' },
+  })
+  const source = createSnapshotStore(snapshot('ready', [
+    workspace('local', '/canonical', ['local' as SessionId]), ssh('ssh-a', 'alpha'), ssh('ssh-b', 'beta'),
+  ]))
+  const signal = new AbortController().signal
+  const local = await browserWorkspace(source, 'local', signal)
+  const alpha = await browserWorkspace(source, 'ssh-a', signal)
+  const beta = await browserWorkspace(source, 'ssh-b', signal)
+  expect(local).toBe('cwd:/canonical')
+  expect(new Set([local, alpha, beta]).size).toBe(3)
 })
 
 it('waits for an authoritative baseline and removes the readiness subscription', async () => {

@@ -78,7 +78,8 @@
     "@deepseek-ai/dsh-sandbox-ssh": "workspace:*",
     "@deepseek-ai/dsh-lsp": "workspace:*",
     "@deepseek-ai/dsh-lsp-stdio": "workspace:*",
-    "@deepseek-ai/dsh-brand": "workspace:*"
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "typescript": "^6.0.3"
   },
   "scipaper": {
     "kernel": {

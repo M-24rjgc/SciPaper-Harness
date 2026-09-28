@@ -30,7 +30,7 @@ import {
 import {
   signMacOSRuntime,
 } from './macos-runtime.ts'
-import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { primaryRuntimeNodeExecutable, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
 import { removeOwnedBuildDirectory } from './build-cleanup.ts'
@@ -46,6 +46,7 @@ const RUNTIME_ROOT = BUILD_PATHS.runtime
 const PNPM_BUILD_STATE = BUILD_PATHS.dshPnpm
 const PACKAGE_SET_ROOT = BUILD_PATHS.packageSet
 const NODE = join(BUILD_PATHS.electron, process.platform === 'win32' ? 'electron.exe' : 'Electron.app/Contents/MacOS/Electron')
+const PNPM_NODE = primaryRuntimeNodeExecutable(RUNTIME_ROOT, resolveDesktopBuildTarget())
 const PNPM = join(RUNTIME_ROOT, 'pnpm', 'bin', 'pnpm.mjs')
 
 function manifestVersion(path: string, subject: string): string {
@@ -79,7 +80,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
     const userConfig = join(config, 'npmrc')
     mkdirSync(config, { recursive: true })
     writeFileSync(userConfig, '')
-    const child = spawn(NODE, [
+    const child = spawn(PNPM_NODE, [
       '--expose-internals',
       PNPM,
       `--config.registry=${registry}`,
@@ -97,13 +98,13 @@ function runPnpm(args: readonly string[]): Promise<void> {
         NPM_CONFIG_REGISTRY: registry,
         NPM_CONFIG_STORE_DIR: STORE_ROOT,
         NPM_CONFIG_USERCONFIG: userConfig,
-        ...desktopNodeEnvironment(NODE, join(RUNTIME_ROOT, 'bin'), {}),
+        ...desktopNodeEnvironment(PNPM_NODE, join(RUNTIME_ROOT, 'bin'), {}),
         PATH: `${join(RUNTIME_ROOT, 'bin')}${delimiter}${process.env.PATH ?? ''}`,
         XDG_CACHE_HOME: join(PNPM_BUILD_STATE, 'cache'),
         XDG_CONFIG_HOME: config,
         XDG_STATE_HOME: join(PNPM_BUILD_STATE, 'state'),
       },
-      stdio: 'inherit',
+      stdio: ['ignore', 'inherit', 'inherit'],
     })
     child.once('error', reject)
     child.once('close', (code, signal) => {

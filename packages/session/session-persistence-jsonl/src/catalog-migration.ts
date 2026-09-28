@@ -64,6 +64,9 @@ export async function prepareCatalogFacts(
     const header = restored.artifact.header
     if (header.id !== source.header.id || header.createdAt !== source.header.createdAt
       || header.parentSession !== parentId || header.origin !== 'subagent'
+      || (header.execution?.kind ?? 'local') !== (source.header.execution?.kind ?? 'local')
+      || (header.execution?.kind === 'ssh' && source.header.execution?.kind === 'ssh'
+        && header.execution.host !== source.header.execution.host)
       || ['cwd', 'isSeeded', 'delegationDepth', 'agentPreset'].some(key => header[key] !== source.header[key as keyof SessionHeader])) {
       throw new JsonlGenerationSourceChangedError(source.path)
     }

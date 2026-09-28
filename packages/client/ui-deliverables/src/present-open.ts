@@ -59,6 +59,12 @@ function coordinate(value: string | null): number | undefined {
   return value !== null && NUMERIC.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : undefined
 }
 
+function remoteNativeOpenUnavailable(): Response {
+  return new Response('Remote files cannot be opened on the Host desktop.', {
+    status: 422, headers: { 'cache-control': 'no-store' },
+  })
+}
+
 /** Translate lookup and filesystem failures into the not-found or failure status the browser retries from. */
 function failureStatus(error: unknown): number {
   const remote = remoteErrorOf(error)
@@ -115,6 +121,7 @@ async function handlePresentOpen(ctx: Context, request: Request): Promise<Respon
     const { target, session } = read
     const file = target.type === 'deliverables/presented' && isPresentedData(target.data) ? target.data.files[index] : undefined
     if (!isPresentedFile(file)) return new Response('Presented file not found in this Session result.', { status: 404 })
+    if (session.execution?.kind === 'ssh') return remoteNativeOpenUnavailable()
     request.signal.throwIfAborted()
     const { absolutePath: path } = await ctx.workspaceFiles.stat({
       sessionId: id as SessionId,
@@ -178,6 +185,10 @@ async function handleChangesOpen(ctx: Context, request: Request): Promise<Respon
     const workspaceRoot = changes.cwd
     const file = changes.files[index]
     if (file === undefined) return new Response('Changed file not found in this summary.', { status: 404 })
+    const read = await readTarget(ctx, request, id, seq)
+    if (read instanceof Response) return read
+    if (read.target.type !== 'workspace/changes') return new Response('Change announcement unavailable.', { status: 404 })
+    if (read.session.execution?.kind === 'ssh') return remoteNativeOpenUnavailable()
     const { absolutePath: path } = await ctx.workspaceFiles.stat({ sessionId: id, workspaceRoot }, file.path, request.signal)
     return await openVerified(ctx, request, path, action)
   } catch (error: unknown) {

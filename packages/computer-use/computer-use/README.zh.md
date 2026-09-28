@@ -56,7 +56,7 @@ kind: "package-reference"
 
 - [计算机操作](../../../docs/subsystems/computer-use.zh.md) — 提供方选择和共享桌面限制。
 - [Cua Driver MCP 提供方](../../experimental/computer-use-cua-driver-mcp/README.zh.md) — 使用已安装的驱动。
-- [Cua Driver 原生提供方](../../experimental/computer-use-cua-driver-native/README.zh.md) — 使用 npm 运行时。
+- [Cua Driver 原生提供方](../computer-use-cua-driver-native/README.zh.md) — 使用 npm 运行时。
 
 -----
 

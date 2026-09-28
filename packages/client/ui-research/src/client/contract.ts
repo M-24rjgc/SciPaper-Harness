@@ -65,8 +65,36 @@ export interface ResearchFocus {
   claim: ClaimFocus | null
 }
 
-/** Working directory of every listed session, as the sessions service reports it. */
-export type SessionDirectories = Readonly<Record<string, string>>
+/** An SSH session's execution coordinate, kept separate from local research roots. */
+export interface SshSessionDirectory {
+  readonly kind: 'ssh'
+  readonly host: string
+  readonly cwd?: string | undefined
+}
+
+/** Local working directories and SSH coordinates of listed sessions. */
+export type SessionDirectories = Readonly<Record<string, string | SshSessionDirectory>>
+
+/** The session fields needed to build research coordinates from the session list. */
+interface ListedSessionCoordinate {
+  readonly cwd?: string | undefined
+  readonly execution?: { readonly kind: 'local' } | { readonly kind: 'ssh'; readonly host: string } | undefined
+}
+
+/**
+ * Preserve SSH host identity even when its cwd is absent, so a remote session
+ * cannot fall back to a local project's bound session or local path.
+ * @param byId - session summaries keyed by their ids.
+ * @returns local paths and SSH coordinates for research matching.
+ */
+export function sessionDirectoriesOf(byId: Readonly<Record<string, ListedSessionCoordinate>>): SessionDirectories {
+  const directories: Record<string, string | SshSessionDirectory> = {}
+  for (const [id, summary] of Object.entries(byId)) {
+    if (summary.execution?.kind === 'ssh') directories[id] = { kind: 'ssh', host: summary.execution.host, cwd: summary.cwd }
+    else if (summary.cwd !== undefined) directories[id] = summary.cwd
+  }
+  return directories
+}
 
 /**
  * What the host's folder picker answered: a folder, a dismissed chooser, or
@@ -273,6 +301,8 @@ export interface ResearchTreeInjected {
   openWorkspace(workspaceId: WorkspaceId): Promise<void>
   /** ＋ 新对话 (New conversation): the folder's blank conversation, reused or created, opened (`uiWorkspace.startSession`). */
   startSession(workspaceId: WorkspaceId): void
+  /** Register a remote directory as a workspace and return its identity. */
+  createSshWorkspace(host: string, path: string): Promise<WorkspaceId>
   /** Send one research command, as {@link ResearchInjected.run} does. */
   run(request: ResearchCommand): Promise<ResearchResponse>
   /** Create or adopt the research rooted at `request.root`, as {@link ResearchInjected.create} does. */
@@ -326,6 +356,41 @@ export function projectAtPath<T extends { root: string }>(projects: readonly T[]
     .sort((a, b) => b.root.length - a.root.length)[0]
 }
 
+/** Browser-safe POSIX normalization for SSH paths; never interprets them as host paths. */
+function remotePath(path: string | undefined): string | undefined {
+  if (path === undefined || !path.startsWith('/')) return undefined
+  const parts: string[] = []
+  for (const part of path.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return `/${parts.join('/')}`
+}
+
+/** The remote binding fields needed from a research environment. */
+interface RemoteResearchEnvironment {
+  target: string
+  status: string
+  sshHost?: string | undefined
+  remoteRoot?: string | undefined
+}
+
+/** The configured ready SSH environment must identify exactly one local ledger. */
+function remoteSessionProject<T extends { environments?: readonly RemoteResearchEnvironment[] | undefined }>(
+  projects: readonly T[] | undefined, coordinate: SshSessionDirectory,
+): T | undefined {
+  if (coordinate.host === '') return undefined
+  const cwd = remotePath(coordinate.cwd)
+  if (cwd === undefined) return undefined
+  const matching = projects?.filter(project => project.environments?.some((environment) => {
+    if (environment.target !== 'ssh' || environment.status !== 'ready' || environment.sshHost !== coordinate.host) return false
+    const root = remotePath(environment.remoteRoot)
+    return root !== undefined && root !== '/' && (cwd === root || cwd.startsWith(`${root}/`))
+  })) ?? []
+  return matching.length === 1 ? matching[0] : undefined
+}
+
 /**
  * The project a session works in: the one bound to it, else the innermost
  * project whose folder contains the session's working directory — so every
@@ -335,14 +400,37 @@ export function projectAtPath<T extends { root: string }>(projects: readonly T[]
  * @param directories - each listed session's working directory.
  * @returns that session's project, or undefined when it works outside every project.
  */
-export function sessionProject<T extends { sessionId?: string | undefined; root: string }>(
+export function sessionProject<T extends {
+  sessionId?: string | undefined
+  root: string
+  environments?: readonly RemoteResearchEnvironment[] | undefined
+}>(
   projects: readonly T[] | undefined, sessionId: string, directories: SessionDirectories = {},
 ): T | undefined {
+  const cwd = directories[sessionId]
+  if (cwd !== undefined && typeof cwd !== 'string') return remoteSessionProject(projects, cwd)
   const bound = projects?.find(project => project.sessionId === sessionId)
   if (bound) return bound
-  const cwd = directories[sessionId]
   if (cwd === undefined) return undefined
   return projectAtPath(projects, cwd)
+}
+
+/**
+ * Find an exact-root local session that can read a local research ledger from
+ * an SSH research panel, preferring the project's own bound session.
+ * @param project - the local ledger being shown.
+ * @param directories - listed local paths and SSH coordinates.
+ * @returns a local Session id, or undefined when no local file authority is listed.
+ */
+export function localResearchFileSession(
+  project: { root: string; sessionId?: string | undefined }, directories: SessionDirectories,
+): string | undefined {
+  const atRoot = (id: string): boolean => {
+    const cwd = directories[id]
+    return typeof cwd === 'string' && comparable(cwd) === comparable(project.root)
+  }
+  if (project.sessionId !== undefined && atRoot(project.sessionId)) return project.sessionId
+  return Object.keys(directories).find(atRoot)
 }
 
 /**

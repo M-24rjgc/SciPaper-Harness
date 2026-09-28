@@ -13,13 +13,14 @@ import { canonicalPath } from './drafts.ts'
 import { errorText, isAttachment, isExampleRoot, isInside, sameDirectory } from './files.ts'
 import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
+import { remoteResearchAt } from './session-project.ts'
 import { autonomies, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
 import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchResponse, ResearchStanding } from './types.ts'
 
 const text = (description: string) => ({ type: 'string' as const, description })
 const list = (description: string) => ({ type: 'array' as const, items: { type: 'string' as const }, description })
 const json = (description: string) => ({ type: 'json' as const, description })
-const projectId = text('Optional; defaults to the research project containing your working directory.')
+const projectId = text('Optional; defaults to the research linked to this conversation’s workspace.')
 const output = { schema: { type: 'json' as const }, render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }] }
 
 /** Independently selectable tool families, sharing the same project ledger. */
@@ -266,6 +267,8 @@ export interface BriefContext {
   goals?: ResearchGoal[] | undefined
   /** The conversation reading the brief. */
   sessionId?: string | undefined
+  /** The SSH execution directory, distinct from the local research ledger. */
+  execution?: { readonly host: string; readonly path: string } | undefined
 }
 
 /**
@@ -289,6 +292,10 @@ export function projectBrief(project: ResearchProject, mode: ResolvedMode, stand
       : [],
     ...modeGuide(project, mode, standing),
     ...goalGuide(goal, live.sessionId),
+    ...live.execution === undefined ? [] : [
+      'This conversation executes in the SSH workspace. The research ledger and research tool file actions use the local research root; '
+      + 'ordinary workspace file and terminal tools use the SSH directory. A remote path is not a local research artifact.',
+    ],
     project.autonomy === 'checkpoints'
       ? 'Autonomy checkpoints: at key decisions (the mode or route when you chose it, the research question, before running experiments, before the final export, a material method change, results that contradict the hypothesis) ask with ask_user_question, then record-decision with the answer and decidedBy user.'
       : 'Autonomy automatic: make those decisions yourself, record-decision with your rationale, and keep going; ask only when genuinely blocked.',
@@ -296,6 +303,10 @@ export function projectBrief(project: ResearchProject, mode: ResolvedMode, stand
   ]
   return JSON.parse(JSON.stringify({
     id: project.id, title: project.title, ...project.untitled === true ? { untitled: true } : {}, root: project.root, brief: project.brief,
+    ...live.execution === undefined ? {} : { coordinates: {
+      ledger: { kind: 'local', path: project.root },
+      execution: { kind: 'ssh', host: live.execution.host, path: live.execution.path },
+    } },
     ...example ? { example: true } : {},
     mode: mode.pack.id, route: mode.route ?? null, modeReason: project.modeReason ?? null, venue: project.venue ?? null,
     modeChosen: project.modeSetBy !== undefined, modeSetBy: project.modeSetBy ?? null, routingSettled: routingSettled(project),
@@ -348,11 +359,38 @@ function compact(response: ResearchResponse): JsonValue {
 const START_ELSEWHERE = 'to work in another folder, ask the user to start a research with 新研究 (New research) and choose its folder with 更改位置 (Change location)'
 const NO_FOLDER = `This conversation has no working folder, so it belongs to no research; ${START_ELSEWHERE}`
 
+/** Remote workspace paths must never be silently read as local research files. */
+async function rejectRemoteFilePaths(action: string, fields: Readonly<Record<string, unknown>>, exec: ToolExecution): Promise<void> {
+  if (exec.agent?.session.header.execution?.kind !== 'ssh') return
+  const localPaths = ['path', 'story', 'papers', 'names', 'output', 'references'].flatMap((key) => {
+    const value = fields[key]
+    return Array.isArray(value) ? value as unknown[] : [value]
+  })
+  const imports = Array.isArray(fields.paths) ? fields.paths : []
+  for (const value of imports) {
+    if (typeof value !== 'string' || !value.startsWith('/')) continue
+    if ((action === 'import' || action === 'import-template') && await isAttachment(value)) continue
+    localPaths.push(value)
+  }
+  if (localPaths.some(path => typeof path === 'string' && path.startsWith('/'))) {
+    throw new Error('Research file paths in an SSH conversation refer to the local research ledger; use project-relative paths, not absolute remote paths')
+  }
+}
+
 /** The project a call acts on: its explicit id (which must contain the session's directory) or the directory's own project. */
 async function projectFor(service: ResearchWorkbench, id: unknown, exec: ToolExecution): Promise<ResearchProject> {
-  const cwd = exec.agent?.session.header.cwd
-  if (cwd === undefined) throw new Error(NO_FOLDER)
-  const here = await service.projectAt(cwd)
+  const session = exec.agent?.session
+  const cwd = session?.header.cwd
+  if (session === undefined || cwd === undefined) throw new Error(NO_FOLDER)
+  let here: ResearchProject | undefined
+  if (session.header.execution?.kind === 'ssh') {
+    const match = remoteResearchAt(service.projects(), session.header)
+    if (match.kind === 'ambiguous') throw new Error('Multiple research projects bind this SSH directory; choose a unique SSH environment remoteRoot')
+    if (match.kind === 'none') throw new Error('No local research is linked to this SSH directory. Configure a ready SSH research environment with this host and remoteRoot in the local research project')
+    here = match.project
+  } else {
+    here = await service.projectAt(cwd)
+  }
   if (typeof id === 'string' && id) {
     const project = service.getProject(id as ProjectId)
     if (here?.id !== project.id) throw new Error('The tool session does not belong to this research project')
@@ -445,11 +483,20 @@ export function registerResearchTools(
       if (args.action === 'modes') return modeCatalog(service.modes)
       const sessionId = exec.agent?.session.id
       const brief = async (project: ResearchProject): Promise<JsonValue> => projectBrief(
-        project, service.modes.resolve(project), await service.standing(project), { goals: service.activeGoals(project), sessionId },
+        project, service.modes.resolve(project), await service.standing(project), {
+          goals: service.activeGoals(project), sessionId,
+          ...(exec.agent?.session.header.execution?.kind === 'ssh' && exec.agent.session.header.cwd !== undefined
+            ? { execution: { host: exec.agent.session.header.execution.host, path: exec.agent.session.header.cwd } }
+            : {}),
+        },
       )
       if (args.action === 'create') {
-        const cwd = exec.agent?.session.header.cwd
-        if (cwd === undefined) throw new Error(NO_FOLDER)
+        const session = exec.agent?.session
+        const cwd = session?.header.cwd
+        if (session === undefined || cwd === undefined) throw new Error(NO_FOLDER)
+        if (session.header.execution?.kind === 'ssh') {
+          throw new Error('Create the research in a local workspace; an SSH directory cannot become a local research ledger')
+        }
         if (args.root !== undefined && !sameDirectory(args.root, cwd)) {
           throw new Error(`create makes only this conversation's folder (${cwd}) a research, never ${args.root}; ${START_ELSEWHERE}`)
         }
@@ -518,6 +565,7 @@ export function registerResearchTools(
     async execute(args, exec) {
       const { action, projectId: requested, ...fields } = args as Record<string, unknown> & { action: string }
       const project = await projectFor(service, requested, exec)
+      await rejectRemoteFilePaths(action, fields, exec)
       const request = commandSchema.parse({ ...fields, action, projectId: project.id }) as ResearchCommand
       if (request.action === 'complete-visual-review' && exec.agent?.session.id !== request.sessionId) {
         throw new Error('Only the assigned visual-review session can record these findings')

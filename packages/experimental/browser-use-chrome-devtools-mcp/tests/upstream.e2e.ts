@@ -1,5 +1,5 @@
 import { it } from 'vitest'
-import { verifyMcpBrowser } from '../../browser-use-runtime/tests/mcp-upstream.ts'
+import { verifyMcpBrowser } from '../../../browser-use/browser-use-runtime/tests/mcp-upstream.ts'
 import * as Provider from '../src/index.ts'
 
 it.skipIf(process.env.DSH_BROWSER_EXECUTABLE === undefined).each(['launch', 'attach'] as const)(

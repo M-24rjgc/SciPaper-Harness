@@ -377,6 +377,9 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       },
     },
     async execute(args, exec): Promise<RunCodeOutput> {
+      if (exec.agent?.session.header.execution?.kind === 'ssh') {
+        throw new Error('run_code is unavailable in SSH Sessions; use remote native tools')
+      }
       if (args.description.trim().length === 0) {
         throw new Error('invalid description: expected a non-empty string')
       }

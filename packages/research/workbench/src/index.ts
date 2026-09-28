@@ -41,6 +41,7 @@ import {
   projectPath, readText, sameDirectory, truncateBytes, writeNew,
 } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
+import { remoteResearchAt } from './session-project.ts'
 import {
   blankRecord, canonicalPath, DRAFT_TITLE, holdsFiles, nextDraftRoot, onlyScaffold, removeEmptyScaffold, resolveResearchHome, SCAFFOLD,
 } from './drafts.ts'
@@ -152,12 +153,22 @@ function conversationsOf(
   projects: readonly ResearchProject[],
   sessions: readonly SessionSummary[],
 ): SessionSummary[] {
-  const inside = (cwd: string | undefined): boolean => cwd !== undefined && innermost(projects, cwd)?.id === project.id
-  return sessions.filter(session => session.sessionId === project.sessionId || inside(session.cwd))
+  return sessions.filter((session) => {
+    if (session.execution?.kind === 'ssh') {
+      const match = remoteResearchAt(projects, session)
+      return match.kind === 'project' && match.project.id === project.id
+    }
+    return session.sessionId === project.sessionId
+      || (session.cwd !== undefined && innermost(projects, session.cwd)?.id === project.id)
+  })
 }
 
 /** The research a live session belongs to: the one bound to it, else the innermost one containing its working directory. */
 function researchOf(session: Session, projects: readonly ResearchProject[]): ResearchProject | undefined {
+  if (session.header.execution?.kind === 'ssh') {
+    const match = remoteResearchAt(projects, session.header)
+    return match.kind === 'project' ? match.project : undefined
+  }
   const bound = projects.find(project => project.sessionId === session.id)
   if (bound !== undefined) return bound
   const { cwd } = session.header
@@ -648,7 +659,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     const goals: ResearchGoal[] = []
     for (const agent of this.ctx.agents.list()) {
       const { cwd, origin } = agent.session.header
-      if (cwd === undefined || origin === 'subagent' || innermost(all, cwd)?.id !== project.id) continue
+      if (cwd === undefined || origin === 'subagent' || researchOf(agent.session, all)?.id !== project.id) continue
       let goal: GoalView | undefined
       // A goal log that no longer replays, or an agent unloaded since the listing, holds no goal to continue.
       try { goal = this.ctx.goals.get(agent) } catch { continue }

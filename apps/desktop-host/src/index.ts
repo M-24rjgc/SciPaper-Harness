@@ -14,11 +14,14 @@ import { installDesktopUpdateTaskControl } from './update-tasks.ts'
 import { installDesktopQuitInspection } from './quit-inspection.ts'
 import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
+import { DesktopBrowserChannel, authorizedStorageKey } from './browser-control.ts'
+import * as desktopBrowserControl from './browser-control.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
   const projectDir = process.argv[3] as string
   const officeEngine = installOfficeEngineResolution(runtimeDir)
+  const browserChannel = new DesktopBrowserChannel()
   const installAnchor = join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
@@ -44,15 +47,17 @@ async function main(): Promise<void> {
   const control: {
     updateTasks?: ReturnType<typeof installDesktopUpdateTaskControl>
     quitInspection?: ReturnType<typeof installDesktopQuitInspection>
+    browserStorageKey?: (sessionId: string) => Promise<string>
   } = {}
   const send = (message: object): Promise<void> => new Promise((resolve, reject) => {
     if (!process.connected || process.send === undefined) { resolve(); return }
-    process.send(message, (error) => { if (error === null) resolve(); else reject(error) })
+    process.send(message, (error) => { if (error == null) resolve(); else reject(error) })
   })
   const stop = (): Promise<void> => stopping ??= (async () => {
     // Startup failure is reported by main; shutdown only owns a tree that booted.
     const running = await application.catch(() => undefined)
     await running?.shutdown.shutdown(0)
+    browserChannel.dispose()
     officeEngine?.deregister()
     await send({ type: 'shutdown-complete' })
     if (process.connected) process.disconnect()
@@ -76,6 +81,25 @@ async function main(): Promise<void> {
       })().catch((error: unknown) => { console.error(error) })
       return
     }
+    if (message.type === 'browser-authorize') {
+      if (!('requestId' in message) || !Number.isSafeInteger(message.requestId)
+        || !('sessionId' in message) || typeof message.sessionId !== 'string') return
+      const requestId = message.requestId
+      const sessionId = message.sessionId
+      void (async () => {
+        try {
+          if (stopping !== undefined || control.browserStorageKey === undefined) {
+            throw new Error('desktop browser: Host is unavailable')
+          }
+          const storageKey = await control.browserStorageKey(sessionId)
+          await send({ type: 'browser-authorize', requestId, storageKey })
+        } catch (error) {
+          await send({ type: 'browser-authorize', requestId,
+            error: error instanceof Error ? error.message : String(error) })
+        }
+      })().catch((error: unknown) => { console.error(error) })
+      return
+    }
     if (message.type !== 'update-tasks' || !('requestId' in message) || !Number.isSafeInteger(message.requestId)
       || !('action' in message) || !['inspect', 'lock', 'unlock'].includes(String(message.action))) return
     void (async () => {
@@ -93,10 +117,14 @@ async function main(): Promise<void> {
   const { ctx } = await application
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
+  control.browserStorageKey = sessionId => authorizedStorageKey(ctx, sessionId)
   await ctx.plugin(desktopOffice, {
     runtimeDir,
     source: process.argv[4] ?? join(runtimeDir, '..', 'runtime', 'primary-runtime'),
     root: join(resolveDshHome(), 'dsh-runtimes', 'dsh-primary-runtime'),
+  })
+  await ctx.plugin(desktopBrowserControl, {
+    request: (operation, signal) => browserChannel.request(operation, signal),
   })
   installPlatformSessionPublisher(ctx, (session) => {
     if (process.connected) process.send?.({ type: 'platform-session', session })

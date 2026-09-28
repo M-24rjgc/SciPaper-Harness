@@ -6,7 +6,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { BrowserUseProviderName } from '@deepseek-ai/dsh-browser-use/brand'
-import { SessionResources } from '@deepseek-ai/dsh-experimental-browser-use-runtime'
+import { SessionResources } from '@deepseek-ai/dsh-browser-use-runtime'
 import { createMcpToolDefinition } from '@deepseek-ai/dsh-mcp-client'
 import { z } from 'zod'
 import { browserInputs, stagehandModelSchema, StagehandDrainError } from './native.ts'

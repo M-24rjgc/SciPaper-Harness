@@ -545,6 +545,7 @@ export class SessionManager {
         sessionId: childId, updatedAt: Date.now(), running: false, blank: true,
         parentSessionId: opts.sessionId,
         ...(source?.cwd !== undefined ? { cwd: source.cwd } : {}),
+        ...(source?.execution !== undefined ? { execution: source.execution } : {}),
       } })
     }
     return result
@@ -773,6 +774,8 @@ export class SessionManager {
         prev !== undefined && prev.updatedAt === entry.updatedAt && prev.running === entry.running
         && prev.blank === entry.blank
         && prev.parentSessionId === entry.parentSessionId && prev.cwd === entry.cwd
+        && prev.execution?.kind === entry.execution?.kind
+        && (prev.execution?.kind !== 'ssh' || (entry.execution?.kind === 'ssh' && prev.execution.host === entry.execution.host))
         && prev.origin === entry.origin && prev.title === entry.title && prev.depth === entry.depth
         && prev.projectionValues === entry.projectionValues
       ) return prev
@@ -815,12 +818,14 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
           running: mutation.summary.running,
         } : {}),
         ...(existing.cwd === undefined && mutation.summary.cwd !== undefined ? { cwd: mutation.summary.cwd } : {}),
+        ...(existing.execution === undefined && mutation.summary.execution !== undefined ? { execution: mutation.summary.execution } : {}),
         ...(existing.parentSessionId === undefined && mutation.summary.parentSessionId !== undefined
           ? { parentSessionId: mutation.summary.parentSessionId } : {}),
         ...(existing.origin === undefined && mutation.summary.origin !== undefined
           ? { origin: mutation.summary.origin } : {}),
       }
       if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
+        && filled.execution === existing.execution
         && filled.origin === existing.origin && filled.blank === existing.blank
         && filled.agentAvailable === existing.agentAvailable && filled.running === existing.running
       ) return [...summaries]

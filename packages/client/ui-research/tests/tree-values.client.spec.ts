@@ -20,11 +20,11 @@ function research(title: string, root: string, workspaceId: string, extra: Parti
 }
 
 function session(id: string, cwd: string | undefined, extra: Partial<SessionSummary> = {}): SessionSummary {
-  return { id: id as SessionId, displayTitle: `title ${id}`, ...(cwd === undefined ? {} : { cwd }), running: false, retainedBy: {}, blank: false, updatedAt: 1000, ...extra }
+  return { id: id as SessionId, displayTitle: `title ${id}`, ...(cwd === undefined ? {} : { cwd }), execution: { kind: 'local' }, running: false, retainedBy: {}, blank: false, updatedAt: 1000, ...extra }
 }
 
 function workspace(id: string, path: string, sessionIds: string[], title = path): WorkspaceView {
-  return { workspaceId: id as WorkspaceId, path, title, sessionIds: sessionIds as SessionId[], createdAt: EARLY, updatedAt: EARLY }
+  return { workspaceId: id as WorkspaceId, path, location: { kind: 'local', path }, title, sessionIds: sessionIds as SessionId[], createdAt: EARLY, updatedAt: EARLY }
 }
 
 function sources(parts: {
@@ -69,6 +69,36 @@ describe('which conversation belongs where', () => {
     ],
   })
   const nested = workspace('w-nested', 'C:\\Research\\sparse\\paper', ['s-nested'])
+
+  it('keeps an SSH folder separate from a local research with the same path', () => {
+    const local = research('Local', '/work/project', 'local-workspace')
+    const remote = { ...workspace('remote-workspace', '/work/project', ['remote-session'], 'Project'),
+      location: { kind: 'ssh' as const, host: 'lab', path: '/work/project' } }
+    const model = deriveTree(sources({
+      projects: [local],
+      sessions: [session('remote-session', '/work/project', { execution: { kind: 'ssh', host: 'lab' } })],
+      workspaces: [workspace('local-workspace', '/work/project', []), remote],
+    }))
+    expect(model.own[0]?.conversations).toHaveLength(0)
+    expect(model.folders).toMatchObject([{ workspaceId: 'remote-workspace', conversations: [{ id: 'remote-session' }] }])
+  })
+
+  it('places an SSH conversation under the one local ledger that declares its remote root', () => {
+    const local = research('Local ledger', 'C:\\Research\\paper', 'local-workspace')
+    local.environments.push({
+      id: 'environment-ssh' as never, name: 'Lab', kind: 'existing', target: 'ssh', python: 'python3',
+      sshHost: 'lab', remoteRoot: '/work/paper', requirements: [], fingerprint: 'remote', status: 'ready', details: '', isDefault: true,
+    })
+    const remote = { ...workspace('remote-workspace', '/work/paper', ['remote-session'], 'Project'),
+      location: { kind: 'ssh' as const, host: 'lab', path: '/work/paper' } }
+    const model = deriveTree(sources({
+      projects: [local], current: 'remote-session',
+      sessions: [session('remote-session', '/work/paper/code', { execution: { kind: 'ssh', host: 'lab' } })],
+      workspaces: [workspace('local-workspace', local.root, []), remote],
+    }))
+    expect(model.own[0]).toMatchObject({ current: true, conversations: [{ id: 'remote-session' }] })
+    expect(model.folders).toMatchObject([{ workspaceId: 'remote-workspace', conversations: [] }])
+  })
 
   it('puts each conversation under its research, a folder without one, or no folder, and hides children, reviewers, archived and idle blank ones', () => {
     const model = deriveTree(sources({

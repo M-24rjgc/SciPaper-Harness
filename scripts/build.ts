@@ -1,7 +1,7 @@
 /** Run the complete repository build and bind its client artifacts to their public environment. */
 
 import { spawnSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { unlinkSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
@@ -40,7 +40,9 @@ function main(): void {
   const clientEnvironment = resolveClientBuildEnvironment(repositoryEnvironment, profile)
   const buildEnvironment = clientBuildProcessEnvironment(process.env, clientEnvironment)
 
-  rmSync(resolve(root, CLIENT_BUILD_RECORD_PATH), { force: true })
+  try { unlinkSync(resolve(root, CLIENT_BUILD_RECORD_PATH)) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
   runScript('build:native-system', buildEnvironment)
   runScript('build:lib', buildEnvironment)
   runScript('build:web', buildEnvironment)

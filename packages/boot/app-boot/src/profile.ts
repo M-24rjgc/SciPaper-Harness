@@ -218,6 +218,10 @@ export const OPTIONAL_BUNDLES: readonly string[] = [
   '@deepseek-ai/dsh-experimental-agent-team-profile',
   '@deepseek-ai/dsh-experimental-voice-input-bundle',
   '@deepseek-ai/dsh-experimental-auto-review',
+  '@deepseek-ai/dsh-computer-use-cua-bundle',
+  '@deepseek-ai/dsh-ssh-remote-bundle',
+  '@deepseek-ai/dsh-web-search-exa-bundle',
+  '@deepseek-ai/dsh-web-search-perplexity-bundle',
 ]
 
 const PROFILE_PATCH_TEMPLATE = `# Your patch layer for this dsh profile, applied after every bundle layer:

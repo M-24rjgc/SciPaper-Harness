@@ -1,9 +1,11 @@
-import { join, sep } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   desktopTargetBuildPaths,
   desktopTargetPlatform,
+  desktopUnsignedArtifactDirectory,
   developmentRuntimeDirectory,
+  primaryRuntimeNodeExecutable,
   resolveDesktopBuildTarget,
 } from '../scripts/desktop-build-paths.mjs'
 
@@ -48,6 +50,34 @@ describe('desktop build paths', () => {
       .toContain(join('targets', 'mac-x64', 'runtime', 'primary-runtime'))
     expect(developmentRuntimeDirectory({}, 'win32', 'arm64'))
       .toContain(join('targets', 'win-x64', 'runtime', 'primary-runtime'))
+  })
+
+  it('uses the bundled Node executable for package preparation on each release target', () => {
+    const runtime = join('build', 'runtime')
+    expect(primaryRuntimeNodeExecutable(runtime, 'win-x64'))
+      .toBe(join(runtime, 'primary-runtime', 'dependencies', 'node', 'bin', 'node.exe'))
+    expect(primaryRuntimeNodeExecutable(runtime, 'mac-arm64'))
+      .toBe(join(runtime, 'primary-runtime', 'dependencies', 'node', 'bin', 'node'))
+    expect(primaryRuntimeNodeExecutable(runtime, 'mac-x64'))
+      .toBe(join(runtime, 'primary-runtime', 'dependencies', 'node', 'bin', 'node'))
+  })
+
+  it('isolates unsigned output under a short build-owned path', () => {
+    const paths = desktopTargetBuildPaths('win-x64')
+    const root = paths.unsignedRuns
+    const one = desktopUnsignedArtifactDirectory(root, '2026-09-28T09-13-11.363Z-ceWnHb')
+    expect(dirname(one)).toBe(root)
+    expect(basename(one)).toMatch(/^[0-9a-f]{16}$/u)
+    expect(one).toBe(desktopUnsignedArtifactDirectory(root, '2026-09-28T09-13-11.363Z-ceWnHb'))
+    expect(one).not.toBe(desktopUnsignedArtifactDirectory(root, '2026-09-28T09-13-11.363Z-different'))
+    expect(one.length).toBeLessThan(join(paths.unsignedArtifacts, 'runs', '2026-09-28T09-13-11.363Z-ceWnHb').length)
+    if (process.platform === 'win32') {
+      expect(join(one, 'win-unpacked', 'resources', 'app.asar.unpacked', 'dsh', 'node_modules', '@trycua',
+        'cua-driver-win32-x64-msvc', 'cua_driver_node_runtime.node').length).toBeLessThan(260)
+    }
+    for (const id of ['..', '../old', 'run\\old', 'CON', '']) {
+      expect(() => desktopUnsignedArtifactDirectory(root, id)).toThrow(/invalid unsigned run id/u)
+    }
   })
 
   it('maps every target to the platform and architecture of the payload it prepares', () => {

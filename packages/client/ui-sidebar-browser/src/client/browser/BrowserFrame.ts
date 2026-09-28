@@ -29,6 +29,8 @@ export interface BrowserSandboxControl {
 /** Navigation owns page lifetime; mounting and hiding belong to BrowserPresentation. */
 export interface BrowserFrame extends HostObservable<BrowserFrameState> {
   readonly sandbox?: BrowserSandboxControl
+  /** Clear the provider's saved website data for this workspace, when supported. */
+  clearWorkspaceData?(): Promise<void>
   /** @param target - validated HTTP(S) address; loading failures are published in state. */
   loadUrl(target: BrowserTarget): void
   /** Move backward when the provider reports an available entry. */

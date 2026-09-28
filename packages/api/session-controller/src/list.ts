@@ -332,10 +332,12 @@ function listFields(header: SessionHeader): {
   readonly parentSessionId?: SessionId
   readonly origin?: 'subagent'
   readonly cwd?: string
+  readonly execution?: SessionHeader['execution']
 } {
   return {
     ...(header.parentSession === undefined ? {} : { parentSessionId: header.parentSession }),
     ...(header.origin === undefined ? {} : { origin: header.origin }),
     ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
+    execution: header.execution ?? { kind: 'local' },
   }
 }

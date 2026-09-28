@@ -108,7 +108,7 @@ interface Typing {
 export function ResearchFolderMenu(props: FolderMenuProps): ReactNode {
   const { t, onPick, onClose, anchorRef } = props
   const current = props.useCurrentSession(state => state)
-  const cwd = props.useSessions(state => current === undefined ? undefined : state.byId[current]?.cwd)
+  const session = props.useSessions(state => current === undefined ? undefined : state.byId[current])
   const registered = props.useWorkspaces(state => state.items)
   const snapshot = props.useResearch(state => state.snapshot)
   const directories = props.useDirectories(state => state)
@@ -126,7 +126,7 @@ export function ResearchFolderMenu(props: FolderMenuProps): ReactNode {
 
   const projects = snapshot?.projects ?? []
   const project = current === undefined ? undefined : sessionProject(projects, current, directories)
-  const path = project?.root ?? cwd
+  const path = project?.root ?? (session?.execution?.kind !== 'ssh' ? session?.cwd : undefined)
 
   const moveTo = (request: MoveRequest, carry: CarryDraft): void => {
     setOutcome(null)

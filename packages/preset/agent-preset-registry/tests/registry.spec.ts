@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import { assembleContextFor } from '@deepseek-ai/dsh-agent'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import { entryListProblem, livePresetMounts } from '../src/index.ts'
 import { currentKey, harness, declare, contribution, agentOn, liveRegistries, plugin } from './harness.ts'
 import { omitsGeneratedPage } from '../../../settings/settings/tests/live-config.ts'
@@ -108,6 +109,37 @@ describe('declarative preset revisions', () => {
     expect(ctx.sessionProjections.stateOf(agent.session, 'agentPreset')).toBe('minimal')
     agent.session.append('turn/start', { turn: 1 })
     await expect(ctx.agentPresets.select(agent, 'standard')).rejects.toThrow('already started')
+  })
+
+  it('keeps a blank SSH session bound to its original remote preset', async () => {
+    const ctx = await setup()
+    await declare(ctx, contribution('standard'))
+    await declare(ctx, contribution('ssh-workspace'))
+    const agent = (await ctx.agents.create({
+      sessionId: SessionId('remote-selection'),
+      meta: {
+        cwd: '/srv/research', execution: { kind: 'ssh', host: 'lab' }, agentPreset: 'ssh-workspace',
+      },
+      setup: async (agentCtx) => { await ctx.agentPresets.mount(agentCtx, 'ssh-workspace') },
+    })).agent
+    await expect(ctx.agentPresets.select(agent, 'standard')).rejects.toThrow('SSH workspace preset is fixed')
+    expect(ctx.agentPresets.composedPreset(agent.ctx)).toBe('ssh-workspace')
+    expect(ctx.sessionProjections.stateOf(agent.session, 'agentPreset')).toBe('ssh-workspace')
+    expect(await ctx.agentPresets.select(agent, 'ssh-workspace')).toBe('ssh-workspace')
+    expect(ctx.agentPresets.composedPreset(agent.ctx)).toBe('ssh-workspace')
+  })
+
+  it('does not switch a local session into a registered SSH preset', async () => {
+    const ctx = await setup()
+    await declare(ctx, contribution('standard'))
+    await declare(ctx, contribution('ssh-workspace'))
+    ctx.effect(() => ctx.reflect.provide('remoteWorkspacePresets', {
+      isRemotePreset: (id: string) => id === 'ssh-workspace',
+    }))
+    const agent = await agentOn(ctx, 'local-selection')
+    await expect(ctx.agentPresets.select(agent, 'ssh-workspace')).rejects.toThrow('cannot be used by a local session')
+    expect(ctx.agentPresets.composedPreset(agent.ctx)).toBe('standard')
+    expect(ctx.sessionProjections.stateOf(agent.session, 'agentPreset')).toBeNull()
   })
 
   it('inventories active and disabled child entries and declared display metadata', async () => {

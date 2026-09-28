@@ -37,6 +37,8 @@ const USER_AGENT = 'scipaper-harness (+https://github.com/M-24rjgc/SciPaper-Harn
 export interface PerplexitySearchProviderOptions {
   /** Perplexity API key. Empty/absent makes the provider unavailable. */
   apiKey: string
+  /** Resolve a managed credential for each request when no literal or environment key was supplied. */
+  resolveApiKey?: () => Promise<string | undefined>
   /** Endpoint base; `/chat/completions` is appended. */
   baseURL: string
   /** Search model name. */
@@ -92,20 +94,24 @@ export class PerplexitySearchProvider implements WebSearchProvider {
   // a shared base class would obscure which fields make this backend usable.
   /* jscpd:ignore-start */
   available(): boolean {
-    return this.options.apiKey.length > 0
+    return (this.options.apiKey.length > 0 || this.options.resolveApiKey !== undefined)
       && URL.canParse(this.options.baseURL)
       && isPositiveInteger(this.options.maxTokens)
   }
   /* jscpd:ignore-end */
 
   async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
+    const apiKey = this.options.apiKey || await this.options.resolveApiKey?.() || ''
+    if (apiKey.length === 0) {
+      throw new WebError('Perplexity search requires PERPLEXITY_API_KEY', 'WEB_PROVIDER_CREDENTIAL_MISSING')
+    }
     let response: Response
     try {
       response = await fetch(`${this.options.baseURL}/chat/completions`, {
         method: 'POST',
         redirect: 'error',
         headers: {
-          'authorization': `Bearer ${this.options.apiKey}`,
+          'authorization': `Bearer ${apiKey}`,
           'content-type': 'application/json',
           'accept': 'application/json',
           'user-agent': USER_AGENT,

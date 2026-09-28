@@ -186,7 +186,9 @@ export class OfficeToPdf extends TypertRemoteService {
       }
       const files = this.ctx.get('workspaceFiles')
       const fs = this.ctx.get('fs')
-      if (files === undefined || fs === undefined) throw new OfficeToPdfError('unavailable', 'Office file rendering requires workspaceFiles and fs.')
+      if (files === undefined || (scope.execution?.kind !== 'ssh' && fs === undefined)) {
+        throw new OfficeToPdfError('unavailable', 'Office file rendering requires workspaceFiles and a local filesystem for local Sessions.')
+      }
       const authorized = await files.readBytes(scope, path, { range: { offset: 0, length: 1 } }, signal)
       const source = await files.stat(scope, path, signal)
       const assertUnchanged = (current: WorkspaceFileStat): void => {
@@ -197,9 +199,53 @@ export class OfficeToPdf extends TypertRemoteService {
       assertUnchanged(authorized)
       signal.throwIfAborted()
       const result = await this.convert({ extension, priority, source: {
-        key: brandString<OfficeSourceKey>(JSON.stringify([scope.sessionId, scope.workspaceRoot, source.absolutePath])),
+        key: brandString<OfficeSourceKey>(JSON.stringify([scope.sessionId, scope.execution, scope.workspaceRoot, source.absolutePath])),
         version: source.version, ...(source.bytes === undefined ? {} : { bytes: source.bytes }),
         read: async (upstream, maxBytes) => {
+          if (scope.execution?.kind === 'ssh') {
+            const chunks: Uint8Array[] = []
+            let offset = 0
+            let chunkLimit = 1024 * 1024
+            while (true) {
+              upstream.throwIfAborted()
+              const length = Math.max(1, Math.min(chunkLimit, maxBytes - offset))
+              let window: Awaited<ReturnType<typeof files.readBytes>>
+              try {
+                window = await files.readBytes(scope, path, { range: { offset, length } }, upstream)
+              } catch (cause) {
+                if (typeof cause === 'object' && cause !== null && 'code' in cause
+                  && cause.code === 'workspace-file/too-large' && length > 1) {
+                  chunkLimit = Math.max(1, Math.floor(length / 2))
+                  continue
+                }
+                throw cause
+              }
+              assertUnchanged(window)
+              if (window.offset !== offset || window.data.byteLength > length || window.data.byteLength === 0 && !window.eof) {
+                throw new OfficeToPdfError('source-changed', 'The Office source returned an incomplete byte window.')
+              }
+              if (source.bytes !== undefined && window.bytes !== source.bytes) {
+                throw new OfficeToPdfError('source-changed', 'The Office source size changed.')
+              }
+              if (offset + window.data.byteLength > maxBytes) {
+                assertUnchanged(await files.stat(scope, path, upstream))
+                throw new OfficeToPdfError('input-too-large', 'The Office source exceeds its reserved read capacity.')
+              }
+              chunks.push(window.data)
+              offset += window.data.byteLength
+              if (window.eof) break
+            }
+            const after = await files.stat(scope, path, upstream)
+            assertUnchanged(after)
+            if (source.bytes !== undefined && offset !== source.bytes) {
+              throw new OfficeToPdfError('source-changed', 'The Office source size changed.')
+            }
+            const bytes = new Uint8Array(offset)
+            let cursor = 0
+            for (const chunk of chunks) { bytes.set(chunk, cursor); cursor += chunk.byteLength }
+            return { bytes, version: source.version }
+          }
+          if (fs === undefined) throw new OfficeToPdfError('unavailable', 'The local filesystem is unavailable.')
           const target = await fs.resolve(source.absolutePath, { signal: upstream })
           const info = await fs.stat(target, upstream)
           if (info === undefined || info.type !== 'file') throw new OfficeToPdfError('source-changed', 'The source changed.')

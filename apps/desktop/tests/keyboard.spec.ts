@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { EventEmitter } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { afterEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { BrowserWindow, WebContents, WebFrameMain } from 'electron'
 import type { DesktopShortcutInput, ShortcutBinding, ShortcutCommandId, ShortcutConfigSnapshot,
@@ -58,7 +58,7 @@ const installFixture = installDesktopShortcuts as (
   overlayInput: (window: WindowFixture) => { readonly revision: number; readonly blocked: boolean },
 ) => KeyboardFixture
 type GuestsFixture = {
-  acquire(owner: ContentsFixture, workspace: unknown): DesktopBrowserReservation
+  acquire(owner: ContentsFixture, workspace: unknown, sessionId: unknown): DesktopBrowserReservation
   release(owner: ContentsFixture, id: unknown): Promise<void>
   bind(window: WindowFixture, attachInput: (guest: ContentsFixture, name: DesktopBrowserLeaseId) => () => void): void
 }
@@ -79,7 +79,13 @@ function browserGuest(reservation: DesktopBrowserReservation) {
 
 async function fixture(platform: 'macos' | 'windows' | 'linux' = 'macos') {
   const root = await mkdtemp(join(tmpdir(), 'dsh-keyboard-'))
-  onTestFinished(async () => { await rm(root, { recursive: true, force: true }) })
+  onTestFinished(async () => {
+    const target = await realpath(root)
+    if (dirname(target) !== await realpath(tmpdir()) || !basename(target).startsWith('dsh-keyboard-')) {
+      throw new Error('Keyboard fixture cleanup target is outside its temporary directory')
+    }
+    await rm(target, { recursive: true })
+  })
   const frame: FrameFixture = { url: 'dsh-app://app/', name: '', parent: null }
   const contents = Object.assign(new EventEmitter(), { mainFrame: frame, focusedFrame: frame,
     isDestroyed: () => false, isFocused: () => true, send: vi.fn(),
@@ -200,7 +206,7 @@ it.each([false, true])('blocks approved browser guest input across update overla
   ])
   const guests = new DesktopBrowserGuests(() => undefined) as GuestsFixture
   guests.bind(f.window, (guest, name) => f.keyboard.attachGuest(f.window, guest, name))
-  const reservation = guests.acquire(f.contents, 'session:test')
+  const reservation = guests.acquire(f.contents, 'session:test', 'test')
   const { frame, guest } = browserGuest(reservation)
   const attach = () => {
     const event = { preventDefault: vi.fn() }
@@ -714,7 +720,7 @@ it.each(['macos', 'windows', 'linux'] as const)('routes approved %s browser gues
   const guests = new DesktopBrowserGuests(() => undefined) as GuestsFixture
   const attach = vi.fn((guest: ContentsFixture, name: DesktopBrowserLeaseId) => f.keyboard.attachGuest(f.window, guest, name))
   guests.bind(f.window, attach)
-  const reservation = guests.acquire(f.contents, 'session:test')
+  const reservation = guests.acquire(f.contents, 'session:test', 'test')
   const { frame, guest } = browserGuest(reservation)
   const rejected = { preventDefault: vi.fn() }
   f.contents.emit('will-attach-webview', rejected, {}, { src: 'about:blank#unknown', partition: reservation.partition })

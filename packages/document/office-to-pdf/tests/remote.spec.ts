@@ -55,6 +55,37 @@ it.each(['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])('converts authorized %s b
   expect(ctx.get('agents')).toBeUndefined()
 })
 
+it('converts SSH byte windows without reading a same-path local file', async () => {
+  const sshScope = { ...scope, execution: { kind: 'ssh' as const, host: 'lab' } }
+  const remoteBytes = new Uint8Array([80, 75, 9, 8])
+  const localResolve = vi.spyOn(ctx.fs, 'resolve')
+  authorize.mockResolvedValueOnce({ ...wireSource, eof: false, data: remoteBytes.subarray(0, 1) })
+    .mockRejectedValueOnce(new RemoteError('workspace-file/too-large', 'Byte window exceeds the preview cap.', { path: 'report.DOCX', limit: 2 }))
+    .mockResolvedValueOnce({ ...wireSource, eof: false, data: remoteBytes.subarray(0, 2) })
+    .mockResolvedValueOnce({ ...wireSource, offset: 2, eof: true, data: remoteBytes.subarray(2) })
+  render.mockImplementationOnce(async (request, signal) => {
+    const loaded = await request.source.read(signal!, 4)
+    expect(loaded.bytes).toEqual(remoteBytes)
+    return { pdf, missingFonts: [], generation, cacheKey }
+  })
+  const result = await ctx.officeToPdf.render(sshScope, 'report.DOCX', 'foreground', new AbortController().signal)
+  expect(result.data).toEqual(pdf)
+  expect(authorize).toHaveBeenNthCalledWith(2, sshScope, 'report.DOCX', { range: { offset: 0, length: 4 } }, expect.any(AbortSignal))
+  expect(authorize).toHaveBeenNthCalledWith(3, sshScope, 'report.DOCX', { range: { offset: 0, length: 2 } }, expect.any(AbortSignal))
+  expect(authorize).toHaveBeenNthCalledWith(4, sshScope, 'report.DOCX', { range: { offset: 2, length: 2 } }, expect.any(AbortSignal))
+  expect(localResolve).not.toHaveBeenCalled()
+  expect(read).not.toHaveBeenCalled()
+})
+
+it('rejects changed SSH bytes without falling back to a same-path local file', async () => {
+  const sshScope = { ...scope, execution: { kind: 'ssh' as const, host: 'lab' } }
+  authorize.mockResolvedValueOnce({ ...wireSource, eof: false, data: rawSource.data.subarray(0, 1) })
+    .mockResolvedValueOnce({ ...wireSource, version: 'source-v2', data: rawSource.data })
+  await expect(ctx.officeToPdf.render(sshScope, 'report.DOCX', 'foreground', new AbortController().signal))
+    .rejects.toMatchObject({ code: 'document-render/failed', details: { reason: 'source-changed' } })
+  expect(read).not.toHaveBeenCalled()
+})
+
 it('preserves authorization failures without starting conversion', async () => {
   const failure = new RemoteError('workspace-file/not-found', 'File missing', { path: 'report.DOCX' })
   metadata.mockRejectedValueOnce(failure)

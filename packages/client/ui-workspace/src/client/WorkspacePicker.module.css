@@ -18,3 +18,28 @@
 .menuStatus {
   color: var(--dsw-alias-label-secondary);
 }
+
+.sshForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sshField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.sshField input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}

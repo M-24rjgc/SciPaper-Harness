@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bundle/web-search-exa-bundle/README.md
+/:
+  en: 83d482d6200da161
+  zh: a4d02cbf05e322eb
+/deepseek-ai-dsh-web-search-exa-bundle:
+  en: 7b383cb57b3cb1ec
+  zh: 17f814aca227a5ba
+/deepseek-ai-dsh-web-search-exa-bundle/summary:
+  en: 0cf117d2d64f8ae5
+  zh: 5e0311271aeeff84
+/deepseek-ai-dsh-web-search-exa-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: a2c8ed897863284b
+/deepseek-ai-dsh-web-search-exa-bundle/use-this-package:
+  en: 9f128d34348d4262
+  zh: 956fdf6170df861c
+/deepseek-ai-dsh-web-search-exa-bundle/understand-the-implementation:
+  en: 76d935dbf17930ef
+  zh: 1190bc7a1c8d506c
+/deepseek-ai-dsh-web-search-exa-bundle/further-exploration:
+  en: 3eef274dfa5dd0e9
+  zh: 11ca6d39d90d23ff
+/deepseek-ai-dsh-web-search-exa-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-web-search-exa-bundle/model-experience/search-results:
+  en: b0a2901ec83f8a89
+  zh: ca79357c6191e253
+/deepseek-ai-dsh-web-search-exa-bundle/model-experience/search-results/what-the-model-sees:
+  en: 3ddf3be5a5508c23
+  zh: 17d8494613dc196f
+/deepseek-ai-dsh-web-search-exa-bundle/model-experience/search-results/token-effect:
+  en: 399fa9d501e09531
+  zh: 9ff6998091fda432
+/deepseek-ai-dsh-web-search-exa-bundle/model-experience/search-results/kv-cache-effect:
+  en: 2e98747f516f9083
+  zh: 6fb5313fa7584384
+/deepseek-ai-dsh-web-search-exa-bundle/known-limitations-and-deferred-work:
+  en: 39ea6e67e5e353f5
+  zh: ecdee9acd95d7d37
+/deepseek-ai-dsh-web-search-exa-bundle/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

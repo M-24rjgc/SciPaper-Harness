@@ -12,7 +12,7 @@
       "path": "../../../vendor/cordis"
     },
     {
-      "path": "../browser-use-runtime"
+      "path": "../../browser-use/browser-use-runtime"
     }
   ]
 }

@@ -169,6 +169,8 @@ export interface ChatNodeOwnerProps {
   /** Renderer-owned Node portion selected by the grouping Definition. */
   groupPart?: string
   cwd?: string | undefined
+  /** Session selecting the matching workspace file provider for inline images. */
+  sessionId?: string | undefined
   /** Open the current source file of a skill referenced by a sent message. */
   openSkill: (name: string) => void
   openFile: (path: string, options?: OpenFileOptions) => void

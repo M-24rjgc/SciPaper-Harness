@@ -20,6 +20,9 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private guestLifetime: AbortController | undefined
   private element: WebviewElement | undefined
   private lease: DesktopBrowserLeaseId | undefined
+  private clearLease: DesktopBrowserLeaseId | undefined
+  private clearPending: Promise<void> | undefined
+  private clearRequested = false
   private workspaceKey: string | undefined
   private initializing: Promise<void> | undefined
   private ready = false
@@ -34,10 +37,12 @@ export class ElectronWebViewImpl implements BrowserFrame {
   /**
    * @param options - saved address, persistence and source-tab opening callback.
    * @param bridge - main-process guest operations.
+   * @param sessionId - conversation owning this browser tab.
    * @param workspace - resolves the storage account once for this frame lifetime.
    * @param presentation - tag and Sidebar placement adapter.
    */
   constructor(private readonly options: BrowserPageOptions, private readonly bridge: DesktopBrowserBridge,
+    private readonly sessionId: string,
     private readonly workspace: (signal: AbortSignal) => Promise<string>,
     private readonly presentation: ElectronWebviewPresentation) {
     this.checkpoint = currentBrowserTarget(options.initial)
@@ -66,6 +71,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
     this.attachment?.abort()
     this.attachment = undefined
     this.pending = this.store.getSnapshot().target
+    void this.releaseClearLease()
     void this.dropGuest()
   }
 
@@ -108,12 +114,38 @@ export class ElectronWebViewImpl implements BrowserFrame {
     } else this.navigate('reload')
   }
 
+  /** Clear saved website data, then recreate the guest with the current address. */
+  async clearWorkspaceData(): Promise<void> {
+    this.lifetime.signal.throwIfAborted()
+    if (this.clearRequested) throw new Error('Browser website data is already being cleared')
+    this.clearRequested = true
+    try {
+      const workspace = this.workspaceKey ?? await this.workspace(this.lifetime.signal)
+      this.workspaceKey = workspace
+      const lease = this.clearLease ?? this.lease
+      if (lease === undefined) throw new Error('Open this Browser tab before clearing its website data')
+      this.clearLease = lease
+      const clear = this.bridge.clearWorkspaceData(workspace, this.sessionId, lease)
+      this.clearPending = clear
+      try { await clear }
+      finally { if (this.clearPending === clear) this.clearPending = undefined }
+      if (this.clearLease === lease) this.clearLease = undefined
+      try {
+        await this.dropGuest()
+      } finally {
+        this.reload()
+      }
+    } finally {
+      this.clearRequested = false
+    }
+  }
+
   /** @returns after pending initialization and the owned guest have been released. */
   dispose(): Promise<void> {
     if (this.disposal !== undefined) return this.disposal
     this.lifetime.abort()
     this.pending = undefined
-    this.disposal = Promise.all([this.dropGuest(), this.initializing])
+    this.disposal = Promise.all([this.dropGuest(), this.initializing, this.releaseClearLease()])
       .then(() => Promise.all(this.releases)).then(() => {})
     this.presentation.dispose()
     return this.disposal
@@ -144,7 +176,7 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private async createGuest(attachmentSignal: AbortSignal): Promise<void> {
     this.workspaceKey ??= await this.workspace(attachmentSignal)
     if (attachmentSignal.aborted) return
-    const reservation = await this.bridge.acquire(this.workspaceKey)
+    const reservation = await this.bridge.acquire(this.workspaceKey, this.sessionId)
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- The signal can abort while acquire is pending.
     if (attachmentSignal.aborted) { await this.release(reservation.lease); return }
     this.lease = reservation.lease
@@ -264,6 +296,18 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private release(lease: DesktopBrowserLeaseId): Promise<void> {
     const released = this.bridge.release(lease)
       .catch((error: unknown) => { console.error('Desktop browser guest release failed', error) })
+      .finally(() => { this.releases.delete(released) })
+    this.releases.add(released)
+    return released
+  }
+
+  private releaseClearLease(): Promise<void> {
+    const lease = this.clearLease
+    this.clearLease = undefined
+    if (lease === undefined) return Promise.resolve()
+    const pending = this.clearPending
+    if (pending === undefined) return this.release(lease)
+    const released = pending.then(() => this.release(lease), () => this.release(lease))
       .finally(() => { this.releases.delete(released) })
     this.releases.add(released)
     return released

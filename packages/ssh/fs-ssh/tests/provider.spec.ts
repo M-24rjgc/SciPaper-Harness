@@ -1,5 +1,4 @@
 import { Context, Service } from '@deepseek-ai/cordis'
-import { fileURLToPath } from 'node:url'
 import { FsError, FsTargetKey, FsVersion, type FsTarget } from '@deepseek-ai/dsh-fs'
 import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { RemoteOperationError } from '@deepseek-ai/dsh-ssh/protocol'
@@ -47,7 +46,7 @@ describe('SSH filesystem provider', () => {
     const path = `/remote/work/${name}`
     const url = fs.fileUrl({ targetKey: FsTargetKey(path), displayPath: path })
     expect(url).toBe(`file:///remote/work/${encoded}`)
-    expect(fileURLToPath(url)).toBe(path)
+    expect(decodeURIComponent(new URL(url).pathname)).toBe(path)
   })
 
   it('keeps remote canonical paths and sends relative spelling to the remote resolver', async () => {

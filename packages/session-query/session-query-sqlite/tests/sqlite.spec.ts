@@ -346,7 +346,10 @@ describe('SQLite session search', () => {
       // agentPreset rides along: the index rebuilds the header a caller reads,
       // and a session listed under the wrong composition is a lie about what it
       // ran. The full-header comparison below is what pins every column.
-      meta: { cwd: '/work', createdAt: 10, isSeeded: true, delegationDepth: 2, agentPreset: 'minimal' },
+      meta: {
+        cwd: '/srv/work', execution: { kind: 'ssh', host: 'gpu-a' },
+        createdAt: 10, isSeeded: true, delegationDepth: 2, agentPreset: 'minimal',
+      },
     })
     session.append(
       'user/message',

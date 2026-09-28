@@ -15,6 +15,11 @@ import type {} from '@deepseek-ai/dsh-typert-protocol'
  */
 export type WorkspaceId = Branded<'WorkspaceId'>
 
+/** The execution host and canonical directory that identify a workspace. */
+export type WorkspaceLocation =
+  | { readonly kind: 'local'; readonly path: string }
+  | { readonly kind: 'ssh'; readonly host: string; readonly path: string }
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** No registration carries that Workspace identity. */
@@ -70,6 +75,9 @@ export interface Workspace {
    * afterwards, even when the directory disappears (see {@link status}).
    */
   readonly path: string
+
+  /** Location identity; the path alone is not unique across SSH hosts. */
+  readonly location: WorkspaceLocation
 
   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
   readonly title: string
@@ -140,5 +148,5 @@ export interface Workspace {
    * directory may only be temporarily moved.
    * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
    */
-  status(): Promise<'ok' | 'missing-dir'>
+  status(): Promise<'ok' | 'missing-dir' | 'unknown'>
 }

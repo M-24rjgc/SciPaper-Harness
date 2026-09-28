@@ -5,9 +5,10 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { setTimeout as delay } from 'node:timers/promises'
 import { Deque } from '@deepseek-ai/dsh-deque'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
-import type { FsObservation, FsTarget } from '@deepseek-ai/dsh-fs'
+import type { FileSystem, FsObservation, FsTarget } from '@deepseek-ai/dsh-fs'
 import type { WorkspaceFileWatchFrame } from './types.ts'
 
 /** One target invalidation, optionally carrying its instrumented observation. */
@@ -31,12 +32,20 @@ export class WorkspaceChangeFeed {
 
   /**
    * Open one target watch; directory targets remain inside `workspaceRoot`.
+   * @param fs - filesystem scoped to the owning Session.
    * @param workspaceRoot - the session's workspace root path.
    * @param path - target path, resolved relative to the workspace root; Host metadata determines its type.
    * @param signal - generation cancellation.
+   * @param remote - poll remote metadata when the provider has no watcher.
    * @returns `ready` after watching starts, then current metadata for target invalidations.
    */
-  async *follow(workspaceRoot: string, path: string, signal: AbortSignal): AsyncIterable<WorkspaceFileWatchFrame> {
+  async *follow(
+    fs: FileSystem, workspaceRoot: string, path: string, signal: AbortSignal, remote = false,
+  ): AsyncIterable<WorkspaceFileWatchFrame> {
+    if (remote) {
+      yield* this.pollRemote(fs, workspaceRoot, path, signal)
+      return
+    }
     signal.throwIfAborted()
     // Instrumented observations remain queued while the target resolves.
     const follower = new ChangeFollower(() => {
@@ -53,22 +62,22 @@ export class WorkspaceChangeFeed {
     let unwatch: (() => Promise<void>) | undefined
     try {
       // Setup shares cancellation, so a late resolution cannot acquire a watcher.
-      const root = await this.ctx.fs.resolve(workspaceRoot, { signal }).catch((error: unknown) => {
+      const root = await fs.resolve(workspaceRoot, { signal }).catch((error: unknown) => {
         if (aborted()) return undefined
         throw error
       })
       if (root === undefined || aborted() || follower.isClosed) return
-      const target = await this.ctx.fs.resolve(path, { cwd: workspaceRoot, signal }).catch((error: unknown) => {
+      const target = await fs.resolve(path, { cwd: workspaceRoot, signal }).catch((error: unknown) => {
         if (aborted()) return undefined
         throw error
       })
       if (target === undefined || aborted()) return
       const stat = async () => {
-        const info = await this.ctx.fs.stat(target, signal).catch((error: unknown) => {
+        const info = await fs.stat(target, signal).catch((error: unknown) => {
           if (aborted()) return undefined
           throw error
         })
-        if (info?.type === 'directory' && !this.ctx.fs.contains(root, target)) {
+        if (info?.type === 'directory' && !fs.contains(root, target)) {
           throw new RemoteError('workspace-file/outside-workspace', 'Directory is outside the workspace', { path })
         }
         return info
@@ -76,7 +85,7 @@ export class WorkspaceChangeFeed {
       await stat()
       if (aborted()) return
       try {
-        unwatch = await this.ctx.fs.watch(target, (error) => {
+        unwatch = await fs.watch(target, (error) => {
           if (error !== undefined) follower.fail(error)
           else if (!follower.isClosed) follower.push([target])
         }, signal)
@@ -94,7 +103,7 @@ export class WorkspaceChangeFeed {
         if (observed.targetKey !== target.targetKey) continue
         const info = await stat()
         if (aborted()) return
-        const absolutePath = this.ctx.fs.processPath(target)
+        const absolutePath = fs.processPath(target)
         yield {
           kind: 'change',
           change: info !== undefined
@@ -105,6 +114,44 @@ export class WorkspaceChangeFeed {
     } finally {
       follower.initialized.resolve(unwatch)
       await follower.close()
+    }
+  }
+
+  /** SSH has no native watch; poll the selected target without observing local filesystem events. */
+  private async *pollRemote(
+    fs: FileSystem, workspaceRoot: string, path: string, signal: AbortSignal,
+  ): AsyncIterable<WorkspaceFileWatchFrame> {
+    signal.throwIfAborted()
+    const root = await fs.resolve(workspaceRoot, { signal })
+    const target = await fs.resolve(path, { cwd: workspaceRoot, signal })
+    const read = async () => {
+      const info = await fs.stat(target, signal)
+      if (info?.type === 'directory' && !fs.contains(root, target)) {
+        throw new RemoteError('workspace-file/outside-workspace', 'Directory is outside the workspace', { path })
+      }
+      return info
+    }
+    const aborted = (): boolean => signal.aborted
+    let previous = await read()
+    yield { kind: 'ready' }
+    while (!aborted()) {
+      try {
+        await delay(1500, undefined, { signal })
+      } catch (error) {
+        if (aborted()) return
+        throw error
+      }
+      if (aborted()) return
+      const current = await read()
+      if (current?.version === previous?.version && current?.type === previous?.type) continue
+      previous = current
+      const absolutePath = fs.processPath(target)
+      yield {
+        kind: 'change',
+        change: current === undefined
+          ? { absolutePath, absent: true }
+          : { absolutePath, version: current.version },
+      }
     }
   }
 }

@@ -24,7 +24,7 @@ SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，�
 - **产品标题。** 科研版客户端构建 profile（`scripts/client-build-environment.ts`）把 `DSH_CLIENT_TITLE` 设为 `SciPaper Harness`，页面标题以及随之而来的桌面窗口标题都使用它。
 - **一条清单依赖边。** `ui-attachment` 的 `dsh.client.inject` 不再列出 `ui-trajectory`。它向轨迹图片 slot 的贡献通过 `ctx.slots.inject` 等待该 slot，本身是可选的；而 Web 名录不保留指向未组合的包的依赖边（`assembly-bundle-roster.client.spec.ts`）。
 
-`packages/bundle/web-app/tests/research-edition-rows.ts` 把每个被禁用的行只列一次。旁边的 `independence.spec.ts` 固定了组合后的各行，包括没有任何启用的行写着遥测端点；`apps/desktop/tests/desktop-telemetry.spec.ts` 通过 `desktopPatchLayers` 固定桌面组合，开关也在其中。科研场景按交付时的状态运行这些行：`apps/web/tests/research-workbench.e2e.ts`（它也从 `research` preset 组合）、示例生成器 `research-demo.e2e.ts`，以及 `shipped-composition.e2e.ts` 中检查交付默认值的测试。继承来的 Web 场景继续组合这些被禁用的行，因为 Playwright 脚手架的 `enableInheritedRows` 默认为 true，所以它们及其金标准仍按录制时的样子测试上游插件。组装后的 jsdom 通道挂载交付时的名录，只有其中的轨迹图片场景重新组合轨迹视图这一行（`mountAssembledApp({ enableRows: ['ui-trajectory'] })`）。批准的方案原本要求更新回放金标准，这里没有这样做（见其他方案）。
+`packages/bundle/research-app/tests/research-edition-rows.ts` 把每个被禁用的行只列一次。旁边的 `independence.spec.ts` 固定了组合后的各行，包括没有任何启用的行写着遥测端点；`apps/desktop/tests/desktop-telemetry.spec.ts` 通过 `desktopPatchLayers` 固定桌面组合，开关也在其中。科研场景按交付时的状态运行这些行：`apps/web/tests/research-workbench.e2e.ts`（它也从 `research` preset 组合）、示例生成器 `research-demo.e2e.ts`，以及 `shipped-composition.e2e.ts` 中检查交付默认值的测试。继承来的 Web 场景继续组合这些被禁用的行，因为 Playwright 脚手架的 `enableInheritedRows` 默认为 true，所以它们及其金标准仍按录制时的样子测试上游插件。组装后的 jsdom 通道挂载交付时的名录，只有其中的轨迹图片场景重新组合轨迹视图这一行（`mountAssembledApp({ enableRows: ['ui-trajectory'] })`）。批准的方案原本要求更新回放金标准，这里没有这样做（见其他方案）。
 
 ### 第 2 步：外壳文案说的是「研究」，不是工作区，也不是某家公司
 

@@ -785,6 +785,9 @@ describe('PluginManagerPage', () => {
     expect(within(detail).getByText(en.partsEmpty)).toBeTruthy()
     set({ packages: [pkg({ error: { code: 'not-bundle' } })] })
     expect(within(detail).getByText(`${en.reasonLabel}: ${en.reasonNotBundle}`)).toBeTruthy()
+    set({ packages: [pkg({ enabled: true, error: { code: 'unsupported-host' }, rows: [] })] })
+    expect(within(detail).getByText(`${en.reasonLabel}: ${en.reasonUnsupportedHost}`)).toBeTruthy()
+    expect(within(detail).getByRole('switch', { name: en.enableToggle.replace('{name}', 'dsh-better-sidebar') })).toHaveProperty('disabled', false)
     set({ packages: [pkg({ error: { code: 'operation-error' } })] })
     expect(within(detail).getByText(`${en.reasonLabel}: ${en.reasonOperationError}`)).toBeTruthy()
     // An incompatibility reads from its structured packages in the dictionary's words, one sentence per package.

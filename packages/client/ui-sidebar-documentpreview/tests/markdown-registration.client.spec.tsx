@@ -6,6 +6,7 @@ import { apply as resourcesApply, inject as resourcesInject } from '@deepseek-ai
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { UseSidebarRightTabInfo } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { PaneId, TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { DocumentPreviewRegistry } from '../src/client/document/registry.ts'
 import { documentTabInfoFactory } from '../src/client/document/contract.ts'
@@ -57,7 +58,17 @@ describe('Markdown implementation registration', () => {
     }))
     const feature = await runtime.mount({ inject: ['slots', 'locale', 'documentPreviews'], apply })
     expect(previews.getSnapshot().map(definition => definition.id)).toEqual([MARKDOWN_BODY_ID])
-    const useTabInfo = vi.fn<UseSidebarRightTabInfo>(() => { throw new Error('Markdown rendering does not need tab actions') })
+    const useTabInfo = vi.fn<UseSidebarRightTabInfo>(() => ({
+      sessionId,
+      sidebar: { expanded: true, fullscreen: false },
+      panel: { id: 'markdown-pane' as PaneId },
+      tab: {
+        id: 'markdown-tab' as TabId, kind: 'document', contentId: 'sidebar://document/markdown', title: 'Markdown',
+        visible: true, signal: new AbortController().signal,
+        navigation: { address: 'sidebar://document/markdown', params: undefined, revision: 0 },
+        actions: { bindCommands: vi.fn(() => vi.fn()), openResource: vi.fn(), openTab: vi.fn(), close: vi.fn() },
+      },
+    }))
     await runtime.root.declare({
       'sidebar.right.tab.document': {
         kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: documentTabInfoFactory } },
@@ -83,13 +94,15 @@ describe('Markdown implementation registration', () => {
     await waitFor(() => {
       expect(new URL(view.getByAltText('diagram').getAttribute('src')!).searchParams.get('path'))
         .toBe('/work/guide/images/a.png')
+      expect(new URL(view.getByAltText('diagram').getAttribute('src')!).searchParams.get('sessionId'))
+        .toBe(sessionId)
     })
     expect(runtime.slots.entries('sidebar.right.tab.document')).toHaveLength(1)
     const t = locale.bind('documentMarkdown')
     await act(async () => { locale.setLocale('zh') })
     expect(locale.bind('documentMarkdown')).toBe(t)
     expect(view.getByRole('button', { name: '复制' })).toBeDefined()
-    expect(useTabInfo).not.toHaveBeenCalled()
+    expect(useTabInfo).toHaveBeenCalled()
 
     await feature.dispose()
     expect(previews.getSnapshot()).toEqual([])

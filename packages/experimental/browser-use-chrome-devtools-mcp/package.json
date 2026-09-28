@@ -29,7 +29,7 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/dsh-experimental-browser-use-runtime": "workspace:*",
+    "@deepseek-ai/dsh-browser-use-runtime": "workspace:*",
     "chrome-devtools-mcp": "1.9.0"
   },
   "peerDependencies": {

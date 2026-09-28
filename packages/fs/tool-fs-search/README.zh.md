@@ -52,11 +52,12 @@ kind: "package-reference"
 
 ### 配置
 
-`sampleOverCapGlobResults` 为必填；其余键是可选的搜索上限，默认值如下。
+`sampleOverCapGlobResults` 为必填；其余键选择可执行文件或限制搜索输出。
 
 | 键 | 默认值 | 含义 |
 |---|---|---|
 | `sampleOverCapGlobResults` | 无（必填） | `true` 在顶层条目之间对超过上限的 `glob` 页面采样；`false` 保留按修改时间排序的前部 |
+| `rgPath` | 随包二进制 | 所选子进程提供方文件系统中的可执行文件路径；远端组合填写远端 `rg` 路径 |
 | `globMaxResults` | `100` | 一次 `glob` 调用内联展示的最大路径数 |
 | `grepMaxMatches` | `250` | 一次 `grep` 调用内联保留的最大平铺匹配数；后续匹配写入格式化 spill 产物 |
 | `grepMaxLineBytes` | `2000` | 每条匹配行预览的字节上限，保留 UTF-8 边界 |
@@ -70,7 +71,7 @@ kind: "package-reference"
 
 ### 部署要求
 
-Node 部署在受支持的 macOS、Linux 与 Windows 目标上获得 `@vscode/ripgrep` 平台包；Python SDK 的 wheel 包把目标原生二进制复制到单文件运行时旁，作为 `-rg` 伴随文件。两种载体均不要求宿主安装 `rg`。返回路径相对于解析后的工作目录显示（有会话 cwd 时使用会话 cwd），只有该工作目录与文件系统根目录是同一工作区时，才能用 `read` 继续读取。
+Node 部署在受支持的 macOS、Linux 与 Windows 目标上获得 `@vscode/ripgrep` 平台包；Python SDK 的 wheel 包把目标原生二进制复制到单文件运行时旁，作为 `-rg` 伴随文件。远端子进程组合通过 `rgPath` 指向远端已安装的可执行文件。返回路径相对于解析后的工作目录显示（有会话 cwd 时使用会话 cwd），只有该工作目录与文件系统根目录是同一工作区时，才能用 `read` 继续读取。
 
 ### 失败与恢复
 

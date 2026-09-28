@@ -7,7 +7,7 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, posix } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { assertNever, deepFreeze, snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import { scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
@@ -98,7 +98,10 @@ function validateSessionHeader(id: SessionId, input: unknown): SessionHeader {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) {
     throw new Error('session header is not a plain JSON record')
   }
-  const record = input as Record<string, unknown>
+  const inputRecord = input as Record<string, unknown>
+  const record = inputRecord.execution === undefined
+    ? { ...inputRecord, execution: { kind: 'local' } }
+    : inputRecord
   if (Object.hasOwn(record, 'seedLength')) {
     throw new Error('session header has invalid field "seedLength"')
   }
@@ -113,9 +116,23 @@ function validateSessionHeader(id: SessionId, input: unknown): SessionHeader {
     || record.createdAt < 0) {
     throw new Error('session header createdAt must be a non-negative safe integer')
   }
+  if (record.execution === null || typeof record.execution !== 'object' || Array.isArray(record.execution)) {
+    throw new Error('session header execution must be an object')
+  }
+  const execution = record.execution as Record<string, unknown>
+  if (execution.kind === 'local') {
+    if (Object.keys(execution).some(key => key !== 'kind')) throw new Error('local execution has unexpected fields')
+  } else if (execution.kind === 'ssh') {
+    if (typeof execution.host !== 'string' || execution.host.trim() === ''
+      || Object.keys(execution).some(key => key !== 'kind' && key !== 'host')) {
+      throw new Error('SSH execution requires a host')
+    }
+  } else {
+    throw new Error('session header execution kind must be local or ssh')
+  }
   if (record.cwd !== undefined) {
     if (typeof record.cwd !== 'string') throw new Error('session header cwd must be a string')
-    if (!isAbsolute(record.cwd)) {
+    if (!(execution.kind === 'ssh' ? posix.isAbsolute(record.cwd) : isAbsolute(record.cwd))) {
       throw new Error(`session header cwd must be an absolute path, got "${record.cwd}"`)
     }
   }
@@ -152,7 +169,7 @@ function validateRestoredSessionHeader(id: SessionId, input: unknown): SessionHe
 /** Detach, validate, and freeze the creation metadata published by a session. */
 function snapshotSessionHeader(id: SessionId, source?: SessionHeader): SessionHeader {
   const input: unknown = source === undefined
-    ? { version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), isSeeded: false }
+    ? { version: SESSION_FORMAT_VERSION, id, createdAt: Date.now(), execution: { kind: 'local' }, isSeeded: false }
     : source
   const snapshot = snapshotJsonValue(input)
   if (snapshot === undefined) throw new Error('session header is not losslessly JSON-serializable')
@@ -1051,6 +1068,7 @@ export class SessionStore extends Service {
       id: sessionId,
       createdAt: meta?.createdAt ?? Date.now(),
       ...meta?.cwd === undefined ? {} : { cwd: meta.cwd },
+      execution: meta?.execution ?? { kind: 'local' },
       ...meta?.parentSession === undefined ? {} : { parentSession: meta.parentSession },
       isSeeded: meta?.isSeeded ?? false,
       ...meta?.origin === undefined ? {} : { origin: meta.origin },
@@ -1266,6 +1284,7 @@ export class SessionStore extends Service {
       inheritedEventCount: SessionLogOffset(resolved === undefined ? 0 : resolved + 1),
       meta: {
         ...liveSource.header.cwd !== undefined ? { cwd: liveSource.header.cwd } : {},
+        ...liveSource.header.execution === undefined ? {} : { execution: liveSource.header.execution },
         parentSession: liveSource.id,
         isSeeded: true,
       },

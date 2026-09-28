@@ -24,6 +24,9 @@
       "path": "../web"
     },
     {
+      "path": "../../credentials/credentials"
+    },
+    {
       "path": "../../util/http-proxy"
     }
   ]

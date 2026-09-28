@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bundle/web-search-perplexity-bundle/README.md
+/:
+  en: 5e2ed07f80293277
+  zh: 7cd29924ebb45a23
+/deepseek-ai-dsh-web-search-perplexity-bundle:
+  en: 61e3e865aeffde20
+  zh: b1fbebcce1c1065f
+/deepseek-ai-dsh-web-search-perplexity-bundle/summary:
+  en: ae6796814041ac40
+  zh: ad223cf8eac66643
+/deepseek-ai-dsh-web-search-perplexity-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: a2c8ed897863284b
+/deepseek-ai-dsh-web-search-perplexity-bundle/use-this-package:
+  en: c53b4905f0d3b4a2
+  zh: 1b8c240855f0e679
+/deepseek-ai-dsh-web-search-perplexity-bundle/understand-the-implementation:
+  en: ff3de72b1d1ed70b
+  zh: f86f58f162aec351
+/deepseek-ai-dsh-web-search-perplexity-bundle/further-exploration:
+  en: 3eef274dfa5dd0e9
+  zh: 11ca6d39d90d23ff
+/deepseek-ai-dsh-web-search-perplexity-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-web-search-perplexity-bundle/model-experience/search-results:
+  en: b0a2901ec83f8a89
+  zh: ca79357c6191e253
+/deepseek-ai-dsh-web-search-perplexity-bundle/model-experience/search-results/what-the-model-sees:
+  en: b9bfdf3e608d819e
+  zh: a8209fd248eeaf7b
+/deepseek-ai-dsh-web-search-perplexity-bundle/model-experience/search-results/token-effect:
+  en: 399fa9d501e09531
+  zh: 9ff6998091fda432
+/deepseek-ai-dsh-web-search-perplexity-bundle/model-experience/search-results/kv-cache-effect:
+  en: 2e98747f516f9083
+  zh: 6fb5313fa7584384
+/deepseek-ai-dsh-web-search-perplexity-bundle/known-limitations-and-deferred-work:
+  en: cdf1c328784b4556
+  zh: ddca948b8d9cd4b1
+/deepseek-ai-dsh-web-search-perplexity-bundle/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

@@ -20,7 +20,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { isAbsolute, join, parse, relative, sep } from 'node:path'
+import { isAbsolute, join, parse, posix, relative, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { ItemRetainer, TextRetainer } from '@deepseek-ai/dsh-output-retention'
@@ -217,6 +217,7 @@ export function resolveRgPath(): Promise<string> {
  * @param rawOutputMaxBytes - cap on the complete raw stdout the tool will parse.
  * @param graceMs - the seam's terminate-escalation grace period.
  * @param stderrMaxBytes - cap on the retained stderr diagnostic tail.
+ * @param rgPath - executable in the subprocess provider's filesystem; local callers omit it.
  * @returns the complete stdout, the zero-result flag, and the resolved workdir.
  */
 export async function runRipgrep(
@@ -227,6 +228,7 @@ export async function runRipgrep(
   rawOutputMaxBytes: number,
   graceMs: number,
   stderrMaxBytes: number,
+  rgPath?: string,
 ): Promise<RipgrepRun> {
   if (exec.signal.aborted) {
     throw new SearchError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'SEARCH_ABORTED')
@@ -236,7 +238,7 @@ export async function runRipgrep(
   let handle: SubprocessHandle
   try {
     handle = ctx.subprocess.spawn({
-      argv: [await resolveRgPath(), '--no-config', ...argv],
+      argv: [rgPath ?? await resolveRgPath(), '--no-config', ...argv],
       cwd: workdir,
       stdio: {
         stdin: 'ignore',
@@ -298,6 +300,10 @@ export async function runRipgrep(
  * @returns the workdir-relative display path when possible, else `path` unchanged.
  */
 export function toWorkdirRelative(path: string, workdir: string): string {
+  if (workdir.startsWith('/') && path.startsWith('/')) {
+    const rel = posix.relative(workdir, path)
+    return rel === '' ? '.' : rel === '..' || rel.startsWith('../') ? path : rel
+  }
   if (!isAbsolute(path)) return path
   const rel = relative(workdir, path)
   if (rel.length === 0) return '.'

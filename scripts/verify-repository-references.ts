@@ -29,6 +29,22 @@ function isMaintained(file: string): boolean {
   return !excludedPrefixes.some(prefix => file.startsWith(prefix))
 }
 
+function kernelRevision(file: string, source: string): string | undefined {
+  if (file !== 'package.json' && !file.endsWith('/package.json')) return undefined
+  try {
+    const manifest: unknown = JSON.parse(source)
+    if (manifest === null || typeof manifest !== 'object') return undefined
+    const scipaper: unknown = (manifest as Record<string, unknown>).scipaper
+    if (scipaper === null || typeof scipaper !== 'object') return undefined
+    const kernel: unknown = (scipaper as Record<string, unknown>).kernel
+    if (kernel === null || typeof kernel !== 'object') return undefined
+    const revision: unknown = (kernel as Record<string, unknown>).revision
+    return typeof revision === 'string' && /^[\da-f]{40}$/iu.test(revision) ? revision.toLowerCase() : undefined
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Inspect a maintained source file against known commit identifiers.
  * @param file - Repository-relative path used in diagnostics and exclusions.
@@ -43,10 +59,13 @@ export function findRepositoryReferences(
 ): RepositoryReference[] {
   if (!isMaintained(file)) return []
   const references: RepositoryReference[] = []
+  const releaseRevision = kernelRevision(file, source)
   for (const [index, line] of source.split('\n').entries()) {
     if (organizationUrl.test(canonicalReferenceText(line).replace(kitRepositoryUrl, ''))) {
       references.push({ file, line: index + 1, kind: 'organization-url' })
     }
+    const manifestRevision = /^\s*"revision":\s*"([\da-f]{40})",?\s*$/iu.exec(line)?.[1]?.toLowerCase()
+    if (manifestRevision === releaseRevision && releaseRevision !== undefined) continue
     if ([...line.matchAll(commitCandidate)].some(match => commits.has(match[0].toLowerCase()))) {
       references.push({ file, line: index + 1, kind: 'commit-hash' })
     }

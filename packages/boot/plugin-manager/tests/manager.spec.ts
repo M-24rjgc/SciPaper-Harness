@@ -437,6 +437,22 @@ it('retains installed dependencies when toggling a bundle and appends it when re
   expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toEqual(['core', 'third', 'extra'])
 })
 
+it('selecting a search backend replaces the other optional search backend', async () => {
+  const { manager, dir, bundle } = await fixture()
+  const exa = '@deepseek-ai/dsh-web-search-exa-bundle'
+  const perplexity = '@deepseek-ai/dsh-web-search-perplexity-bundle'
+  bundle(exa, [{ id: 'exa-search', name: './plugin.mjs', config: { service: 'exaSearchProbe' } }])
+  bundle(perplexity, [{ id: 'perplexity-search', name: './plugin.mjs', config: { service: 'perplexitySearchProbe' } }])
+  expect(await manager.setBundleEnabled(exa, true)).toMatchObject({ application: 'applied' })
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toContain(exa)
+  expect(await manager.setBundleEnabled(perplexity, true)).toMatchObject({ application: 'applied' })
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toContain(perplexity)
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).not.toContain(exa)
+  expect(await manager.setBundleEnabled(exa, true)).toMatchObject({ application: 'applied' })
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).toContain(exa)
+  expect(readProfileManifest('test', dir).dsh?.profile?.bundles).not.toContain(perplexity)
+})
+
 it('reports an overlay overriding a saved plugin toggle', async () => {
   const { manager } = await fixture('live', true)
   const id = (await manager.listPlugins()).find(row => row.patchId === 'managed')!.entryId
@@ -705,6 +721,19 @@ it.each([
   })
   expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(manifest)
   expect(readFileSync(profile.patchPath, 'utf8')).toBe(patch)
+})
+
+it('locks Host-wide SSH component rows in a Desktop profile', async () => {
+  const { ctx, manager, bundle, profile } = await fixture('startup')
+  vi.stubEnv('DSH_DESKTOP_HOST', '1')
+  onTestFinished(() => { vi.unstubAllEnvs() })
+  bundle('extra', [{ id: 'ssh', name: '@deepseek-ai/dsh-ssh', disabled: true }])
+  await reconcileProfilePatches(ctx, readProfilePatches('test', profile), 'test')
+  const row = (await manager.listPlugins()).find(item => item.moduleName === '@deepseek-ai/dsh-ssh')!
+  expect(row.readOnlyReason).toBe('unsupported-host')
+  expect(await manager.setPluginEnabled(row.entryId, true)).toMatchObject({
+    changed: false, application: 'failed', error: { code: 'unsupported-host' },
+  })
 })
 
 it('addresses children inside profile groups and marks ambiguous ids read-only', async () => {
@@ -1028,11 +1057,10 @@ it('refuses removal of a hot-installed bundle after HMR is disabled', async () =
   expect(await manager.removeBundle('later')).toMatchObject({ changed: false, application: 'failed' })
 })
 
-it('offers the launcher\'s optional bundles switched off and never removable', async () => {
+it.each(OPTIONAL_BUNDLES)('offers the optional %s bundle switched off and never removable', async (offered) => {
   const { manager, profile } = await fixture()
-  // The launcher names the bundles the installation ships; the fixture supplies one of them from the
+  // The launcher names the bundles the installation ships; the fixture supplies each from the
   // installation's own node_modules, which the resolver consults before the profile's and before the repository's.
-  const offered = OPTIONAL_BUNDLES[0]!
   const supplied = join(profile.home, 'node_modules', offered)
   mkdirSync(supplied, { recursive: true })
   writeFileSync(join(supplied, 'package.json'), JSON.stringify({
@@ -1050,6 +1078,37 @@ it('offers the launcher\'s optional bundles switched off and never removable', a
   expect(await manager.setBundleEnabled(offered, true)).toMatchObject({ application: 'applied' })
   expect((await manager.listBundles()).find(row => row.name === offered)).toMatchObject({ enabled: true, optional: true, removable: false })
   expect(await manager.removeBundle(offered)).toMatchObject({ changed: false, application: 'failed' })
+})
+
+it('does not offer the Host-wide SSH bundle on Desktop and lets an older selection be turned off', async () => {
+  const { manager, profile } = await fixture()
+  const offered = '@deepseek-ai/dsh-ssh-remote-bundle'
+  const supplied = join(profile.home, 'node_modules', offered)
+  mkdirSync(supplied, { recursive: true })
+  writeFileSync(join(supplied, 'package.json'), JSON.stringify({
+    name: offered, version: '3.0.0', dsh: { bundle: { patch: './cordis.patch.yml' } },
+  }))
+  writeFileSync(join(supplied, 'cordis.patch.yml'), JSON.stringify([{ insert: [
+    { id: 'offered-row', name: './plugin.mjs', config: { service: 'offeredProbe' } },
+  ] }]))
+  writeFileSync(join(supplied, 'plugin.mjs'), 'export function apply(ctx, config) { ctx.provide(config?.service ?? "offeredProbe", true) }\n')
+  writeFileSync(profile.installAnchor, JSON.stringify({ name: 'installation', dependencies: { [offered]: '3.0.0' } }))
+  vi.stubEnv('DSH_DESKTOP_HOST', '1')
+  onTestFinished(() => { vi.unstubAllEnvs() })
+  expect((await manager.listBundles()).some(row => row.name === offered)).toBe(false)
+  expect(await manager.setBundleEnabled(offered, true)).toMatchObject({
+    changed: false, application: 'failed', error: { code: 'unsupported-host' },
+  })
+  expect(readProfileManifest('test', profile.dir).dsh?.profile?.bundles).not.toContain(offered)
+
+  vi.stubEnv('DSH_DESKTOP_HOST', '0')
+  expect(await manager.setBundleEnabled(offered, true)).toMatchObject({ application: 'applied' })
+  vi.stubEnv('DSH_DESKTOP_HOST', '1')
+  expect((await manager.listBundles()).find(row => row.name === offered)).toMatchObject({
+    enabled: true, error: { code: 'unsupported-host' }, rows: [], overrides: [],
+  })
+  expect(await manager.setBundleEnabled(offered, false)).toMatchObject({ application: 'applied' })
+  expect((await manager.listBundles()).some(row => row.name === offered)).toBe(false)
 })
 
 it('omits installation-owned plain packages from the bundle inventory', async () => {

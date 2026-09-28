@@ -53,13 +53,10 @@ describe('release families', () => {
       '@deepseek-ai/dsh-experimental-api-speech-to-text',
       '@deepseek-ai/dsh-experimental-auto-review',
       '@deepseek-ai/dsh-experimental-browser-use-chrome-devtools-mcp',
-      '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp',
-      '@deepseek-ai/dsh-experimental-browser-use-runtime',
       '@deepseek-ai/dsh-experimental-browser-use-stagehand-native',
       '@deepseek-ai/dsh-experimental-client-ui-agent-team',
       '@deepseek-ai/dsh-experimental-client-ui-voice-input',
       '@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp',
-      '@deepseek-ai/dsh-experimental-computer-use-cua-driver-native',
       '@deepseek-ai/dsh-experimental-inspector',
       '@deepseek-ai/dsh-experimental-ptc-runtime-python',
       '@deepseek-ai/dsh-experimental-speech-to-text-sensevoice',
@@ -68,6 +65,15 @@ describe('release families', () => {
       '@deepseek-ai/dsh-experimental-voice-input-bundle',
       '@deepseek-ai/dsh-experimental-webworker-packer',
       '@deepseek-ai/dsh-experimental-webworker-runtime',
+    ])
+    expect(members.filter(member => [
+      'packages/browser-use/browser-use-playwright-mcp',
+      'packages/browser-use/browser-use-runtime',
+      'packages/computer-use/computer-use-cua-driver-native',
+    ].includes(member.directory)).map(member => member.name)).toEqual([
+      '@deepseek-ai/dsh-browser-use-playwright-mcp',
+      '@deepseek-ai/dsh-browser-use-runtime',
+      '@deepseek-ai/dsh-computer-use-cua-driver-native',
     ])
   })
 

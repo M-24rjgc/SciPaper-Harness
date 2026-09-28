@@ -1,0 +1,155 @@
+/** Dynamic Agent presets backed by one verified POSIX SSH workspace. */
+import { createHash } from 'node:crypto'
+import { Context, Service } from '@deepseek-ai/cordis'
+import schema from '@deepseek-ai/schemastery'
+import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import { provisionRemoteWorkspace, validateRemoteWorkspace, type RemoteWorkspaceRequest, type RemoteWorkspaceRuntime } from './provision.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { remoteWorkspacePresets: RemoteWorkspacePresets }
+}
+
+/** Preset identity together with the path resolved on its SSH host. */
+export interface RemoteWorkspacePreset {
+  presetId: string
+  canonicalPath: string
+}
+
+/** Product composition may explicitly include research tools when a shared ledger service is mounted. */
+export interface Config { researchTools?: boolean }
+
+function presetId(host: string, canonicalPath: string): string {
+  return `ssh-${createHash('sha256').update(host).update('\0').update(canonicalPath).digest('hex').slice(0, 24)}`
+}
+
+const RESEARCH_MODULES = [
+  'project', 'evidence', 'artifact', 'environment', 'experiment',
+  'board', 'media', 'knowledge', 'checks', 'tasks',
+] as const
+
+function composition(id: string, host: string, runtime: RemoteWorkspaceRuntime, researchTools: boolean): PresetDefinition {
+  const remote = [
+    { id: 'ssh', name: '@deepseek-ai/dsh-ssh', config: {
+      host, node: runtime.node, helper: runtime.helper, helperHash: runtime.helperHash, workspace: runtime.canonicalPath,
+    } },
+    { id: 'subprocess', name: '@deepseek-ai/dsh-subprocess-ssh' },
+    { id: 'sandbox', name: '@deepseek-ai/dsh-sandbox-ssh' },
+    { id: 'fs', name: '@deepseek-ai/dsh-fs-ssh' },
+    { id: 'shell', name: '@deepseek-ai/dsh-bash-sandbox', config: { cwd: runtime.canonicalPath } },
+    { id: 'agent-instructions', name: '@deepseek-ai/dsh-agent-instructions', config: { maxBytes: 65536 } },
+    { id: 'tool-presentation', name: '@deepseek-ai/dsh-agent-tool-presentation', config: { mode: 'native' } },
+    { id: 'tool-bash', name: '@deepseek-ai/dsh-tool-bash' },
+    { id: 'tool-fs', name: '@deepseek-ai/dsh-tool-fs' },
+    ...runtime.rg === undefined ? [] : [{ id: 'tool-fs-search', name: '@deepseek-ai/dsh-tool-fs-search', config: {
+      sampleOverCapGlobResults: false, rgPath: runtime.rg,
+    } }],
+    { id: 'lsp', name: '@deepseek-ai/dsh-lsp' },
+    { id: 'lsp-stdio', name: '@deepseek-ai/dsh-lsp-stdio', config: { servers: {
+      typescript: {
+        command: runtime.node,
+        args: [runtime.typescriptLanguageServer, '--stdio'],
+        extensionToLanguage: {
+          '.ts': 'typescript', '.tsx': 'typescriptreact', '.js': 'javascript',
+          '.jsx': 'javascriptreact', '.mjs': 'javascript', '.cjs': 'javascript',
+        },
+      },
+    } } },
+    { id: 'tool-lsp', name: '@deepseek-ai/dsh-tool-lsp' },
+  ]
+  return {
+    id, name: `${host}:${runtime.canonicalPath}`,
+    plugins: [
+      {
+        id: 'remote-workspace', name: 'cordis:group', group: true,
+        isolate: { ssh: true, subprocess: true, sandbox: true, fs: true, shell: true, lsp: true },
+        config: remote,
+      },
+      ...!researchTools ? [] : RESEARCH_MODULES.map(module => ({
+        id: `research-${module}`, name: '@deepseek-ai/dsh-research-workbench/tools', config: { modules: [module] },
+      })),
+    ],
+  }
+}
+
+/** Registry owner for remotely verified and independently mounted SSH Agent presets. */
+export class RemoteWorkspacePresets extends Service {
+  static inject = ['agentPresets']
+  static Config: schema<Config> = schema.object({ researchTools: schema.boolean().default(false) })
+  private readonly pending = new Map<string, Promise<RemoteWorkspacePreset>>()
+  private readonly mounting = new Map<string, Promise<RemoteWorkspacePreset>>()
+  private readonly mounted = new Map<string, RemoteWorkspacePreset>()
+  private readonly disposers = new Map<string, () => Promise<void>>()
+  private closed = false
+  private readonly researchTools: boolean
+
+  private isClosed(): boolean { return this.closed }
+
+  /** Whether this service registered the requested preset for an SSH workspace. */
+  isRemotePreset(id: string): boolean { return this.mounted.has(id) || this.mounting.has(id) }
+
+  constructor(ctx: Context, config: Config = {}) {
+    super(ctx, 'remoteWorkspacePresets')
+    this.researchTools = config.researchTools === true
+    ctx.effect(() => async () => {
+      this.closed = true
+      await Promise.allSettled([...this.pending.values()])
+      await Promise.all([...this.disposers.values()].map(dispose => dispose()))
+      this.disposers.clear()
+      this.mounted.clear()
+    })
+  }
+
+  /** Verify the directory, install the helper, and register its Agent preset.
+   * @param request - configured OpenSSH alias and absolute POSIX workspace.
+   * @returns the mounted preset identity.
+   */
+  async ensure(request: RemoteWorkspaceRequest): Promise<string> { return (await this.inspect(request)).presetId }
+
+  /** Resolve the canonical remote path and mounted preset for a Session header.
+   * @param request - configured OpenSSH alias and absolute POSIX workspace.
+   * @returns preset identity and verified canonical directory.
+   */
+  async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset> {
+    if (this.closed) throw new Error('Remote workspace preset service is closed')
+    validateRemoteWorkspace(request)
+    const key = `${request.host}\0${request.path}`
+    const existing = this.pending.get(key)
+    if (existing !== undefined) return existing
+    const operation = this.prepare(request)
+    this.pending.set(key, operation)
+    try { return await operation } catch (error) { this.pending.delete(key); throw error }
+  }
+
+  private async prepare(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset> {
+    const runtime = await provisionRemoteWorkspace(request)
+    if (this.closed) throw new Error('Remote workspace preset service closed during SSH setup')
+    const id = presetId(request.host, runtime.canonicalPath)
+    const existing = this.mounted.get(id)
+    if (existing !== undefined) return existing
+    const pending = this.mounting.get(id)
+    if (pending !== undefined) return pending
+    const mounting = this.mount(id, request.host, runtime)
+    this.mounting.set(id, mounting)
+    try { return await mounting } finally { this.mounting.delete(id) }
+  }
+
+  private async mount(id: string, host: string, runtime: RemoteWorkspaceRuntime): Promise<RemoteWorkspacePreset> {
+    const unregister = await this.ctx.agentPresets.register(composition(id, host, runtime, this.researchTools))
+    if (this.closed) { await unregister(); throw new Error('Remote workspace preset service closed during preset activation') }
+    try {
+      const resolved = await this.ctx.agentPresets.resolve(id)
+      if (resolved.broken !== undefined) throw new Error(`SSH Agent preset could not start: ${resolved.broken}`)
+    } catch (error) {
+      await unregister()
+      throw error
+    }
+    if (this.isClosed()) { await unregister(); throw new Error('Remote workspace preset service closed during preset verification') }
+    const result = { presetId: id, canonicalPath: runtime.canonicalPath }
+    this.mounted.set(id, result)
+    this.disposers.set(id, unregister)
+    return result
+  }
+}
+
+export default RemoteWorkspacePresets

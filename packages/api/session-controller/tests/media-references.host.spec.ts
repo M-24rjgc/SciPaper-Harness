@@ -28,7 +28,7 @@ describe('SessionMediaReferences /api/file', () => {
     await rm(root, { recursive: true, force: true })
   })
 
-  async function mount(maxBytes = DEFAULT_LIMIT) {
+  async function mount(maxBytes = DEFAULT_LIMIT, configure?: (ctx: Context) => void) {
     const ctx = new Context()
     contexts.push(ctx)
     let handler: ((request: Request) => Promise<Response>) | undefined
@@ -43,6 +43,7 @@ describe('SessionMediaReferences /api/file', () => {
     } as never)
     ctx.provide('attachments', { imageLimits: { maxImageBytes: maxBytes } } as never)
     await ctx.plugin(LocalFileSystem, { cwd: root }).await()
+    configure?.(ctx)
     await ctx.plugin(SessionMediaReferences).await()
     const raw = (url: string, init?: RequestInit) => {
       if (handler === undefined) throw new Error('route not registered')
@@ -215,6 +216,48 @@ describe('SessionMediaReferences /api/file', () => {
     }
     read.mockRejectedValueOnce(new Error('provider bug'))
     await expect(route.call('/remote/photo.png')).rejects.toThrow('provider bug')
+  })
+
+  it('serves a remote session through its SSH filesystem without reading the local filesystem', async () => {
+    const remotePath = '/srv/lab/figure.svg'
+    const target = { targetKey: FsTargetKey('remote-figure'), displayPath: remotePath }
+    const remoteFs = {
+      resolve: vi.fn().mockResolvedValue(target),
+      readBytes: vi.fn().mockResolvedValue(PNG_BYTES),
+    }
+    const agent = { ctx: {} as Context, session: { header: { execution: { kind: 'ssh', host: 'lab' } } } }
+    const resolveAgent = vi.fn().mockResolvedValue({ agent })
+    const serviceFor = vi.fn().mockReturnValue(remoteFs)
+    const route = await mount(DEFAULT_LIMIT, (ctx) => {
+      ctx.provide('sessionController', { resolveAgent } as never)
+      ctx.provide('agentPresets', { serviceFor } as never)
+    })
+    const localRead = vi.spyOn(route.fs, 'readBytes')
+    const url = `http://127.0.0.1/api/file?path=${encodeURIComponent(remotePath)}&sessionId=remote-1`
+    const response = await route.raw(url)
+    expect(response.status).toBe(200)
+    expect(await responseBytes(response)).toEqual(PNG_BYTES)
+    expect(remoteFs.resolve).toHaveBeenCalledWith(remotePath, expect.anything())
+    expect(serviceFor).toHaveBeenCalledWith(agent, 'fs')
+    expect(localRead).not.toHaveBeenCalled()
+    resolveAgent.mockResolvedValueOnce({ error: new Error('unknown session') })
+    expect((await route.raw(url.replace('sessionId=remote-1', 'sessionId=missing'))).status).toBe(404)
+    serviceFor.mockReturnValueOnce(undefined)
+    expect((await route.raw(url)).status).toBe(503)
+    expect(localRead).not.toHaveBeenCalled()
+  })
+
+  it('reads a known local session without activating its Agent', async () => {
+    const resolveAgent = vi.fn(() => { throw new Error('local Agent must remain cold') })
+    const route = await mount(DEFAULT_LIMIT, (ctx) => {
+      ctx.provide('sessions', { get: () => ({ header: { execution: { kind: 'local' } } }) } as never)
+      ctx.provide('sessionController', { resolveAgent } as never)
+    })
+    const path = join(root, 'local.png')
+    await writeFile(path, PNG_BYTES)
+    const response = await route.raw(`http://127.0.0.1/api/file?path=${encodeURIComponent(path)}&sessionId=local-1`)
+    expect(await responseBytes(response)).toEqual(PNG_BYTES)
+    expect(resolveAgent).not.toHaveBeenCalled()
   })
 
   it('serves an empty file and respects an aborted request', async () => {

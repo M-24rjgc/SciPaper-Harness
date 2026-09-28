@@ -1145,6 +1145,7 @@ class JsonlSessionPersistence extends SessionPersistence {
     readonly id: string
     readonly createdAt: number
     readonly cwd?: string
+    readonly execution?: { readonly kind: 'local' } | { readonly kind: 'ssh'; readonly host: string }
     readonly parentSession?: string
     readonly isSeeded: boolean
     readonly origin?: 'subagent'
@@ -1160,6 +1161,7 @@ class JsonlSessionPersistence extends SessionPersistence {
       id: makeSessionId(header.id),
       createdAt: header.createdAt,
       ...(header.cwd === undefined ? {} : { cwd: header.cwd }),
+      execution: header.execution ?? { kind: 'local' },
       ...(header.parentSession === undefined
         ? {}
         : { parentSession: makeSessionId(header.parentSession) }),

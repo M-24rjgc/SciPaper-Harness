@@ -24,7 +24,7 @@ import type {
   EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
   SessionDirectories, SourceReference,
 } from './contract.ts'
-import { sessionProject } from './contract.ts'
+import { localResearchFileSession, sessionDirectoriesOf, sessionProject } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
 import { projectFileAddress, researchFileUrl } from './format.ts'
 import { DEFAULT_PRESET_FIELD, PRESET_SETTINGS_NAMESPACE, presetDefaults, type PresetDefaults } from './presets.ts'
@@ -112,10 +112,7 @@ export function apply(ctx: Context): void {
   }
   const directories = createSnapshotStore<SessionDirectories>({})
   const readDirectories = (): void => {
-    const byId = sessions.list.getSnapshot().byId
-    const next: Record<string, string> = {}
-    for (const [id, summary] of Object.entries(byId)) if (summary.cwd !== undefined) next[id] = summary.cwd
-    directories.set(next)
+    directories.set(sessionDirectoriesOf(sessions.list.getSnapshot().byId))
   }
   readDirectories()
   ctx.effect(() => sessions.list.subscribe(readDirectories), 'research.session-directories')
@@ -187,7 +184,25 @@ export function apply(ctx: Context): void {
   const openProjectFile = (root: string, path: string): void => {
     const current = currentSession.getSnapshot()
     if (current === undefined) throw new Error('No conversation is on screen to show the file beside')
-    ctx.sidebarRight.openResource(projectFileAddress(current, root, path))
+    const coordinates = directories.getSnapshot()
+    const coordinate = coordinates[current]
+    let fileSession = current
+    if (coordinate !== undefined && typeof coordinate !== 'string') {
+      const project = sessionProject(state.getSnapshot().snapshot?.projects, current, coordinates)
+      if (project === undefined || project.root !== root) throw new Error(ctx.locale.bind('research')('localResearchFileUnavailable'))
+      const local = localResearchFileSession(project, coordinates)
+      if (local === undefined) throw new Error(ctx.locale.bind('research')('localResearchFileUnavailable'))
+      fileSession = local as SessionId
+    }
+    ctx.sidebarRight.openResource(projectFileAddress(fileSession, root, path))
+  }
+  const openResearchFiles = (): void => {
+    const current = currentSession.getSnapshot()
+    if (current !== undefined) {
+      const coordinate = directories.getSnapshot()[current]
+      if (coordinate !== undefined && typeof coordinate !== 'string') throw new Error(ctx.locale.bind('research')('localResearchFilesTabUnavailable'))
+    }
+    ctx.sidebarRight.openTab(FILES_TAB_KIND)
   }
   const openTab = (kind: string, width: number): void => {
     ctx.layout.setInitialRightbarWidth(width)
@@ -257,7 +272,7 @@ export function apply(ctx: Context): void {
   const injected = (): ResearchInjected => ({
     hooks: { currentSession, research: state, focus, directories, canReveal, presets }, refresh,
     openFile: openProjectFile,
-    openFiles: () => { ctx.sidebarRight.openTab(FILES_TAB_KIND) },
+    openFiles: openResearchFiles,
     showProgress,
     toggleProgress,
     reveal,
@@ -348,6 +363,7 @@ export function apply(ctx: Context): void {
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
     startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
+    createSshWorkspace: async (host, path) => (await workspaces.create({ location: { kind: 'ssh', host, path } })).workspaceId,
     run,
     create,
     renameConversation: async (sessionId, title) => {
@@ -436,7 +452,13 @@ export function apply(ctx: Context): void {
       ...DIAGRAM_TAB,
       priority: 'builtin',
       patterns: ['*.drawio'],
-      canOpen: address => parseFileAddress(address) !== undefined,
+      canOpen: (address) => {
+        const file = parseFileAddress(address)
+        if (file === undefined) return false
+        if (file.scope !== 'session') return true
+        const summary = sessions.list.getSnapshot().byId[file.sessionId as SessionId]
+        return summary !== undefined && summary.execution?.kind !== 'ssh'
+      },
       title: diagramTitle,
     }), 'research.drawio-type')
     scope.slots.inject('sidebar.right.pane.tab', function* () {

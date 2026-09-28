@@ -42,6 +42,13 @@ export class ApiSessionCwdConflict extends Error {
   }
 }
 
+/** Explicit-id adoption may not move a Session between local and SSH hosts. */
+export class ApiSessionExecutionConflict extends Error {
+  constructor(readonly sessionId: SessionId) {
+    super(`session "${sessionId}" belongs to a different execution location`)
+  }
+}
+
 /** Explicit-id creation attempted to adopt a Session under another preset. */
 export class ApiSessionPresetConflict extends Error {
   constructor(
@@ -234,6 +241,7 @@ export class ApiSessionAgentController {
    * @param cwd - directory the Session must own.
    * @param checkPersistedIdentity - whether to inspect a cold identity before creation.
    * @param presetId - optional Agent preset the Session must own.
+   * @param execution - filesystem and process location the Session must retain.
    * @returns the matching live ordinary Agent.
    */
   async ensureSession(
@@ -241,10 +249,11 @@ export class ApiSessionAgentController {
     cwd: string,
     checkPersistedIdentity: boolean,
     presetId?: string,
+    execution?: Session['header']['execution'],
   ): Promise<Agent> {
     let creation = this.creations.get(sessionId)
     if (creation === undefined) {
-      creation = this.createOrAdopt(sessionId, cwd, checkPersistedIdentity, presetId)
+      creation = this.createOrAdopt(sessionId, cwd, checkPersistedIdentity, presetId, execution)
         .catch((error: unknown) => {
           const live = this.ctx.agents.get(sessionId)
           if (live !== undefined) {
@@ -272,6 +281,7 @@ export class ApiSessionAgentController {
     if (agent.session.header.cwd !== cwd) {
       throw new ApiSessionCwdConflict(sessionId, cwd, agent.session.header.cwd)
     }
+    if (!sameExecution(agent.session.header.execution, execution)) throw new ApiSessionExecutionConflict(sessionId)
     return agent
   }
 
@@ -376,17 +386,47 @@ export class ApiSessionAgentController {
   /**
    * Resolve the preset id and pre-publication Agent setup for a create or resume.
    * @param presetId - requested preset or the configured default when omitted.
+   * @param execution - location used to select a remote preset when applicable.
+   * @param cwd - workspace directory verified by a remote preset.
    * @returns the resolved preset identity and Agent setup callback.
    */
-  async composeAgent(presetId: string | undefined): Promise<{
+  async composeAgent(
+    presetId: string | undefined,
+    execution?: Session['header']['execution'],
+    cwd?: string,
+  ): Promise<{
     readonly agentPreset?: string
     readonly setup: AgentSetup
   }> {
     const presets = this.ctx.get('agentPresets')
+    if (execution?.kind === 'ssh') {
+      if (cwd === undefined) throw new Error('SSH Session needs a remote workspace path')
+      const services: { get(name: string): unknown } = this.ctx
+      const remote = services.get('remoteWorkspacePresets') as
+        | { ensure(location: { host: string; path: string }): Promise<string> }
+        | undefined
+      if (remote === undefined) throw new Error('SSH workspace runtime is unavailable')
+      const remoteId = await remote.ensure({ host: execution.host, path: cwd })
+      if (presetId !== undefined && presetId !== remoteId) {
+        throw new Error(`SSH Session preset ${presetId} does not match ${remoteId}`)
+      }
+      presetId = remoteId
+    }
     if (presets === undefined) {
+      if (execution?.kind === 'ssh') throw new Error('SSH workspace needs the Agent preset registry')
       return { setup: (_agentCtx, agent) => { this.installSelection(agent) } }
     }
     const resolvedId = (await presets.resolve(presetId)).id
+    if (execution?.kind !== 'ssh') {
+      const services: { get(name: string): unknown } = this.ctx
+      const remote = services.get('remoteWorkspacePresets') as
+        | { isRemotePreset(id: string): boolean }
+        | undefined
+      if (remote?.isRemotePreset(resolvedId)) {
+        const reason = `Local Session cannot use SSH workspace preset ${resolvedId}`
+        throw new RemoteError('agent-preset/invalid', reason, { agentPreset: resolvedId, reason })
+      }
+    }
     return {
       agentPreset: resolvedId,
       setup: async (agentCtx, agent) => {
@@ -428,7 +468,9 @@ export class ApiSessionAgentController {
     if (hasApiSessionSubagentOwner(this.ctx, { header: observation.header }, undefined)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    const composition = await this.composeAgent(this.presetForObservation(observation))
+    const composition = await this.composeAgent(
+      this.presetForObservation(observation), observation.header.execution, observation.header.cwd,
+    )
     const published = this.ctx.sessions.get(sessionId)
     const live = this.ctx.agents.get(sessionId)
     if (published !== undefined && hasApiSessionSubagentOwner(this.ctx, published, live)) {
@@ -446,6 +488,7 @@ export class ApiSessionAgentController {
     cwd: string,
     checkPersistedIdentity: boolean,
     presetId: string | undefined,
+    execution: Session['header']['execution'] | undefined,
   ): Promise<Agent> {
     const attached = this.ctx.sessions.get(sessionId)
     const live = this.ctx.agents.get(sessionId)
@@ -463,9 +506,10 @@ export class ApiSessionAgentController {
         if (observation.header.cwd !== cwd) {
           throw new ApiSessionCwdConflict(sessionId, cwd, observation.header.cwd)
         }
+        if (!sameExecution(observation.header.execution, execution)) throw new ApiSessionExecutionConflict(sessionId)
         const storedPreset = this.presetForObservation(observation)
         this.assertPresetUnchanged(sessionId, presetId, storedPreset)
-        const composition = await this.composeAgent(storedPreset)
+        const composition = await this.composeAgent(storedPreset, observation.header.execution, observation.header.cwd)
         return (await this.ctx.agents.resume({
           resumeSessionId: sessionId,
           agentOptions: this.agentOptions(),
@@ -477,17 +521,20 @@ export class ApiSessionAgentController {
       }
     }
 
-    try {
-      await mkdir(cwd, { recursive: true })
-    } catch (error: unknown) {
-      throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
+    if (execution?.kind !== 'ssh') {
+      try {
+        await mkdir(cwd, { recursive: true })
+      } catch (error: unknown) {
+        throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
+      }
     }
-    const composition = await this.composeAgent(presetId)
+    const composition = await this.composeAgent(presetId, execution, cwd)
     return (await this.ctx.agents.create({
       sessionId,
       agentOptions: this.agentOptions(),
       meta: {
         cwd,
+        execution: execution?.kind === 'ssh' ? execution : { kind: 'local' },
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
       },
       setup: composition.setup,
@@ -523,6 +570,12 @@ export class ApiSessionAgentController {
     if (requested === undefined || requested === existing) return
     throw new ApiSessionPresetConflict(sessionId, requested, existing)
   }
+}
+
+function sameExecution(left: Session['header']['execution'], right: Session['header']['execution']): boolean {
+  const lhs = left ?? { kind: 'local' }
+  const rhs = right ?? { kind: 'local' }
+  return lhs.kind === rhs.kind && (lhs.kind !== 'ssh' || (rhs.kind === 'ssh' && lhs.host === rhs.host))
 }
 
 function agentModelSelection(selection: ModelSelection): AgentModelSelection {

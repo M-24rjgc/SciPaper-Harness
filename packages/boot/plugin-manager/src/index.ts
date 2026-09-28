@@ -75,6 +75,23 @@ const protectedModules = new Set([
   '@deepseek-ai/dsh-hmr',
 ])
 
+/** Search providers share one `web.searchProvider` selection in a profile. */
+const optionalSearchBundles = new Set([
+  '@deepseek-ai/dsh-web-search-exa-bundle',
+  '@deepseek-ai/dsh-web-search-perplexity-bundle',
+])
+
+/** This bundle redirects the entire Host executor; Desktop supports SSH per research instead. */
+const SSH_REMOTE_BUNDLE = '@deepseek-ai/dsh-ssh-remote-bundle'
+const HOST_WIDE_SSH_MODULES = new Set([
+  '@deepseek-ai/dsh-ssh', '@deepseek-ai/dsh-fs-ssh',
+  '@deepseek-ai/dsh-subprocess-ssh', '@deepseek-ai/dsh-sandbox-ssh',
+])
+
+function unsupportedOnDesktop(name: string): boolean {
+  return name === SSH_REMOTE_BUNDLE && process.env.DSH_DESKTOP_HOST === '1'
+}
+
 /** The profile files an installation writes and a failed or cancelled one restores. */
 const RESTORED_FILES = ['package.json', 'pnpm-lock.yaml'] as const
 
@@ -263,6 +280,10 @@ export class PluginManager extends TypertRemoteService {
       if (protectedModules.has(entry.moduleName) || entry.entryId === this.ownerEntryId) {
         return { ...entry, readOnlyReason: 'management-required' as const }
       }
+      if (process.env.DSH_DESKTOP_HOST === '1' && HOST_WIDE_SSH_MODULES.has(entry.moduleName)
+        && actual?.parent.tree.ctx.fiber.entry?.id === 'include') {
+        return { ...entry, readOnlyReason: 'unsupported-host' as const }
+      }
       if (candidate === undefined || candidates.length > 1 || candidate.name !== entry.moduleName
         || actual?.parent.tree.ctx.fiber.entry?.id !== 'include') {
         return { ...entry, readOnlyReason: 'unaddressable' as const }
@@ -290,6 +311,9 @@ export class PluginManager extends TypertRemoteService {
       const optional = OPTIONAL_BUNDLES.includes(name)
       const removable = installed && !Object.hasOwn(installation.dependencies ?? {}, name)
       const enabled = selected.includes(name)
+      // The desktop's SSH workspace flow mounts a scoped remote preset, not a Host-wide redirect.
+      // Hide an unselected installation option that could never take effect here.
+      if (unsupportedOnDesktop(name) && !enabled && !installed) continue
       const readOnlyReason = this.protectsManager(name) ? 'management-required' as const : undefined
       try {
         const info = bundleManifest(name, this.profile.dir, this.profile.installAnchor)
@@ -307,7 +331,9 @@ export class PluginManager extends TypertRemoteService {
           ...meta === undefined ? {} : { meta },
           enabled, installed, optional, removable: removable && readOnlyReason === undefined,
           ...(readOnlyReason === undefined ? {} : { readOnlyReason }),
-          ...this.declaredRows(name, info) })
+          ...unsupportedOnDesktop(name)
+            ? { error: { code: 'unsupported-host' as const }, rows: [], overrides: [] }
+            : this.declaredRows(name, info) })
       } catch (error) {
         if (enabled || installed) {
           bundles.push({ name, enabled, installed, optional, removable: removable && readOnlyReason === undefined,
@@ -442,6 +468,7 @@ export class PluginManager extends TypertRemoteService {
   @Remote
   setBundleEnabled(name: string, enabled: boolean): Promise<ChangeResult> {
     return this.change(result => this.configure(async () => {
+      if (enabled && unsupportedOnDesktop(name)) throw new ManagementFailure('unsupported-host')
       await this.selectBundle(name, enabled)
       result.warnings = await this.reload(enabled ? this.bundleRows(name).map(row => row.id) : [])
     }), { stage: 'enable', target: name, enabled }, 'bundle')
@@ -727,7 +754,10 @@ export class PluginManager extends TypertRemoteService {
     if (!enabled && previous.includes(name)) {
       if (this.protectsManager(name)) throw new ManagementFailure('management-required')
     }
-    const bundles = enabled ? [...previous, ...previous.includes(name) ? [] : [name]] : previous.filter(item => item !== name)
+    const retained = enabled && optionalSearchBundles.has(name)
+      ? previous.filter(item => !optionalSearchBundles.has(item) || item === name)
+      : previous
+    const bundles = enabled ? [...retained, ...retained.includes(name) ? [] : [name]] : previous.filter(item => item !== name)
     if (JSON.stringify(previous) === JSON.stringify(bundles)) return
     manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
     await saveManifest(this.profile.dir, manifest)

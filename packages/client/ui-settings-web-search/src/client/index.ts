@@ -18,6 +18,10 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { WebSearchCard } from './WebSearchCard.tsx'
+import {
+  SEARCH_BACKENDS, SearchBackendBadge, SearchBackendConfig,
+  type SearchCredentialFace,
+} from './OptionalSearchBackend.tsx'
 import { WEB_SEARCH_NS, WebSearchCardController } from './web-search-card-controller.ts'
 import { en, zh, type WebSearchSettingsLocaleKey } from './locales.ts'
 
@@ -57,4 +61,27 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.configForms.whileServed([WEB_SEARCH_NS], () => ctx.slots.inject('plugins.item', () => ctx.slots.register({
     name: 'plugins.item', id: 'web-search', order: 40, label: () => t('title'), locale: NS, inject: () => card.inject(),
   }, WebSearchCard))), 'ui-settings-web-search: page')
+  const credentialFace: SearchCredentialFace = {
+    async readCredential(ref) {
+      const response = await ctx.remote.credentials.describe([ref])
+      if (!response.ok) return undefined
+      const view = response.value[ref]
+      return { configured: view?.configured ?? false, writable: view?.writable ?? true }
+    },
+    async writeCredential(ref, value) {
+      const response = await ctx.remote.credentials.set(ref, value)
+      if (!response.ok) throw new Error('credential write was refused')
+    },
+    onCredentialChanged: listener => ctx.remote.$on('credentials/reference-updated', listener),
+  }
+  for (const backend of SEARCH_BACKENDS) {
+    ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+      name: 'plugins.bundle.config', key: backend.bundle, locale: NS,
+      inject: () => ({ ...credentialFace, backend }),
+    }, SearchBackendConfig)), `ui-settings-web-search: ${t(backend.nameKey)} bundle configuration`)
+  }
+  ctx.effect(() => ctx.slots.inject('plugins.detail.badge', () => ctx.slots.register({
+    name: 'plugins.detail.badge', id: 'optional-search-key-status', locale: NS,
+    inject: () => credentialFace,
+  }, SearchBackendBadge)), 'ui-settings-web-search: optional search status')
 }

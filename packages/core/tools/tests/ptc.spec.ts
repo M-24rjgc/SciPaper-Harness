@@ -278,6 +278,35 @@ describe('mode-aware wire contribution', () => {
     expect(assembly.sections.some(section => section.name === 'tools:sdk')).toBe(true)
   })
 
+  it.each(['ptc', 'both'] as const)('keeps SSH scopes native under a global %s mode and rejects direct run_code', async (mode) => {
+    const { ctx, systemPrompt, runtime } = await setup({ mode })
+    registerEcho(ctx)
+    const { scope, agent } = await mintAgentScope(ctx, 'ssh')
+    Object.assign(agent.session.header, { cwd: '/srv/research', execution: { kind: 'ssh', host: 'campus' } })
+
+    // The transport itself must reject SSH even before a preset selects native presentation.
+    expect((await runCode(ctx, 'return 1', { agent })).isError).toBe(true)
+    expect(runtime.lastRequest).toBeUndefined()
+
+    scope.ctx.tools.presentAs('native')
+    const assembly = await systemPrompt.assemble({ scope: agent })
+    expect(assembly.tools.map(tool => tool.name)).toEqual(['echo'])
+    expect(assembly.sections.find(section => section.name === 'tools:sdk')?.text).toBe('')
+    expect(assembly.sections.find(section => section.name === 'tools:ptc-only')?.text).toBe('')
+    const native = await ctx.tools.execute({
+      agent, name: 'echo', arguments: { value: 'remote' },
+      callId: ToolCallId('ssh-native'), signal: testToolSignal,
+    })
+    expect(native.isError).toBe(false)
+    expect(native.content).toEqual([{ type: 'text', text: 'echo:remote' }])
+    expect((await runCode(ctx, 'return 1', { agent })).isError).toBe(true)
+    expect(runtime.lastRequest).toBeUndefined()
+
+    const { agent: local } = await mintAgentScope(ctx, 'local')
+    expect((await runCode(ctx, 'return 1', { agent: local })).isError).toBe(false)
+    expect(runtime.lastRequest).toBeDefined()
+  })
+
   it.each(['ptc', 'both'] as const)('keeps the run_code transport outside scoped allow-list filtering in mode %s', async (mode) => {
     const { ctx, systemPrompt, runtime } = await setup({ mode })
     registerEcho(ctx, 'echo')

@@ -117,8 +117,8 @@ export class TerminalController extends TypertRemoteService {
   @Remote
   environment(agent: Agent, signal: AbortSignal): TerminalEnvironment {
     signal.throwIfAborted()
-    const { sandboxPolicy } = this.execution(agent)
-    return { cwd: agent.session.header.cwd ?? sandboxPolicy.workspaceRoot,
+    const { workspaceRoot } = this.execution(agent)
+    return { cwd: agent.session.header.cwd ?? workspaceRoot,
       maxInputBytes: this.config.maxInputBytes, maxCols: this.config.maxCols,
       maxRows: this.config.maxRows, scrollback: this.config.scrollback }
   }
@@ -328,12 +328,26 @@ export class TerminalController extends TypertRemoteService {
       || !Number.isSafeInteger(rows) || rows < 1 || rows > this.config.maxRows) throw new Error('Terminal dimensions exceed the configured limits')
   }
 
-  private execution(agent: Agent): { subprocess: Context['subprocess']; sandboxPolicy: Context['sandboxPolicy'] } {
-    // The Agent context selects execution providers but does not inject consumer services.
+  private execution(agent: Agent): { subprocess: Context['subprocess']; workspaceRoot: string } {
+    if (agent.session.header.execution?.kind === 'ssh') {
+      // The SSH provider lives in the preset's isolated realm, which is a
+      // sibling of the Agent context. A direct Agent lookup can see the Host's
+      // local subprocess instead, so a missing preset service must fail closed.
+      const services: { get(name: string): unknown } = this.ctx
+      const presets = services.get('agentPresets') as
+        | { serviceFor(owner: { ctx: Context }, name: 'subprocess'): Context['subprocess'] | undefined }
+        | undefined
+      const subprocess = presets?.serviceFor(agent, 'subprocess')
+      const workspaceRoot = agent.session.header.cwd
+      if (subprocess === undefined || subprocess === this.ctx.get('subprocess') || workspaceRoot === undefined) {
+        throw new RemoteError('terminal/unavailable', 'SSH Session subprocess provider is unavailable', {})
+      }
+      return { subprocess, workspaceRoot }
+    }
     const subprocess = agent.ctx.get('subprocess')
     const sandboxPolicy = agent.ctx.get('sandboxPolicy')
     if (subprocess === undefined || sandboxPolicy === undefined) throw new Error('The Session execution environment requires subprocess and sandbox policy providers')
-    return { subprocess, sandboxPolicy }
+    return { subprocess, workspaceRoot: sandboxPolicy.workspaceRoot }
   }
 
   private async spawn(agent: Agent, owner: OwnedSession, request: TerminalCreateRequest, signal: AbortSignal): Promise<BrowserTerminal> {

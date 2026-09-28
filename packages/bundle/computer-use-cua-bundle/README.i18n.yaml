@@ -1,0 +1,46 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bundle/computer-use-cua-bundle/README.md
+/:
+  en: 44941b933bb8bded
+  zh: 6529c1d083c56d03
+/deepseek-ai-dsh-computer-use-cua-bundle:
+  en: 8701dd6a7db32303
+  zh: cf4adcc088d89b3a
+/deepseek-ai-dsh-computer-use-cua-bundle/summary:
+  en: 3d29552d682bdfc4
+  zh: 1e04ac8873c5a126
+/deepseek-ai-dsh-computer-use-cua-bundle/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 03c7fea14324bfe9
+/deepseek-ai-dsh-computer-use-cua-bundle/use-this-package:
+  en: f0c7e9e142c2e242
+  zh: c170cc22206d5478
+/deepseek-ai-dsh-computer-use-cua-bundle/understand-the-implementation:
+  en: c1c32fa40ecc1df2
+  zh: 327a43c9c2bf7cff
+/deepseek-ai-dsh-computer-use-cua-bundle/further-exploration:
+  en: dccca5642c58c069
+  zh: a46e0e8ca6a982b2
+/deepseek-ai-dsh-computer-use-cua-bundle/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-computer-use-cua-bundle/model-experience/cua-driver-tools:
+  en: 77c6cf95f3dbbaff
+  zh: 5eaabcf8e4516cc8
+/deepseek-ai-dsh-computer-use-cua-bundle/model-experience/cua-driver-tools/what-the-model-sees:
+  en: 2f0c9b6792aa0e96
+  zh: e1059062a88a5642
+/deepseek-ai-dsh-computer-use-cua-bundle/model-experience/cua-driver-tools/token-effect:
+  en: cea06b471993c25b
+  zh: 8414d8fae48c6006
+/deepseek-ai-dsh-computer-use-cua-bundle/model-experience/cua-driver-tools/kv-cache-effect:
+  en: 2a429083cab117fb
+  zh: f55d95b7c8533af4
+/deepseek-ai-dsh-computer-use-cua-bundle/known-limitations-and-deferred-work:
+  en: fc56a2d22ba16f60
+  zh: d69b5d670837ddae
+/deepseek-ai-dsh-computer-use-cua-bundle/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

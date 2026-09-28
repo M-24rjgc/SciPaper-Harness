@@ -13,6 +13,8 @@ import { OpenPathEmptyAction, type OpenPathEmptyActionProps } from '../src/clien
 import type { OpenInAppPathAction, OpenInAppPathFailure } from '../src/client/open-path.ts'
 import { useOpenTargetGesture } from '../src/client/OpenTargetButton.tsx'
 import { zh } from '../src/client/locales.ts'
+import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 afterEach(() => {
   cleanup()
@@ -22,6 +24,7 @@ afterEach(() => {
 
 const t = makeTranslate(zh)
 const ABSOLUTE_PATH = '/host/project/work/clip.mp4'
+const sessionId = 'session' as SessionId
 
 interface Bench {
   props: OpenPathActionProps & OpenPathEmptyActionProps
@@ -30,7 +33,7 @@ interface Bench {
   openPath: ReturnType<typeof vi.fn<(path: string, action: OpenInAppPathAction) => Promise<OpenInAppPathFailure | null>>>
 }
 
-function bench(over: { desktop?: boolean | null; openPath?: Bench['openPath'] } = {}): Bench {
+function bench(over: { desktop?: boolean | null; openPath?: Bench['openPath']; remote?: boolean } = {}): Bench {
   const desktop = createSnapshotStore<boolean | null>(over.desktop === undefined ? true : over.desktop)
   const loadDesktop = vi.fn(async () => {})
   const openPath = over.openPath ?? vi.fn(async () => null)
@@ -38,6 +41,12 @@ function bench(over: { desktop?: boolean | null; openPath?: Bench['openPath'] } 
     return select => select(source.getSnapshot())
   }
   const props = {
+    sessionId,
+    useSessions: <S,>(select: (state: SessionListState) => S): S => select({
+      ids: [sessionId], byId: { [sessionId]: { id: sessionId, displayTitle: 'Workspace',
+        execution: over.remote === true ? { kind: 'ssh', host: 'lab' } : { kind: 'local' },
+        running: false, retainedBy: {}, blank: false, updatedAt: 0 } }, projectionsBySession: {}, phase: 'ready',
+    }),
     absolutePath: ABSOLUTE_PATH,
     useOpenInAppDesktop: useSelector(desktop),
     loadDesktop,
@@ -49,6 +58,11 @@ function bench(over: { desktop?: boolean | null; openPath?: Bench['openPath'] } 
 }
 
 describe('OpenPathAction visibility', () => {
+  it('hides native file actions and association queries for an SSH session', () => {
+    const b = bench({ remote: true })
+    expect(render(<OpenPathAction {...b.props} />).container.innerHTML).toBe('')
+    expect(b.props.applications).not.toHaveBeenCalled()
+  })
   it('renders nothing and asks for the desktop answer while it is unknown, and nothing without a desktop', () => {
     const unknown = bench({ desktop: null })
     const { container } = render(<OpenPathAction {...unknown.props} />)

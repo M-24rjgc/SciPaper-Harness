@@ -161,8 +161,8 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'browser-use',
     title: 'Browser-use provider registration',
     mode: 'seam',
-    implementations: ['experimental-browser-use-playwright-mcp', 'experimental-browser-use-chrome-devtools-mcp', 'experimental-browser-use-stagehand-native'],
-    consumers: ['experimental-browser-use-playwright-mcp', 'experimental-browser-use-chrome-devtools-mcp', 'experimental-browser-use-stagehand-native'],
+    implementations: ['browser-use-playwright-mcp', 'experimental-browser-use-chrome-devtools-mcp', 'experimental-browser-use-stagehand-native'],
+    consumers: ['browser-use-playwright-mcp', 'experimental-browser-use-chrome-devtools-mcp', 'experimental-browser-use-stagehand-native'],
     note: 'One provider-owned name per service instance. Providers own their tools and browser resources per live Session; the shared service has no browser operation API.',
   },
   {
@@ -170,8 +170,8 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'computer-use',
     title: 'Computer-use provider registration',
     mode: 'seam',
-    implementations: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
-    consumers: ['experimental-computer-use-cua-driver-mcp', 'experimental-computer-use-cua-driver-native'],
+    implementations: ['experimental-computer-use-cua-driver-mcp', 'computer-use-cua-driver-native'],
+    consumers: ['experimental-computer-use-cua-driver-mcp', 'computer-use-cua-driver-native'],
     note: 'One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock.',
   },
   {

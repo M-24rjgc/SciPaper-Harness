@@ -8,7 +8,7 @@
  * @module dsh-session-persistence-jsonl/format
  */
 
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, posix } from 'node:path'
 import {
   SESSION_FORMAT_VERSION,
   KNOWN_SESSION_EVENT_TYPES,
@@ -24,7 +24,8 @@ import { parseSessionFormatLogFilename, sessionFormatLogFilename, SessionFormatU
 import type { SessionFormatEvent } from '@deepseek-ai/dsh-session-format'
 import type { SessionFormatRecovery, SessionFormatRestore } from '@deepseek-ai/dsh-session-format'
 import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
-import { assertV4RowAdmission, assertReleasedV4Relationships } from '@deepseek-ai/dsh-session-format-v3-to-v4'
+import { assertV4RowAdmission } from '@deepseek-ai/dsh-session-format-v3-to-v4'
+import { assertReleasedV5Relationships } from '@deepseek-ai/dsh-session-format-v4-to-v5'
 import {
   SessionFormatUnsupportedError,
   sessionFormatVersionRefusal,
@@ -86,6 +87,7 @@ interface HeaderLine {
   id: SessionId
   createdAt: number
   cwd?: string
+  execution?: { kind: 'local' } | { kind: 'ssh'; host: string }
   parentSession?: SessionId
   isSeeded: boolean
   origin?: 'subagent'
@@ -94,7 +96,7 @@ interface HeaderLine {
 }
 
 const HEADER_REQUIRED_KEYS = ['type', 'version', 'id', 'createdAt', 'isSeeded', 'delegationDepth'] as const
-const HEADER_OPTIONAL_KEYS = ['cwd', 'parentSession', 'origin', 'agentPreset'] as const
+const HEADER_OPTIONAL_KEYS = ['cwd', 'execution', 'parentSession', 'origin', 'agentPreset'] as const
 const HEADER_KEYS = new Set<string>([...HEADER_REQUIRED_KEYS, ...HEADER_OPTIONAL_KEYS])
 
 /**
@@ -145,6 +147,7 @@ function fromHeaderLine(line: HeaderLine): SessionStorageMetadata {
       id: line.id,
       createdAt: line.createdAt,
       ...line.cwd !== undefined ? { cwd: line.cwd } : {},
+      execution: line.execution ?? { kind: 'local' },
       ...line.parentSession !== undefined ? { parentSession: line.parentSession } : {},
       isSeeded: line.isSeeded,
       ...line.origin !== undefined ? { origin: line.origin } : {},
@@ -172,9 +175,13 @@ function isHeaderLine(value: unknown): value is HeaderLine {
     && Number.isSafeInteger((value as { delegationDepth: number }).delegationDepth)
     && (value as { delegationDepth: number }).delegationDepth >= 0
     && !Object.is((value as { delegationDepth: number }).delegationDepth, -0)
+    && ((value as { execution?: unknown }).execution === undefined
+      || validExecution((value as { execution: unknown }).execution))
     && ((value as { cwd?: unknown }).cwd === undefined
       || (typeof (value as { cwd?: unknown }).cwd === 'string'
-        && isAbsolute((value as { cwd: string }).cwd)))
+        && ((value as HeaderLine).execution?.kind === 'ssh'
+          ? posix.isAbsolute((value as { cwd: string }).cwd)
+          : isAbsolute((value as { cwd: string }).cwd))))
     && ((value as { parentSession?: unknown }).parentSession === undefined
       || typeof (value as { parentSession?: unknown }).parentSession === 'string')
     && typeof (value as { isSeeded?: unknown }).isSeeded === 'boolean'
@@ -183,6 +190,14 @@ function isHeaderLine(value: unknown): value is HeaderLine {
     && ((value as { agentPreset?: unknown }).agentPreset === undefined
       || typeof (value as { agentPreset?: unknown }).agentPreset === 'string')
   )
+}
+
+function validExecution(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const execution = value as Record<string, unknown>
+  if (execution.kind === 'local') return Object.keys(execution).length === 1
+  return execution.kind === 'ssh' && typeof execution.host === 'string'
+    && execution.host.trim() !== '' && Object.keys(execution).length === 2
 }
 
 /**
@@ -465,7 +480,7 @@ export class SessionLogScanner {
   finish(): SessionLogScan {
     this.finished = true
     const artifact = this.restore.finish()
-    assertReleasedV4Relationships(artifact, KNOWN_SESSION_EVENT_TYPES)
+    assertReleasedV5Relationships(artifact, KNOWN_SESSION_EVENT_TYPES)
     return {
       meta: this.meta,
       inheritedEventCount: SessionLogOffset(artifact.inheritedEventCount),

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Perplexity 搜索",
+    "description": "通过 Perplexity 检索网络。需要 API key；未配置前不可使用。"
+  }
+}

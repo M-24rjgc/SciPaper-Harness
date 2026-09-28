@@ -44,6 +44,15 @@ function repository(test: TestContext) {
 }
 
 describe('maintained repository reference policy', () => {
+  it('permits only the full release kernel revision field in a package manifest', () => {
+    const commit = 'a'.repeat(40)
+    const manifest = JSON.stringify({ scipaper: { kernel: { revision: commit } }, other: commit }, null, 2)
+    expect(findRepositoryReferences('packages/example/package.json', manifest, new Set([commit])))
+      .toEqual([{ file: 'packages/example/package.json', line: 7, kind: 'commit-hash' }])
+    expect(findRepositoryReferences('package.json', `"revision": "${commit}"`, new Set([commit])))
+      .toEqual([{ file: 'package.json', line: 1, kind: 'commit-hash' }])
+  })
+
   it('permits only the independent kit repository and its source URLs', () => {
     for (const suffix of ['', '.git', '/tree/main/packages/entry']) {
       expect(findRepositoryReferences('package.json', `${organizationUrl}/libreoffice-kit${suffix}`, new Set())).toEqual([])

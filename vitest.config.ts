@@ -32,14 +32,17 @@ const windowsUnsupportedPackages = process.platform === 'win32'
       'packages/hooks/*',
       'packages/experimental/ptc-runtime-python',
       'packages/sandbox/sandbox-local',
-      // OpenSSH multiplexing and Unix-socket helper streams require POSIX endpoints.
-      'packages/ssh/*',
     ]
   : []
 
 const windowsUnsupportedTests = process.platform === 'win32'
   ? [
       ...windowsUnsupportedPackages.map(path => `${path}/tests/**/*.spec.ts`),
+      // The Windows SSH client uses independent exec channels. Remote helper
+      // and POSIX-multiplexing fixtures still need a POSIX host. The fs-ssh
+      // provider suite is platform-neutral and checks POSIX remote URI encoding.
+      'packages/ssh/{sandbox-ssh,subprocess-ssh}/tests/**/*.spec.ts',
+      'packages/ssh/ssh/tests/!(windows-client|windows-stream-bridge|windows-stream-tls).spec.ts',
       'packages/subprocess/subprocess/tests/**/*.spec.ts',
       'packages/subprocess/subprocess-local/tests/local.spec.ts',
       'packages/subprocess/subprocess-local/tests/process-inspector.spec.ts',
@@ -71,7 +74,7 @@ const nonLinuxWebWorkerTests = process.platform === 'linux'
 const platformUnsupportedTests = [...windowsUnsupportedTests, ...nonLinuxWebWorkerTests]
 
 const windowsUnsupportedCoveragePackages = process.platform === 'win32'
-  ? [...windowsUnsupportedPackages, 'packages/subprocess/*', 'packages/terminal/terminal-bash']
+  ? [...windowsUnsupportedPackages, 'packages/ssh/*', 'packages/subprocess/*', 'packages/terminal/terminal-bash']
   : []
 
 // Windows-only packages: their sources execute exclusively on win32 (koffi

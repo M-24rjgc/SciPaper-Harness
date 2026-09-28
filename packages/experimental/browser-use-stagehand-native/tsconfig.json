@@ -12,6 +12,6 @@
     { "path": "../../mcp/mcp-client" },
     { "path": "../../subprocess/subprocess" },
     { "path": "../../util/values" },
-    { "path": "../browser-use-runtime" }
+    { "path": "../../browser-use/browser-use-runtime" }
   ]
 }

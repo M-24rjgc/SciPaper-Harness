@@ -34,7 +34,8 @@ export type OpenInAppActionProps =
  */
 export function OpenInAppAction(props: OpenInAppActionProps): React.JSX.Element | null {
   const { sessionId, useSessions, useOpenInAppApps, useOpenInAppChoice, t } = props
-  const cwd = useSessions(state => state.byId[sessionId]?.cwd)
+  const session = useSessions(state => state.byId[sessionId])
+  const cwd = session?.cwd
   const available = useOpenInAppApps(apps => apps)
   const choice = useOpenInAppChoice(id => id)
   const operation = props.useOpenInAppLaunch(value => value)
@@ -44,7 +45,7 @@ export function OpenInAppAction(props: OpenInAppActionProps): React.JSX.Element 
     return key === undefined ? [] : [{ id, name: t(key), icon: props.iconUrl(id) }]
   })
   const preferred = apps.find(app => app.id === choice) ?? apps[0]
-  if (preferred === undefined || cwd === undefined || cwd === '') return null
+  if (session?.execution?.kind === 'ssh' || preferred === undefined || cwd === undefined || cwd === '') return null
   return (
     <OpenTargetButton
       key={cwd} kind="directory" applications={apps} defaultId={preferred.id} failed={false} t={t}

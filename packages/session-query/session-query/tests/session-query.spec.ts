@@ -1140,7 +1140,7 @@ describe('session-query exact reads', () => {
     await expect(ctx.sessionQuery.listSessions()).rejects.toThrow(expectCode('SESSION_QUERY_SOURCE_CONFLICT'))
     await persistence.dispose()
     await expect(ctx.sessionQuery.listSessions()).resolves.toEqual([
-      { header: shared, live: true, persisted: false },
+      { header: { ...shared, execution: { kind: 'local' } }, live: true, persisted: false },
     ])
   })
 

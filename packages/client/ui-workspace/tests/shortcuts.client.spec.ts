@@ -107,7 +107,7 @@ describe('workspace shortcut ownership', () => {
     expect(b.controls.state.getSnapshot().addRequested).toBe(false)
     b.controls.directoryBusy(false)
     b.directory.set(false)
-    expect(b.registry.dispatch(key('KeyO'), context, consume).status).toBe('blocked')
+    expect(b.registry.dispatch(key('KeyO'), context, consume).status).toBe('handled')
   })
 
   it('captures rename and archive targets while the main Session changes', async () => {

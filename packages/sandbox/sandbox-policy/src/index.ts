@@ -20,7 +20,7 @@
  * @module @deepseek-ai/dsh-sandbox-policy
  */
 
-import { isAbsolute } from 'node:path'
+import { isAbsolute, posix } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import { z as zod } from 'zod'
 import z from '@deepseek-ai/schemastery'
@@ -33,8 +33,8 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
 
 /** Preserve execution-world spelling; enforcing providers resolve filesystem identity on their host. */
-function resolveWorkspaceRoot(path: string): string {
-  if (!isAbsolute(path)) throw new Error('sandbox-policy: workspace root must be an absolute execution-world path')
+function resolveWorkspaceRoot(path: string, remote = false): string {
+  if (!(remote ? posix.isAbsolute(path) : isAbsolute(path))) throw new Error('sandbox-policy: workspace root must be an absolute execution-world path')
   return path
 }
 
@@ -165,7 +165,7 @@ export class SandboxPolicyService extends Service {
     const { session } = request
     return {
       mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
-      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
+      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot, session?.header.execution?.kind === 'ssh'),
       ...session === undefined ? {} : { sessionId: session.id },
     }
   }

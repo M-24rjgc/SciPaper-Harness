@@ -10,7 +10,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { sep } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, SearchResultView, ToolResult } from '@deepseek-ai/dsh-tools'
 import type { SpillRef } from '@deepseek-ai/dsh-spill'
@@ -38,6 +37,8 @@ export const GLOB_VCS_EXCLUDES: readonly string[] = ['.git', '.svn', '.hg', '.bz
 
 /** Resolved glob-tool caps — plugin config after defaulting (see `Config` in index.ts). */
 export interface GlobToolCaps {
+  /** Executable path in the subprocess provider's filesystem. */
+  rgPath?: string | undefined
   /** Whether over-cap pages are sampled across top-level entries instead of taking the modification-time head. */
   sampleOverCapGlobResults: boolean
   /** Max paths retained inline; later paths go to the formatted spill file. */
@@ -121,22 +122,22 @@ export interface GlobSample {
 
 /** Remove the displayed search-root prefix before choosing a top-level group. */
 function relativeToSearchRoot(path: string, root: string): string {
-  if (root === '.') return path.startsWith(`.${sep}`) ? path.slice(2) : path
+  if (root === '.') return /^\.[\\/]/u.test(path) ? path.slice(2) : path
   let rootEnd = root.length
-  while (rootEnd > 0 && root[rootEnd - 1] === sep) rootEnd -= 1
+  while (rootEnd > 0 && /[\\/]/u.test(root[rootEnd - 1] as string)) rootEnd -= 1
   const trimmedRoot = root.slice(0, rootEnd)
   if (trimmedRoot.length === 0) return stripLeadingSeparators(path)
   if (path === trimmedRoot) return ''
-  if (path.startsWith(`${trimmedRoot}${sep}`)) {
+  if (path.startsWith(`${trimmedRoot}/`) || path.startsWith(`${trimmedRoot}\\`)) {
     return path.slice(trimmedRoot.length + 1)
   }
   return path
 }
 
-/** Strip only separators recognized by the execution platform. */
+/** Strip path separators from either the local or the SSH execution host. */
 function stripLeadingSeparators(path: string): string {
   let start = 0
-  while (path[start] === sep) start += 1
+  while (path[start] === '/' || path[start] === '\\') start += 1
   return path.slice(start)
 }
 
@@ -150,7 +151,7 @@ function stripLeadingSeparators(path: string): string {
  */
 function topLevelSegment(path: string): string {
   const trimmed = stripLeadingSeparators(path)
-  const cut = trimmed.indexOf(sep)
+  const cut = trimmed.search(/[\\/]/u)
   return cut === -1 ? trimmed : trimmed.slice(0, cut)
 }
 
@@ -335,7 +336,7 @@ export function applyGlobTool(ctx: Context, caps: GlobToolCaps): void {
     },
     async execute(args, exec) {
       const input = parseGlobArgs(args)
-      const run = await runRipgrep(ctx, exec, 'glob', buildGlobCommand(input), caps.rawOutputMaxBytes, caps.graceMs, caps.stderrMaxBytes)
+      const run = await runRipgrep(ctx, exec, 'glob', buildGlobCommand(input), caps.rawOutputMaxBytes, caps.graceMs, caps.stderrMaxBytes, caps.rgPath)
       const root = input.path === undefined ? '.' : toWorkdirRelative(input.path, run.workdir)
       if (run.noMatches) return { root, paths: [] }
 

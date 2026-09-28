@@ -1,6 +1,6 @@
 /** Interpreted retired content must fail before migration publication or recoverable native-tail suppression. */
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { SessionFormatUnsupportedError, SessionPersistenceCorruptionError } from '@deepseek-ai/dsh-session-persistence'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
@@ -16,7 +16,7 @@ const modes = (['none', 'zstd'] as const).flatMap(compression =>
   (['read', 'write'] as const).map(access => ({ compression, access })))
 
 describe.each(modes)('retired content in JSONL ($compression, $access)', ({ compression, access }) => {
-  async function stored(version: 3 | 4, opaque: boolean, corruptPrefix: boolean) {
+  async function stored(version: 3 | 4 | typeof SESSION_FORMAT_VERSION, opaque: boolean, corruptPrefix: boolean) {
     const root = await mkdtemp(join(tmpdir(), 'dsh-retired-content-'))
     const ctx = new Context()
     onTestFinished(async () => {
@@ -26,7 +26,8 @@ describe.each(modes)('retired content in JSONL ($compression, $access)', ({ comp
       ...(opaque ? { ignorable: true } : { surfaceOp: 'append' }),
       data: { id: 'user', role: 'user', source: { kind: 'user' }, content: [wrapper] },
     }
-    const header = { type: 'session', version, id, createdAt: 1, delegationDepth: 0, isSeeded: false }
+    const header = { type: 'session', version, id, createdAt: 1, delegationDepth: 0, isSeeded: false,
+      ...(version === SESSION_FORMAT_VERSION ? { execution: { kind: 'local' } } : {}) }
     const lines = [JSON.stringify(header) + '\n', ...(corruptPrefix ? ['{invalid json}\n'] : []), JSON.stringify(event) + '\n']
     const bytes = compression === 'none' ? Buffer.from(lines.join(''))
       : Buffer.concat(await Promise.all(lines.map(compressZstdFrame)))
@@ -37,7 +38,8 @@ describe.each(modes)('retired content in JSONL ($compression, $access)', ({ comp
     return { ctx, path, bytes, event }
   }
 
-  it.each([{ version: 3, corruptPrefix: false }, { version: 4, corruptPrefix: false }, { version: 4, corruptPrefix: true }] as const)
+  it.each([{ version: 3, corruptPrefix: false }, { version: 4, corruptPrefix: false },
+    { version: SESSION_FORMAT_VERSION, corruptPrefix: true }] as const)
   ('refuses V$version content with corruptPrefix=$corruptPrefix and preserves the only generation', async ({ version, corruptPrefix }) => {
     const { ctx, path, bytes } = await stored(version, false, corruptPrefix)
     const opened = ctx.sessionPersistence.open(id, access).then(async (handle) => { await handle.close() })

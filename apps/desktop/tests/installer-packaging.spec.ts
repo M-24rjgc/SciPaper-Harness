@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { Arch, Platform } from 'electron-builder'
 import { Packager } from 'app-builder-lib'
 import { describe, expect, it, vi } from 'vitest'
@@ -73,8 +74,10 @@ describe('installer preparation preserves application dependencies', () => {
       DSH_DESKTOP_TARGET_PLATFORM: 'win32',
       DSH_DESKTOP_TARGET_ARCH: 'x64',
       DSH_DESKTOP_UNSIGNED: '1',
+      DSH_DESKTOP_UNSIGNED_RUN_ID: 'trial-4',
     }, 'win32', 'x64')
     expect(config.artifactName).toBe('scipaper-harness-${version}-${os}-${arch}.${ext}')
+    expect(config.directories.output).toContain(join('unsigned-artifacts', 'runs', 'trial-4'))
   })
 
   it('packages every preload entry point the shell loads', async () => {

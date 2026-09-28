@@ -16,11 +16,12 @@ export type MarkdownBodyProps = DocumentPreviewProps & PropsLocale<'documentMark
  * @param props - owner-loaded contents and localized primitive labels.
  * @returns Markdown content, or nothing for a non-text delivery.
  */
-export function MarkdownBody({ content, resourceAddress, useResource, t }: MarkdownBodyProps): ReactNode {
+export function MarkdownBody({ content, resourceAddress, useResource, useTabInfo, t }: MarkdownBodyProps): ReactNode {
+  const { sessionId } = useTabInfo()
   const absolutePath = useResource<'file'>(resourceAddress).value?.absolutePath
   const pathImages = useMemo<MarkdownPathImages>(() => ({
-    resolve: value => markdownImageUrl(document.baseURI, absolutePath, value),
-  }), [absolutePath])
+    resolve: value => markdownImageUrl(document.baseURI, absolutePath, value, sessionId),
+  }), [absolutePath, sessionId])
   const copyLabel = t('code.copy')
   const copiedLabel = t('code.copied')
   const footnotes = t('footnotes')

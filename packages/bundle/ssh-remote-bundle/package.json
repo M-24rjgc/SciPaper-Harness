@@ -1,0 +1,58 @@
+{
+  "name": "@deepseek-ai/dsh-ssh-remote-bundle",
+  "description": "Optional SSH backend for configured non-desktop profiles; Desktop SSH workspaces use the sidebar entry",
+  "version": "0.2.0-alpha.4",
+  "icon": "./icon.svg",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/M-24rjgc/SciPaper-Harness.git",
+    "directory": "packages/bundle/ssh-remote-bundle"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "icon.svg",
+    "locale/*.json",
+    "lib/index.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-ssh": "workspace:*",
+    "@deepseek-ai/dsh-fs-ssh": "workspace:*",
+    "@deepseek-ai/dsh-subprocess-ssh": "workspace:*",
+    "@deepseek-ai/dsh-sandbox-ssh": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-app-boot": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scipaper": {
+    "kernel": {
+      "name": "deepseek-harness",
+      "version": "0.1.7-rc.2",
+      "revision": "477b4f420553e8a52c2fbccc464d7561b239c443"
+    }
+  }
+}

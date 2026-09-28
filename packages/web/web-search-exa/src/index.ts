@@ -5,7 +5,9 @@
  * @module @deepseek-ai/dsh-web-search-exa
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type {} from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
@@ -34,7 +36,9 @@ export const inject = ['web']
 /** Plugin config (all optional — `apply` fills env-var and constant defaults). */
 export interface Config {
   /** Exa API key. Falls back to `$EXA_API_KEY`. Empty → provider unavailable. */
-  apiKey?: string
+  apiKey?: string | Volatile<string | undefined>
+  /** Managed credential reference; defaults to EXA_API_KEY. */
+  apiKeyEnv?: string
   /** Endpoint base; `/search` is appended. Defaults to the public API. */
   baseURL?: string
   /** Retrieval mode sent as Exa's `type`. Defaults to `auto`. */
@@ -45,8 +49,9 @@ export interface Config {
   highlightsPerResult?: number
 }
 
-export const Config: z<Config> = z.object({
-  apiKey: z.string(),
+export const Config = z.object({
+  apiKey: z.string().role('secret').volatile(),
+  apiKeyEnv: z.string().role('credential-ref'),
   baseURL: z.string(),
   searchType: z.union(['auto', 'keyword', 'neural'] as const),
   numResults: z.number().step(1).min(1),
@@ -55,10 +60,16 @@ export const Config: z<Config> = z.object({
 
 /** Register the Exa search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
+  const apiKeyEnv = config.apiKeyEnv ?? 'EXA_API_KEY'
+  const credentials = ctx.get('credentials')
   ctx.web.registerSearchProvider(new ExaSearchProvider({
     // Every environment layer may name this key: the product trusts the
     // project it is launched in, and the managed store is not involved here.
-    apiKey: config.apiKey ?? launchEnvironmentOf(ctx).get('EXA_API_KEY')?.value ?? '',
+    apiKey: (typeof config.apiKey === 'string' ? config.apiKey : config.apiKey?.get())
+      ?? launchEnvironmentOf(ctx).get(apiKeyEnv)?.value ?? '',
+    ...credentials === undefined ? {} : {
+      resolveApiKey: async () => (await credentials.resolve(credentialRef(apiKeyEnv)))?.value,
+    },
     baseURL: config.baseURL ?? EXA_DEFAULT_BASE_URL,
     searchType: config.searchType ?? EXA_DEFAULT_SEARCH_TYPE,
     highlightsPerResult: config.highlightsPerResult ?? EXA_DEFAULT_HIGHLIGHTS_PER_RESULT,

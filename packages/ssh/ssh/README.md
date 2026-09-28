@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-ssh` connects a POSIX Harness host to an installed helper on a POSIX SSH host. One deployment-owned OpenSSH alias supplies authentication and host identity; the paired filesystem, subprocess and sandbox providers use that connection. The connection verifies installed artifact digests before readiness; the helper owns remote cleanup when the connection closes or its lease expires.
+`dsh-ssh` connects a Windows, Linux or macOS Harness host to an installed helper on a POSIX SSH host. One deployment-owned OpenSSH alias supplies authentication and host identity; the paired filesystem, subprocess and sandbox providers use that connection. The connection verifies installed artifact digests before readiness; the helper owns remote cleanup when the connection closes or its lease expires.
 
 ## Table of Contents
 
@@ -29,9 +29,9 @@ Compose this service with [`fs-ssh`](../fs-ssh/README.md), [`subprocess-ssh`](..
 
 ### Deployment prerequisites
 
-Both endpoints require Linux or macOS. The local `ssh` command must support connection multiplexing and Unix-socket forwarding; the server must permit that forwarding. Configure the alias, credentials and known-host entry before startup: the service enables `BatchMode`, requires strict host-key checking, disables agent forwarding and adds no interactive authentication flow.
+The remote endpoint requires Linux or macOS. Linux and macOS clients use connection multiplexing and Unix-socket forwarding; Windows clients use independent SSH exec channels for streams. Configure the alias, credentials and known-host entry before startup: the service enables `BatchMode`, requires strict host-key checking, disables agent forwarding and adds no interactive authentication flow.
 
-Install the built helper and its matching runtime dependencies on the remote host. Keep Node, helper, bootstrap and their dependencies outside the workspace and writable temporary roots. They must also remain outside a backend’s replaced temporary tree, such as bwrap’s private `/tmp`; the workspace may still be under `/tmp`. Digest verification detects an unexpected installed artifact after helper startup; it does not make writable deployment files safe to execute or authenticate a malicious SSH host.
+Install the built helper on the remote host, or use [`remote-workspace-presets`](../remote-workspace-presets/README.md) to install the self-contained helper under a private remote home directory. Keep Node, helper, bootstrap and their dependencies outside the workspace and writable temporary roots. They must also remain outside a backend’s replaced temporary tree, such as bwrap’s private `/tmp`; the workspace may still be under `/tmp`. Digest verification detects an unexpected installed artifact after helper startup; it does not make writable deployment files safe to execute or authenticate a malicious SSH host.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -91,7 +91,7 @@ This provider contributes no request-prefix content. Its consumers own model-vis
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- No Windows endpoint, automatic provisioning, reconnect or replay is supplied.
+- The low-level connection does not provision a helper, reconnect or replay operations; `remote-workspace-presets` supplies helper installation and preset registration.
 - Web workspace UI paths still assume host filesystem access; use headless or a custom composition whose consumers honor provider paths.
 - TLS stream keys do not protect against remote OS process-memory inspection or debugging. File-effect policy retains the selected sandbox backend’s limits.
 

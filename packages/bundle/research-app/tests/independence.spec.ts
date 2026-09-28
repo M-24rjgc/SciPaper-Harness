@@ -1,22 +1,25 @@
 /**
  * The Web composition (the `web` profile, and the Desktop Host over the same
  * bundles) exports no telemetry, reaches DeepSeek services only for the model
- * requests and web searches a person configures, and ships no developer controls.
+ * requests and web searches a person configures, and keeps developer controls
+ * separate from the user-facing terminal, trajectory, and native file opening.
  */
 
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
-import { DEVELOPER_ROWS, OPEN_IN_APP_ROWS, TELEMETRY_ROWS } from './research-edition-rows.ts'
+import { DEVELOPER_ROWS, TELEMETRY_ROWS, USER_SURFACE_ROWS } from './research-edition-rows.ts'
 
 const BASE_PATCH = fileURLToPath(new URL('../../base/cordis.patch.yml', import.meta.url))
 const WEB_PATCH = fileURLToPath(new URL('../../web-app/cordis.patch.yml', import.meta.url))
+const RESEARCH_PRESET_PATCH = fileURLToPath(new URL('../presets/research.patch.yml', import.meta.url))
 
-const rows = composeEntries([
+const layers = [
   loadOverlayPatches('web-app spec', BASE_PATCH),
   loadOverlayPatches('web-app spec', WEB_PATCH),
   loadOverlayPatches('research-app spec', fileURLToPath(new URL('../cordis.patch.yml', import.meta.url))),
-])
+]
+const rows = composeEntries(layers)
 
 function row(id: string): (typeof rows)[number] {
   const found = rows.find(candidate => candidate.id === id)
@@ -25,8 +28,50 @@ function row(id: string): (typeof rows)[number] {
 }
 
 describe('the Web composition of the research edition', () => {
-  it.each([...TELEMETRY_ROWS, ...OPEN_IN_APP_ROWS, ...DEVELOPER_ROWS])('keeps the %s row disabled', (id) => {
+  it.each([...TELEMETRY_ROWS, ...DEVELOPER_ROWS])('keeps the %s row disabled', (id) => {
     expect(row(id).disabled).toBe(true)
+  })
+
+  it.each(USER_SURFACE_ROWS)('keeps the official %s capability enabled', (id) => {
+    expect(row(id).disabled).not.toBe(true)
+  })
+
+  it('starts a visible, session-owned browser with a persistent profile', () => {
+    expect(row('browser-use').name).toBe('@deepseek-ai/dsh-browser-use')
+    expect(row('browser-use-playwright')).toMatchObject({
+      name: '@deepseek-ai/dsh-browser-use-playwright-mcp',
+      config: { mode: 'launch', headless: false, persistentProfile: true },
+    })
+  })
+
+  it('loads the SSH workspace backend for verified remote files, terminal and LSP presets', () => {
+    expect(row('remote-workspace-presets').name).toBe('@deepseek-ai/dsh-remote-workspace-presets')
+    expect(row('remote-workspace-presets').disabled).not.toBe(true)
+  })
+
+  it('keeps DeepSeek search selected until a person enables another backend bundle', () => {
+    expect(row('web').config).toMatchObject({ searchProvider: 'deepseek-official' })
+    expect(rows.map(candidate => candidate.id)).not.toContain('web-search-exa')
+    expect(rows.map(candidate => candidate.id)).not.toContain('web-search-perplexity')
+  })
+
+  it('keeps research trajectory visible even when an older profile disabled Coding Tools', () => {
+    expect(row('ui-conversation').config).toMatchObject({ showTrajectoryWithoutDeveloperTools: true })
+  })
+
+  it('provides the research agent with packaged TypeScript and JavaScript code navigation', () => {
+    expect(row('lsp').name).toBe('@deepseek-ai/dsh-lsp')
+    expect(row('lsp-stdio')).toMatchObject({
+      name: '@deepseek-ai/dsh-lsp-stdio',
+      config: { servers: { typescript: {
+        extensionToLanguage: { '.ts': 'typescript', '.tsx': 'typescriptreact', '.js': 'javascript' },
+      } } },
+    })
+    const preset = composeEntries([...layers,
+      loadOverlayPatches('research preset spec', RESEARCH_PRESET_PATCH)])
+      .find(candidate => candidate.id === 'preset-research')
+    expect((preset?.config as { plugins?: Array<{ id: string; name: string }> })?.plugins)
+      .toContainEqual(expect.objectContaining({ id: 'tool-lsp', name: '@deepseek-ai/dsh-tool-lsp' }))
   })
 
   it('sends no Session log with official DeepSeek model requests', () => {

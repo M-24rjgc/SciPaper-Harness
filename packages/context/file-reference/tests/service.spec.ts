@@ -2,10 +2,15 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { FileReferenceService } from '../src/index.ts'
+import { FILE_REFERENCE_PROMPT, FileReferenceService } from '../src/index.ts'
 import type { FileReferenceCandidate } from '../src/types.ts'
 
 describe('FileReferenceService', () => {
+  it('describes file paths in the session execution environment', () => {
+    expect(FILE_REFERENCE_PROMPT).toContain("this session's execution environment")
+    expect(FILE_REFERENCE_PROMPT).not.toContain('on the host')
+  })
+
   it('registers a provider implementation without wrapping its discovery member', async () => {
     const candidates: FileReferenceCandidate[] = [{ path: 'src', kind: 'directory' }]
     const list = vi.fn((_agent: Agent, _query: string, _signal: AbortSignal) => Promise.resolve(candidates))

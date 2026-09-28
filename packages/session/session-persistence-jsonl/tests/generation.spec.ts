@@ -389,7 +389,7 @@ describe('JSONL immutable generation publication', () => {
     expect(await readFile(request.sourcePath)).toEqual(source)
     const written = (await readFile(request.currentPath, 'utf8')).trimEnd().split('\n')
       .map(row => JSON.parse(row) as unknown)
-    expect(written).toEqual([header(SESSION_FORMAT_VERSION), ...canonical])
+    expect(written).toEqual([{ ...header(SESSION_FORMAT_VERSION), execution: { kind: 'local' } }, ...canonical])
     expect((await readdir(root)).sort()).toEqual(['session.v2.jsonl', `session.v${SESSION_FORMAT_VERSION}.jsonl`])
   })
 

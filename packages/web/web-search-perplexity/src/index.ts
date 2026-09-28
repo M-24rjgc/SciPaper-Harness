@@ -5,7 +5,9 @@
  * @module @deepseek-ai/dsh-web-search-perplexity
  */
 
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import type {} from '@deepseek-ai/dsh-credentials'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-web'
@@ -29,7 +31,9 @@ export const inject = ['web']
 /** Plugin config (all optional — `apply` fills env-var and constant defaults). */
 export interface Config {
   /** Perplexity API key. Falls back to `$PERPLEXITY_API_KEY`. Empty → unavailable. */
-  apiKey?: string
+  apiKey?: string | Volatile<string | undefined>
+  /** Managed credential reference; defaults to PERPLEXITY_API_KEY. */
+  apiKeyEnv?: string
   /** Endpoint base; `/chat/completions` is appended. Defaults to the public API. */
   baseURL?: string
   /** Search model name. Defaults to `sonar`. */
@@ -40,8 +44,9 @@ export interface Config {
   searchRecency?: 'day' | 'week' | 'month' | 'year'
 }
 
-export const Config: z<Config> = z.object({
-  apiKey: z.string(),
+export const Config = z.object({
+  apiKey: z.string().role('secret').volatile(),
+  apiKeyEnv: z.string().role('credential-ref'),
   baseURL: z.string(),
   model: z.string(),
   maxTokens: z.number().step(1).min(1),
@@ -50,10 +55,16 @@ export const Config: z<Config> = z.object({
 
 /** Register the Perplexity search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
+  const apiKeyEnv = config.apiKeyEnv ?? 'PERPLEXITY_API_KEY'
+  const credentials = ctx.get('credentials')
   ctx.web.registerSearchProvider(new PerplexitySearchProvider({
     // Every environment layer may name this key: the product trusts the
     // project it is launched in, and the managed store is not involved here.
-    apiKey: config.apiKey ?? launchEnvironmentOf(ctx).get('PERPLEXITY_API_KEY')?.value ?? '',
+    apiKey: (typeof config.apiKey === 'string' ? config.apiKey : config.apiKey?.get())
+      ?? launchEnvironmentOf(ctx).get(apiKeyEnv)?.value ?? '',
+    ...credentials === undefined ? {} : {
+      resolveApiKey: async () => (await credentials.resolve(credentialRef(apiKeyEnv)))?.value,
+    },
     baseURL: config.baseURL ?? PERPLEXITY_DEFAULT_BASE_URL,
     model: config.model ?? PERPLEXITY_DEFAULT_MODEL,
     maxTokens: config.maxTokens ?? PERPLEXITY_DEFAULT_MAX_TOKENS,

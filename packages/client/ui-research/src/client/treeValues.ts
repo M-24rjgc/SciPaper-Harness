@@ -17,7 +17,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ConversationDrafts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import { conversationSignal, goalSignal, strongestSignal, type ActivitySignal } from './activity.ts'
-import { projectAtPath, sessionProject } from './contract.ts'
+import { projectAtPath, sessionDirectoriesOf, sessionProject } from './contract.ts'
 
 /** What a row's dot says: something waits for the person (warn), or something runs (ongoing blue). */
 export type TreeSignal = ActivitySignal
@@ -56,6 +56,7 @@ export interface TreeFolder {
   workspaceId: WorkspaceId
   title: string
   path: string
+  location: WorkspaceView['location']
   conversations: TreeConversation[]
   current: boolean
   signal: TreeSignal | undefined
@@ -107,8 +108,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
   const current = sources.current
   const archived = new Set<string>(workspaces.archivedSessionIds)
   const reviewers = new Set<string>(projects.flatMap(project => project.visualReviews.flatMap(review => review.sessionId ?? [])))
-  const directories: Record<string, string> = {}
-  for (const [id, summary] of Object.entries(list.byId)) if (summary.cwd !== undefined) directories[id] = summary.cwd
+  const directories = sessionDirectoriesOf(list.byId)
   const byWorkspace = new Map(projects.map(project => [project.workspaceId as string, project]))
   const listedBy = new Map<string, WorkspaceView>()
   for (const item of workspaces.items) for (const id of item.sessionIds) if (!listedBy.has(id)) listedBy.set(id, item)
@@ -116,7 +116,9 @@ export function deriveTree(sources: TreeSources): TreeModel {
     const found = sessionProject(projects, id, directories)
     if (found !== undefined) return found
     const folder = listedBy.get(id)
-    return folder === undefined ? undefined : byWorkspace.get(folder.workspaceId) ?? projectAtPath(projects, folder.path)
+    return folder !== undefined && folder.location.kind !== 'ssh'
+      ? byWorkspace.get(folder.workspaceId) ?? projectAtPath(projects, folder.path)
+      : undefined
   }
 
   const rows = new Map<string, TreeConversation[]>()
@@ -172,11 +174,13 @@ export function deriveTree(sources: TreeSources): TreeModel {
   const examples = sources.showExamples ? listed.filter(project => project.example === true).map(research).sort(byUse) : []
 
   const folders = workspaces.items
-    .filter(item => !byWorkspace.has(item.workspaceId) && projectAtPath(projects, item.path) === undefined)
+    .filter(item => item.location.kind === 'ssh'
+      || (!byWorkspace.has(item.workspaceId) && projectAtPath(projects, item.path) === undefined))
     .map((item): TreeFolder => {
       const conversations = (folderRows.get(item.workspaceId) ?? []).sort(byRecency)
       return {
-        workspaceId: item.workspaceId, title: item.title, path: item.path, conversations,
+        workspaceId: item.workspaceId, title: item.title, path: item.path,
+        location: item.location, conversations,
         current: conversations.some(conversation => conversation.id === current),
         signal: strongestSignal(conversations.map(conversation => conversation.signal)),
       }
