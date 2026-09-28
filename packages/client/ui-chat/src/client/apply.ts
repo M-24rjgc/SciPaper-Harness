@@ -54,7 +54,7 @@ const CHAT_NODE_INJECT: ChatNodeInjected = {
 
 /** Services required by the Chat target and its presentation registrations. */
 export const inject = [
-  'slots', 'sessions', 'uiWorkspace', 'uiSession', 'uiConversation', 'locale',
+  'slots', 'sessions', 'uiWorkspace', 'uiSession', 'uiConversation', 'conversation', 'locale',
   'configForms', 'remote', 'remote.session', 'sidebarRight',
 ]
 
@@ -192,8 +192,9 @@ export function apply(ctx: Context): void {
         const session = binding.session
         const chat = chatSource(binding)
         const conversation = ctx.uiConversation.binding(binding)
+        const composerBlock = ctx.conversation.blocks.storeFor(sessionId)
         return {
-          hooks: { presentation },
+          hooks: { presentation, composerBlock },
           keyedHooks: {
             chatNode: key => chat.getSnapshot().nodes.source(key),
             chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),
@@ -245,6 +246,7 @@ export function apply(ctx: Context): void {
             read: () => chatScrollPositions.get(sessionId) ?? null,
           },
           forkAt: (seq) => {
+            if (composerBlock.getSnapshot()?.readOnly === true) return
             ctx.sessions.fork({ sessionId, atSeq: seq, increaseTitle: true })
               .then((childId) => { ctx.uiWorkspace.openSession(childId) })
               .catch(() => {

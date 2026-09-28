@@ -2,7 +2,7 @@
 
 import { packagingStep } from './packaging-step.mjs'
 import { spawn } from 'node:child_process'
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
@@ -33,11 +33,14 @@ import {
 import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
+import { removeOwnedBuildDirectory } from './build-cleanup.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
+const BUILD_OWNER_ROOT = join(APP_ROOT, '.desktop-build')
+const STAGING_OWNER_ROOT = realpathSync(tmpdir())
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
 const DSH_OUTPUT_ROOT = BUILD_PATHS.dsh
-const BUILD_ROOT = mkdtempSync(join(tmpdir(), 'dsh-desktop-runtime-'))
+const BUILD_ROOT = mkdtempSync(join(STAGING_OWNER_ROOT, 'dsh-desktop-runtime-'))
 const STORE_ROOT = join(BUILD_ROOT, 'store')
 const RUNTIME_ROOT = BUILD_PATHS.runtime
 const PNPM_BUILD_STATE = BUILD_PATHS.dshPnpm
@@ -113,8 +116,8 @@ function runPnpm(args: readonly string[]): Promise<void> {
 async function main(): Promise<void> {
   try {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:reset', async () => {
-      rmSync(DSH_OUTPUT_ROOT, { recursive: true, force: true })
-      rmSync(PNPM_BUILD_STATE, { recursive: true, force: true })
+      removeOwnedBuildDirectory(DSH_OUTPUT_ROOT, BUILD_OWNER_ROOT)
+      removeOwnedBuildDirectory(PNPM_BUILD_STATE, BUILD_OWNER_ROOT)
       mkdirSync(STORE_ROOT, { recursive: true })
     })
     const release = desktopRelease()
@@ -168,13 +171,13 @@ async function main(): Promise<void> {
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:verify-after-smoke', () => verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target))
     }
   } catch (error) {
-    rmSync(DSH_OUTPUT_ROOT, { recursive: true, force: true })
+    removeOwnedBuildDirectory(DSH_OUTPUT_ROOT, BUILD_OWNER_ROOT)
     throw error
   } finally {
     let cleaned = false
     const cleanup = (): void => {
-      try { rmSync(BUILD_ROOT, { recursive: true, force: true }) }
-      finally { rmSync(PNPM_BUILD_STATE, { recursive: true, force: true }) }
+      try { removeOwnedBuildDirectory(BUILD_ROOT, STAGING_OWNER_ROOT) }
+      finally { removeOwnedBuildDirectory(PNPM_BUILD_STATE, BUILD_OWNER_ROOT) }
       cleaned = true
     }
     try { await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:cleanup', async () => cleanup()) }

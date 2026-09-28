@@ -127,6 +127,7 @@ describe('Session queue commands', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     await ctx.plugin(AgentRegistry)
+    installSessionReadTestServices(ctx)
     const error = new RemoteError('session/agent-busy', 'owned by a child', { reason: 'subagent-owned' })
     const controller = new SessionCommandController(ctx, {
       resolveAgent: () => Promise.resolve({ error }),

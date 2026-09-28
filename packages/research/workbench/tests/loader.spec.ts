@@ -12,8 +12,9 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, parse, toNamespacedPath } from 'node:path'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
+import type { SessionCreateRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
@@ -206,6 +207,8 @@ interface BootOptions {
   toolModules?: ResearchToolModule[][]
   /** Explicit home alias used to exercise protected legacy locations on restart. */
   dataHome?: string
+  /** Runs while the initializer's private request identity is outstanding. */
+  beforeExampleCreate?: (request: SessionCreateRequest, context: Context) => Promise<void>
 }
 
 /** Seed histories persist between Loader restarts, independent of attached Session instances. */
@@ -305,12 +308,22 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
       } as unknown as Context['permissionPresets'])
       c.provide('sessionController', {
-        create: async (
-          { workspaceId, agentPreset, sessionId }: { workspaceId: WorkspaceId; agentPreset?: string; sessionId?: SessionId },
-        ) => {
+        create: async (request: SessionCreateRequest) => {
+          const { workspaceId, agentPreset, sessionId } = request
+          const cwd = workspaceId?.slice('workspace:'.length) ?? request.cwd ?? root!
+          const header: SessionHeader | undefined = sessionId === undefined ? undefined : {
+            version: SESSION_FORMAT_VERSION, id: sessionId, cwd, createdAt: 1, isSeeded: false,
+          }
+          if (sessionId !== undefined) await options.beforeExampleCreate?.(request, c)
+          const existing = sessionId === undefined ? undefined
+            : attachedExamples.get(sessionId)?.header ?? (histories.has(sessionId) ? header : undefined)
+          await c.waterfall('api-session/command-admission', {
+            operation: 'create', sessionId: sessionId ?? SessionId(`session-${sessions.length + 1}`), cwd, request,
+            ...(existing === undefined ? {} : { existing }),
+          }, () => Promise.resolve())
           if (sessionId !== undefined) {
             if (!attachedExamples.has(sessionId)) {
-              const session = Session.create(sessionId, histories.get(sessionId))
+              const session = Session.create(sessionId, histories.get(sessionId), header)
               initialPrefixes.set(session, histories.get(sessionId) ?? [])
               attachedExamples.set(sessionId, session)
               open(session)
@@ -320,7 +333,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
           const id = `session-${sessions.length + 1}`
           sessions.push(id)
           sessionPresets.push(agentPreset)
-          open({ id, header: { cwd: workspaceId.slice('workspace:'.length) } })
+          open({ id, header: { cwd } })
           return { sessionId: id as SessionId }
         },
         inspect: async (id: string) => {
@@ -384,6 +397,64 @@ function logged(type: 'warn' | 'error', text: string): boolean {
 }
 
 describe('the research service records; it never drives the agent', () => {
+  it('admits only the initializer request and existing registered example adoptions', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-example-session-admission-'))
+    const pool = new MemoryMediaPool()
+    let races = 0
+    const first = await boot(pool, {
+      beforeExampleCreate: async (request, context) => {
+        races++
+        const cwd = request.workspaceId?.slice('workspace:'.length) ?? request.cwd!
+        await expect(context.waterfall('api-session/command-admission', {
+          operation: 'create', sessionId: request.sessionId!, cwd,
+          request: { ...request },
+        }, () => Promise.resolve())).rejects.toMatchObject({ code: 'session/read-only' })
+      },
+    })
+    const examples = (await first.service.snapshot()).projects.filter(project => project.example === true)
+    expect(examples).toHaveLength(2)
+    expect(races).toBe(2)
+    for (const example of examples) {
+      const id = SessionId(example.sessionId!)
+      const before = (await ctx!.sessionController.inspect(id)).events
+      await expect(ctx!.sessionController.create({ sessionId: id, workspaceId: example.workspaceId, agentPreset: 'research' }))
+        .resolves.toEqual({ sessionId: id })
+      expect((await ctx!.sessionController.inspect(id)).events).toEqual(before)
+      await expect(ctx!.sessionController.create({ workspaceId: example.workspaceId, agentPreset: 'research' }))
+        .rejects.toMatchObject({ code: 'session/read-only' })
+      await expect(ctx!.sessionController.create({ sessionId: SessionId(`${id}-forged`), cwd: example.root }))
+        .rejects.toMatchObject({ code: 'session/read-only' })
+      for (const operation of ['fork', 'rename', 'prompt', 'updateQueue'] as const) {
+        await expect(ctx!.waterfall('api-session/command-admission', {
+          operation, sessionId: id, cwd: example.root,
+        }, () => Promise.resolve())).rejects.toMatchObject({ code: 'session/read-only', details: { sessionId: id } })
+      }
+      // An existing Session from another root cannot adopt a project's registered identity.
+      await expect(ctx!.waterfall('api-session/command-admission', {
+        operation: 'create', sessionId: id, cwd: example.root, request: { sessionId: id, cwd: example.root },
+        existing: { ...ctx!.sessions.get(id)!.header, cwd: join(root, 'ordinary') },
+      }, () => Promise.resolve())).rejects.toMatchObject({ code: 'session/read-only' })
+    }
+    const ordinary = await first.service.create({ title: 'Ordinary', root: join(root, 'ordinary'), brief: '' })
+    for (const operation of ['fork', 'rename', 'prompt', 'updateQueue'] as const) {
+      await expect(ctx!.waterfall('api-session/command-admission', {
+        operation, sessionId: SessionId('scipaper-example-forged-prefix'), cwd: ordinary.root,
+      }, () => Promise.resolve())).resolves.toBeUndefined()
+    }
+    const missing = examples[0]!
+    exampleHistories.get(pool)!.delete(missing.sessionId!)
+    await ctx!.fiber.dispose(); ctx = undefined
+    const second = await boot(pool)
+    const restored = await second.service.snapshot()
+    expect(restored.projects.filter(project => project.example === true).map(project => project.id))
+      .toEqual(examples.map(project => project.id))
+    const recovered = (await ctx!.sessionController.inspect(SessionId(missing.sessionId!))).events
+    expect(recovered.filter(event => event.type === 'user/message')).toHaveLength(1)
+    expect(recovered.filter(event => event.type === 'assistant/message')).toHaveLength(1)
+    expect((await second.service.snapshot()).projects).toEqual(restored.projects)
+    expect((await ctx!.sessionController.inspect(SessionId(missing.sessionId!))).events).toEqual(recovered)
+  })
+
   it('seeds complete examples despite a hidden preference, protects an aliased home, and recovers on restart without duplicate messages', async () => {
     root = await realpath(await mkdtemp(join(tmpdir(), 'research-shipped-examples-')))
     const home = join(root, 'home'), alias = join(root, 'selected-home'), pool = new MemoryMediaPool()

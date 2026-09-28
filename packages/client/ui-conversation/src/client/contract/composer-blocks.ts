@@ -5,6 +5,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 export interface ComposerBlock {
   /** Localized placeholder owned by the plugin that raised the block. */
   readonly reason: string
+  /** The conversation is view-only, so actions that create branches are unavailable too. */
+  readonly readOnly?: boolean | undefined
 }
 
 /** The registry face other plugins reach through `ctx.conversation.blocks`. */

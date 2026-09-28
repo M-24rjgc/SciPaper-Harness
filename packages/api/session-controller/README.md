@@ -35,6 +35,8 @@ Client list rows and resident Sessions use the current `sessionListMetadata` pro
 
 Explicit-id `session.create` adopts a live Session or resumes a persisted Session while retaining its writer lock. Writer contention returns `session/writer-held`; callers may try another blank without suppressing unrelated failures. `session.list` includes persisted blanks using cached metadata, without opening cold log bodies.
 
+The Host-only `api-session/command-admission` waterfall runs before create, fork, rename, prompt and queue mutations activate or compose an Agent or change state. It supplies the actual Session directory; create also supplies the resolved destination, existing identity and original in-process request object. A plugin can reject with the typed `session/read-only` error. Cold admission observes the header without restoring the Agent. Read operations, model selection and cancellation retain their existing policies.
+
 Client list refreshes retain unchanged row objects and reuse the items array when order and values match. Each row's `retainedBy` contains positive local reference-source counts; Host metadata refreshes cannot overwrite them. Cache membership checks use a per-refresh ID set, so reconciliation grows linearly with the current list and retained cache sizes. Host summary updates replace running and Agent availability; local create/fork responses only fill missing metadata on existing rows. Removed ordinary Sessions retain projection stores only when their catalogs contain children.
 
 Background-job rows and observation streams belong to [`dsh-api-job-controller`](../job-controller/README.md); the control stream carries projections only.

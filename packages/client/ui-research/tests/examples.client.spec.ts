@@ -49,6 +49,8 @@ describe('the example guard', () => {
     )
     expect(blocks.reason('bound')).toBe(REASON)
     expect(blocks.reason('inside')).toBe(REASON)
+    expect(blocks.storeFor('bound' as SessionId).getSnapshot()?.readOnly).toBe(true)
+    expect(blocks.storeFor('inside' as SessionId).getSnapshot()?.readOnly).toBe(true)
     expect(blocks.reason('mine')).toBeUndefined()
     expect(blocks.reason('elsewhere')).toBeUndefined()
   })
@@ -59,6 +61,8 @@ describe('the example guard', () => {
     expect(blocks.reason('inside')).toBe(REASON)
     blocks.set('inside' as SessionId, { reason: 'no model' })
     expect(blocks.reason('inside')).toBe(REASON)
+    blocks.set('inside' as SessionId, { reason: REASON })
+    expect(blocks.storeFor('inside' as SessionId).getSnapshot()?.readOnly).toBe(true)
   })
 
   it('lets go when a conversation leaves the example, or when no record is known', () => {

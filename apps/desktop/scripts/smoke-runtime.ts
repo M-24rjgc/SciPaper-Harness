@@ -128,6 +128,7 @@ export function apply(ctx) {
           projects?: {
             id: string
             title: string
+            workspaceId: string
             sessionId?: string
             example?: boolean
             artifacts: { id: string; path: string }[]
@@ -173,6 +174,24 @@ export function apply(ctx) {
       const updateResult = await update.json() as { result?: { ok?: boolean } }
       if (updateResult.result?.ok !== false || !/example research|示例研究/u.test(JSON.stringify(updateResult))) {
         throw new Error('desktop runtime: shipped example accepted a write or failed for an unrelated reason')
+      }
+      const sessionWrites = [
+        { method: 'fork', request: { sessionId: project.sessionId } },
+        { method: 'rename', request: { sessionId: project.sessionId, title: 'modified example conversation' } },
+        { method: 'create', request: { workspaceId: project.workspaceId, agentPreset: 'research' } },
+        { method: 'prompt', request: { sessionId: project.sessionId, requestId: `readonly-${project.id}`,
+          mode: 'queue', content: [{ type: 'text', text: 'Change this authored example.' }] } },
+      ]
+      for (const write of sessionWrites) {
+        const deniedWrite = await fetch(new URL(`/api/session/${write.method}`, ready.url), {
+          method: 'POST', headers: commandHeaders,
+          body: JSON.stringify({ type: 'client-request', rpcId: `example-${write.method}-${project.id}`,
+            method: `session/${write.method}`, payload: { args: { request: write.request } } }),
+        })
+        const deniedResult = await deniedWrite.json() as { result?: { ok?: boolean; error?: { code?: string } } }
+        if (deniedResult.result?.ok !== false || deniedResult.result.error?.code !== 'session/read-only') {
+          throw new Error(`desktop runtime: shipped example ${write.method} was not rejected as read-only`)
+        }
       }
     }
     const again = await fetch(researchUrl, { ...request, headers: { ...request.headers, cookie } })

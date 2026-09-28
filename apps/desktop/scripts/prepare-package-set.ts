@@ -8,11 +8,10 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import * as yaml from 'js-yaml'
 import {
@@ -26,6 +25,7 @@ import {
 import { capture } from '../../../scripts/release/process.ts'
 import { tarballFiles } from '../../../scripts/release/tarball.ts'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { assertOwnedBuildPath, removeOwnedBuildDirectory } from './build-cleanup.ts'
 
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const ROOT_PACKAGES = [DSH_PACKAGE, DESKTOP_HOST_PACKAGE] as const
@@ -127,14 +127,39 @@ export function assertDesktopHostPackageFiles(files: readonly string[]): void {
   }
 }
 
+function containsPath(parent: string, path: string): boolean {
+  const child = relative(parent, path)
+  return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child))
+}
+
+/**
+ * Validate the caller's explicitly named output without deleting source or packed input directories.
+ * @param inputs - Release tarball directories to preserve.
+ * @param output - Explicit output directory, or the normal Desktop build directory.
+ * @returns Absolute output path with ordinary, unlinked ancestors.
+ */
+export function desktopPackageSetOutput(inputs: readonly string[], output: string): string {
+  const destination = resolve(output)
+  if (containsPath(destination, REPOSITORY_ROOT)
+    || (containsPath(REPOSITORY_ROOT, destination) && !containsPath(join(APP_ROOT, '.desktop-build'), destination))) {
+    throw new Error(`desktop package set: output overlaps the source project: ${destination}`)
+  }
+  if (inputs.some(input => containsPath(destination, resolve(input)))) {
+    throw new Error(`desktop package set: output contains a packed input directory: ${destination}`)
+  }
+  assertOwnedBuildPath(destination, dirname(destination))
+  return destination
+}
+
 /** Prepare a package set from release tarball directories. */
 export function prepareDesktopPackageSet(inputs: readonly string[], output: string): void {
+  const destinationRoot = desktopPackageSetOutput(inputs, output)
   const selected = selectDesktopPackageClosure(packedPackages(inputs))
   const host = selected.find(packed => packed.manifest.name === DESKTOP_HOST_PACKAGE)
   if (host === undefined) throw new Error(`desktop package set: selected closure omits ${DESKTOP_HOST_PACKAGE}`)
   assertDesktopHostPackageFiles(tarballFiles(host.tarball))
-  rmSync(output, { recursive: true, force: true })
-  const packageDir = join(output, DESKTOP_PACKAGES_DIR)
+  removeOwnedBuildDirectory(destinationRoot, dirname(destinationRoot))
+  const packageDir = join(destinationRoot, DESKTOP_PACKAGES_DIR)
   mkdirSync(packageDir, { recursive: true })
   const records: DesktopCorePackageRecord[] = selected.map((packed) => {
     const name = packed.manifest.name
@@ -155,7 +180,7 @@ export function prepareDesktopPackageSet(inputs: readonly string[], output: stri
     }
   })
   const packageSet = parseDesktopCorePackageSet({ schemaVersion: 1, packages: records })
-  writeFileSync(join(output, DESKTOP_PACKAGE_SET_FILE), `${JSON.stringify(packageSet, undefined, 2)}\n`, { mode: 0o600 })
+  writeFileSync(join(destinationRoot, DESKTOP_PACKAGE_SET_FILE), `${JSON.stringify(packageSet, undefined, 2)}\n`, { mode: 0o600 })
 }
 
 function main(): void {

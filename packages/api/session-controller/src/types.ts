@@ -7,7 +7,7 @@ import type {
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { TextBlock } from '@deepseek-ai/dsh-llm'
-import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
+import type { SessionHeader, SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -224,6 +224,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/steer-unavailable': { readonly itemId: MessageId }
     'session/title-invalid': { readonly sessionId: SessionId }
     'session/fork-unavailable': { readonly sessionId: SessionId }
+    'session/read-only': { readonly sessionId: SessionId }
     'subagent/not-found': {
       readonly parentSessionId: SessionId
       readonly childSessionId: SessionId
@@ -288,6 +289,25 @@ export interface SessionCreateRequest {
   readonly sessionId?: SessionId
   readonly agentPreset?: string
 }
+
+/** Host-only admission before a Session command activates an Agent or mutates state. */
+export type SessionCommandAdmission =
+  | {
+    readonly operation: 'create'
+    readonly sessionId: SessionId
+    /** Resolved destination, including a Workspace's actual path. */
+    readonly cwd: string
+    /** Existing attached or durably observed identity, absent for a new Session. */
+    readonly existing?: SessionHeader
+    /** Original in-process request identity; this capability is never sent over Remote. */
+    readonly request: SessionCreateRequest
+  }
+  | {
+    readonly operation: 'fork' | 'rename' | 'prompt' | 'updateQueue'
+    readonly sessionId: SessionId
+    /** Actual attached or durably observed Session directory, when present. */
+    readonly cwd?: string
+  }
 
 /** Session creation response value. */
 export interface SessionCreateValue {
@@ -582,6 +602,14 @@ export type SessionControlFrame =
 
 declare module '@deepseek-ai/cordis' {
   interface Events {
+    /**
+     * Admit a command before Agent activation, composition, or mutation.
+     * Plugins may reject with a typed RemoteError; accepted commands delegate to next.
+     * @mode waterfall
+     * @param admission - resolved target and command, with create's original request identity.
+     * @param next - admission by the remaining listeners.
+     */
+    'api-session/command-admission'(admission: SessionCommandAdmission, next: () => Promise<void>): Promise<void>
     /**
      * A Session became visible or its Agent was created or disposed.
      * Consumers upsert the summary and replace its current running and availability state.

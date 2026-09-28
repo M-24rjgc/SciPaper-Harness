@@ -11,6 +11,7 @@ vi.mock('../scripts/macos-notarization-proxy.ts', () => ({
 }))
 vi.mock('../scripts/notarize-macos.mjs', () => ({ notarizeMacOS: vi.fn(async () => {}) }))
 vi.mock('../scripts/package-macos.ts', () => ({ packageMacOSArtifacts: vi.fn(async () => {}) }))
+vi.mock('../scripts/build-cleanup.ts', () => ({ removeOwnedBuildDirectory: vi.fn(), removeOwnedBuildFile: vi.fn() }))
 
 vi.mock('../scripts/windows-signing-stage.mjs', () => ({
   withWindowsSigningStage: vi.fn(async (_options: object, operation: () => Promise<void>) => operation()),
@@ -23,7 +24,7 @@ vi.mock('../scripts/windows-signature-cache-directory.mjs', () => ({
 // Keep the real orchestration and manifest reads; this suite owns no release directories or subprocesses.
 vi.mock('node:fs', async importOriginal => ({
   ...await importOriginal<typeof import('node:fs')>(),
-  rmSync: vi.fn(), mkdirSync: vi.fn(), writeFileSync: vi.fn(), renameSync: vi.fn(),
+  mkdirSync: vi.fn(), writeFileSync: vi.fn(), renameSync: vi.fn(),
 }))
 
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks() })

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync, symlinkSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -10,6 +10,7 @@ import {
   primaryRuntimePayloadDigest, smokePrimaryRuntime, unpackPrimaryRuntimeWheel,
 } from './prepare.ts'
 import lock from './lock.json' with { type: 'json' }
+import { removeOwnedDirectory } from '../../apps/desktop/src/owned-directory.ts'
 
 it('covers every SDK wheel target with the shared interpreter lock', () => {
   const platforms = JSON.parse(readFileSync(new URL('../../python/sdk-runtime/platforms.json', import.meta.url), 'utf8')) as Record<string, unknown>
@@ -166,7 +167,28 @@ it('copies complete Office resources outside the application archive and removes
     }
     expect(await readFile(join(destination, 'scripts', 'check_office.py'), 'utf8')).toBe('print("checker")\n')
     await expect(readFile(join(destination, 'obsolete.py'))).rejects.toMatchObject({ code: 'ENOENT' })
-  } finally { await rm(root, { recursive: true, force: true }) }
+  } finally { await rm(root, { recursive: true }) }
+})
+
+it('replaces a linked Office output without touching its target and refuses linked output ancestors', async () => {
+  const root = await mkdtemp(join(realpathSync(tmpdir()), '科研 Office assets-'))
+  try {
+    const source = join(root, 'assets'), external = join(root, '保留项目'), runtime = join(root, 'runtime')
+    await mkdir(source)
+    await mkdir(external)
+    await mkdir(runtime)
+    await writeFile(join(source, 'SKILL.md'), '# Office\n')
+    await writeFile(join(external, 'paper.txt'), 'preserved')
+    const destination = join(runtime, 'office-skills')
+    symlinkSync(external, destination, process.platform === 'win32' ? 'junction' : 'dir')
+    await prepareOfficeSkillAssets(source, destination)
+    expect(await readFile(join(destination, 'SKILL.md'), 'utf8')).toBe('# Office\n')
+    expect(await readFile(join(external, 'paper.txt'), 'utf8')).toBe('preserved')
+    const linkedRuntime = join(root, 'linked-runtime')
+    symlinkSync(external, linkedRuntime, process.platform === 'win32' ? 'junction' : 'dir')
+    await expect(prepareOfficeSkillAssets(source, join(linkedRuntime, 'office-skills'))).rejects.toThrow('linked ancestor')
+    expect(await readFile(join(external, 'paper.txt'), 'utf8')).toBe('preserved')
+  } finally { removeOwnedDirectory(root) }
 })
 
 it('gives Python-only payloads a distinct identity', () => {

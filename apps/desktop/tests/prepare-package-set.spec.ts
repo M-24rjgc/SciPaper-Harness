@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { realpathSync } from 'node:fs'
 import {
   assertDesktopHostPackageFiles,
+  desktopPackageSetOutput,
   selectDesktopPackageClosure,
   type PackedDesktopPackage,
 } from '../scripts/prepare-package-set.ts'
@@ -19,6 +23,22 @@ describe('desktop package-set selection', () => {
     vi.stubEnv('DSH_DESKTOP_TARGET_ARCH', 'x64')
     vi.resetModules()
     await expect(import('../scripts/prepare-package-set.ts')).resolves.toHaveProperty('prepareDesktopPackageSet')
+  })
+
+  it('preserves explicit external package-set outputs and the default build directory', () => {
+    const external = resolve(realpathSync(tmpdir()), '科研 包输出', 'package-set')
+    expect(desktopPackageSetOutput([], external)).toBe(external)
+    const build = resolve(import.meta.dirname, '..', '.desktop-build', 'targets', 'win-x64', 'package-set')
+    expect(desktopPackageSetOutput([], build)).toBe(build)
+  })
+
+  it('rejects outputs overlapping source files or containing their packed inputs', () => {
+    const repository = resolve(import.meta.dirname, '..', '..', '..')
+    expect(() => desktopPackageSetOutput([], repository)).toThrow('overlaps the source project')
+    expect(() => desktopPackageSetOutput([], resolve(repository, '..'))).toThrow('overlaps the source project')
+    expect(() => desktopPackageSetOutput([], resolve(repository, 'packages'))).toThrow('overlaps the source project')
+    const external = resolve(realpathSync(tmpdir()), '科研 包输出')
+    expect(() => desktopPackageSetOutput([resolve(external, 'packed')], external)).toThrow('contains a packed input')
   })
 
   it('includes only the available internal production closure', () => {

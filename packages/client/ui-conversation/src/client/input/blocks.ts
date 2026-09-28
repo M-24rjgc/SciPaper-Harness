@@ -24,7 +24,7 @@ export class ComposerBlockRegistry implements ComposerBlocks {
   set(sessionId: SessionId, block: ComposerBlock | undefined): void {
     const store = this.storeFor(sessionId)
     const current = store.getSnapshot()
-    if (current?.reason === block?.reason) return
+    if (current?.reason === block?.reason && current?.readOnly === block?.readOnly) return
     store.set(block)
   }
 

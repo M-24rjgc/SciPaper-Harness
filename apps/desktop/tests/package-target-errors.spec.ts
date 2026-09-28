@@ -14,9 +14,9 @@ vi.mock('../scripts/macos-signing-keychain.mjs', () => ({
 }))
 // This test fakes the host platform, so the real probes would report the absent Windows compilers rather than the failure under test.
 vi.mock('../scripts/desktop-toolchain-preflight.ts', () => ({ requireDesktopToolchain: async () => {} }))
-vi.mock('node:fs', async importOriginal => ({
-  ...await importOriginal<typeof import('node:fs')>(),
-  rmSync: () => { throw new AggregateError([new Error('credential-sentinel')], 'restore:mac-proxy recovery required') },
+vi.mock('../scripts/build-cleanup.ts', () => ({
+  removeOwnedBuildDirectory: () => { throw new AggregateError([new Error('credential-sentinel')], 'restore:mac-proxy recovery required') },
+  removeOwnedBuildFile: () => { throw new AggregateError([new Error('credential-sentinel')], 'restore:mac-proxy recovery required') },
 }))
 vi.mock('../scripts/packaging-run.mjs', async (importOriginal) => {
   const original = await importOriginal<typeof import('../scripts/packaging-run.mjs')>()
@@ -67,6 +67,6 @@ it.each(['win32', 'darwin'] as const)('records and prints redacted parent failur
     else process.env.DSH_DESKTOP_PACKAGING_RUN_DIR = savedDirectory
     stderr.mockRestore()
     consoleLog.mockRestore()
-    await rm(state.root, { recursive: true, force: true })
+    await rm(state.root, { recursive: true })
   }
 })

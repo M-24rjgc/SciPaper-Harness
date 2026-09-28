@@ -6,11 +6,11 @@ import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path
 import { Context, Service } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import { z } from 'zod'
-import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { Domain } from '@deepseek-ai/dsh-storage-domain'
-import type { SessionRequestId, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { SessionCreateRequest, SessionRequestId, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/types'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
@@ -224,6 +224,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   private refreshResourceRoutes!: () => Promise<void>
   /** One installation shared by all first-snapshot callers and awaited during shutdown. */
   private examplesReady: Promise<void> | undefined
+  /** One-use, in-process capabilities for the initializer's exact create request objects. */
+  private readonly exampleCreates = new WeakSet<SessionCreateRequest>()
 
   /** Bind the research API and its private tooling directory. */
   constructor(ctx: Context, readonly config: Config) {
@@ -301,9 +303,16 @@ export class ResearchWorkbench extends TypertRemoteService {
       },
       conversation: async (project, material) => {
         if (project.sessionId === undefined) throw new Error(`Example has no registered conversation: ${project.id}`)
-        const { sessionId } = await this.ctx.sessionController.create({
+        const request: SessionCreateRequest = {
           sessionId: SessionId(project.sessionId), workspaceId: project.workspaceId, agentPreset: 'research',
-        })
+        }
+        this.exampleCreates.add(request)
+        let sessionId: SessionId
+        try {
+          sessionId = (await this.ctx.sessionController.create(request)).sessionId
+        } finally {
+          this.exampleCreates.delete(request)
+        }
         const session = this.ctx.sessions.get(sessionId)
         if (session === undefined) throw new Error(`Example conversation was not attached: ${sessionId}`)
         this.ctx.permissionPresets.set(session, 'read-only')
@@ -332,6 +341,21 @@ export class ResearchWorkbench extends TypertRemoteService {
       ...task, status: 'interrupted', message: 'The application restarted; independent experiments can be reconnected from the experiment panel',
     })))
     await this.loadEvidenceText()
+    this.ctx.on('api-session/command-admission', async (admission, next) => {
+      const targetExample = admission.cwd !== undefined && isExampleRoot(admission.cwd)
+      const existingExample = admission.operation === 'create'
+        && admission.existing?.cwd !== undefined && isExampleRoot(admission.existing.cwd)
+      if (!targetExample && !existingExample) return next()
+      if (admission.operation === 'create') {
+        // Consume the exact internal request before yielding; matching Remote data conveys no capability.
+        if (this.exampleCreates.delete(admission.request)) return next()
+        const existingCwd = admission.existing?.cwd
+        if (existingCwd !== undefined && this.projects().some(project =>
+          project.sessionId === admission.sessionId && sameDirectory(project.root, admission.cwd)
+          && sameDirectory(project.root, existingCwd))) return next()
+      }
+      throw new RemoteError('session/read-only', EXAMPLE_READ_ONLY, { sessionId: admission.sessionId })
+    })
     // The permission service pins a new session's default in its own listener, registered when it was constructed,
     // before this service (which injects it) started; this listener therefore runs after that pin.
     this.ctx.on('session/created', (session) => { this.align(session, researchOf(session, this.projects())) })

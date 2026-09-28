@@ -186,6 +186,30 @@ describe('Chat inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('does not fork read-only conversations but still forks with an ordinary input block', async () => {
+    const b = await bench()
+    try {
+      const { injected } = b.chatViewApi(b.rootReference)
+      const blocks = b.runtime.ctx.conversation.blocks
+      expect(injected.hooks.composerBlock).toBe(blocks.storeFor(ROOT))
+      const fork = vi.spyOn(b.runtime.sessions, 'fork').mockResolvedValue(ROOT)
+      blocks.set(ROOT, { reason: 'example is view-only', readOnly: true })
+      injected.forkAt(17)
+      await Promise.resolve()
+      expect(fork).not.toHaveBeenCalled()
+      expect(b.openSession).not.toHaveBeenCalled()
+
+      blocks.set(ROOT, { reason: 'select a model first' })
+      injected.forkAt(18)
+      await vi.waitFor(() => {
+        expect(b.openSession).toHaveBeenCalledWith(ROOT)
+      })
+      expect(fork).toHaveBeenCalledExactlyOnceWith({ sessionId: ROOT, atSeq: 18, increaseTitle: true })
+    } finally {
+      await b.runtime.dispose()
+    }
+  })
+
   it('addresses file paths under the Session\'s scope and opens them in the right Sidebar', async () => {
     const b = await bench()
     const { injected } = b.chatViewApi(b.rootReference)

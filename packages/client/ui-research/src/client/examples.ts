@@ -50,7 +50,10 @@ export function guardExampleComposers(sources: ExampleGuardSources): () => void 
       if (held.has(sessionId)) continue
       const reason = sources.reason()
       const store = blocks.storeFor(sessionId)
-      const raise = (): void => { if (store.getSnapshot()?.reason !== reason) blocks.set(sessionId, { reason }) }
+      const raise = (): void => {
+        const current = store.getSnapshot()
+        if (current?.reason !== reason || current.readOnly !== true) blocks.set(sessionId, { reason, readOnly: true })
+      }
       raise()
       held.set(sessionId, store.subscribe(raise))
     }

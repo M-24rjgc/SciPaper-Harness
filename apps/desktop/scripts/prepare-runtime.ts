@@ -2,16 +2,18 @@
 
 import { packagingStep } from './packaging-step.mjs'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { downloadArtifact } from '@electron/get'
 import extractZip from 'extract-zip'
 import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { preparePrimaryRuntime } from './prepare-primary-runtime.ts'
+import { removeOwnedBuildDirectory } from './build-cleanup.ts'
 
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
+const BUILD_OWNER_ROOT = resolve(import.meta.dirname, '..', '.desktop-build')
 const RUNTIME_ROOT = BUILD_PATHS.runtime
 
 function preparePnpm(): string {
@@ -21,7 +23,7 @@ function preparePnpm(): string {
   if (typeof manifest.version !== 'string') throw new Error('desktop runtime: pnpm manifest has no version')
   const packageDir = dirname(manifestPath)
   const destination = join(RUNTIME_ROOT, 'pnpm')
-  rmSync(destination, { recursive: true, force: true })
+  removeOwnedBuildDirectory(destination, BUILD_OWNER_ROOT)
   cpSync(packageDir, destination, { recursive: true })
   return manifest.version
 }
@@ -35,13 +37,13 @@ async function main(): Promise<void> {
   const { version } = require('electron/package.json') as { version: string }
   const archive = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'download:electron',
     () => downloadArtifact({ version, platform, arch, artifactName: 'electron', cacheRoot: BUILD_PATHS.downloads }))
-  rmSync(BUILD_PATHS.electron, { recursive: true, force: true })
+  removeOwnedBuildDirectory(BUILD_PATHS.electron, BUILD_OWNER_ROOT)
   await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'extract:electron', () => extractZip(archive, { dir: BUILD_PATHS.electron }))
   const executable = join(BUILD_PATHS.electron, platform === 'win32' ? 'electron.exe' : 'Electron.app/Contents/MacOS/Electron')
   const nodeVersion = execFileSync(executable, ['-p', 'process.versions.node'], {
     encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
   }).trim()
-  rmSync(RUNTIME_ROOT, { recursive: true, force: true })
+  removeOwnedBuildDirectory(RUNTIME_ROOT, BUILD_OWNER_ROOT)
   mkdirSync(RUNTIME_ROOT, { recursive: true })
   const pnpmVersion = preparePnpm()
   cpSync(join(import.meta.dirname, 'node-bin'), join(RUNTIME_ROOT, 'bin'), { recursive: true })

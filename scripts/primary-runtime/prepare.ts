@@ -2,7 +2,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -12,6 +12,7 @@ import extractZip from 'extract-zip'
 import { x as extractTar } from 'tar'
 import { parsePrimaryRuntime, workspaceDependencyPaths, type PrimaryRuntimeManifest } from '../../packages/skill/tool-workspace-dependencies/src/index.ts'
 import { installPythonPathHook, runtimeAsset } from '../../packages/research/workbench/src/components.ts'
+import { assertOwnedBuildPath, removeOwnedBuildDirectory } from '../../apps/desktop/scripts/build-cleanup.ts'
 import lock from './lock.json' with { type: 'json' }
 
 /**
@@ -88,8 +89,9 @@ export async function unpackPrimaryRuntimeWheel(archive: string, destination: st
  * @returns Resolves after replacing the external assets with the complete package tree.
  */
 export async function prepareOfficeSkillAssets(source: string, destination: string): Promise<void> {
-  rmSync(destination, { recursive: true, force: true })
-  await cp(source, destination, { recursive: true, dereference: true })
+  const output = resolve(destination)
+  removeOwnedBuildDirectory(output, dirname(output))
+  await cp(source, output, { recursive: true, dereference: true })
 }
 
 /** A locked interpreter and wheel target. */
@@ -126,10 +128,12 @@ export interface PreparePrimaryRuntimeOptions {
 export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOptions): Promise<void> {
   const { target } = options
   const paths = { runtime: resolve(options.output), downloads: resolve(options.cache) }
+  assertOwnedBuildPath(join(paths.runtime, 'primary-runtime'), paths.runtime)
   const artifact = lock.targets[target]
   mkdirSync(paths.runtime, { recursive: true })
   mkdirSync(paths.downloads, { recursive: true })
-  const staging = mkdtempSync(join(tmpdir(), 'dsh-primary-'))
+  const stagingOwnerRoot = realpathSync(tmpdir())
+  const staging = mkdtempSync(join(stagingOwnerRoot, 'dsh-primary-'))
   try {
     const output = join(staging, 'payload')
     const dependencies = join(output, 'dependencies')
@@ -171,10 +175,10 @@ export async function preparePrimaryRuntime(options: PreparePrimaryRuntimeOption
     await preparePrimaryRuntimePythonPaths(target, join(dependencies, 'python'))
     writeFileSync(join(output, 'runtime.json'), `${JSON.stringify(manifest, undefined, 2)}\n`)
     const destination = join(paths.runtime, 'primary-runtime')
-    rmSync(destination, { recursive: true, force: true })
+    removeOwnedBuildDirectory(destination, paths.runtime)
     await cp(output, destination, { recursive: true, dereference: true })
   } finally {
-    rmSync(staging, { recursive: true, force: true })
+    removeOwnedBuildDirectory(staging, stagingOwnerRoot)
   }
   const require = createRequire(import.meta.url)
   await prepareOfficeSkillAssets(join(dirname(require.resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets'),

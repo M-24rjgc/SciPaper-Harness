@@ -69,6 +69,8 @@ Artifact extensions can subscribe to one Turn and Node kind through `ChatNodeSto
 
 The completed-turn action footer follows the recorded Turn end. Its action row starts 20px below preceding prose or extension content. Actions remain visible only on the latest Turn when its final visible content is a reply; other endings and historical Turns reveal actions on hover or keyboard focus. Devices without hover keep actions visible.
 
+A conversation block with `readOnly: true` hides the branch action and prevents its callback from creating a Session. Copy remains available; ordinary input blocks, such as a missing model selection, do not disable branching.
+
 -----
 
 <a id="turn-process-folding"></a>

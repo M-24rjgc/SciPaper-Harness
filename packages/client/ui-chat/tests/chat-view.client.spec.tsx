@@ -304,6 +304,7 @@ function makeHarness(
     read: () => savedScroll,
   }
   const forkAt = vi.fn()
+  const composerBlock = createSnapshotStore<import('@deepseek-ai/dsh-client-ui-conversation/client').ComposerBlock | undefined>(undefined)
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
@@ -439,6 +440,7 @@ function makeHarness(
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     usePresentation: bindSnapshotSelector(derivePresentationPolicy(transcriptView)),
+    useComposerBlock: bindSnapshotSelector(composerBlock),
     renderSlot,
     SessionProvider: SessionProviderStub,
     inspectCall: (callId: string) => { openView('trajectory', callId) },
@@ -479,7 +481,7 @@ function makeHarness(
     set, setSession: session.set, setChat: chatSource.set, ChatView, props,
     openFile, openSkill, loadOlder, loadThrough, openView,
     setOutline: (value: unknown) => { outlineValue = value },
-    chatScroll, forkAt, toolOwners,
+    chatScroll, forkAt, toolOwners, composerBlock,
     setPerformanceUsage: (mode: 'compact' | 'detailed') => { performanceUsage.set(mode) },
     setGrouped: (value: ConversationGroupedView<ProcessGroupData> | undefined) => {
       grouped = value
@@ -3071,6 +3073,29 @@ describe('ChatView', () => {
     expect(buttons[0]!.getAttribute('aria-disabled')).toBeNull()
     fireEvent.click(buttons[0]!)
     expect(h.forkAt.mock.calls).toEqual([[3]])
+  })
+
+  it('hides branch actions for read-only conversations while preserving copy and ordinary branching', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'question'), assistant(2, 'answer')],
+      turnEnds: new Map([[1, 3]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    act(() => { h.composerBlock.set({ reason: 'view only', readOnly: true }) })
+    expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(2)
+    expect(h.forkAt).not.toHaveBeenCalled()
+
+    act(() => { h.composerBlock.set({ reason: 'select a model first' }) })
+    const branch = view.getByRole('button', { name: '在新对话中分支' })
+    expect(branch.getAttribute('aria-disabled')).toBeNull()
+    fireEvent.click(branch)
+    expect(h.forkAt.mock.calls).toEqual([[3]])
+
+    act(() => { h.composerBlock.set({ reason: 'view only', readOnly: true }) })
+    expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    act(() => { h.composerBlock.set(undefined) })
+    expect(view.getByRole('button', { name: '在新对话中分支' })).toBeTruthy()
   })
 
   it('disables fork when the indexed Turn has a later steering Node', () => {

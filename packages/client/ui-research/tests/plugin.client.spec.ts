@@ -27,6 +27,7 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ComposerBlockRegistry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/input/blocks.ts'
+import type { ComposerBlock } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { apply, inject } from '../src/client/index.ts'
 import { ResearchBrand, ResearchMark } from '../src/client/Brand.tsx'
 import { ResearchHeroMark } from '../src/client/Hero.tsx'
@@ -640,16 +641,16 @@ describe('the research plugin', () => {
   })
 
   it('keeps the composer of an example\'s conversation inert while the conversation plugin runs, and lets go with the fiber', async () => {
-    const blocks = new Map<string, ReturnType<typeof createSnapshotStore<{ reason: string } | undefined>>>()
+    const blocks = new Map<string, ReturnType<typeof createSnapshotStore<ComposerBlock | undefined>>>()
     const storeFor = (id: string) => {
-      if (!blocks.has(id)) blocks.set(id, createSnapshotStore<{ reason: string } | undefined>(undefined))
+      if (!blocks.has(id)) blocks.set(id, createSnapshotStore<ComposerBlock | undefined>(undefined))
       return blocks.get(id)!
     }
-    const conversation = { blocks: { storeFor, set: (id: string, block: { reason: string } | undefined) => { storeFor(id).set(block) } } }
+    const conversation = { blocks: { storeFor, set: (id: string, block: ComposerBlock | undefined) => { storeFor(id).set(block) } } }
     const b = await bench({ conversation })
     b.remote.snapshot.mockResolvedValue(ok({ ...LOADED, projects: [{ ...PROJECT, example: true, sessionId: 'session-a' }] }))
     await b.face.refresh()
-    expect(storeFor('session-a').getSnapshot()).toEqual({ reason: en.exampleComposerBlocked })
+    expect(storeFor('session-a').getSnapshot()).toEqual({ reason: en.exampleComposerBlocked, readOnly: true })
     await stop(b)
     expect(storeFor('session-a').getSnapshot()).toBeUndefined()
   })

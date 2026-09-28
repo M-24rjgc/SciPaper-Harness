@@ -2,7 +2,7 @@
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type {
-  CommandNode, CompactionSummaryNode, ConversationLocationDataStore, ConversationTurnDataMap,
+  CommandNode, CompactionSummaryNode, ComposerBlock, ConversationLocationDataStore, ConversationTurnDataMap,
   ConversationGroupData, GroupSnapshot,
   MessageImageLoader, MessageImagesOwnerProps, RenderMessageImages, TurnLocation,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -165,7 +165,8 @@ export interface ChatNodeOwnerProps {
   openSkill: (name: string) => void
   openFile: (path: string, options?: OpenFileOptions) => void
   inspectCall: ((callId: ToolCallId) => void) | undefined
-  forkAt: (seq: number) => void
+  /** Omitted for a conversation whose block marks it read-only. */
+  forkAt: ((seq: number) => void) | undefined
   /**
    * Session-authorized image loader, down-threaded from the Chat view so a
    * chat-node renderer can render the attachment presentation slot directly
@@ -233,6 +234,8 @@ export interface ChatViewInjected {
   hooks: {
     /** Live presentation policy derived from the accepted work-details mode. */
     presentation: ObservableSnapshot<ChatPresentationPolicy>
+    /** This Session's input block; only readOnly disables conversation branching. */
+    composerBlock: ObservableSnapshot<ComposerBlock | undefined>
   }
   keyedHooks: {
     /** Resolve the stable source for one Chat Node key. */

@@ -40,6 +40,7 @@ import type {
   SessionCancelRequest,
   SessionCancelValue,
   SessionCreateRequest,
+  SessionCommandAdmission,
   SessionCreateValue,
   SessionForkRequest,
   SessionForkValue,
@@ -103,27 +104,30 @@ export class SessionCommandController {
    * @returns the Session identity and resolved preset when configured.
    */
   async create(request: SessionCreateRequest): Promise<SessionCreateValue> {
-    if (request.workspaceId !== undefined && request.cwd !== undefined) {
+    const { workspaceId, cwd: requestedCwd, sessionId: requestedId, agentPreset: requestedPreset } = request
+    if (workspaceId !== undefined && requestedCwd !== undefined) {
       throw new RemoteError('gateway/bad-request', 'session.create accepts workspaceId or cwd, not both', {})
     }
-    const sessionId = request.sessionId ?? brandString<SessionId>(`session-${randomUUID()}`)
+    const sessionId = requestedId ?? brandString<SessionId>(`session-${randomUUID()}`)
     let workspace: Workspace | undefined
-    if (request.workspaceId !== undefined) {
-      workspace = this.ctx.workspaceRegistry.get(request.workspaceId)
+    if (workspaceId !== undefined) {
+      workspace = this.ctx.workspaceRegistry.get(workspaceId)
       if (workspace === undefined) {
-        throw new RemoteError('workspace/not-found', `workspace "${request.workspaceId}" not found`, {
-          workspaceId: request.workspaceId,
+        throw new RemoteError('workspace/not-found', `workspace "${workspaceId}" not found`, {
+          workspaceId,
         })
       }
     }
-    const cwd = workspace?.path ?? request.cwd ?? this.defaultCwd
+    const cwd = workspace?.path ?? requestedCwd ?? this.defaultCwd
+    const existing = requestedId === undefined ? undefined : await this.commandHeader(sessionId)
+    await this.admit({ operation: 'create', sessionId, cwd, request, ...(existing === undefined ? {} : { existing }) })
     let adopted: Agent
     try {
       adopted = await this.agents.ensureSession(
         sessionId,
         cwd,
-        request.sessionId !== undefined,
-        request.agentPreset,
+        requestedId !== undefined,
+        requestedPreset,
       )
     } catch (error) {
       this.rejectCreation(sessionId, error)
@@ -187,10 +191,12 @@ export class SessionCommandController {
 
   /**
    * Normalize and append a user-owned Session title.
-   * @param request - Session identity and proposed title.
+   * @param input - Session identity and proposed title.
    * @returns the accepted title and durable event sequence.
    */
-  async rename(request: SessionRenameRequest): Promise<SessionRenameValue> {
+  async rename(input: SessionRenameRequest): Promise<SessionRenameValue> {
+    const request = { ...input }
+    await this.admitExisting('rename', request.sessionId)
     const agent = await this.resolveAgent(request.sessionId)
     const titles = this.ctx.get('sessionTitle')
     if (titles === undefined) {
@@ -215,10 +221,11 @@ export class SessionCommandController {
    * Create a new ordinary Session from an exact event prefix. An explicit
    * `atSeq` is the inclusive cut; an omitted value selects the latest
    * completed-turn prefix. An open cut receives synthetic fork closers.
-   * @param request - source Session and optional exact event boundary.
+   * @param input - source Session and optional exact event boundary.
    * @returns the new Session identity.
    */
-  async fork(request: SessionForkRequest): Promise<SessionForkValue> {
+  async fork(input: SessionForkRequest): Promise<SessionForkValue> {
+    const request = { ...input }
     let atSeq: ReturnType<typeof SessionSeq> | undefined
     try {
       atSeq = request.atSeq === undefined ? undefined : SessionSeq(request.atSeq)
@@ -242,6 +249,10 @@ export class SessionCommandController {
       )
     }
     using source = observed
+    await this.admit({
+      operation: 'fork', sessionId: source.header.id,
+      ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+    })
     const boundary = atSeq ?? latestCompletedPrefixBoundary(source.events)
     if (boundary === undefined || source.events[boundary]?.seq !== boundary) {
       throw new RemoteError(
@@ -305,10 +316,11 @@ export class SessionCommandController {
 
   /**
    * Reject empty content, then admit one prompt after Agent and attachment validation.
-   * @param request - Session identity, prompt content, source metadata, and delivery mode.
+   * @param input - Session identity, prompt content, source metadata, and delivery mode.
    * @returns acknowledgement that the Agent accepted the prompt.
    */
-  async prompt(request: SessionPromptRequest): Promise<SessionPromptValue> {
+  async prompt(input: SessionPromptRequest): Promise<SessionPromptValue> {
+    const request = { ...input }
     if (!hasPromptContent(request.content)) {
       throw new RemoteError(
         'gateway/bad-request',
@@ -326,6 +338,7 @@ export class SessionCommandController {
         { value: request.clientTimeZone },
       )
     }
+    await this.admitExisting('prompt', request.sessionId)
     const agent = await this.resolveAgent(request.sessionId)
     if (hasPromptRequest(agent, request.requestId)) return { accepted: true }
     const source: MessageSource = {
@@ -426,10 +439,11 @@ export class SessionCommandController {
 
   /**
    * Mutate one pending Inbox occurrence, restoring an ordinary cold Agent when needed.
-   * @param request - Session, queue item, and requested mutation.
+   * @param input - Session, queue item, and requested mutation.
    * @returns acknowledgement that the queue mutation was applied.
    */
-  async updateQueue(request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue> {
+  async updateQueue(input: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue> {
+    const request = { ...input }
     if (request.action.kind === 'edit') {
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- Remote callers can submit untyped JSON.
       if (request.action.content.some(block => block.type !== 'text')) {
@@ -447,6 +461,7 @@ export class SessionCommandController {
         )
       }
     }
+    await this.admitExisting('updateQueue', request.sessionId)
     let agent = this.ctx.agents.get(request.sessionId)
     if (agent === undefined) {
       const found = await this.agents.resolveAgent(request.sessionId)
@@ -522,6 +537,29 @@ export class SessionCommandController {
     }
     agent.cancel({ kind: 'user' }, { keepInbox: true })
     return { accepted: true }
+  }
+
+  private admit(admission: SessionCommandAdmission): Promise<void> {
+    return this.ctx.waterfall('api-session/command-admission', admission, () => Promise.resolve())
+  }
+
+  private async admitExisting(
+    operation: 'rename' | 'prompt' | 'updateQueue', sessionId: SessionId,
+  ): Promise<void> {
+    const header = await this.commandHeader(sessionId)
+    await this.admit({ operation, sessionId, ...(header?.cwd === undefined ? {} : { cwd: header.cwd }) })
+  }
+
+  private async commandHeader(sessionId: SessionId): Promise<SessionHeader | undefined> {
+    const attached = this.ctx.sessions.get(sessionId)
+    if (attached !== undefined) return attached.header
+    try {
+      using observation = await this.ctx.sessionQuery.observeSession(sessionId, { projectionMode: 'none' })
+      return observation.header
+    } catch (error: unknown) {
+      if (error instanceof SessionQueryError && error.code === 'SESSION_QUERY_SESSION_NOT_FOUND') return undefined
+      throw new RemoteError('gateway/internal', `command target unavailable for session "${sessionId}": ${String(error)}`, {})
+    }
   }
 
   private async resolveAgent(sessionId: SessionId): Promise<Agent> {
