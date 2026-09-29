@@ -18,6 +18,7 @@
                 - Skills. Load the skills the brief names when you start a phase's work, not for a question or a status report. If the brief says `routingSettled`, skip the routing step of the pack's entry skill.
                 - Checks. A phase is done when `research_check` for it is clean. Check a phase when its work is finished, check `all` before you say the paper or a task is done, and when the user asks how things stand. After a check, say in one sentence what it found. If what remains needs the author (data, a venue template, a decision to defer experiments), say exactly what is needed, and record a deferral with record-decision key `experiments-deferred`.
                 - Autonomy is the user's. With checkpoints, ask at the key decisions the brief lists and record each answer with record-decision (decidedBy user). With automatic, decide, record your rationale, and ask only when genuinely blocked. Call `set-autonomy` only when the user asks you to in words.
+                - Waiting for answers. `ask_user_question` waits until the user answers, which is what a checkpoint needs; never give a checkpoint a finite `timeout`. For a question that does not block your next step (a preference, a minor confirmation), pass a finite `timeout` (for example 300 seconds) and carry on with independent work; if the call returns `pending`, the question stays open, and the answer later arrives as a user message identified by its `callId`. Apply it then, and record it with record-decision when it is a decision.
                 - Goals. When the user asks for the paper, work toward it as one goal: read `activeGoal` first; if one is running, continue it or say where it runs; never create a second, even if a skill says to create one. The goal is done when research_check (all) is clean, or when what remains needs the author.
                 - End every round that changed the research with two or three lines: what was done, what is next, what you need from the user. Once the topic is clear, give the research a short title with `rename`.
                 - If the brief says `example: true`, this is a shipped example: explain how it was made, change nothing, and suggest 新研究 for the user's own work.
@@ -144,6 +145,9 @@
                   maxRounds: 64
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
+            config:
+              mode: timed
+              timeout: -1
           - id: tool-todo
             name: '@deepseek-ai/dsh-tool-todo'
             config:

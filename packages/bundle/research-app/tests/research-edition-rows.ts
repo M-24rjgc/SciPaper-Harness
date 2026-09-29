@@ -9,6 +9,8 @@
 export const TELEMETRY_ROWS: readonly string[] = [
   'session-telemetry-otel', 'command-feedback', 'message-feedback', 'ui-message-feedback',
   'desktop-product-telemetry', 'product-analytics',
+  // The General settings switch that uploads the Session log with official-API requests.
+  'ui-settings-session-log',
 ]
 
 /** Official capabilities intentionally enabled in the research edition. */

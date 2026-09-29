@@ -58,7 +58,7 @@ function Invoke-DshCommandPath {
             }
         }
         if ($Request.operation -eq 'install') {
-            if (-not (Test-Path -LiteralPath (Join-Path $directory 'dsh.cmd') -PathType Leaf)) { Fail 'ENOENT' 'The installed launcher is unavailable.' }
+            if (-not (Test-Path -LiteralPath (Join-Path $directory 'sph.cmd') -PathType Leaf)) { Fail 'ENOENT' 'The installed launcher is unavailable.' }
             $next = (@($directory) + $kept) -join ';'
             $environment = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($EnvironmentKey)
             $owner = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($OwnerKey)
@@ -96,7 +96,7 @@ function Invoke-DshCommandPath {
             $extensions = if ($env:PATHEXT) { @($env:PATHEXT.Split(';')) } else { @('.com','.exe','.bat','.cmd') }
             foreach ($extension in (@('.ps1') + $extensions)) {
                 try {
-                    $candidate = Join-Path $path ('dsh' + $extension)
+                    $candidate = Join-Path $path ('sph' + $extension)
                     if (Test-Path -LiteralPath $candidate -PathType Leaf) { $active = $candidate; break }
                 } catch {
                     # Invalid or unavailable PATH candidates do not prevent checking later entries.
@@ -106,7 +106,7 @@ function Invoke-DshCommandPath {
             if ($active) { break }
         }
         $onPath = @(([string]$raw).Split(';') | Where-Object { (Comparable $_) -eq $current }).Count -gt 0
-        return [ordered]@{ fingerprint=$fingerprint; directory=$directory; ownedDirectory=$owned; managed=([bool]$owned -and (Comparable ([string]$owned)) -eq $current); activeCommand=$active; available=($onPath -and (Test-Path -LiteralPath (Join-Path $directory 'dsh.cmd') -PathType Leaf)) }
+        return [ordered]@{ fingerprint=$fingerprint; directory=$directory; ownedDirectory=$owned; managed=([bool]$owned -and (Comparable ([string]$owned)) -eq $current); activeCommand=$active; available=($onPath -and (Test-Path -LiteralPath (Join-Path $directory 'sph.cmd') -PathType Leaf)) }
     } finally {
         if ($locked) { $mutex.ReleaseMutex() }
         $mutex.Dispose()
@@ -137,7 +137,7 @@ if ($MyInvocation.InvocationName -ne '.') {
         try { $machinePath = [string]$machine.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) }
         finally { $machine.Dispose() }
         $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-        $state = Invoke-DshCommandPath -Request $request -EnvironmentKey 'Environment' -OwnerKey 'Software\DeepSeekHarness\Command' -MachinePath $machinePath -MutexName ('Global\DeepSeekHarness.Command.' + $sid)
+        $state = Invoke-DshCommandPath -Request $request -EnvironmentKey 'Environment' -OwnerKey 'Software\SciPaperHarness\Command' -MachinePath $machinePath -MutexName ('Global\SciPaperHarness.Command.' + $sid)
         if ($request.operation -ne 'inspect') {
             Send-DshCommandEnvironmentChange
         }

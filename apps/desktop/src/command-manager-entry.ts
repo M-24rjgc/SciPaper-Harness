@@ -15,7 +15,7 @@ try {
   if (!['inspect', 'install', 'remove'].includes(operation ?? '')) throw new CommandInstallationError('EINVAL', 'Invalid command-management operation.')
   if (operation !== 'inspect' && !/^[a-f0-9]{64}$/u.test(fingerprint)) throw new CommandInstallationError('EINVAL', 'Missing command confirmation.')
   if (process.platform === 'darwin') {
-    const options = { destination: '/usr/local/bin/dsh', launcher: join(resources, 'runtime', 'cli', 'bin', 'dsh'),
+    const options = { destination: '/usr/local/bin/sph', launcher: join(resources, 'runtime', 'cli', 'bin', 'sph'),
       linkHelper: join(resources, 'runtime', 'cli', 'link-entry') }
     const state = operation === 'inspect' ? await inspectFileCommand(options)
       : operation === 'install' ? await installFileCommand(options, fingerprint) : await removeFileCommand(options, fingerprint)

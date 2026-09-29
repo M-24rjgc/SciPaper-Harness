@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Partly superseded by [Tracking DeepSeek Harness releases by real merges](2026-09-30-tracking-dsh-releases.md): upstream release tags are merged again, so "changes from upstream arrive only when someone ports one" and "tracks no upstream remote" no longer hold. The request identity, privacy and release decisions below stand.
+
 English | [中文](2026-09-24-scipaper-independent-identity.zh.md)
 
 ## Problem

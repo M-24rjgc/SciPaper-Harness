@@ -52,9 +52,9 @@ async function fixture(options: {
   await writeFile(join(worker, 'package.json'), '{"type":"module"}\n')
   const state = {
     fingerprint: 'a'.repeat(64), managed: options.managed ?? false, available: true, kind: options.managed ? 'symlink' : 'file',
-    destination: join(root, process.platform === 'win32' ? 'dsh.cmd' : 'dsh'),
+    destination: join(root, process.platform === 'win32' ? 'sph.cmd' : 'sph'),
     directory: root, launcher: join(root, 'desktop-dsh'),
-    activeCommand: options.managed && !options.shadowed ? join(root, process.platform === 'win32' ? 'dsh.cmd' : 'dsh') : join(root, 'other-dsh'),
+    activeCommand: options.managed && !options.shadowed ? join(root, process.platform === 'win32' ? 'sph.cmd' : 'sph') : join(root, 'other-dsh'),
   }
   if (process.platform === 'darwin') {
     const shell = join(root, 'lookup-shell')

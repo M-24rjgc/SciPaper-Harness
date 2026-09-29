@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-scipaper-independent-identity.md
 /agent-note-scipaper-harness-as-an-independent-product:
-  en: cb1c6443628a618b
-  zh: 3f440177d191cfd3
+  en: c5ae8344ee450e2a
+  zh: f2b49beedafcf2a5
 /agent-note-scipaper-harness-as-an-independent-product/problem:
   en: 886d4cd658780655
   zh: 20ef79476f00d00c

@@ -30,10 +30,10 @@ describe('dsh runtime version', () => {
   })
 
   it('accepts plugins targeting the embedded DSH release independently of the product release', () => {
-    expect(getDshRuntimeVersion()).toBe('0.2.0-rc.1')
-    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh': '^0.2.0-rc.1' } })).toBeUndefined()
-    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh': '^0.1.7-rc.2' } })?.runtimeVersion).toBe('0.2.0-rc.1')
-    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh': product.version } })?.runtimeVersion).toBe('0.2.0-rc.1')
+    expect(getDshRuntimeVersion()).toBe('0.2.0-rc.2')
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh': '^0.2.0-rc.2' } })).toBeUndefined()
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh': '^0.1.7-rc.2' } })?.runtimeVersion).toBe('0.2.0-rc.2')
+    expect(evaluatePluginCompatibility({ ...identity, peerDependencies: { '@deepseek-ai/dsh': product.version } })?.runtimeVersion).toBe('0.2.0-rc.2')
   })
 
   it('retains the upstream package-version fallback and rejects corrupt kernel metadata', () => {

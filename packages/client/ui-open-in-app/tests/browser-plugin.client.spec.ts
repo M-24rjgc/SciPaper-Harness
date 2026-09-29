@@ -84,9 +84,10 @@ describe('open-in-app browser half', () => {
     try {
       const command = commands.get('workspace.openLocal')!
       const context = { region: 'page', modal: null, target: null } as const
+      expect(command.label()).toMatch(/\S/u)
       expect(command.resolve(context).status).toBe('blocked')
       const id = 'main' as SessionId
-      const row = { id, displayTitle: 'Main', cwd: '/workspace', running: false, blank: false, updatedAt: 0, retainedBy: {} }
+      const row ={ id, displayTitle: 'Main', cwd: '/workspace', running: false, blank: false, updatedAt: 0, retainedBy: {} }
       list.set({ ...list.getSnapshot(), ids: [id], byId: { [id]: row } })
       expect(command.resolve(context).status).toBe('blocked')
       list.set({ ...list.getSnapshot(), byId: { [id]: { ...row, retainedBy: { mainView: 1 } } } })
@@ -201,7 +202,6 @@ describe('open-in-app browser half', () => {
     try {
       const entry = ctx.slots.entries('conversation.session.header.utilities')[0]
       const files = ctx.slots.entries('sidebar.right.tab.files.actions')[0]
-      expect(files?.component).toBe(OpenInAppAction)
       expect(files?.inject).toBe(entry?.inject)
       expect(entry?.options).toMatchObject({ id: 'open-in-app' })
       const header = entry?.component as SlotComponent<Pick<
@@ -217,6 +217,18 @@ describe('open-in-app browser half', () => {
         if (cwd === '') expect(header(props)).toBeNull()
         else expect(header(props)).toMatchObject({ type: OpenInAppAction, props: { absolutePath: cwd } })
       }
+      // A remote workspace's directory is not on this machine: neither the header nor the file tree offers a local opener.
+      const filesTree = files?.component as SlotComponent<Pick<
+        PropsRuntime<'sidebar.right.tab.files.actions'>, 'sessionId' | 'useSessions' | 'absolutePath'
+      >>
+      const treeProps = { ...props, absolutePath: '/second' }
+      expect(filesTree(treeProps)).toMatchObject({ type: OpenInAppAction, props: { absolutePath: '/second' } })
+      expect(filesTree({ ...treeProps, sessionId: 'other' as SessionId })).toMatchObject({ type: OpenInAppAction })
+      list.set({ ...list.getSnapshot(), byId: {
+        [id]: { id, displayTitle: 'Main', cwd: '/second', execution: { kind: 'ssh', host: 'lab' }, running: false, blank: false, updatedAt: 0, retainedBy: {} },
+      } })
+      expect(header(props)).toBeNull()
+      expect(filesTree(treeProps)).toBeNull()
     } finally { await fiber.dispose() }
     expect(headerEntryIds(ctx)).not.toContain('open-in-app')
     expect(ctx.slots.entries('sidebar.right.tab.files.actions')).toHaveLength(0)

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+已被[通过真实合并跟进 DeepSeek Harness 版本](2026-09-30-tracking-dsh-releases.zh.md)部分取代：上游发布标签重新被合并，因此“只有有人有意移植时才会带来上游改动”和“不跟踪上游远程”不再成立。下面关于请求身份、隐私与发布的决定仍然有效。
+
 [English](2026-09-24-scipaper-independent-identity.md) | 中文
 
 ## 问题

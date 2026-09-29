@@ -114,7 +114,7 @@ describe('desktop package-set selection', () => {
       assertDesktopHostPackageFiles(files.slice(0, 1))
     }).toThrow(/lib\/cli\.js/u)
     expect(() => {
-      assertDesktopHostPackageFiles([files[0], files[1]])
+      assertDesktopHostPackageFiles(files.slice(0, 2))
     }).toThrow(/lib\/office-cli\.js/u)
   })
 })

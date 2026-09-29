@@ -39,6 +39,8 @@
   disabled: true
 - id: ui-settings-account
   disabled: true
+- id: ui-settings-session-log
+  disabled: true
 - id: ui-brand-official
   disabled: true
 

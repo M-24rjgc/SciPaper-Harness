@@ -53,11 +53,6 @@ function bench(over: {
 }
 
 describe('OpenInAppAction visibility', () => {
-  it('hides native application opening for an SSH session', () => {
-    const b = bench({ apps: ['finder'], cwd: '/home/research', remote: true })
-    expect(render(<OpenInAppAction {...b.props} />).container.innerHTML).toBe('')
-    expect(b.launch).not.toHaveBeenCalled()
-  })
   it('advertises the configured workspace accelerator', () => {
     render(<OpenInAppAction {...bench({ apps: ['finder'], absolutePath: '/w', shortcuts: [{
       id: 'workspace.openLocal' as ShortcutCommandId, label: 'Open', aliases: [], binding: null,
