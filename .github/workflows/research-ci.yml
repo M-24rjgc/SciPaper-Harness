@@ -36,7 +36,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run repository static gates
         env:
-          DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          DSH_ARCHIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
         run: pnpm run check:ci:static
 
   research:

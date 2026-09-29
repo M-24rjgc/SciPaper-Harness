@@ -43,7 +43,7 @@ export function runProcess(command: string, args: readonly string[], options: Pr
       PYTHONDONTWRITEBYTECODE: '1',
     }
     const platform = options.platform ?? process.platform
-    const child = spawn(localExecutable(command, platform), [...args], {
+    const child = spawn(localExecutable(command), [...args], {
       cwd: options.cwd,
       env: { ...environment, ...options.env },
       detached: platform !== 'win32',

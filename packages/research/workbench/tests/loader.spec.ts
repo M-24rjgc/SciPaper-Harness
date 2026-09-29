@@ -139,6 +139,12 @@ const { default: SkillRegistry } = await import('@deepseek-ai/dsh-skill')
 let ctx: Context | undefined
 let root: string | undefined
 const signal = new AbortController().signal
+
+/** Projects use the same canonical, non-system roots accepted by the real service. */
+async function temporaryRoot(prefix: string): Promise<string> {
+  const parent = process.platform === 'win32' ? tmpdir() : homedir()
+  return realpath(await mkdtemp(join(parent, prefix)))
+}
 beforeEach(() => {
   processes.calls.length = 0; processes.runner = { status: 'completed', metrics: { accuracy: 0.8123 } }
   processes.launch = { status: 'running' }
@@ -401,7 +407,7 @@ function logged(type: 'warn' | 'error', text: string): boolean {
 
 describe('the research service records; it never drives the agent', () => {
   it('admits only the initializer request and existing registered example adoptions', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-example-session-admission-'))
+    root = await temporaryRoot('research-example-session-admission-')
     const pool = new MemoryMediaPool()
     let races = 0
     const first = await boot(pool, {
@@ -459,7 +465,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('seeds complete examples despite a hidden preference, protects an aliased home, and recovers on restart without duplicate messages', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-shipped-examples-')))
+    root = await temporaryRoot('research-shipped-examples-')
     const home = join(root, 'home'), alias = join(root, 'selected-home'), pool = new MemoryMediaPool()
     await mkdir(home)
     await symlink(home, alias, process.platform === 'win32' ? 'junction' : 'dir')
@@ -513,7 +519,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('does not rewrite legacy example ledger or inline evidence while adding examples to an existing trial home', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-legacy-example-')))
+    root = await temporaryRoot('research-legacy-example-')
     const pool = new MemoryMediaPool(), first = await boot(pool)
     const legacy = await first.service.create({ title: 'Legacy example', root: join(root, 'demo/old'), brief: 'Existing material' })
     await write(join(legacy.root, 'notes.md'), 'legacy source\n')
@@ -540,7 +546,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('loads independent tool families and removes only a disabled plugin contribution', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-modules-'))
+    root = await temporaryRoot('research-modules-')
     const { service } = await boot(new MemoryMediaPool(), { toolModules: [['project'], ['evidence'], ['checks']] })
     const names = () => ctx!.tools.schemas().map(tool => tool.name).sort()
     expect(names()).toEqual(['research_check', 'research_evidence', 'research_project'])
@@ -562,7 +568,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('creates and reopens projects without prompting any session, and restores after a restart', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-loader-'))
+    root = await temporaryRoot('research-loader-')
     const pool = new MemoryMediaPool(), first = await boot(pool)
     expect([...first.registry.keys()].sort()).toEqual([
       'research_artifact', 'research_board', 'research_check', 'research_environment', 'research_evidence', 'research_experiment', 'research_knowledge', 'research_media',
@@ -598,8 +604,24 @@ describe('the research service records; it never drives the agent', () => {
     expect(() => second.service.getProject('missing' as never)).toThrow(/not found/)
   })
 
-  it('withdraws optional graph tools and methods on disable, preserves data, and shares them across modes on re-enable', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-graph-lifecycle-'))
+  it('shares enabled graph tools and methods across every research mode', async () => {
+    root = await temporaryRoot('research-graph-modes-')
+    const { service } = await boot(new MemoryMediaPool())
+    const project = await service.create({ title: 'Shared graph', root: join(root, 'paper'), brief: '' })
+    const skills = async () => (await ctx!.skills.list({ cwd: project.root })).map(skill => skill.name)
+    for (const mode of ['general', 'ccfa', 'spark-to-paper']) {
+      await service.execute({ action: 'set-mode', projectId: project.id, mode }, signal, 'user')
+      expect(ctx!.tools.schemas().map(tool => tool.name)).toContain('research_knowledge')
+      expect(await skills()).toContain('research-knowledge')
+      const result = await service.execute({ action: 'novelty', projectId: project.id,
+        claim: 'Compare sparse attention kernels', references: [{ title: 'Attention', text: 'Sparse attention kernels' }],
+        path: `novelty-${mode}.json` }, signal, 'agent')
+      expect(result.content).toContain('lexical')
+    }
+  })
+
+  it('withdraws optional graph tools and methods on disable, cancels work and preserves data through re-enable and restart', async () => {
+    root = await temporaryRoot('research-graph-lifecycle-')
     const pool = new MemoryMediaPool()
     const { service } = await boot(pool)
     const project = await service.create({ title: 'Graph lifecycle', root: join(root, 'paper'), brief: '' })
@@ -609,19 +631,14 @@ describe('the research service records; it never drives the agent', () => {
     const skills = async () => (await ctx!.skills.list({ cwd: project.root })).map(skill => skill.name)
     const provider = [...ctx!.loader.entries()].find(entry => entry.options.id === 'knowledge-provider')!
     expect(tools()).toContain('research_knowledge')
-    for (const mode of ['general', 'ccfa', 'spark-to-paper']) {
-      await service.execute({ action: 'set-mode', projectId: project.id, mode }, signal, 'user')
-      expect(await skills()).toContain('research-knowledge')
-      const result = await service.execute({ action: 'novelty', projectId: project.id,
-        claim: 'Compare sparse attention kernels', references: [{ title: 'Attention', text: 'Sparse attention kernels' }],
-        path: `novelty-${mode}.json` }, signal, 'agent')
-      expect(result.content).toContain('lexical')
-    }
+    expect(await skills()).toContain('research-knowledge')
+    const started = Promise.withResolvers<boolean>()
     const inFlight = ctx!.researchKnowledge.run(signal, async (_engine, workSignal) => new Promise<void>((_resolve, reject) => {
       workSignal.addEventListener('abort', () => { reject(workSignal.reason) }, { once: true })
+      started.resolve(true)
     }))
     const cancelled = expect(inFlight).rejects.toThrow(/disabled/)
-    await Promise.resolve()
+    await started.promise
     await provider.update({ disabled: true }); await ctx!.loader.await()
     await cancelled
     expect(tools()).not.toContain('research_knowledge')
@@ -644,7 +661,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('shows a project\'s sessions the skills of its mode, and swaps them when the mode changes', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-skills-'))
+    root = await temporaryRoot('research-skills-')
     const { service } = await boot(new MemoryMediaPool())
     const names = async (cwd?: string): Promise<string[]> => (await ctx!.skills.list({ cwd })).map(skill => skill.name).sort()
     const p = await service.create({ title: 'Skills', root: join(root, 'p'), brief: '' })
@@ -675,7 +692,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('runs a mode\'s gates in a check and its declared scripts on request, with the platform Python', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-scripts-'))
+    root = await temporaryRoot('research-scripts-')
     const { service } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Scripts', root: join(root, 'p'), brief: '', mode: 'spark-to-paper', route: 'data' })
     const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
@@ -705,7 +722,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('recalls from the built-in graph, checks novelty and builds a project graph, semantically once an embedding key is stored', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-knowledge-'))
+    root = await temporaryRoot('research-knowledge-')
     const harness = await boot(new MemoryMediaPool())
     const { service } = harness
     const p = await service.create({ title: 'Knowledge', root: join(root, 'p'), brief: '' })
@@ -743,13 +760,13 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('keeps managed tools in the product home unless a component root is configured', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-home-'))
+    root = await temporaryRoot('research-home-')
     const { service } = await boot(new MemoryMediaPool(), { componentRoot: false })
     expect(service.components.root).toBe(join(resolveDshHome(), 'research', 'components'))
   })
 
   it('migrates a stored version-1 project on open', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-migrate-'))
+    root = await temporaryRoot('research-migrate-')
     const pool = new MemoryMediaPool()
     const first = await boot(pool)
     const p = await first.service.create({ title: 'Old', root: join(root, 'old'), brief: '' })
@@ -766,7 +783,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('keeps evidence text out of the stored ledger and restores it after a restart', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-text-'))
+    root = await temporaryRoot('research-text-')
     const pool = new MemoryMediaPool()
     const tables = () => [...pool.media.values()].map(medium => medium.tables.get('projects')).filter(table => table !== undefined)
     const stored = (id: string) => tables().map(table => table.get(id) as ResearchProject | undefined).find(Boolean)!
@@ -803,7 +820,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('keeps an example research read-only, whoever asks, and still lets it be read and checked', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-example-'))
+    root = await temporaryRoot('research-example-')
     const { service } = await boot(new MemoryMediaPool())
     // Made before the data home points here; from then on it lies in `<data home>/demo`, as the shipped examples do.
     const example = await service.create({ title: 'Example', root: join(root, 'demo', 'shipped'), brief: '' })
@@ -861,7 +878,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('routes, decides, checks and records files for the agent and the desktop alike', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-ledger-'))
+    root = await temporaryRoot('research-ledger-')
     const { service } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Ledger', root: join(root, 'p'), brief: '' })
     const run = (request: Record<string, unknown>, actor: 'user' | 'agent' = 'agent') => service.execute({ projectId: p.id, ...request } as never, signal, actor)
@@ -925,7 +942,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('leaves the mode unchosen until someone chooses it, records each choice, and restarts progress for a new mode', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-mode-'))
+    root = await temporaryRoot('research-mode-')
     const { service } = await boot(new MemoryMediaPool())
     // Created without naming a mode: general, and not chosen yet. Naming one, even general, is a choice.
     const p = await service.create({ title: 'Unchosen', root: join(root, 'p'), brief: '' })
@@ -958,7 +975,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('renames a research and its folder\'s Workspace, unless another Workspace already has the title', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-rename-'))
+    root = await temporaryRoot('research-rename-')
     const { service, workspaces } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Draft', root: join(root, 'p'), brief: '' })
     const other = await service.create({ title: 'Taken title', root: join(root, 'other'), brief: '' })
@@ -985,7 +1002,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('reads the unfinished goals of a research\'s live conversations through the goal service', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-goals-'))
+    root = await temporaryRoot('research-goals-')
     const { service, agents, goals } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Goals', root: join(root, 'p'), brief: '' })
     const nested = await service.create({ title: 'Nested', root: join(root, 'p', 'nested'), brief: '' })
@@ -1022,7 +1039,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('gives every conversation of a research the permission preset of its autonomy, as it changes and as each one opens', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-autonomy-'))
+    root = await temporaryRoot('research-autonomy-')
     const pool = new MemoryMediaPool()
     const { service, applied, open } = await boot(pool)
     // Its conversation went live before the record existed, and follows the record once it does.
@@ -1081,7 +1098,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('keeps one record of progress that only research_check writes, and derives where each project stands', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-progress-'))
+    root = await temporaryRoot('research-progress-')
     const pool = new MemoryMediaPool()
     const first = await boot(pool)
     const p = await first.service.create({ title: 'Progress', root: join(root, 'p'), brief: '', mode: 'spark-to-paper', route: 'data' })
@@ -1183,7 +1200,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('imports sources and templates, verifies literature and searches evidence', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-evidence-'))
+    root = await temporaryRoot('research-evidence-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python' })
     const p = await service.create({ title: 'Evidence', root: join(root, 'p'), brief: '' })
@@ -1253,7 +1270,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('commits external revisions despite a refused editor save and recovers orphaned history after restart', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-revision-recovery-'))
+    root = await temporaryRoot('research-revision-recovery-')
     const pool = new MemoryMediaPool()
     let { service } = await boot(pool)
     const p = await service.create({ title: 'Revisions', root: join(root, 'p'), brief: '' })
@@ -1286,7 +1303,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('collects a run that completed before submission returned, exactly once across waits, refreshes and restart', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-fast-runs-'))
+    root = await temporaryRoot('research-fast-runs-')
     const pool = new MemoryMediaPool()
     let { service } = await boot(pool)
     await service.configure({ python: 'python', uv: 'uv' })
@@ -1328,7 +1345,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('creates environments, runs experiments to completion, collects results and waits without polling', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-runs-'))
+    root = await temporaryRoot('research-runs-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python', uv: 'uv' })
     const p = await service.create({ title: 'Runs', root: join(root, 'p'), brief: '' })
@@ -1382,7 +1399,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('compiles to a PDF, renders pages for the agent to look at, exports, and records failures without refusing', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-compile-'))
+    root = await temporaryRoot('research-compile-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python', texBin: join(root, 'tex') })
     const p = await service.create({ title: 'Compile', root: join(root, 'p'), brief: '' })
@@ -1479,7 +1496,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('audits SVG figures and exports them to vector PDFs with previews', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-figures-'))
+    root = await temporaryRoot('research-figures-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python' })
     const p = await service.create({ title: 'Figures', root: join(root, 'p'), brief: '' })
@@ -1502,7 +1519,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('lists the venue library and applies a venue template, recording the venue', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-venues-'))
+    root = await temporaryRoot('research-venues-')
     const { service } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Venue', root: join(root, 'p'), brief: '', mode: 'spark-to-paper' })
     const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')
@@ -1524,7 +1541,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('sends pages to a separate vision model only when one is configured, and generates images under the fixed credential', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-media-'))
+    root = await temporaryRoot('research-media-')
     const harness = await boot(new MemoryMediaPool())
     const { service } = harness
     await service.configure({ python: 'python', texBin: join(root, 'tex') })
@@ -1653,7 +1670,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('observes running experiments in the background and survives one failing project', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-poll-'))
+    root = await temporaryRoot('research-poll-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python', uv: 'uv' })
     const p = await service.create({ title: 'Poll', root: join(root, 'p'), brief: '' })
@@ -1672,7 +1689,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('marks interrupted work, restores legacy sessions and finds the innermost project after a restart', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-restart-'))
+    root = await temporaryRoot('research-restart-')
     const pool = new MemoryMediaPool()
     const first = await boot(pool)
     await first.service.configure({ texBin: join(root, 'tex') })
@@ -1708,7 +1725,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('installs components as jobs, answers desktop commands, and keeps a failed change from blocking the next', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-components-'))
+    root = await temporaryRoot('research-components-')
     await write(join(root, 'components/drawio/.complete'), 'pinned')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ uv: 'uv' })
@@ -1727,7 +1744,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('collects remote results, records collection failures, and keeps observing past a broken project', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-remote-'))
+    root = await temporaryRoot('research-remote-')
     const pool = new MemoryMediaPool()
     const firstBoot = await boot(pool)
     const broken = await firstBoot.service.create({ title: 'Broken', root: join(root, 'broken'), brief: '' })
@@ -1782,7 +1799,7 @@ describe('the research service records; it never drives the agent', () => {
   })
 
   it('keeps the project responsive while slow work runs outside its lock', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-lock-'))
+    root = await temporaryRoot('research-lock-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python', uv: 'uv', texBin: join(root, 'tex') })
     const p = await service.create({ title: 'Lock', root: join(root, 'p'), brief: '' })
@@ -1849,7 +1866,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
   const startNew = (service: Harness['service']) => command(service, { action: 'start-new' })
 
   it('creates the draft in the research home and reuses it until something is done in it', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-')))
+    root = await temporaryRoot('research-drafts-')
     const home = join(root, 'SciPaper')
     const { service, workspaces, turns, archived } = await boot(new MemoryMediaPool())
     await service.configure({ researchHome: home })
@@ -1910,7 +1927,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
   })
 
   it('takes the research home from the settings, then the configuration, then SciPaper in the profile', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-home-')))
+    root = await temporaryRoot('research-drafts-home-')
     const pool = new MemoryMediaPool()
     const unset = await boot(pool)
     // Only read: nothing is created in the profile.
@@ -1929,7 +1946,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
   })
 
   it('never makes a draft among the examples, inside another research or in a system folder', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-refused-')))
+    root = await temporaryRoot('research-drafts-refused-')
     const { service } = await boot(new MemoryMediaPool())
     const outer = await service.create({ title: 'Outer', root: join(root, 'outer'), brief: '' })
     await service.configure({ researchHome: outer.root })
@@ -1948,7 +1965,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
   })
 
   it('moves the draft to the folder the person chose, or says what the folder is', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-move-')))
+    root = await temporaryRoot('research-drafts-move-')
     const { service, workspaces, archived, applied } = await boot(new MemoryMediaPool())
     await service.configure({ researchHome: join(root, 'SciPaper') })
     const draft = (await startNew(service)).project!
@@ -2008,7 +2025,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
   })
 
   it('discards an untouched draft and never a folder that holds anything', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-discard-')))
+    root = await temporaryRoot('research-drafts-discard-')
     const { service, workspaces, archived, turns, open } = await boot(new MemoryMediaPool())
     await service.configure({ researchHome: join(root, 'SciPaper') })
     const draft = (await startNew(service)).project!
@@ -2047,7 +2064,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
   })
 
   it('shows no draft rather than failing when sessions cannot be listed', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-drafts-listing-')))
+    root = await temporaryRoot('research-drafts-listing-')
     const { service, listing } = await boot(new MemoryMediaPool())
     await service.configure({ researchHome: join(root, 'SciPaper') })
     const draft = (await startNew(service)).project!
@@ -2069,7 +2086,7 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
     service.execute(request as never, signal, actor)
 
   it('keeps the entire research visible when a conversation is active', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-archive-active-'))
+    root = await temporaryRoot('research-archive-active-')
     const { service, archived, open } = await boot(new MemoryMediaPool())
     const paper = await service.create({ title: 'Paper', root: join(root, 'paper'), brief: 'An active study' })
     open({ id: 'active', header: { cwd: paper.root } })
@@ -2083,7 +2100,7 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
   })
 
   it('reverses a partially completed archive and retains recovery information when reversal fails', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-archive-race-'))
+    root = await temporaryRoot('research-archive-race-')
     const { service, archived, open, archiving } = await boot(new MemoryMediaPool())
     const paper = await service.create({ title: 'Paper', root: join(root, 'paper'), brief: 'A study' })
     open({ id: 'late-active', header: { cwd: paper.root } })
@@ -2104,7 +2121,7 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
   })
 
   it('archives the research\'s own conversations, keeps the removal across a restart, and restores exactly what it archived', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-archive-')))
+    root = await temporaryRoot('research-archive-')
     const pool = new MemoryMediaPool()
     const { service, archived, open } = await boot(pool)
     const paper = await service.create({ title: 'Paper', root: join(root, 'paper'), brief: '' })
@@ -2160,7 +2177,7 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
   })
 
   it('refuses examples and the untouched draft, and never takes a removed research for the draft', async () => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'research-archive-refused-')))
+    root = await temporaryRoot('research-archive-refused-')
     const { service, archived } = await boot(new MemoryMediaPool())
     await service.configure({ researchHome: join(root, 'SciPaper') })
     const draft = (await command(service, { action: 'start-new' })).project!
@@ -2203,7 +2220,7 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
   })
 
   it('keeps a removed research\'s runs going unobserved, and observes them again once it is restored', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-archive-runs-'))
+    root = await temporaryRoot('research-archive-runs-')
     const { service } = await boot(new MemoryMediaPool())
     await service.configure({ python: 'python', uv: 'uv' })
     const p = await service.create({ title: 'Runs', root: join(root, 'p'), brief: '' })
@@ -2227,7 +2244,7 @@ describe('移出列表 removes a research from the list, and 恢复 brings it ba
 
 describe('the experiment board is laid out by the agent and read by scripts', () => {
   it('stores the layout, reports what waits for runs, and reads machines in the background', async () => {
-    root = await mkdtemp(join(tmpdir(), 'research-board-'))
+    root = await temporaryRoot('research-board-')
     const { service } = await boot(new MemoryMediaPool())
     const p = await service.create({ title: 'Board', root: join(root, 'p'), brief: '' })
     const run = (request: Record<string, unknown>) => service.execute({ projectId: p.id, ...request } as never, signal, 'agent')

@@ -371,8 +371,8 @@ describe('research settings is the one place research is configured', () => {
 })
 
 describe('where new researches are kept', () => {
-  const HOME = 'C:\\Users\\me\\SciPaper'
-  const CHOSEN = 'D:\\Research'
+  const HOME = join(tmpdir(), 'SciPaper')
+  const CHOSEN = join(tmpdir(), 'Research')
 
   it('shows the folder in effect as the default, and saves a folder the chooser picked with every other setting kept', async () => {
     const recorded = blank()
@@ -598,7 +598,7 @@ describe('which researches the sidebar lists', () => {
 
   it('shows the examples until the person turns them off, saving the switch with every other preference kept', async () => {
     const recorded = blank()
-    const preferences: ResearchPreferences = { python: 'C:/Python312/python.exe', researchHome: 'D:\\Research' }
+    const preferences: ResearchPreferences = { python: 'C:/Python312/python.exe', researchHome: join(tmpdir(), 'Research') }
     const page = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences })), recorded)} />)
     const toggle = page.getByRole('switch', { name: zh.showExamplesTitle })
     expect(toggle.getAttribute('aria-checked')).toBe('true')

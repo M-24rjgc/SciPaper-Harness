@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { invalidate, newProject, putClaim } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
@@ -105,7 +105,7 @@ interface Scene {
 
 /** One project carrying every shape of claim the sheet has to draw. */
 async function scene(): Promise<Scene> {
-  const root = await mkdtemp(join(tmpdir(), 'research-claim-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'research-claim-')))
   roots.push(root)
   const project = newProject({
     root,

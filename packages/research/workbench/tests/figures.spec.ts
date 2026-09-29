@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
@@ -23,7 +23,7 @@ const signal = new AbortController().signal
 const roots: string[] = []
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 async function project(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), 'research figures '))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'research figures ')))
   roots.push(root)
   await mkdir(join(root, 'figures'), { recursive: true })
   await writeFile(join(root, 'figures', 'arch.svg'), '<svg/>')

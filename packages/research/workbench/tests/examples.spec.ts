@@ -5,7 +5,7 @@ import { MessageId, type Message } from '@deepseek-ai/dsh-llm'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { appendExampleConversation, exampleDirectory, initializeResearchExamples } from '../src/examples.ts'
 import type { ExampleRegistration, ResearchExample } from '../src/examples.ts'
 import { runtimeAsset } from '../src/components.ts'
@@ -30,7 +30,7 @@ afterEach(async () => {
   for (const context of contexts.splice(0)) await context.fiber.dispose()
   for (const path of links.splice(0)) await unlink(path)
   for (const root of directories.splice(0)) {
-    if (!isInside(resolve(tmpdir()), root) || !root.includes('scipaper-example-test-')) throw new Error('Unowned fixture directory')
+    if (!isInside(await realpath(tmpdir()), root) || !root.includes('scipaper-example-test-')) throw new Error('Unowned fixture directory')
     await rm(root, { recursive: true })
   }
 })

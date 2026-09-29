@@ -134,7 +134,7 @@ describe('managed tools on a Windows x64 host', () => {
     expect(scripted.calls.some(call => call.args.includes('venv') && call.args.includes('3.12'))).toBe(true)
     expect(await readFile(join(root, 'platform-python', '.research-ready'), 'utf8')).toMatch(/pypdf==6\.0\.0\n[\s\S]*svglib==2\.2\.0\nreportlab==5\.0\.1\nPyYAML==6\.0\.3\n$/)
     // A ready platform Python is reused; one whose environment exists but lacks the marker only gets its packages.
-    await write(python)
+    await write(join(root, 'platform-python', 'Scripts/python.exe'))
     scripted.calls.length = 0
     expect(await manager.python(signal)).toBe(python)
     expect(scripted.calls).toEqual([])

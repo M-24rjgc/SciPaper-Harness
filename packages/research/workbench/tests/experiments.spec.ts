@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { unzipSync } from 'fflate'
@@ -46,7 +46,7 @@ afterEach(async () => {
 })
 
 async function project(): Promise<ResearchProject> {
-  const root = await mkdtemp(join(tmpdir(), 'research-runs-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'research-runs-')))
   roots.push(root)
   return newProject({ root, title: 'Runs', brief: '' }, 'w' as WorkspaceId)
 }

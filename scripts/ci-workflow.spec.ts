@@ -28,6 +28,15 @@ describe('CI workflow', () => {
     expect(staticChecks['runs-on']).toBe('ubuntu-24.04')
     expect(staticChecks['continue-on-error']).toBeUndefined()
     expect(JSON.stringify(staticChecks.steps)).toContain('pnpm run check:ci:static')
+    const gate = (staticChecks.steps as Record<string, unknown>[]).find(step => step.run === 'pnpm run check:ci:static')!
+    const baseline = (gate.env as Record<string, unknown>).DSH_ARCHIVE_BASE_REF
+    for (const [event, expected] of [
+      [{ pull_request: { base: { sha: 'pr-base' } } }, 'pr-base'],
+      [{ pull_request: { base: {} }, before: 'push-base' }, 'push-base'],
+      [{ pull_request: { base: {} } }, 'current-head'],
+    ] as const) {
+      expect(evaluateRunsOn(baseline, { github: { event, sha: 'current-head' } })).toBe(expected)
+    }
   })
 
   it('prepares confinement before Node compatibility smokes', () => {

@@ -259,7 +259,7 @@ it.each(['messages', 'chat-completions'] as const)('boots the converted %s profi
   const server = await mockServer([{ events: textEvents }])
   const f = await fixture(`llm-deepseek:\n  protocol: ${protocol}\n  apiKeyEnv: SYNTHETIC_MIGRATION_KEY\n  baseURL: ${server.url}\nagent-default-model: {provider: deepseek-official, model: deepseek-v4-flash, reasoningEffort: max}\nfuture-plugin: {future-field: preserve}\n`)
   vi.stubEnv('SYNTHETIC_MIGRATION_KEY', '')
-  await writeFile(join(f.home, '.credentials.yaml'), 'version: 1\nrefs:\n  SYNTHETIC_MIGRATION_KEY: synthetic-secret\n')
+  await writeFile(join(f.home, '.credentials.yaml'), 'version: 1\nrefs:\n  SYNTHETIC_MIGRATION_KEY: synthetic-secret\n', { mode: 0o600 })
   initProfile(f.profileDir, ['migration-fixture-bundle'])
   const bundle = join(f.profileDir, 'node_modules', 'migration-fixture-bundle')
   await mkdir(bundle, { recursive: true })
@@ -295,6 +295,7 @@ it.each(['messages', 'chat-completions'] as const)('boots the converted %s profi
     await vi.waitFor(async () => { expect(await f.readSettings()).toEqual({ 'future-plugin': { 'future-field': 'preserve' } }) })
     if (protocol === 'chat-completions') {
       const result = await assemble(ctx, { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: ReasoningEffortId('max'), messages: [] })
+      expect(result.finish).toEqual({ kind: 'stop' })
       expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
       expect(server.headers[0]?.authorization).toBe('Bearer synthetic-secret')
       expect(server.requests[0]).toMatchObject({ model: 'deepseek-v4-flash', reasoning_effort: 'max', thinking: { type: 'enabled' } })
