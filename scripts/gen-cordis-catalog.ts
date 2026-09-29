@@ -101,6 +101,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   permissionPresets: 'permission-presets.md',
   planMode: 'plan.md',
   research: 'research.md',
+  researchKnowledge: 'research.md',
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
@@ -843,6 +844,7 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
+  KnowledgeBase: 'research graph retrieval and lifecycle are owned by packages/research/workbench/src/knowledge.ts and packages/bundle/research-knowledge-bundle/README.md',
   ...Object.fromEntries([
     'ResearchSnapshot', 'ResearchTask', 'CreateProjectRequest', 'ResearchProject', 'ResearchPreferences',
     'ResearchResponse', 'ResearchCommand', 'ProjectId', 'ResearchModeEvent', 'ResearchStanding', 'ResearchGoal',

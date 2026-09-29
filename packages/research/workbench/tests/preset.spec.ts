@@ -27,7 +27,7 @@ async function declaration(file: string): Promise<PluginRow> {
 function registeredTools(): string[] {
   const names: string[] = []
   const ctx = { tools: { register: (tool: { name: string }) => { names.push(tool.name) } }, on: () => {} } as unknown as Context
-  registerResearchTools(ctx, {} as ResearchWorkbench)
+  registerResearchTools(ctx, { knowledgeEnabled: true } as ResearchWorkbench)
   return names
 }
 

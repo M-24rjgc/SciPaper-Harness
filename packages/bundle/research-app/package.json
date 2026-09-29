@@ -16,6 +16,10 @@
     "./migration": {
       "types": "./lib/types/migration.d.ts",
       "default": "./lib/types/migration.js"
+    },
+    "./knowledge-migration": {
+      "types": "./lib/types/knowledge-migration.d.ts",
+      "default": "./lib/types/knowledge-migration.js"
     }
   },
   "files": [

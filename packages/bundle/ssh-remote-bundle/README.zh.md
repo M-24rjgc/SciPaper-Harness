@@ -34,7 +34,7 @@ kind: "package-bundle"
 <a id="understand-the-implementation"></a>
 ## 实现
 
-补丁把 `dsh-ssh`、`dsh-fs-ssh`、`dsh-subprocess-ssh` 和 `dsh-sandbox-ssh` 作为一组后端装配；仅在非桌面进程且远端参数完整时关闭三项本地提供方。Windows 上的 SSH 数据流使用独立通道及 TLS-PSK 认证。组合包自身没有可变运行状态。
+补丁把 `dsh-ssh`、`dsh-fs-ssh`、`dsh-subprocess-ssh` 和 `dsh-sandbox-ssh` 作为一组后端装配；仅在非桌面进程且远端参数完整时关闭三项本地提供方。Windows 上的 SSH 数据流使用独立通道及 TLS-PSK 认证。本包只负责选择 SSH 后端，因此不单独发布运行时不变量入口；运行状态由 SSH、文件系统、子进程和沙箱提供方负责。
 
 -----
 

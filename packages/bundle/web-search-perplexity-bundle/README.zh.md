@@ -32,7 +32,7 @@ kind: "package-bundle"
 <a id="understand-the-implementation"></a>
 ## 实现
 
-组合包补丁把共享 `web` 服务的搜索提供方设为 `perplexity`，并挂载 `@deepseek-ai/dsh-web-search-perplexity`。组合包自身没有可变运行状态，也不发布不变量伴随模块。
+组合包补丁把共享 `web` 服务的搜索提供方设为 `perplexity`，并挂载 `@deepseek-ai/dsh-web-search-perplexity`。本包只负责选择搜索提供方，因此不单独发布运行时不变量入口；运行状态由 web 服务和搜索提供方负责。
 
 -----
 

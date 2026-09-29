@@ -5,6 +5,8 @@ description: Judge a research idea concept-only — problem importance, novelty 
 
 # CCF Idea Reviewer
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 Adapted from CCFA-Skills `ccf-idea-reviewer` (MIT). The upstream skill — concept-only scope, the seven-step workflow and the report contract — is in `references/upstream.md`, with `strict-idea-review.md` (report structure, 12 detailed or 5 brief sections), `rubric.md` and `calibration.md` (six weighted dimensions, verdict thresholds), `expert-panel.md` and `source-notes.md` beside it. Follow it; this page says how it runs here.
 
 ## Review

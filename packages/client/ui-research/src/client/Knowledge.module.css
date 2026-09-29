@@ -1,0 +1,49 @@
+.root, .explorer { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.root p, .explorer p { margin: 0; }
+.muted, .summary, .paging, .detailHead { color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 1.65; }
+.toolbar, .filters, .settingsForm, .paging { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+.toolbar label, .filters label, .settingsForm label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; color: var(--dsw-alias-label-secondary); }
+.toolbar label { flex: 1 1 220px; }
+.filters > input { flex: 1 1 260px; }
+.root input, .root select, .tab input, .tab select { min-width: 0; min-height: 36px; padding: 7px 11px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); font: inherit; }
+.root select, .tab select { max-width: 100%; }
+.root button, .tab button { min-height: 34px; padding: 6px 12px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); font: inherit; cursor: pointer; }
+.root button:hover, .tab button:hover { background: var(--dsw-alias-bg-module-platform); }
+.root button:disabled, .tab button:disabled { opacity: .5; cursor: default; }
+.root button:focus-visible, .tab button:focus-visible, .node:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 3px; }
+.settings { border-top: 1px solid var(--dsw-alias-border-l3); padding-top: 16px; }
+.settings summary { cursor: pointer; font-size: 14px; font-weight: 500; }
+.settings[open] > * + * { margin-top: 14px; }
+.settingsForm label { flex: 1 1 200px; }
+.settingsForm label:has(input[type=password]) { flex: 1 1 280px; }
+.summary { display: flex; flex-wrap: wrap; gap: 18px; }
+.canvas { width: 100%; max-height: 640px; overflow: auto; border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); }
+.canvas svg { display: block; width: 100%; min-width: 570px; }
+.edge { fill: none; stroke: var(--dsw-alias-border-l2); stroke-width: 1.2; opacity: .6; }
+.edge[data-relation=similar] { stroke-dasharray: 4 4; }
+.node { cursor: pointer; }
+.node circle { stroke: var(--dsw-alias-bg-layer-1); stroke-width: 2; }
+.domain circle { fill: var(--dsw-alias-label-tertiary); }
+.pattern circle { fill: var(--dsw-alias-brand-primary); }
+.paper circle { fill: var(--dsw-alias-label-secondary); }
+.node rect { fill: var(--dsw-alias-bg-layer-1); opacity: .94; }
+.node text { font-family: inherit; font-size: 10px; fill: var(--dsw-alias-label-primary); }
+.node[aria-pressed=true] circle { stroke: var(--dsw-alias-label-primary); stroke-width: 3; }
+.node:hover text { fill: var(--dsw-alias-brand-primary); }
+.legend { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 8%; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.legend span:nth-child(2) { color: var(--dsw-alias-brand-primary); }
+.patterns { display: flex; flex-wrap: wrap; gap: 8px; }
+.patterns button { font-size: 12px; text-align: left; }
+.patterns button[aria-pressed=true] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-brand-primary); }
+.detail { padding: 18px; border: 1px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); display: flex; flex-direction: column; gap: 12px; align-items: start; line-height: 1.7; }
+.detail h4 { margin: 0; font-size: 16px; font-weight: 600; }
+.detail p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.detail a { color: var(--dsw-alias-brand-primary); }
+.detailHead { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+.paperList { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.paperList button { border: 0; text-align: left; padding: 4px 0; color: var(--dsw-alias-brand-primary); }
+.warning { padding: 12px; border-left: 2px solid var(--dsw-alias-state-warning-primary); font-size: 12px; overflow-wrap: anywhere; }
+.warning summary { cursor: pointer; }
+.empty { padding: 28px 0; color: var(--dsw-alias-label-secondary); line-height: 1.7; }
+.tab { padding: 20px; height: 100%; overflow: auto; font-size: 14px; }
+@media (max-width: 650px) { .settingsForm label, .filters label { flex: 1 1 160px; } }

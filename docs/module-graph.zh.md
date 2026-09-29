@@ -150,6 +150,7 @@ flowchart TD
     pkg_computer_use_cua_bundle["computer-use-cua-bundle"]
     pkg_headless["headless"]
     pkg_research_app["research-app"]
+    pkg_research_knowledge_bundle["research-knowledge-bundle"]
     pkg_sdk_app["sdk-app"]
     pkg_sdk_minimal["sdk-minimal"]
     pkg_ssh_remote_bundle["ssh-remote-bundle"]
@@ -1431,6 +1432,7 @@ flowchart TD
 | [`base`](../packages/bundle/base) | `bundle` | — |
 | [`computer-use-cua-bundle`](../packages/bundle/computer-use-cua-bundle) | `bundle` | — |
 | [`research-app`](../packages/bundle/research-app) | `bundle` | — |
+| [`research-knowledge-bundle`](../packages/bundle/research-knowledge-bundle) | `bundle` | — |
 | [`sdk-app`](../packages/bundle/sdk-app) | `bundle` | — |
 | [`sdk-minimal`](../packages/bundle/sdk-minimal) | `bundle` | — |
 | [`ssh-remote-bundle`](../packages/bundle/ssh-remote-bundle) | `bundle` | — |

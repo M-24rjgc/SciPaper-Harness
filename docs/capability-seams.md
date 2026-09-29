@@ -133,6 +133,7 @@ flowchart LR
   svc_sessionFeedback["ctx.sessionFeedback<br/>Session-level feedback recorder"]
   svc_workspaceRegistry["ctx.workspaceRegistry<br/>Workspace entity registry"]
   pkg_research_workbench["research-workbench"]
+  svc_researchKnowledge["ctx.researchKnowledge<br/>Optional research knowledge graph"]
   svc_research["ctx.research<br/>Research project ledger and operations"]
   pkg_client_ui_research["client-ui-research"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
@@ -369,6 +370,7 @@ flowchart LR
   pkg_pwsh_local --> svc_shell
   pkg_remote_workspace_presets --> svc_remoteWorkspacePresets
   pkg_research_workbench --> svc_research
+  pkg_research_workbench --> svc_researchKnowledge
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
   pkg_sandbox_policy --> svc_sandboxPolicy
@@ -498,6 +500,7 @@ flowchart LR
   svc_remoteWorkspacePresets --> pkg_workspace
   svc_research --> pkg_client_ui_research
   svc_research --> pkg_research_workbench
+  svc_researchKnowledge --> pkg_research_workbench
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -634,6 +637,7 @@ flowchart LR
 | `ctx.messageFeedback` | `core` | [`message-feedback`](../packages/feedback/message-feedback) | - | - | - | Owns per-assistant-message feedback in the canonical Session log, target validation, per-item compare-and-set, and the Host unary Remote contract. Feedback stays outside model history; log export follows the consumer policy. |
 | `ctx.sessionFeedback` | `core` | [`command-feedback`](../packages/feedback/command-feedback) | - | - | - | Records one Session-level remark with its category as a log-only feedback/record event on a live Session through the Host unary Remote contract; the /feedback command shares the same producer. |
 | `ctx.workspaceRegistry` | `core` | [`workspace`](../packages/workspace/workspace) | - | [`api-workspace-controller`](../packages/api/workspace-controller), [`api-session-controller`](../packages/api/session-controller) | - | Owns WorkspaceId-branded records over the domain facility; stable sessionIds accounts drive Host RPC and GUI projections. |
+| `ctx.researchKnowledge` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | Owns the shared graph engine, caches and cancellation for graph operations across research modes. Its optional bundle controls availability without deleting project graph files. |
 | `ctx.research` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench), [`client-ui-research`](../packages/client/ui-research) | - | Owns durable research projects, evidence, artifact revisions, decisions, experiment records, and checks. Its agent-tools entry consumes the host-wide service in research agents; the research UI calls its generated Remote methods. |
 | `ctx.sessionQuery` | `seam` | [`session-query`](../packages/session-query/session-query) | [`session-query-sqlite`](../packages/session-query/session-query-sqlite) | [`session-reference`](../packages/context/session-reference), [`tool-session-query`](../packages/session-query/tool-session-query) | - | The interface supplies exact reads, filters, and traces; its concrete backend adds full-text reconciliation, ranking, snippets, and cursor generations, while the model consumer owns workspace authority and cursor-free rendering. |
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | [`api-session-controller`](../packages/api/session-controller) | - | The interface returns path-only completion candidates within an Agent cwd; providers own namespace access and ranking without reading file contents. |

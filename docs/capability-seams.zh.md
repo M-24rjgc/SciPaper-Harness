@@ -135,6 +135,7 @@ flowchart LR
   svc_sessionFeedback["ctx.sessionFeedback<br/>Session-level feedback recorder"]
   svc_workspaceRegistry["ctx.workspaceRegistry<br/>Workspace entity registry"]
   pkg_research_workbench["research-workbench"]
+  svc_researchKnowledge["ctx.researchKnowledge<br/>Optional research knowledge graph"]
   svc_research["ctx.research<br/>Research project ledger and operations"]
   pkg_client_ui_research["client-ui-research"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
@@ -371,6 +372,7 @@ flowchart LR
   pkg_pwsh_local --> svc_shell
   pkg_remote_workspace_presets --> svc_remoteWorkspacePresets
   pkg_research_workbench --> svc_research
+  pkg_research_workbench --> svc_researchKnowledge
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
   pkg_sandbox_policy --> svc_sandboxPolicy
@@ -500,6 +502,7 @@ flowchart LR
   svc_remoteWorkspacePresets --> pkg_workspace
   svc_research --> pkg_client_ui_research
   svc_research --> pkg_research_workbench
+  svc_researchKnowledge --> pkg_research_workbench
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -636,6 +639,7 @@ flowchart LR
 | `ctx.messageFeedback` | `core` | [`message-feedback`](../packages/feedback/message-feedback) | - | - | - | 拥有权威 Session 日志中的逐 assistant 消息反馈、目标校验、逐条目 compare-and-set 及 Host 一元 Remote 契约。反馈不进入模型历史；日志导出遵循消费方策略。 |
 | `ctx.sessionFeedback` | `core` | [`command-feedback`](../packages/feedback/command-feedback) | - | - | - | 通过 Host 一元 Remote 契约在 live Session 上把一条带分类的 Session 级评价记录为仅写日志的 feedback/record 事件；/feedback 命令共用同一个生产方。 |
 | `ctx.workspaceRegistry` | `core` | [`workspace`](../packages/workspace/workspace) | - | [`api-workspace-controller`](../packages/api/workspace-controller), [`api-session-controller`](../packages/api/session-controller) | - | 通过领域设施拥有带 WorkspaceId 品牌类型的记录；稳定的 sessionIds 账户驱动 Host RPC 与 GUI 投影。 |
+| `ctx.researchKnowledge` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | 负责各研究模式共享的图谱引擎、缓存和任务取消。可选插件控制能力是否可用，关闭时保留项目图谱文件。 |
 | `ctx.research` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench), [`client-ui-research`](../packages/client/ui-research) | - | 负责持久化的研究项目、证据、产物版本、决策、实验记录和检查。包内的 agent-tools 入口在研究 agent 中消费此宿主范围的服务；研究界面调用其生成的 Remote 方法。 |
 | `ctx.sessionQuery` | `seam` | [`session-query`](../packages/session-query/session-query) | [`session-query-sqlite`](../packages/session-query/session-query-sqlite) | [`session-reference`](../packages/context/session-reference), [`tool-session-query`](../packages/session-query/tool-session-query) | - | 该接口提供精确读取、过滤和追踪；具体后端还提供全文协调、排序、摘要片段和游标世代，而模型消费方负责工作区权限与不含游标的渲染。 |
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | [`api-session-controller`](../packages/api/session-controller) | - | 该接口返回 Agent cwd 内仅含路径的补全候选；提供方负责命名空间访问与排序，但不读取文件内容。 |

@@ -477,6 +477,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns WorkspaceId-branded records over the domain facility; stable sessionIds accounts drive Host RPC and GUI projections.',
   },
   {
+    key: 'researchKnowledge',
+    pkg: 'research-workbench',
+    title: 'Optional research knowledge graph',
+    mode: 'core',
+    consumers: ['research-workbench'],
+    note: 'Owns the shared graph engine, caches and cancellation for graph operations across research modes. Its optional bundle controls availability without deleting project graph files.',
+  },
+  {
     key: 'research',
     pkg: 'research-workbench',
     title: 'Research project ledger and operations',

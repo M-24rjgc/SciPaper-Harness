@@ -64,6 +64,7 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'lib/types/*.d.ts'],
   '@deepseek-ai/dsh-desktop-host': [
     'lib/index.js',
+    'lib/office-cli.js',
   ],
   // Sourcemaps stay out by payload policy; the worker-preview surface
   // (dist/preview.html and dist/preview/) backs opt-in experimental
@@ -199,6 +200,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // Creator's composition guidance travels with the declaration package.
   '@deepseek-ai/dsh-agent-preset': ['skills'],
   '@deepseek-ai/dsh-research-workbench': ['runtime/**/*'],
+  // SSH hosts launch a separately bundled provisioning helper.
+  '@deepseek-ai/dsh-remote-workspace-presets': ['lib/provision-*.js'],
   // The Web Host mounts the default-off settings owner independently of each
   // Agent-scoped delegation-tool instance.
   '@deepseek-ai/dsh-tool-subagent': ['lib/model-selection-settings.js'],

@@ -1852,11 +1852,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
-        signature: 'readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset(\'kg/ai-kg.json.gz\'))',
-        description: 'The research-pattern graphs: the built-in one and each project\'s own.',
-        parameters: [],
-      },
-      {
         signature: 'readonly gallery: FigureGallery',
         description: 'Published papers\' Figure 1s to study before drawing, fetched on demand into the product home\'s cache.',
         parameters: [],
@@ -1959,6 +1954,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Dispatch a validated tool or desktop command. The desktop receives a job for long operations; the agent waits for the result inside its tool call. `start-new`, `relocate`, `discard-draft`, `archive-project` and `unarchive-project` are the desktop\'s alone.',
         parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }, { name: 'sessionId', description: 'the agent\'s conversation, recorded on the runs it submits; absent for the desktop.' }],
         returns: 'the outcome.',
+      },
+    ],
+  },
+  {
+    key: 'researchKnowledge',
+    summary: 'Shared graph engine for all research modes in one profile.',
+    description: 'Shared graph engine for all research modes in one profile.',
+    methods: [
+      {
+        signature: 'run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) => Promise<T>): Promise<T>',
+        description: 'Execute graph work within both caller and plugin lifetimes.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }, { name: 'work', description: 'operation over the shared graph engine.' }],
+        returns: 'the operation\'s result.',
       },
     ],
   },
@@ -5911,7 +5919,23 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KnowledgeBase',
-    declaration: 'export class KnowledgeBase {\n    constructor(private readonly builtinPath: string, private readonly idleMs = IDLE_MS);\n    dispose(): void;\n    async status(root: string, embedding: string | undefined): Promise<Record<string, unknown>>;\n    async recall(root: string, query: string, topK: number, embedder: Embedder | undefined, signal: AbortSignal): Promise<RecallResult>;\n    async novelty(root: string, storyPath: string, reportPath: string, embedder: Embedder | undefined, signal: AbortSignal, limit: number): Promise<NoveltyReport>;\n    async build(root: string, papersPath: string, domain: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<BuildResult>;\n    async namePatterns(root: string, namesPath: string, limit: number): Promise<NameResult>;\n}',
+    declaration: 'export class KnowledgeBase {\n    constructor(private readonly builtinPath: string, private readonly idleMs = IDLE_MS);\n    dispose(): void;\n    async view(root: string, request: KnowledgeGraphQuery): Promise<KnowledgeGraphPage>;\n    async status(root: string, embedding: string | undefined): Promise<Record<string, unknown>>;\n    async recall(root: string, query: string, topK: number, embedder: Embedder | undefined, signal: AbortSignal): Promise<RecallResult>;\n    async novelty(root: string, storyPath: string, reportPath: string, embedder: Embedder | undefined, signal: AbortSignal, limit: number, input?: {\n        claim: string;\n        references?: KnowledgeReference[] | undefined;\n    }): Promise<NoveltyReport>;\n    async build(root: string, papersPath: string, domain: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<BuildResult>;\n    async namePatterns(root: string, namesPath: string, limit: number, signal?: AbortSignal): Promise<NameResult>;\n}',
+  },
+  {
+    name: 'KnowledgeGraphNode',
+    declaration: 'export interface KnowledgeGraphNode {\n    id: string;\n    kind: \'pattern\' | \'paper\' | \'domain\';\n    label: string;\n    source: \'ai\' | \'project\';\n    summary: string;\n    domain: string;\n    url?: string | undefined;\n    size?: number | undefined;\n    problem?: string | undefined;\n    solution?: string | undefined;\n}',
+  },
+  {
+    name: 'KnowledgeGraphPage',
+    declaration: 'export interface KnowledgeGraphPage {\n    nodes: KnowledgeGraphNode[];\n    edges: {\n        from: string;\n        to: string;\n        kind: \'uses-pattern\' | \'in-domain\' | \'similar\';\n    }[];\n    graphs: {\n        source: \'ai\' | \'project\';\n        name: string;\n        patterns: number;\n        papers: number;\n    }[];\n    domains: string[];\n    warnings: string[];\n    total: number;\n    offset: number;\n    hasMore: boolean;\n}',
+  },
+  {
+    name: 'KnowledgeGraphQuery',
+    declaration: 'export interface KnowledgeGraphQuery {\n    source?: \'all\' | \'ai\' | \'project\' | undefined;\n    query?: string | undefined;\n    domain?: string | undefined;\n    pattern?: string | undefined;\n    offset?: number | undefined;\n    limit?: number | undefined;\n}',
+  },
+  {
+    name: 'KnowledgeReference',
+    declaration: 'export interface KnowledgeReference {\n    title: string;\n    text: string;\n    url?: string | undefined;\n}',
   },
   {
     name: 'KvFacet',
@@ -6683,11 +6707,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
   },
   {
     name: 'ResearchSnapshot',
-    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n    researchHome?: string | undefined;\n}',
+    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n    knowledge?: {\n        enabled: boolean;\n    } | undefined;\n    researchHome?: string | undefined;\n}',
   },
   {
     name: 'ResearchStanding',

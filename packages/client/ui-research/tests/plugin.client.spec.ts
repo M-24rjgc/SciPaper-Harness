@@ -57,6 +57,7 @@ const TAB_ID = '@deepseek-ai/dsh-client-ui-research'
 const BOARD_ID = `${TAB_ID}/board`
 const SOURCES_ID = `${TAB_ID}/sources`
 const GALLERY_ID = `${TAB_ID}/gallery`
+const KNOWLEDGE_ID = `${TAB_ID}/knowledge`
 const DRAWIO_ID = `${TAB_ID}/drawio`
 
 const CLAIM_ID = 'claim-sparse'
@@ -523,12 +524,13 @@ describe('the research plugin', () => {
       [BOARD_ID, 'research-board', 'builtin', en.boardTitle, false],
       [SOURCES_ID, 'research-sources', 'builtin', en.sourcesTab, false],
       [GALLERY_ID, 'research-gallery', 'builtin', en.gallery, false],
+      [KNOWLEDGE_ID, 'research-knowledge', 'builtin', en.kgTitle, false],
       [DRAWIO_ID, 'research-drawio', 'builtin', 'sidebar://page', false],
     ])
     expect(b.tabs[0]!.guide!.map(entry => [entry.id, entry.order, entry.title(), entry.description(), entry.icon]))
       .toEqual([['research', 15, en.railGuideTitle, en.railGuideDescription, ResearchHeroMark]])
     // The local editor claims local diagrams; SSH diagrams remain readable through the generic text preview.
-    const drawio = b.tabs[4]!
+    const drawio = b.tabs.find(tab => tab.kind === 'research-drawio')!
     expect(drawio.patterns).toEqual(['*.drawio'])
     expect(drawio.canOpen!('dsh-resource://file/session/session-a/figures/arch.drawio')).toBe(true)
     expect(drawio.canOpen!('dsh-resource://file/session/unknown/figures/arch.drawio')).toBe(false)

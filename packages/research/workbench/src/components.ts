@@ -60,7 +60,8 @@ export interface ComponentHost {
  * @returns absolute path, redirected to the unpacked directory for Electron ASAR builds.
  */
 export function runtimeAsset(name: string): string {
-  return fileURLToPath(new URL(`../runtime/${name}`, import.meta.url)).replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
+  const manifest = import.meta.resolve('@deepseek-ai/dsh-research-workbench/package.json')
+  return fileURLToPath(new URL(`./runtime/${name}`, manifest)).replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
 }
 
 /**

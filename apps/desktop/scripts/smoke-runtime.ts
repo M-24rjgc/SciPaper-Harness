@@ -149,6 +149,31 @@ export function apply(ctx) {
       || !expectedExamples.every(id => examples.some(project => project.id === id && project.sessionId !== undefined))) {
       throw new Error('desktop runtime: a fresh home did not receive the shipped research examples and conversations')
     }
+    const graphResponse = await fetch(new URL('/api/research/command', ready.url), {
+      method: 'POST', headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ type: 'client-request', rpcId: 'knowledge-graph-smoke',
+        method: 'research/command', payload: { args: { request: {
+          action: 'graph-view', projectId: expectedExamples[0], source: 'ai', query: 'attention', limit: 2,
+        } } } }),
+    })
+    const graphResult = await graphResponse.json() as {
+      result?: {
+        ok?: boolean
+        value?: { knowledgeGraph?: {
+          nodes: { kind: string; url?: string }[]
+          edges: unknown[]
+          warnings: string[]
+          total: number
+        } }
+      }
+    }
+    const graph = graphResult.result?.value?.knowledgeGraph
+    if (!graphResponse.ok || graphResult.result?.ok !== true || graph === undefined
+      || graph.total < 1 || graph.edges.length < 1 || graph.warnings.length > 0
+      || !graph.nodes.some(node => node.kind === 'paper' && /^https?:\/\//u.test(node.url ?? ''))) {
+      throw new Error(`desktop runtime: installed knowledge graph assets or search unavailable: ${JSON.stringify(graphResult)}`)
+    }
+    console.log('desktop runtime: installed knowledge graph, search and paper source links passed')
     for (const project of examples) {
       const artifact = project.artifacts.find(entry => entry.path === 'paper/paper.md')
       if (artifact === undefined) throw new Error('desktop runtime: shipped example manuscript is not registered')

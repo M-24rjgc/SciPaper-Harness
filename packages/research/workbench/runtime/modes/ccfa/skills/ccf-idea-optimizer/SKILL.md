@@ -5,6 +5,8 @@ description: Develop or rescue a CCF research idea — a rough direction into a 
 
 # CCF Idea Optimizer
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 Adapted from CCFA-Skills `ccf-idea-optimizer` (MIT). The upstream skill — exploratory, quick and standard modes, the nine-step workflow and the idea-card contract — is in `references/upstream.md`, with its references beside it (intake, frontier ideation, literature-grounded evolution, problem-method blueprint, venue adapters, minimum evidence design, research taste). Follow it; this page says how it runs here.
 
 ## Grounding

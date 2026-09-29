@@ -5,6 +5,8 @@ description: Required shared preflight for every CCFA skill, after ccf-humanizat
 
 # CCF Common
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 Adapted from CCFA-Skills `ccf-common` (MIT). The upstream skill is in `references/upstream.md`, with its shared controls beside it in `references/`: routing (`routing.md`, `skill-trigger-registry.yaml`), depth (`task-modes.md`), handoffs (`handoff-modes.md`), evidence and privacy (`privacy-and-evidence.md`, `source-registry.yaml`), review standards (`review-output-standards.md`), venue families (`ccf-a-venue-map.md`), files (`artifact-contracts.md`) and project state (`ccfa-yaml-contract.md`). Apply it once per task after ccf-humanization, then continue the specialist work; it creates no report or state file of its own.
 
 Paths in every CCFA `references/upstream.md` are relative to that skill's folder: `../ccf-common/references/routing.md` is this skill's `references/routing.md`, and `../ccf-humanization/SKILL.md` is the sibling skill (load it with the skill tool).

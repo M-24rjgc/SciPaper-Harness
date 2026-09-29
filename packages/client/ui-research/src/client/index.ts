@@ -47,6 +47,8 @@ import { EmptyCell } from './EmptyCell.tsx'
 import { AutonomyChip } from './AutonomyChip.tsx'
 import { guardExampleComposers, knownExampleFile } from './examples.ts'
 import { ResearchCheckCard, ResearchToolCard } from './ResearchToolView.tsx'
+import { KnowledgePluginPage, KnowledgeTab } from './Knowledge.tsx'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { en, zh, type ResearchKey } from './locales.ts'
 
 /** This implementation's identity in the right-sidebar tab system; each further tab type is named below it. */
@@ -58,6 +60,7 @@ const BOARD_TAB = { id: `${RESEARCH_TAB_ID}/board`, kind: 'research-board' } as 
 const SOURCES_TAB = { id: `${RESEARCH_TAB_ID}/sources`, kind: 'research-sources' } as const
 const GALLERY_TAB = { id: `${RESEARCH_TAB_ID}/gallery`, kind: 'research-gallery' } as const
 const DIAGRAM_TAB = { id: `${RESEARCH_TAB_ID}/drawio`, kind: 'research-drawio' } as const
+const KNOWLEDGE_TAB = { id: `${RESEARCH_TAB_ID}/knowledge`, kind: 'research-knowledge' } as const
 /** The right-sidebar tab kind of the research folder's file tree, owned by ui-sidebar-files. */
 const FILES_TAB_KIND = 'files'
 /**
@@ -315,6 +318,10 @@ export function apply(ctx: Context): void {
       ctx.sidebarRight.openTab(SOURCES_TAB.kind, section === undefined ? {} : { params: { section } })
     },
     openGallery: () => { openTab(GALLERY_TAB.kind, WIDE_TAB_PX) },
+    openKnowledge: (params) => {
+      ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
+      ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })
+    },
   })
   // Where startup and 新研究 go (ui-workspace's entry policy), and the untouched draft's moves.
   const entryView = createSnapshotStore<EntryView>({ notice: null })
@@ -398,7 +405,11 @@ export function apply(ctx: Context): void {
   // A claim's sources open over the whole frame; the Sources tab puts one in focus.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-claim', order: 20, locale: 'research', inject: injected }, ResearchClaimSheet))
   // The research tools' calls read in the reader's language inside the conversation, a research check as its own card.
-  const toolInjected = (): ResearchToolInjected => ({ hooks: { currentSession, research: state }, openProjectFile })
+  const toolInjected = (): ResearchToolInjected => ({ hooks: { currentSession, research: state }, openProjectFile,
+    openKnowledge: (params) => {
+      ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
+      ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })
+    } })
   ctx.slots.inject('tool.call.toolview', function* () {
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_check', locale: 'research', inject: toolInjected }, ResearchCheckCard)
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_project', locale: 'research', inject: toolInjected }, ResearchToolCard)
@@ -414,6 +425,9 @@ export function apply(ctx: Context): void {
   // Configuration lives in settings; the main surface stays free of it.
   // Just before 已归档会话 (25), so the section order never depends on which plugin loaded first.
   ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'research', order: 24, label: () => ctx.locale.bind('research')('settingsSection'), locale: 'research', inject: injected }, ResearchSettingsSection))
+  ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
+    name: 'plugins.bundle.config', key: '@deepseek-ai/dsh-research-knowledge-bundle', locale: 'research', inject: injected,
+  }, KnowledgePluginPage))
   // Shell cells that are developer surfaces here, each shadowed (the host half's `Config`): three by an empty
   // cell, the harness's first-run notice by a step that completes at once, the composer's access chip by the
   // research's autonomy, which decides every conversation's preset, and the blank conversation's folder menu
@@ -448,6 +462,7 @@ export function apply(ctx: Context): void {
     scope.effect(() => scope.sidebarRightTabs.register({ ...BOARD_TAB, priority: 'builtin', title: () => t('boardTitle') }), 'research.board-type')
     scope.effect(() => scope.sidebarRightTabs.register({ ...SOURCES_TAB, priority: 'builtin', title: () => t('sourcesTab') }), 'research.sources-type')
     scope.effect(() => scope.sidebarRightTabs.register({ ...GALLERY_TAB, priority: 'builtin', title: () => t('gallery') }), 'research.gallery-type')
+    scope.effect(() => scope.sidebarRightTabs.register({ ...KNOWLEDGE_TAB, priority: 'builtin', title: () => t('kgTitle') }), 'research.knowledge-type')
     scope.effect(() => scope.sidebarRightTabs.register({
       ...DIAGRAM_TAB,
       priority: 'builtin',
@@ -466,6 +481,7 @@ export function apply(ctx: Context): void {
       yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: BOARD_TAB.id, locale: 'research', inject: injected }, ResearchBoardTab)
       yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: SOURCES_TAB.id, locale: 'research', inject: injected }, ResearchSourcesTab)
       yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: GALLERY_TAB.id, locale: 'research', inject: injected }, ResearchGalleryTab)
+      yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: KNOWLEDGE_TAB.id, locale: 'research', inject: injected }, KnowledgeTab)
       yield scope.slots.register({ name: 'sidebar.right.pane.tab', key: DIAGRAM_TAB.id, locale: 'research', inject: injected }, ResearchDiagramTab)
     })
     scope.slots.inject('sidebar.right.pane.tab.title', function* () {

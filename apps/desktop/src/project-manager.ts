@@ -37,6 +37,8 @@ const RESEARCH_BUNDLE = '@deepseek-ai/dsh-research-app'
 const CUA_BUNDLE = '@deepseek-ai/dsh-computer-use-cua-bundle'
 const SCHEDULE_BUNDLE = '@deepseek-ai/dsh-experimental-schedule-bundle'
 const SCHEDULE_MIGRATION = 'schedule-bundle-v0.2.migrated'
+const KNOWLEDGE_BUNDLE = '@deepseek-ai/dsh-research-knowledge-bundle'
+const KNOWLEDGE_MIGRATION = 'knowledge-plugin-v1.migrated'
 const WEB_PROFILE: ProfileTemplate = { ...PROFILE_TEMPLATES.web as ProfileTemplate,
   bundles: [...new Set([...(PROFILE_TEMPLATES.web as ProfileTemplate).bundles, RESEARCH_BUNDLE, CUA_BUNDLE])] }
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
@@ -190,9 +192,13 @@ export function createPluginProfile(projectDir: string): void {
   }
   const scheduleMarker = join(projectDir, SCHEDULE_MIGRATION)
   const migrateSchedule = !existsSync(scheduleMarker)
-  const requiredBundles = [RESEARCH_BUNDLE, CUA_BUNDLE, ...migrateSchedule ? [SCHEDULE_BUNDLE] : []]
+  const knowledgeMarker = join(projectDir, KNOWLEDGE_MIGRATION)
+  const migrateKnowledge = !existsSync(knowledgeMarker)
+  const requiredBundles = [RESEARCH_BUNDLE, CUA_BUNDLE,
+    ...migrateSchedule ? [SCHEDULE_BUNDLE] : [], ...migrateKnowledge ? [KNOWLEDGE_BUNDLE] : []]
   if (requiredBundles.every(bundle => bundles.includes(bundle))) {
     if (migrateSchedule) writeFileSync(scheduleMarker, '1\n', { flag: 'wx', mode: 0o600 })
+    if (migrateKnowledge) writeFileSync(knowledgeMarker, '1\n', { flag: 'wx', mode: 0o600 })
     return
   }
   const web = bundles.indexOf('@deepseek-ai/dsh-web-app')
@@ -206,7 +212,7 @@ export function createPluginProfile(projectDir: string): void {
     anchor += 1
   }
   const path = join(projectDir, 'package.json')
-  const backup = join(projectDir, migrateSchedule ? 'package.before-dsh-0.2.json' : 'package.before-research-bundle.json')
+  const backup = join(projectDir, migrateKnowledge ? 'package.before-knowledge-plugin.json' : migrateSchedule ? 'package.before-dsh-0.2.json' : 'package.before-research-bundle.json')
   if (!existsSync(backup)) copyFileSync(path, backup, constants.COPYFILE_EXCL)
   const temporary = join(projectDir, `package.${randomUUID()}.tmp`)
   try {
@@ -216,6 +222,7 @@ export function createPluginProfile(projectDir: string): void {
     renameSync(temporary, path)
     // Commit the migration only after the manifest. A later user disable must survive every restart.
     if (migrateSchedule) writeFileSync(scheduleMarker, '1\n', { flag: 'wx', mode: 0o600 })
+    if (migrateKnowledge) writeFileSync(knowledgeMarker, '1\n', { flag: 'wx', mode: 0o600 })
   } finally {
     if (existsSync(temporary)) unlinkSync(temporary)
   }

@@ -521,6 +521,8 @@ export interface ResearchSnapshot {
   components: ComponentStatus[]
   /** The installed modes, in display order. */
   modes: ModeSummary[]
+  /** Availability of the optional knowledge graph provider in this profile. */
+  knowledge?: { enabled: boolean } | undefined
   /**
    * The folder new researches are created in now: the `researchHome`
    * preference, else the configured one, else `<profile home>/SciPaper`.
@@ -761,6 +763,49 @@ export interface BoardPatch {
   sections?: (BoardSection | { id: string; remove: true })[] | undefined
   collectors?: (BoardCollector | { id: string; remove: true })[] | undefined
 }
+/** A primary reference supplied for comparing a research claim in any mode. */
+export interface KnowledgeReference {
+  title: string
+  text: string
+  url?: string | undefined
+}
+
+/** Graph explorer filters shared by the human interface and the Agent. */
+export interface KnowledgeGraphQuery {
+  source?: 'all' | 'ai' | 'project' | undefined
+  query?: string | undefined
+  domain?: string | undefined
+  pattern?: string | undefined
+  offset?: number | undefined
+  limit?: number | undefined
+}
+
+/** One inspectable graph node with its source and original research content. */
+export interface KnowledgeGraphNode {
+  id: string
+  kind: 'pattern' | 'paper' | 'domain'
+  label: string
+  source: 'ai' | 'project'
+  summary: string
+  domain: string
+  url?: string | undefined
+  size?: number | undefined
+  problem?: string | undefined
+  solution?: string | undefined
+}
+
+/** A bounded graph view; errors identify unavailable sources without hiding healthy ones. */
+export interface KnowledgeGraphPage {
+  nodes: KnowledgeGraphNode[]
+  edges: { from: string; to: string; kind: 'uses-pattern' | 'in-domain' | 'similar' }[]
+  graphs: { source: 'ai' | 'project'; name: string; patterns: number; papers: number }[]
+  domains: string[]
+  warnings: string[]
+  total: number
+  offset: number
+  hasMore: boolean
+}
+
 /** Command result or acknowledgement; `jobId` identifies asynchronous work whose result appears in a ResearchTask. */
 export interface ResearchResponse {
   project?: ResearchProject | undefined
@@ -773,6 +818,7 @@ export interface ResearchResponse {
   paths?: string[] | undefined
   literature?: LiteratureItem[] | undefined
   gallery?: GalleryPage | undefined
+  knowledgeGraph?: KnowledgeGraphPage | undefined
   board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
@@ -918,7 +964,9 @@ export type ResearchCommand =
   /** Rank research patterns for an idea; `path` saves the result as JSON in the project. */
   | { action: 'recall'; projectId: ProjectId; query: string; topK?: number | undefined; path?: string | undefined }
   /** Compare story.json (or `story`) with the closest works and write novelty_report.json (or `path`). */
-  | { action: 'novelty'; projectId: ProjectId; story?: string | undefined; path?: string | undefined }
+  | { action: 'novelty'; projectId: ProjectId; story?: string | undefined; path?: string | undefined; claim?: string | undefined; references?: KnowledgeReference[] | undefined }
+  /** Browse a bounded portion of a graph, or the papers related to one pattern. */
+  | ({ action: 'graph-view'; projectId: ProjectId } & KnowledgeGraphQuery)
   /** Cluster an extracted corpus (JSON lines) into candidate patterns. */
   | { action: 'build-graph'; projectId: ProjectId; papers: string; domain: string }
   /** Name the clusters (cluster_meta.json or `names`) and assemble the project graph. */

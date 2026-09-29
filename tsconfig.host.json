@@ -209,6 +209,7 @@
     { "path": "./packages/bundle/research-app" },
     { "path": "./packages/bundle/computer-use-cua-bundle" },
     { "path": "./packages/bundle/ssh-remote-bundle" },
+    { "path": "./packages/bundle/research-knowledge-bundle" },
     { "path": "./packages/bundle/web-search-exa-bundle" },
     { "path": "./packages/bundle/web-search-perplexity-bundle" },
     { "path": "./packages/client/product-analytics/tsconfig.host.json" },

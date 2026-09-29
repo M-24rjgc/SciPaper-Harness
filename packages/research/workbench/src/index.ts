@@ -33,7 +33,8 @@ import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
 import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
 import { FigureGallery } from './gallery.ts'
-import { createEmbedder, KnowledgeBase, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
+import { createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
+import type {} from './knowledge-plugin.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
 import {
@@ -84,6 +85,10 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
   | 'board-get' | 'board-update' | 'board-refresh' | 'board-view'
+type KnowledgeAction = 'graph-status' | 'graph-view' | 'recall' | 'novelty' | 'build-graph' | 'name-patterns'
+type KnowledgeCommand = Extract<ResearchCommand, { action: KnowledgeAction }>
+const KNOWLEDGE_ACTIONS: ReadonlySet<string> = new Set<KnowledgeAction>(['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns'])
+function isKnowledgeCommand(request: ResearchCommand): request is KnowledgeCommand { return KNOWLEDGE_ACTIONS.has(request.action) }
 /**
  * The person's commands: open, move or remove the untouched draft research,
  * and remove a research from the list or restore it; the agent never sends them.
@@ -95,7 +100,7 @@ const PERSON_ACTIONS: ReadonlySet<ResearchCommand['action']> = new Set<PersonCom
 /** Commands on one existing project. */
 type ProjectCommand = Exclude<ResearchCommand, PersonCommand>
 /** Commands that record something in the project. */
-type RecordingCommand = Exclude<ProjectCommand, { action: ReadOnlyAction }>
+type RecordingCommand = Exclude<ProjectCommand, { action: ReadOnlyAction | KnowledgeAction }>
 /** Commands whose whole effect is a record change. */
 type ShortCommand = Extract<ResearchCommand, {
   action: 'set-mode' | 'set-autonomy' | 'rename' | 'record-decision' | 'claim' | 'save-artifact' | 'register-artifact' | 'experiment-dismiss' | 'complete-visual-review'
@@ -221,8 +226,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   private readonly lifetime = new AbortController()
   /** Product-owned document, drawing and TeX runtimes, separate from experiment environments. */
   readonly components: ComponentManager
-  /** The research-pattern graphs: the built-in one and each project's own. */
-  readonly knowledge: KnowledgeBase = new KnowledgeBase(runtimeAsset('kg/ai-kg.json.gz'))
+  /** Whether the optional graph provider is mounted in this profile. */
+  get knowledgeEnabled(): boolean { return this.ctx.get('researchKnowledge') !== undefined }
   /** Published papers' Figure 1s to study before drawing, fetched on demand into the product home's cache. */
   readonly gallery: FigureGallery
   /** Each project's experiment board: the agent's layout, filled by scripts on a timer. */
@@ -383,7 +388,6 @@ export class ResearchWorkbench extends TypertRemoteService {
     }, this.config.pollIntervalMs)
     this.ctx.effect(() => async () => {
       clearInterval(timer)
-      this.knowledge.dispose()
       this.gallery.dispose()
       this.lifetime.abort()
       await Promise.allSettled([...this.operations, ...this.tails.values()])
@@ -415,6 +419,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       preferences: structuredClone(this.domain.global.get()),
       components: await this.components.status(),
       modes: this.modes.summaries(),
+      knowledge: { enabled: this.knowledgeEnabled },
       researchHome: this.researchHome(),
     }
   }
@@ -770,6 +775,14 @@ export class ResearchWorkbench extends TypertRemoteService {
     const project = this.record(request.projectId)
     // An example can be read and checked; nothing is recorded into it, whoever asks.
     const example = isExampleRoot(project.root)
+    if (isKnowledgeCommand(request)) {
+      if (example && request.action !== 'graph-status' && request.action !== 'graph-view'
+        && !(request.action === 'recall' && request.path === undefined)) throw new Error(EXAMPLE_READ_ONLY)
+      if (!this.knowledgeEnabled) throw new Error('Knowledge graph plugin is disabled. Continue with literature search, or enable Knowledge graph in Plugins.')
+      return actor === 'user' && LONG_ACTIONS.has(request.action)
+        ? this.begin(request.action, project.id, signal => this.runKnowledge(request, signal))
+        : this.clipped(await this.runKnowledge(request, signal))
+    }
     switch (request.action) {
       case 'search-evidence': return this.clipped(searchEvidence(this.getProject(project.id), request.query, this.config.maxSourceBytes))
       case 'read-artifact': {
@@ -1287,40 +1300,50 @@ export class ResearchWorkbench extends TypertRemoteService {
           }
         }
       }
-      case 'graph-status': {
-        const status = await this.knowledge.status(this.record(id).root, this.domain.global.get().embedding?.model)
-        return { message: 'Knowledge graphs available to this project', content: JSON.stringify(status) }
-      }
-      case 'recall': {
-        const root = this.record(id).root
-        const result = await this.knowledge.recall(root, request.query, request.topK ?? 8, await this.embedder(), signal)
-        if (request.path) await atomicWrite(await projectPath(root, request.path), `${JSON.stringify({ query: request.query, ...result }, null, 1)}\n`)
-        return {
-          message: `${result.patterns.length} pattern(s) recalled (${result.basis})${request.path ? `; saved to ${request.path}` : ''}`,
-          content: JSON.stringify(result), ...request.path ? { path: request.path } : {},
-        }
-      }
-      case 'novelty': {
-        const path = request.path ?? 'novelty_report.json'
-        const report = await this.knowledge.novelty(this.record(id).root, request.story ?? 'story.json', path, await this.embedder(), signal, limit)
-        return { message: `Novelty risk ${report.risk_level} (${report.basis}); report saved to ${path}`, path, content: JSON.stringify(report) }
-      }
-      case 'build-graph': {
-        const result = await this.knowledge.build(this.record(id).root, request.papers, request.domain, await this.embedder(), signal)
-        return { message: `${result.clusters.length} cluster(s) from ${result.papers} papers (${result.basis})`, path: PROJECT_CLUSTERS, content: JSON.stringify(result) }
-      }
-      case 'name-patterns': {
-        const result = await this.knowledge.namePatterns(this.record(id).root, request.names ?? 'cluster_meta.json', limit)
-        return {
-          message: result.issues.length ? `Project graph written with ${result.issues.length} problem(s) to fix` : 'Project graph written and valid',
-          path: PROJECT_GRAPH, content: JSON.stringify(result),
-        }
-      }
       default: {
         const short = request
         return project => this.perform(project, short, actor)
       }
     }
+  }
+
+  /** Execute every graph action through the optional provider, including direct desktop calls. */
+  private runKnowledge(request: KnowledgeCommand, signal: AbortSignal): Promise<ResearchResponse> {
+    const provider = this.ctx.get('researchKnowledge')
+    if (!provider) throw new Error('Knowledge graph plugin is disabled. Continue with literature search, or enable Knowledge graph in Plugins.')
+    const root = this.record(request.projectId).root
+    return provider.run(signal, async (knowledge, signal) => {
+      switch (request.action) {
+        case 'graph-status': return {
+          message: 'Knowledge graphs available to this project',
+          content: JSON.stringify(await knowledge.status(root, this.domain.global.get().embedding?.model)),
+        }
+        case 'graph-view': return { message: 'Research knowledge graph', knowledgeGraph: await knowledge.view(root, request) }
+        case 'recall': {
+          const result = await knowledge.recall(root, request.query, request.topK ?? 8, await this.embedder(), signal)
+          signal.throwIfAborted()
+          if (request.path) await atomicWrite(await projectPath(root, request.path), `${JSON.stringify({ query: request.query, ...result }, null, 1)}\n`)
+          return { message: `${result.patterns.length} pattern(s) recalled (${result.basis})${request.path ? `; saved to ${request.path}` : ''}`,
+            content: JSON.stringify(result), ...(request.path ? { path: request.path } : {}) }
+        }
+        case 'novelty': {
+          const path = request.path ?? 'novelty_report.json'
+          const report = await knowledge.novelty(root, request.story ?? 'story.json', path, await this.embedder(), signal,
+            this.config.maxSourceBytes, request.claim === undefined ? undefined : { claim: request.claim, references: request.references })
+          return { message: `Novelty risk ${report.risk_level} (${report.basis}); report saved to ${path}`, path, content: JSON.stringify(report) }
+        }
+        case 'build-graph': {
+          const result = await knowledge.build(root, request.papers, request.domain, await this.embedder(), signal)
+          return { message: `${result.clusters.length} cluster(s) from ${result.papers} papers (${result.basis})`, path: PROJECT_CLUSTERS, content: JSON.stringify(result) }
+        }
+        case 'name-patterns': {
+          signal.throwIfAborted()
+          const result = await knowledge.namePatterns(root, request.names ?? 'cluster_meta.json', this.config.maxSourceBytes, signal)
+          return { message: result.issues.length ? `Project graph written with ${result.issues.length} problem(s) to fix` : 'Project graph written and valid',
+            path: PROJECT_GRAPH, content: JSON.stringify(result) }
+        }
+      }
+    })
   }
 
   /**

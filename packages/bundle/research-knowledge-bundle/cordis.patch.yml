@@ -1,0 +1,3 @@
+- insert:
+    - id: research-knowledge-provider
+      name: '@deepseek-ai/dsh-research-workbench/knowledge-plugin'

@@ -1279,8 +1279,9 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
   // Plugins section's Plugin list tab.
   const listed = state.packages.filter(pkg => !BUILTIN_PROFILE_BUNDLES.has(pkg.name)
     && (pkg.installed || pkg.optional || pkg.error !== undefined))
-  const mine = listed.filter(pkg => pkg.installed || !pkg.optional)
-  const official = listed.filter(pkg => pkg.optional && !pkg.installed)
+  const mine = listed.filter(pkg => (pkg.installed || !pkg.optional) && !(pkg.optional && pkg.name.startsWith('@deepseek-ai/dsh-research-')))
+  const research = listed.filter(pkg => pkg.name.startsWith('@deepseek-ai/dsh-research-') && pkg.optional)
+  const official = listed.filter(pkg => pkg.optional && !pkg.installed && !research.includes(pkg))
   const loaded = state.status === 'ready' || state.status === 'error'
   const refreshing = state.refreshStatus === 'refreshing'
   const openPkg = view.kind === 'package' || view.kind === 'row' ? listed.find(pkg => pkg.name === view.name) : undefined
@@ -1317,7 +1318,7 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
     )),
   ]
   // One group of cards under its heading and count; the Official group comes first, and a group with nothing in it takes no room.
-  const renderGroup = (id: 'official' | 'bundles', heading: string, cards: readonly ReactNode[]): ReactNode => cards.length === 0
+  const renderGroup = (id: 'research' | 'official' | 'bundles', heading: string, cards: readonly ReactNode[]): ReactNode => cards.length === 0
     ? null
     : (
       <section className={css.group} data-plugin-scope="global" data-plugin-group={id}>
@@ -1422,10 +1423,11 @@ export function PluginManagerPage(props: PluginManagerPageProps): ReactNode {
         ? <ItemDetail form={formFor(openItem.id)} item={openItem} t={t} renderSlot={renderSlot} onBack={() => { setView({ kind: 'list' }) }} />
         : null}
       {loaded && showsCards
-        ? officialCards.length === 0 && mine.length === 0 && state.status !== 'error'
+        ? officialCards.length === 0 && research.length === 0 && mine.length === 0 && state.status !== 'error'
           ? <p className={css.empty}>{t('empty')}</p>
           : (
             <>
+              {renderGroup('research', t('researchTitle'), research.map(packageCard))}
               {renderGroup('official', t('officialTitle'), officialCards)}
               {renderGroup('bundles', t('bundlesTitle'), mine.map(packageCard))}
               {/* A failed package read trails the groups it left incomplete: right under Official on a

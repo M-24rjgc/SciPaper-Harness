@@ -79,7 +79,8 @@ export function ResearchToolCard(props: ResearchToolProps): ReactNode {
   const [expanded, setExpanded] = useState(false)
   const partial = props.useToolCallArgumentsPartial()
   const state = callState(block)
-  const phrase = actionPhrase(toolName, callArgs(block, partial), names)
+  const parsed = callArgs(block, partial)
+  const phrase = actionPhrase(toolName, parsed, names)
   const args = callArgsRaw(block, partial)
   const result = resultText(block)
   const expandable = args !== '' || result !== ''
@@ -100,6 +101,11 @@ export function ResearchToolCard(props: ResearchToolProps): ReactNode {
     >
       <RawCall args={args} result={result} t={t} />
     </DisclosureRow>
+    {toolName === 'research_knowledge' && state === 'ok' && <button type="button"
+      className={styles.graphLink} onClick={() => { props.openKnowledge({
+        query: typeof parsed?.query === 'string' ? parsed.query : undefined,
+        pattern: typeof parsed?.pattern === 'string' ? parsed.pattern : undefined,
+      }) }}>{t('kgOpen')}</button>}
     {state === 'error' && <Failure block={block} t={t} />}
   </div>
 }

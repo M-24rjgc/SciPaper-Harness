@@ -5,6 +5,8 @@ description: Use on the idea route of spark-to-paper to turn a raw idea into a g
 
 # From an idea to a research story
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 Adapted from spark-to-paper-skills `ts-idea2story` (MIT). The full upstream method — packaging the idea, three-axis reasoning over recalled patterns, intent-tagged search packs, reframe-not-combine, the blind comparative critique loop with its pass bar, the novelty bands and the `retrieved_papers.json` schema — is in `references/upstream.md`; read it and follow it. The idea is the protagonist; a recalled pattern is the tool it wields.
 
 ## With the research tools

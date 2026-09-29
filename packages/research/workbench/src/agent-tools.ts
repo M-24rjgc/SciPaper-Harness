@@ -3,6 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import s from '@deepseek-ai/schemastery'
 import type {} from './index.ts'
 import { RESEARCH_TOOL_MODULES, registerResearchTools, type ResearchToolModule } from './tools.ts'
+import * as knowledgeSkills from './knowledge-skills.ts'
 
 /** Loader identity of the tool-family consumer. */
 export const name = 'research-tools'
@@ -25,5 +26,9 @@ export const Config: s<Config> = s.object({
  * @param config - families enabled in this plugin instance.
  */
 export function apply(ctx: Context, config: Config): void {
-  registerResearchTools(ctx, ctx.research, config.modules)
+  registerResearchTools(ctx, ctx.research, config.modules.filter(module => module !== 'knowledge'))
+  if (config.modules.includes('knowledge')) ctx.inject(['researchKnowledge'], async (scope) => {
+    registerResearchTools(scope, scope.research, ['knowledge'])
+    await scope.plugin(knowledgeSkills)
+  })
 }

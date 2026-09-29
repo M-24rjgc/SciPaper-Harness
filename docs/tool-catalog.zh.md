@@ -49,7 +49,7 @@
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
-| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_board`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_knowledge`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`、`research_board`、`research_check`、`research_environment`、`research_evidence`、`research_experiment`、`research_knowledge`、`research_media`、`research_project`、`research_task` | `ctx.tools`、`ctx.research`、`a session working directory inside a research project` | `tool/call`、`tool/result`、`the research project ledger` | - | 科研版通过科研 agent 预设提供这些工具；`research_knowledge` 仅在启用科研知识图谱插件时可用。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。 |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -3066,7 +3066,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_knowledge`
 
-科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。novelty {story?, path?}：把 story.json 与 retrieved_papers.json 中的摘要和图谱里最接近的论文比较，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。
+科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。graph-view {query?, source?, domain?, pattern?}：查看研究模式、论文及其已记录的关系。novelty {claim, references?, path?}：在任意研究模式下，将研究主张与参考文本 [{title,text,url?}] 及图谱中最接近的论文比较。Spark to Paper 项目也可使用 novelty {story?, path?} 读取 story.json 和 retrieved_papers.json，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。
 
 ```json
 {
@@ -3076,6 +3076,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
       "type": "string",
       "enum": [
         "graph-status",
+        "graph-view",
         "recall",
         "novelty",
         "build-graph",
@@ -3088,7 +3089,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "query": {
       "type": "string",
-      "description": "recall: the idea as a search-friendly English query"
+      "description": "recall / graph-view: the idea as a search-friendly English query"
     },
     "topK": {
       "type": "integer",
@@ -3101,6 +3102,53 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "story": {
       "type": "string",
       "description": "novelty: the story file (default story.json)"
+    },
+    "claim": {
+      "type": "string",
+      "description": "novelty: the research claim to compare directly, without requiring a story file"
+    },
+    "references": {
+      "type": "array",
+      "description": "novelty: verified reference texts to compare with the claim",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Reference title"
+          },
+          "text": {
+            "type": "string",
+            "description": "Abstract or verified source text"
+          },
+          "url": {
+            "type": "string",
+            "description": "Primary source URL"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "string",
+      "description": "graph-view: graph source",
+      "enum": [
+        "all",
+        "ai",
+        "project"
+      ]
+    },
+    "pattern": {
+      "type": "string",
+      "description": "graph-view: a pattern node id from an earlier graph-view result"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "graph-view: patterns per page, 1–12 (default 8)"
+    },
+    "offset": {
+      "type": "integer",
+      "description": "graph-view: number of patterns to skip"
     },
     "papers": {
       "type": "string",
@@ -3401,4 +3449,4 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
 
 来源：[`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
 
-科研版通过科研 agent 预设提供这些工具。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。
+科研版通过科研 agent 预设提供这些工具；`research_knowledge` 仅在启用科研知识图谱插件时可用。每个按类别划分的工具都接受一个 `action` 以及该 action 的类型化字段；`projectId` 可省略，因为项目由会话工作目录确定。

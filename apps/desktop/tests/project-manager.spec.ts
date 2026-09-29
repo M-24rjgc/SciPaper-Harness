@@ -61,7 +61,7 @@ describe('desktop external plugin profile', () => {
     expect(JSON.parse(readFileSync(manifestPath, 'utf8'))).toMatchObject({
       dependencies: { plugin: '1.0.0' },
       dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-research-app',
-        '@deepseek-ai/dsh-experimental-schedule-bundle', '@deepseek-ai/dsh-computer-use-cua-bundle', 'plugin'] } },
+        '@deepseek-ai/dsh-experimental-schedule-bundle', '@deepseek-ai/dsh-research-knowledge-bundle', '@deepseek-ai/dsh-computer-use-cua-bundle', 'plugin'] } },
     })
     expect(readFileSync(patch, 'utf8')).toBe('- id: custom-setting\n  disabled: true\n')
     const migrated = readFileSync(manifestPath, 'utf8')

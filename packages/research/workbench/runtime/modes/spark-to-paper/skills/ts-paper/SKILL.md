@@ -5,6 +5,8 @@ description: Runs the spark-to-paper mode — preflight, route the input (idea, 
 
 # spark-to-paper
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 One idea, a proposal, or a proposal with measured results in; a complete compiled paper out — real citations, editable vector figures, every number traced to data. Adapted from spark-to-paper-skills (MIT). The upstream orchestrator — the suite map, preflight, Stage 0 routing, the data-aware flow, the stage chain, Stage 8, the trace and the quality stack — is in `references/upstream.md`; read it once per project. Quality first: never skip a verification, a review or a fix to save a turn.
 
 You drive the work. The research service keeps the record and runs the gates; it never tells you what to do next and never refuses your work.

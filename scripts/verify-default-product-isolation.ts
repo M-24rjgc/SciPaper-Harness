@@ -89,6 +89,8 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
   const optionalBundles = new Set(selection?.optionalBundles ?? [])
   const researchScheduleBundle = selection?.packages.includes('@deepseek-ai/dsh-research-app')
     ? '@deepseek-ai/dsh-experimental-schedule-bundle' : undefined
+  const researchKnowledgeBundle = selection?.packages.includes('@deepseek-ai/dsh-research-app')
+    ? '@deepseek-ai/dsh-research-knowledge-bundle' : undefined
   for (const name of optionalBundles) {
     if (cli?.manifest.dependencies?.[name] === undefined) {
       failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must be a runtime dependency of apps/cli`)
@@ -249,7 +251,7 @@ export function verifyDefaultProductIsolation(root: string): ProductIsolationRes
       if (packages.get(name)?.manifest.dsh?.bundle?.patch === undefined) {
         failures.push(`${PROFILE_SOURCE}: default bundle ${name} must declare dsh.bundle.patch`)
       }
-      if (optionalBundles.has(name) && name !== researchScheduleBundle) {
+      if (optionalBundles.has(name) && name !== researchScheduleBundle && name !== researchKnowledgeBundle) {
         failures.push(`${PROFILE_SOURCE}: optional bundle ${name} must not be a default bundle`)
       }
     }

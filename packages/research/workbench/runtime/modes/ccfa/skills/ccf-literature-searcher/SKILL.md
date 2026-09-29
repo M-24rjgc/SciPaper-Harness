@@ -5,6 +5,8 @@ description: Find and verify external literature, prior art, datasets, benchmark
 
 # CCF Literature Searcher
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 Adapted from CCFA-Skills `ccf-literature-searcher` (MIT). The upstream skill — exploratory, quick and standard breadth, the twelve-item mandatory checklist, paper types and scoring, the folder layout and the output contracts — is in `references/upstream.md`, with `search-and-scoring.md` and `report-template.md` beside it. Follow it; this page says how it runs here.
 
 ## Retrieval

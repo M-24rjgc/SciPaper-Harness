@@ -2538,7 +2538,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-research-workbench`
 
 - `inject`: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals` · `sessions` · `permissionPresets`
-- `source`: [`packages/research/workbench/src/index.ts:55`](../packages/research/workbench/src/index.ts)
+- `source`: [`packages/research/workbench/src/index.ts:56`](../packages/research/workbench/src/index.ts)
 
 ```ts config-catalog
 /** Research workbench configuration. */
@@ -4618,6 +4618,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-package-manifest` | — | [`packages/util/package-manifest/src/index.ts`](../packages/util/package-manifest/src/index.ts) |
 | `@deepseek-ai/dsh-remote-mock` | — | [`packages/test-support/remote-mock/src/index.ts`](../packages/test-support/remote-mock/src/index.ts) |
 | `@deepseek-ai/dsh-research-app` | — | [`packages/bundle/research-app/src/index.ts`](../packages/bundle/research-app/src/index.ts) |
+| `@deepseek-ai/dsh-research-knowledge-bundle` | — | [`packages/bundle/research-knowledge-bundle/src/index.ts`](../packages/bundle/research-knowledge-bundle/src/index.ts) |
 | `@deepseek-ai/dsh-sandbox-windows-acl` | — | [`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts) |
 | `@deepseek-ai/dsh-scope` | — | [`packages/core/scope/src/index.ts`](../packages/core/scope/src/index.ts) |
 | `@deepseek-ai/dsh-sdk-client` | — | [`packages/sdk/client/src/index.ts`](../packages/sdk/client/src/index.ts) |

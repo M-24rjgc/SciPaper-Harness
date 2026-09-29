@@ -45,7 +45,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
-| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_board`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_knowledge`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
+| `@deepseek-ai/dsh-research-workbench` | `research_artifact`, `research_board`, `research_check`, `research_environment`, `research_evidence`, `research_experiment`, `research_knowledge`, `research_media`, `research_project`, `research_task` | `ctx.tools`, `ctx.research`, `a session working directory inside a research project` | `tool/call`, `tool/result`, `the research project ledger` | - | The research edition ships these tools with its research agent preset; `research_knowledge` is available only while the Research Knowledge Graph plugin is enabled. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory. |
 
 <a id="deepseek-aidsh-plugin-manager"></a>
 
@@ -3054,7 +3054,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_knowledge`
 
-Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. novelty {story?, path?}: compares story.json with retrieved_papers.json abstracts and the closest graph papers, writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.
+Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. graph-view {query?, source?, domain?, pattern?}: inspect patterns, papers and their recorded relationships. novelty {claim, references?, path?}: compares a research claim with references [{title,text,url?}] and the closest graph papers in any mode. Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.
 
 ```json
 {
@@ -3064,6 +3064,7 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
       "type": "string",
       "enum": [
         "graph-status",
+        "graph-view",
         "recall",
         "novelty",
         "build-graph",
@@ -3076,7 +3077,7 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
     },
     "query": {
       "type": "string",
-      "description": "recall: the idea as a search-friendly English query"
+      "description": "recall / graph-view: the idea as a search-friendly English query"
     },
     "topK": {
       "type": "integer",
@@ -3089,6 +3090,53 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
     "story": {
       "type": "string",
       "description": "novelty: the story file (default story.json)"
+    },
+    "claim": {
+      "type": "string",
+      "description": "novelty: the research claim to compare directly, without requiring a story file"
+    },
+    "references": {
+      "type": "array",
+      "description": "novelty: verified reference texts to compare with the claim",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Reference title"
+          },
+          "text": {
+            "type": "string",
+            "description": "Abstract or verified source text"
+          },
+          "url": {
+            "type": "string",
+            "description": "Primary source URL"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "string",
+      "description": "graph-view: graph source",
+      "enum": [
+        "all",
+        "ai",
+        "project"
+      ]
+    },
+    "pattern": {
+      "type": "string",
+      "description": "graph-view: a pattern node id from an earlier graph-view result"
+    },
+    "limit": {
+      "type": "integer",
+      "description": "graph-view: patterns per page, 1–12 (default 8)"
+    },
+    "offset": {
+      "type": "integer",
+      "description": "graph-view: number of patterns to skip"
     },
     "papers": {
       "type": "string",
@@ -3389,4 +3437,4 @@ Read a desktop-started research operation by jobId. A failed or interrupted task
 
 Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbench/src/tools.ts)
 
-The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory.
+The research edition ships these tools with its research agent preset; `research_knowledge` is available only while the Research Knowledge Graph plugin is enabled. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory.

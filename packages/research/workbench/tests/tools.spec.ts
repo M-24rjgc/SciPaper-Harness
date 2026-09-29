@@ -9,7 +9,6 @@ import { projectBrief, registerResearchTools } from '../src/tools.ts'
 import { newProject } from '../src/project.ts'
 import { ModeRegistry, type ModePack, type ResolvedMode } from '../src/modes.ts'
 import { projectStanding } from '../src/progress.ts'
-import type { ResearchWorkbench } from '../src/index.ts'
 import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchStanding, ResearchTask } from '../src/types.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
@@ -43,6 +42,7 @@ function harness() {
     { id: 'global', kind: 'install', status: 'completed', message: 'ok', createdAt: '' },
   ]
   const service = {
+    knowledgeEnabled: true,
     projects: () => [project, foreign],
     getProject: (id: ProjectId) => { const found = [project, foreign].find(item => item.id === id); if (!found) throw new Error('Research project not found'); return found },
     projectAt: async (cwd: string) => cwd.startsWith(root) ? project : cwd.startsWith(other) ? foreign : undefined,
@@ -55,7 +55,7 @@ function harness() {
     standing: (item: ResearchProject) => standingOf(item),
     activeGoals: () => goals,
     modes,
-  } as unknown as ResearchWorkbench
+  } satisfies Parameters<typeof registerResearchTools>[1]
   const tools = new Map<string, RegisteredTool>()
   let hook: PreExecute | undefined
   const ctx = {
@@ -129,7 +129,7 @@ describe('research tools find the project from the working directory', () => {
     expect(brief).not.toHaveProperty('untitled')
     expect(brief.guide[2]).toBe('Load the ts-paper skill when you start work in this mode, not for a question or a status report. '
       + 'Routing is settled (routingSettled): skip the routing step of the entry skill.')
-    expect(brief.guide[3]).toMatch(/ask_user_question/)
+    expect(brief.guide).toContainEqual(expect.stringMatching(/ask_user_question/))
     expect(brief.phases[0]).toEqual({ id: 'plan', state: 'current', done: false, checkpoint: false, missing: ['Not checked yet'] })
     expect(brief.phases[1]).toMatchObject({ id: 'cite', state: 'pending' })
     // current never fails: outside a research, and in a conversation with no folder, it says what to do instead.

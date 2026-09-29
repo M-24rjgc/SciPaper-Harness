@@ -1,0 +1,55 @@
+{
+  "name": "@deepseek-ai/dsh-research-knowledge-bundle",
+  "description": "Research knowledge graphs shared by all research modes",
+  "version": "0.2.0-alpha.5",
+  "type": "module",
+  "license": "MIT",
+  "icon": "./icon.svg",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "icon.svg",
+    "locale/*.json",
+    "lib/index.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-research-workbench": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/M-24rjgc/SciPaper-Harness.git",
+    "directory": "packages/bundle/research-knowledge-bundle"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scipaper": {
+    "kernel": {
+      "name": "deepseek-harness",
+      "version": "0.2.0-rc.1",
+      "revision": "4878cdabd87d4041bdaff61d04c966883b9fd07a"
+    }
+  }
+}

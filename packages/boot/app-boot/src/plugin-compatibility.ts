@@ -39,6 +39,7 @@ function identityField(manifest: Record<string, unknown>, field: 'name' | 'versi
 const productPeers = new Set([
   '@deepseek-ai/dsh-research-app',
   '@deepseek-ai/dsh-research-workbench',
+  '@deepseek-ai/dsh-research-knowledge-bundle',
   '@deepseek-ai/dsh-client-ui-research',
 ])
 

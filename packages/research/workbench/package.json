@@ -40,6 +40,14 @@
     "./mode-skills": {
       "types": "./lib/types/mode-skills.d.ts",
       "default": "./lib/types/mode-skills.js"
+    },
+    "./knowledge-plugin": {
+      "types": "./lib/types/knowledge-plugin.d.ts",
+      "default": "./lib/types/knowledge-plugin.js"
+    },
+    "./knowledge-skills": {
+      "types": "./lib/types/knowledge-skills.d.ts",
+      "default": "./lib/types/knowledge-skills.js"
     }
   },
   "files": [

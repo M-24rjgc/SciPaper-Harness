@@ -282,6 +282,7 @@ const FAMILIES: ReadonlyMap<string, Family> = new Map([
   })],
   ['research_knowledge', family('toolKnowledge', {
     'graph-status': plain('toolKnowledgeStatus'),
+    'graph-view': plain('kgOpen'),
     recall: about('toolKnowledgeRecall', 'query'),
     novelty: plain('toolKnowledgeNovelty'),
     'build-graph': plain('toolKnowledgeBuild'),

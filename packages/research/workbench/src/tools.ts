@@ -28,6 +28,10 @@ export const RESEARCH_TOOL_MODULES = ['project', 'evidence', 'artifact', 'enviro
 /** One family selected by a research-tools plugin declaration. */
 export type ResearchToolModule = typeof RESEARCH_TOOL_MODULES[number]
 
+type ResearchToolService = Pick<ResearchWorkbench,
+  'knowledgeEnabled' | 'projects' | 'getProject' | 'projectAt' | 'execute' | 'createProject'
+  | 'tasks' | 'standing' | 'activeGoals' | 'modes'>
+
 const MODULE_TOOLS: Record<ResearchToolModule, string> = {
   project: 'research_project', evidence: 'research_evidence', artifact: 'research_artifact',
   environment: 'research_environment', experiment: 'research_experiment', board: 'research_board',
@@ -195,19 +199,29 @@ const FAMILIES: Family[] = [
   {
     name: 'research_knowledge',
     title: 'Research knowledge graph',
-    actions: ['graph-status', 'recall', 'novelty', 'build-graph', 'name-patterns'],
+    actions: ['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns'],
     description: 'Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers '
       + 'machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. '
       + 'recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; '
-      + 'path saves the result. novelty {story?, path?}: compares story.json with retrieved_papers.json abstracts and the closest graph papers, '
+      + 'path saves the result. graph-view {query?, source?, domain?, pattern?}: inspect patterns, papers and their recorded relationships. '
+      + 'novelty {claim, references?, path?}: compares a research claim with references [{title,text,url?}] and the closest graph papers in any mode. '
+      + 'Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it '
       + 'writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, '
       + 'base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the '
       + 'project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.',
     fields: {
-      query: text('recall: the idea as a search-friendly English query'),
+      query: text('recall / graph-view: the idea as a search-friendly English query'),
       topK: { type: 'integer', description: 'recall: how many patterns (default 8, at most 20)' },
       path: text('recall: project-relative JSON file to save the result to; novelty: report path (default novelty_report.json)'),
       story: text('novelty: the story file (default story.json)'),
+      claim: text('novelty: the research claim to compare directly, without requiring a story file'),
+      references: { type: 'array', description: 'novelty: verified reference texts to compare with the claim', items: {
+        type: 'object', additionalProperties: false, properties: { title: text('Reference title'), text: text('Abstract or verified source text'), url: text('Primary source URL') },
+      } },
+      source: { type: 'string', enum: ['all', 'ai', 'project'], description: 'graph-view: graph source' },
+      pattern: text('graph-view: a pattern node id from an earlier graph-view result'),
+      limit: { type: 'integer', description: 'graph-view: patterns per page, 1–12 (default 8)' },
+      offset: { type: 'integer', description: 'graph-view: number of patterns to skip' },
       papers: text('build-graph: the extracted corpus, JSON lines'),
       domain: text('build-graph: the corpus domain label, e.g. hci'),
       names: text('name-patterns: the cluster names file (default cluster_meta.json)'),
@@ -263,6 +277,8 @@ function goalGuide(goal: ResearchGoal | undefined, sessionId: string | undefined
 
 /** What the live conversations of a project add to its brief. */
 export interface BriefContext {
+  /** Availability of the profile's graph plugin. */
+  knowledge?: boolean | undefined
   /** The unfinished goals of the project's live conversations, as the service orders them. */
   goals?: ResearchGoal[] | undefined
   /** The conversation reading the brief. */
@@ -291,6 +307,9 @@ export function projectBrief(project: ResearchProject, mode: ResolvedMode, stand
         + 'For the person\'s own work, suggest 新研究 (New research).']
       : [],
     ...modeGuide(project, mode, standing),
+    ...(live.knowledge === undefined ? [] : [live.knowledge
+      ? 'Knowledge graph is enabled for every research mode. Use the research-knowledge skill for retrieval, claim comparison and building a project graph when relevant.'
+      : 'Knowledge graph is disabled. Skip graph steps in mode skills; continue with research_evidence and web search, stating the evidence basis.']),
     ...goalGuide(goal, live.sessionId),
     ...live.execution === undefined ? [] : [
       'This conversation executes in the SSH workspace. The research ledger and research tool file actions use the local research root; '
@@ -311,6 +330,7 @@ export function projectBrief(project: ResearchProject, mode: ResolvedMode, stand
     mode: mode.pack.id, route: mode.route ?? null, modeReason: project.modeReason ?? null, venue: project.venue ?? null,
     modeChosen: project.modeSetBy !== undefined, modeSetBy: project.modeSetBy ?? null, routingSettled: routingSettled(project),
     paperRoot: mode.pack.paperRoot,
+    ...(live.knowledge === undefined ? {} : { capabilities: { knowledgeGraph: live.knowledge } }),
     autonomy: project.autonomy,
     activeGoal: goal === undefined ? null : {
       conversation: goal.sessionId, thisConversation: goal.sessionId === live.sessionId,
@@ -378,7 +398,7 @@ async function rejectRemoteFilePaths(action: string, fields: Readonly<Record<str
 }
 
 /** The project a call acts on: its explicit id (which must contain the session's directory) or the directory's own project. */
-async function projectFor(service: ResearchWorkbench, id: unknown, exec: ToolExecution): Promise<ResearchProject> {
+async function projectFor(service: ResearchToolService, id: unknown, exec: ToolExecution): Promise<ResearchProject> {
   const session = exec.agent?.session
   const cwd = session?.header.cwd
   if (session === undefined || cwd === undefined) throw new Error(NO_FOLDER)
@@ -404,7 +424,7 @@ async function projectFor(service: ResearchWorkbench, id: unknown, exec: ToolExe
 }
 
 /** Why a call needs the user's approval before it runs, or undefined when it does not. */
-async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): Promise<string | undefined> {
+async function approvalReason(service: ResearchToolService, exec: ToolExecution): Promise<string | undefined> {
   if (!['research_evidence', 'research_artifact', 'research_environment'].includes(exec.name)) return undefined
   const args = (exec.arguments ?? {}) as Record<string, unknown>
   let project: ResearchProject
@@ -435,10 +455,10 @@ async function approvalReason(service: ResearchWorkbench, exec: ToolExecution): 
  */
 export function registerResearchTools(
   ctx: Context,
-  service: ResearchWorkbench,
+  service: ResearchToolService,
   modules: readonly ResearchToolModule[] = RESEARCH_TOOL_MODULES,
 ): void {
-  const selected = new Set(modules.map(module => MODULE_TOOLS[module]))
+  const selected = new Set(modules.filter(module => module !== 'knowledge' || service.knowledgeEnabled).map(module => MODULE_TOOLS[module]))
   ctx.on('tools/pre-execute', async (exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision> => {
     if (!selected.has(exec.name)) return next()
     const reason = await approvalReason(service, exec)
@@ -484,7 +504,7 @@ export function registerResearchTools(
       const sessionId = exec.agent?.session.id
       const brief = async (project: ResearchProject): Promise<JsonValue> => projectBrief(
         project, service.modes.resolve(project), await service.standing(project), {
-          goals: service.activeGoals(project), sessionId,
+          goals: service.activeGoals(project), sessionId, knowledge: service.knowledgeEnabled,
           ...(exec.agent?.session.header.execution?.kind === 'ssh' && exec.agent.session.header.cwd !== undefined
             ? { execution: { host: exec.agent.session.header.execution.host, path: exec.agent.session.header.cwd } }
             : {}),

@@ -10,6 +10,7 @@
     "src/css-modules.d.ts"
   ],
   "references": [
+    { "path": "../ui-plugin-manager/tsconfig.client.json" },
     {
       "path": "../../util/workspace-path"
     },

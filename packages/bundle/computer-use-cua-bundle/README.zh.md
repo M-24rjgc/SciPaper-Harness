@@ -32,7 +32,7 @@ kind: "package-bundle"
 <a id="understand-the-implementation"></a>
 ## 实现
 
-`cordis.patch.yml` 同时挂载 `dsh-computer-use` 和 `dsh-computer-use-cua-driver-native`。组合包自身没有可变运行时状态，也不发布运行时不变量入口。
+`cordis.patch.yml` 同时挂载 `dsh-computer-use` 和 `dsh-computer-use-cua-driver-native`。本包只负责装配提供方，因此不单独发布运行时不变量入口；运行状态由电脑操作服务和原生驱动负责。
 
 -----
 

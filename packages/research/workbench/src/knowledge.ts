@@ -14,6 +14,7 @@ import { gunzipSync } from 'node:zlib'
 import { z } from 'zod'
 import { agglomerate, Bm25, cosine, fuse, kMeans, similarityMatrix, termVectors, tokens, type Vector } from './clustering.ts'
 import { atomicWrite, errorText, projectPath, readText } from './files.ts'
+import type { KnowledgeGraphNode, KnowledgeGraphPage, KnowledgeGraphQuery, KnowledgeReference } from './types.ts'
 
 const tierSchema = z.enum(['A', 'B', 'C', ''])
 const patternSchema = z.object({
@@ -336,10 +337,88 @@ export class KnowledgeBase {
     return graph
   }
 
-  private async graphs(root: string): Promise<LoadedGraph[]> {
+  private async availableGraphs(root: string): Promise<{ graphs: LoadedGraph[]; warnings: string[] }> {
     this.touch()
-    const project = await this.loadProject(root)
-    return [await this.loadBuiltin(), ...project ? [project] : []]
+    const graphs: LoadedGraph[] = []
+    const warnings: string[] = []
+    for (const [source, load] of [
+      ['ai', () => this.loadBuiltin()], ['project', () => this.loadProject(root)],
+    ] as const) {
+      try {
+        const graph = await load()
+        if (graph) graphs.push(graph)
+      } catch (error) { warnings.push(`${source}: ${errorText(error)}`) }
+    }
+    return { graphs, warnings }
+  }
+
+  /**
+   * Browse patterns and their recorded relationships without loading the complete graph into the browser.
+   * @param root - the project directory.
+   * @param request - source, domain, text search, selected pattern and page limits.
+   * @returns a bounded graph whose node ids remain stable between searches.
+   */
+  async view(root: string, request: KnowledgeGraphQuery): Promise<KnowledgeGraphPage> {
+    const { graphs: available, warnings } = await this.availableGraphs(root)
+    const graphs = available.filter(graph => !request.source || request.source === 'all' || graph.source === request.source)
+    const nodes = new Map<string, KnowledgeGraphNode>()
+    const edges: KnowledgeGraphPage['edges'] = []
+    const identity = (graph: LoadedGraph, kind: string, id: string): string => `${graph.source}:${kind}:${id}`
+    const candidates = graphs.flatMap((graph) => {
+      const scores = new Map<number, number>()
+      if (request.query?.trim()) {
+        const words = tokens(request.query)
+        for (const hit of graph.patterns.rank(words, graph.file.patterns.length)) scores.set(hit.index, hit.score)
+        for (const hit of graph.papers.rank(words, 100)) {
+          const at = (graph.file.papers[hit.index] as GraphPaper).pattern
+          if (at >= 0) scores.set(at, (scores.get(at) ?? 0) + hit.score)
+        }
+      }
+      return graph.file.patterns.flatMap((pattern, at) => {
+        const key = identity(graph, 'pattern', pattern.id)
+        if (request.pattern && request.pattern !== key) return []
+        if (request.domain && graph.file.domains[pattern.domain] !== request.domain) return []
+        if (request.query?.trim() && !scores.has(at)) return []
+        return [{ graph, pattern, at, key, score: scores.get(at) ?? pattern.size }]
+      })
+    }).sort((a, b) => b.score - a.score || a.key.localeCompare(b.key))
+    const offset = request.offset ?? 0
+    const limit = Math.max(1, Math.min(request.limit ?? 8, 12))
+    for (const { graph, pattern, at, key } of candidates.slice(offset, offset + limit)) {
+      const domain = graph.file.domains[pattern.domain] as string
+      const domainId = identity(graph, 'domain', domain)
+      nodes.set(domainId, { id: domainId, kind: 'domain', label: domain, source: graph.source, summary: '', domain })
+      nodes.set(key, { id: key, kind: 'pattern', label: pattern.name, source: graph.source, domain,
+        summary: [pattern.summary, pattern.details].filter(Boolean).join('\n\n'), size: pattern.size })
+      edges.push({ from: key, to: domainId, kind: 'in-domain' })
+      const indices = new Set(pattern.exemplars)
+      if (request.pattern) graph.file.papers.forEach((paper, index) => { if (paper.pattern === at) indices.add(index) })
+      for (const index of [...indices].slice(0, request.pattern ? 30 : 3)) {
+        const paper = graph.file.papers[index] as GraphPaper
+        const id = identity(graph, 'paper', paper.id)
+        const url = paperUrl(graph.file, paper)
+        nodes.set(id, { id, kind: 'paper', label: paper.title, source: graph.source,
+          domain: graph.file.domains[paper.domain] as string, summary: paper.story || paper.idea,
+          problem: paper.problem, solution: paper.solution, ...(url ? { url } : {}) })
+        edges.push({ from: id, to: key, kind: 'uses-pattern' })
+      }
+    }
+    for (const graph of graphs) for (const paper of graph.file.papers) {
+      const from = identity(graph, 'paper', paper.id)
+      if (!nodes.has(from)) continue
+      for (const at of paper.similar) {
+        const to = identity(graph, 'paper', (graph.file.papers[at] as GraphPaper).id)
+        if (nodes.has(to) && from < to) edges.push({ from, to, kind: 'similar' })
+      }
+    }
+    return {
+      nodes: [...nodes.values()], edges, warnings,
+      graphs: available.map(({ source, file }) => ({
+        source, name: file.name, patterns: file.patterns.length, papers: file.papers.length,
+      })),
+      domains: [...new Set(graphs.flatMap(graph => graph.file.domains))].sort(),
+      total: candidates.length, offset, hasMore: offset + limit < candidates.length,
+    }
   }
 
   /**
@@ -392,7 +471,7 @@ export class KnowledgeBase {
    * @returns the ranked patterns, the closest papers and the basis.
    */
   async recall(root: string, query: string, topK: number, embedder: Embedder | undefined, signal: AbortSignal): Promise<RecallResult> {
-    const graphs = await this.graphs(root)
+    const { graphs, warnings } = await this.availableGraphs(root)
     const words = tokens(query)
     const rankings: string[][] = []
     const paperRankings: string[][] = []
@@ -419,7 +498,8 @@ export class KnowledgeBase {
     }
     let basis: RecallResult['basis'] = 'lexical'
     let note = 'Lexical ranking (BM25 over patterns and papers, plus the papers\' graph neighbours): a match of words, not of meaning; weigh it accordingly.'
-    if (embedder) {
+    if (graphs.length === 0) note += ' No graph is available. Continue with literature search and source-grounded judgement.'
+    if (embedder && graphs.length > 0) {
       try {
         const [vector] = await embedder.embed([query], signal)
         for (const graph of graphs) {
@@ -434,6 +514,7 @@ export class KnowledgeBase {
         note = `The embedding endpoint failed (${errorText(error)}); this recall is lexical only. ${note}`
       }
     }
+    if (warnings.length) note += ` Unavailable graphs: ${warnings.join('; ')}.`
     const byName = new Map(graphs.map(graph => [graph.source, graph]))
     const fused = [...fuse(rankings)].sort((a, b) => b[1] - a[1]).slice(0, topK)
     const patterns = fused.map(([key, score]): RecalledPattern => {
@@ -469,25 +550,31 @@ export class KnowledgeBase {
    * @param embedder - semantic comparison, when configured.
    * @param signal - cancellation.
    * @param limit - byte ceiling for reading project files.
+   * @param input - direct claim and reference texts when no story file is used.
    * @returns the report, as written.
    */
   async novelty(
     root: string, storyPath: string, reportPath: string, embedder: Embedder | undefined, signal: AbortSignal, limit: number,
+    input?: { claim: string; references?: KnowledgeReference[] | undefined },
   ): Promise<NoveltyReport> {
-    const story = z.record(z.string(), z.unknown()).parse(JSON.parse(await readText(await projectPath(root, storyPath), limit)))
+    const story = input === undefined
+      ? z.record(z.string(), z.unknown()).parse(JSON.parse(await readText(await projectPath(root, storyPath), limit)))
+      : { innovation_claims: [input.claim] }
     const field = (value: unknown): string => typeof value === 'string' ? value : value === undefined || value === null ? '' : JSON.stringify(value)
     const claims = Array.isArray(story.innovation_claims) ? story.innovation_claims.map(field) : [field(story.innovation_claims)]
     const text = [...STORY_FIELDS.map(name => field(story[name])), ...claims].filter(Boolean).join('\n')
     if (!text) throw new Error(`${storyPath} has none of the story fields (${STORY_FIELDS.join(', ')}, innovation_claims)`)
-    const references: { label: string; text: string }[] = []
-    const retrieved = await readText(await projectPath(root, 'retrieved_papers.json'), limit).then(value => JSON.parse(value) as unknown, () => undefined)
+    const references: { label: string; text: string }[] = (input?.references ?? []).map(item => ({ label: item.title, text: `${item.title}\n${item.text}` }))
+    const retrieved = input === undefined
+      ? await readText(await projectPath(root, 'retrieved_papers.json'), limit).then(value => JSON.parse(value) as unknown, () => undefined)
+      : undefined
     const listed = Array.isArray(retrieved) ? retrieved : (retrieved as { papers?: unknown } | undefined)?.papers
     for (const item of Array.isArray(listed) ? listed as Record<string, unknown>[] : []) {
       const abstract = typeof item.abstract === 'string' ? item.abstract.trim() : ''
       if (!abstract || item.abstract_source === 'missing') continue
       references.push({ label: field(item.title) || field(item.paper_id) || '(untitled)', text: `${field(item.title)}\n${abstract}` })
     }
-    const graphs = await this.graphs(root)
+    const { graphs, warnings } = await this.availableGraphs(root)
     const words = tokens(text)
     for (const graph of graphs) {
       for (const hit of graph.papers.rank(words, 8)) {
@@ -507,7 +594,7 @@ export class KnowledgeBase {
         const top = (scored[0] as { similarity: number }).similarity
         const risk = top >= NOVELTY_HIGH ? 'high' : top >= NOVELTY_MEDIUM ? 'medium' : 'low'
         report = {
-          ...base, basis: `semantic (${embedder.model}) against retrieved_papers.json abstracts and the closest graph papers`,
+          ...base, basis: `semantic (${embedder.model}) against reference texts and the closest graph papers`,
           max_similarity: round(top), risk_level: risk,
           top_similar: scored.slice(0, 5).map(item => ({ ...item, similarity: round(item.similarity) })),
           verdict: risk === 'high'
@@ -520,6 +607,8 @@ export class KnowledgeBase {
       }
     }
     report ??= lexicalReport(base, text, references, '')
+    if (warnings.length) report.note = `${report.note ?? ''} Unavailable graphs: ${warnings.join('; ')}.`.trim()
+    signal.throwIfAborted()
     await atomicWrite(await projectPath(root, reportPath), `${JSON.stringify(report, null, 1)}\n`)
     return report
   }
@@ -591,6 +680,7 @@ export class KnowledgeBase {
       version: 1, domain, basis, ...basis === 'embedding' ? { model: (embedder as Embedder).model } : {},
       builtAt: new Date().toISOString(), papers: withNeighbours, clusters,
     }
+    signal.throwIfAborted()
     await atomicWrite(await projectPath(root, PROJECT_CLUSTERS), JSON.stringify(file))
     const clustered = new Set(clusters.flatMap(cluster => cluster.members))
     return {
@@ -613,9 +703,10 @@ export class KnowledgeBase {
    * @param root - the project root.
    * @param namesPath - the cluster names file, project-relative.
    * @param limit - byte ceiling for reading the names file.
+   * @param signal - cancellation before publishing the project graph.
    * @returns the graph's counts and every problem found; the graph is written either way.
    */
-  async namePatterns(root: string, namesPath: string, limit: number): Promise<NameResult> {
+  async namePatterns(root: string, namesPath: string, limit: number, signal?: AbortSignal): Promise<NameResult> {
     const clusterText = await readText(await projectPath(root, PROJECT_CLUSTERS), GRAPH_LIMIT).catch(() => {
       throw new Error('No clusters yet: run build-graph on the extracted corpus first')
     })
@@ -680,6 +771,7 @@ export class KnowledgeBase {
         }
       }),
     }
+    signal?.throwIfAborted()
     await atomicWrite(await projectPath(root, PROJECT_GRAPH), JSON.stringify(graph))
     const tiers = Object.fromEntries(['A', 'B', 'C', ''].map(tier => [tier || 'none', patterns.filter(pattern => pattern.tier === tier).length]))
     return {
@@ -709,7 +801,7 @@ function lexicalReport(
     return {
       ...base, basis: 'unconfigured', max_similarity: null, risk_level: 'unknown', top_similar: [],
       verdict: 'lexical/judgment only — not a semantic guarantee',
-      note: `${prefix}No reference set: retrieved_papers.json has no real abstracts and no graph paper shares its words; judge novelty against what you found.`,
+      note: `${prefix}No reference set: no supplied reference has usable text and no graph paper shares its words; judge novelty against verified literature.`,
     }
   }
   const [storyVector, ...vectors] = termVectors([text, ...references.map(item => item.text)].map(tokens))
@@ -717,7 +809,7 @@ function lexicalReport(
     .map((item, at) => ({ ref: item.label, similarity: round(cosine(storyVector as Vector, vectors[at] as Vector)) }))
     .sort((a, b) => b.similarity - a.similarity)
   return {
-    ...base, basis: 'lexical (term-weight cosine) against retrieved_papers.json abstracts and the closest graph papers',
+    ...base, basis: 'lexical (term-weight cosine) against reference texts and the closest graph papers',
     max_similarity: (scored[0] as { similarity: number }).similarity, risk_level: 'unknown', top_similar: scored.slice(0, 5),
     verdict: 'lexical/judgment only — not a semantic guarantee',
     note: `${prefix}Shared words are not shared ideas, and the ${NOVELTY_HIGH}/${NOVELTY_MEDIUM} bands apply to embeddings only: read the closest works and judge the collision yourself.`,

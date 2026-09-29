@@ -5,6 +5,8 @@ description: Use in spark-to-paper when the idea's field is outside the built-in
 
 # Distil a corpus into a research-pattern graph
 
+Knowledge graph use is conditional on `research_project current` reporting `capabilities.knowledgeGraph` and the `research_knowledge` tool being available. When enabled, use the shared `research-knowledge` skill in any mode; `novelty {claim, references}` accepts a claim directly without Spark files. When disabled or unavailable, skip graph calls and continue with literature search and source-grounded judgement. A missing embedding endpoint uses lexical retrieval and must be described as such. Graph construction itself requires the enabled plugin; other research stages do not.
+
 Adapted from spark-to-paper-skills `ts-kg-build` (MIT). The full upstream method — story-first extraction with its anti-summary rule, cluster naming with its banned words, tiers by size and coherence, the edge definitions and the integrity rules — is in `references/upstream.md`; read it and follow it. You do the reasoning (extraction, naming, summaries); `research_knowledge` does the math (vectors, clustering, graph assembly, validation).
 
 First run `research_knowledge` graph-status. The platform ships a built-in graph distilled from the upstream AI corpus (patterns over tens of thousands of machine-learning papers). If the idea sits inside it, skip this skill and recall from it. Build a project graph only for another field or a corpus the user supplies.

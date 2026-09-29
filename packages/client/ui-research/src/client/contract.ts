@@ -22,10 +22,17 @@ export interface ResearchSourcesParams {
   section?: 'claims' | undefined
 }
 
+/** A graph opened from a research tool result. */
+export interface ResearchKnowledgeParams {
+  query?: string | undefined
+  pattern?: string | undefined
+}
+
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {
     /** The 资料 (Sources) tab, opened on its sources or scrolled to its claims. */
     'research-sources': ResearchSourcesParams
+    'research-knowledge': ResearchKnowledgeParams
   }
 }
 
@@ -254,6 +261,8 @@ export interface ResearchInjected {
   openSources(section?: ResearchSourcesParams['section']): void
   /** Open the figure gallery (配图灵感) tab beside the conversation. */
   openGallery(): void
+  /** Inspect the current research's graph beside the conversation. */
+  openKnowledge(params?: ResearchKnowledgeParams): void
 }
 
 /**
@@ -270,6 +279,8 @@ export interface ResearchToolInjected {
   }
   /** Open a project file in the conversation's right sidebar; throws when no sidebar is mounted to show it. */
   openProjectFile(root: string, path: string): void
+  /** Open the graph related to this tool call. */
+  openKnowledge(params?: ResearchKnowledgeParams): void
 }
 
 /** Composed props of every research slot entry: the dictionary plus the injected face. */

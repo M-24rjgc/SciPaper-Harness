@@ -32,7 +32,7 @@ Open **Plugins** in the desktop sidebar and enable **Desktop control**. The host
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The bundle patch mounts `dsh-computer-use` and `dsh-computer-use-cua-driver-native` together. It has no mutable runtime state of its own and publishes no invariant companion.
+The bundle patch mounts `dsh-computer-use` and `dsh-computer-use-cua-driver-native` together. No runtime invariant companion is published because this bundle only composes providers; the computer-use service and native driver own runtime state.
 
 -----
 

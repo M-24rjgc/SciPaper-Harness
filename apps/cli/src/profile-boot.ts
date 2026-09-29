@@ -35,6 +35,7 @@ import {
 } from '@deepseek-ai/dsh-app-boot'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { migrateResearchProfile } from '@deepseek-ai/dsh-research-app/migration'
+import { migrateResearchKnowledge } from '@deepseek-ai/dsh-research-app/knowledge-migration'
 import { installProxyFromEnvironment } from '@deepseek-ai/dsh-http-proxy'
 import { DSH_LAUNCH_ENVIRONMENT_KEY, type LaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import { provideCmdline, type AppReady } from '@deepseek-ai/dsh-cmdline'
@@ -204,6 +205,7 @@ async function composeProfile(
 ): Promise<ComposedProfile> {
   let profile = resolvedProfile?.profile ?? prepareProfile(name, true, fromDefaultProfile)
   if (profile.layers.some(layer => layer.packageName === '@deepseek-ai/dsh-research-app')) {
+    await migrateResearchKnowledge(profile.dir)
     await migrateResearchProfile({ home: resolveDshHome(), profileDir: profile.dir })
     profile = loadProfileDirectory(NAME, profile.dir, resolvedProfile?.installAnchor ?? INSTALL_ANCHOR)
   }

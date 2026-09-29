@@ -32,7 +32,7 @@ Open **Plugins** and enable **Perplexity search**. Configure an API key under `P
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The patch selects `perplexity` on the shared `web` service and mounts `@deepseek-ai/dsh-web-search-perplexity`. It has no mutable runtime state of its own and publishes no invariant companion.
+The patch selects `perplexity` on the shared `web` service and mounts `@deepseek-ai/dsh-web-search-perplexity`. No runtime invariant companion is published because this bundle only selects a search provider; the web service and provider own runtime state.
 
 -----
 

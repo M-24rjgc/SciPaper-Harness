@@ -315,6 +315,24 @@ async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent'
 
 Source: [`packages/research/workbench/src/index.ts`](../../packages/research/workbench/src/index.ts)
 
+<a id="ctxresearchknowledge--researchknowledge"></a>
+
+### `ctx.researchKnowledge` — `ResearchKnowledge`
+
+Shared graph engine for all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Execute graph work within both caller and plugin lifetimes.
+ * @param signal - caller cancellation.
+ * @param work - operation over the shared graph engine.
+ * @returns the operation's result.
+ */
+run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) => Promise<T>): Promise<T>
+```
+
+Source: [`packages/research/workbench/src/knowledge-plugin.ts`](../../packages/research/workbench/src/knowledge-plugin.ts)
+
 <a id="research-events"></a>
 
 ### `research/*` events

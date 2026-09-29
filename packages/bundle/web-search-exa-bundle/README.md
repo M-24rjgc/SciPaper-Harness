@@ -32,7 +32,7 @@ Open **Plugins** and enable **Exa search**. Configure an API key under `EXA_API_
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The patch selects `exa` on the shared `web` service and mounts `@deepseek-ai/dsh-web-search-exa`. It has no mutable runtime state of its own and publishes no invariant companion.
+The patch selects `exa` on the shared `web` service and mounts `@deepseek-ai/dsh-web-search-exa`. No runtime invariant companion is published because this bundle only selects a search provider; the web service and provider own runtime state.
 
 -----
 

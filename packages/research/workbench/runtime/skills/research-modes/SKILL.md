@@ -5,6 +5,8 @@ description: Use when choosing how to run research work — the brief says the m
 
 # Modes
 
+Optional capabilities are shared across modes. `research_project current` reports whether the knowledge graph plugin is enabled. When it is, `research-knowledge` provides retrieval, claim comparison and graph construction for every mode. When it is off, use ordinary literature and evidence tools; changing modes never enables a disabled plugin.
+
 Every research has a mode. `research_project` action current names it, says whether it was chosen (`modeChosen`, `modeSetBy`) and whether its route is settled (`routingSettled`); action modes lists what is installed, with each mode's routes and phases.
 
 ## The general mode

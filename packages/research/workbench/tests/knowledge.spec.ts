@@ -11,7 +11,7 @@ afterEach(async () => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
   for (const base of bases.splice(0)) base.dispose()
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+  for (const root of roots.splice(0)) await rm(root, { recursive: true })
 })
 const signal = new AbortController().signal
 
@@ -73,6 +73,46 @@ function embedder(fail: (texts: string[]) => boolean = () => false): Embedder & 
 }
 
 describe('recall', () => {
+  it('keeps a healthy project graph when the built-in graph is missing, and supports direct claims without Spark files', async () => {
+    const root = await temp()
+    const base = new KnowledgeBase(join(root, 'missing.gz')); bases.push(base)
+    const empty = await base.recall(root, 'attention', 5, embedder(), signal)
+    expect(empty.basis).toBe('lexical')
+    expect(empty.patterns).toEqual([])
+    expect(empty.note).toMatch(/No graph is available/)
+    await write(join(root, PROJECT_GRAPH), JSON.stringify({ ...BUILTIN, name: 'custom' }))
+    const result = await base.recall(root, 'sparse attention', 5, undefined, signal)
+    expect(result.patterns[0]?.graph).toBe('custom')
+    const report = await base.novelty(root, 'story.json', 'report.json', undefined, signal, 1_000_000,
+      { claim: 'Sparse attention for long context', references: [{ title: 'Related paper', text: 'Sparse attention reduces kernel cost' }] })
+    expect(report.basis).toMatch(/lexical/)
+    expect(report.risk_level).toBe('unknown')
+    expect(report.top_similar.map(item => item.ref)).toContain('Related paper')
+    expect(JSON.parse(await readFile(join(root, 'report.json'), 'utf8'))).toEqual(report)
+  })
+
+  it('pages real graph relations, filters sources and domains, and isolates corrupt graph files', async () => {
+    const { base } = await builtinBase()
+    const root = await temp()
+    await write(join(root, PROJECT_GRAPH), '{broken')
+    const first = await base.view(root, { source: 'all', limit: 1 })
+    expect(first.graphs.map(graph => graph.source)).toEqual(['ai'])
+    expect(first.warnings.length).toBe(1)
+    expect(first.total).toBe(2)
+    expect(first.hasMore).toBe(true)
+    expect(first.nodes.filter(node => node.kind === 'pattern')).toHaveLength(1)
+    const nodes = new Set(first.nodes.map(node => node.id))
+    expect(first.edges.every(edge => nodes.has(edge.from) && nodes.has(edge.to))).toBe(true)
+    const next = await base.view(root, { offset: 1, limit: 1 })
+    expect(next.hasMore).toBe(false)
+    expect(next.nodes.find(node => node.kind === 'pattern')?.id).not.toBe(first.nodes.find(node => node.kind === 'pattern')?.id)
+    expect((await base.view(root, { source: 'project' })).nodes).toEqual([])
+    expect((await base.view(root, { domain: 'unknown' })).nodes).toEqual([])
+    const search = await base.view(root, { query: 'message passing' })
+    expect(search.nodes.find(node => node.kind === 'pattern')?.label).toBe('Message passing reframed')
+    expect(search.nodes.find(node => node.kind === 'paper')?.url).toMatch(/^https:\/\//)
+  })
+
   it('ranks patterns lexically, says why each was recalled, and lists the closest papers with links', async () => {
     const { base } = await builtinBase()
     const root = await temp()

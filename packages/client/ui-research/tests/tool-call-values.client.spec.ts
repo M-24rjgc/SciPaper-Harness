@@ -197,6 +197,7 @@ describe('what one research call did', () => {
     ['research_media', { action: 'audit-svg', path: 'figures/architecture.svg' }, '检查 SVG 图：figures/architecture.svg'],
     ['research_media', { action: 'export-figure', path: 'figures/architecture.svg' }, '导出矢量图：figures/architecture.svg'],
     ['research_knowledge', { action: 'graph-status' }, '查看图谱状态'],
+    ['research_knowledge', { action: 'graph-view' }, '查看图谱'],
     ['research_knowledge', { action: 'recall', query: 'block-sparse attention at long context', topK: 5 }, '召回相近模式：block-sparse attention at long context'],
     ['research_knowledge', { action: 'novelty' }, '新颖性比对'],
     ['research_knowledge', { action: 'build-graph', papers: 'corpus.jsonl', domain: 'hci' }, '用语料构建图谱'],
@@ -211,7 +212,7 @@ describe('what one research call did', () => {
   it('has a card for every research tool the host registers, and a phrase for every action its definitions declare', () => {
     const tools: { name: string; parameters: { properties?: Record<string, { enum?: string[] }> } }[] = []
     const host = { on: () => () => {}, tools: { register: (tool: (typeof tools)[number]) => { tools.push(tool) } } }
-    registerResearchTools(host as never, {} as never)
+    registerResearchTools(host as never, { knowledgeEnabled: true } as never)
     expect(tools.map(tool => tool.name).sort()).toEqual([...RESEARCH_TOOLS].sort())
     const phrased = new Set(CALLS.map(([tool, args]) => `${tool}:${typeof args.action === 'string' ? args.action : ''}`))
     for (const tool of tools) {

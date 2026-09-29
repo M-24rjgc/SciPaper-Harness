@@ -34,7 +34,7 @@ The desktop plugin page may show this installed bundle, but its switch only affe
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The patch mounts `dsh-ssh`, `dsh-fs-ssh`, `dsh-subprocess-ssh`, and `dsh-sandbox-ssh` as one backend and disables the three local provider rows only in a configured non-desktop process. SSH streams use independent channels on Windows and TLS-PSK authentication. The bundle has no mutable runtime state of its own.
+The patch mounts `dsh-ssh`, `dsh-fs-ssh`, `dsh-subprocess-ssh`, and `dsh-sandbox-ssh` as one backend and disables the three local provider rows only in a configured non-desktop process. SSH streams use independent channels on Windows and TLS-PSK authentication. No runtime invariant companion is published because this bundle only selects the SSH backend; the SSH, filesystem, subprocess and sandbox providers own runtime state.
 
 -----
 

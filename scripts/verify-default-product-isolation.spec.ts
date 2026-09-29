@@ -133,15 +133,17 @@ describe('default product isolation', () => {
     expect(verifyDefaultProductIsolation(root).failures.join('\n')).toContain(`@deepseek-ai/dsh dependencies -> ${experimental}`)
   })
 
-  it('allows research to select the official Schedule bundle while checking its dependency graph', () => {
+  it.each([
+    ['@deepseek-ai/dsh-experimental-schedule-bundle', 'packages/experimental/schedule-bundle'],
+    ['@deepseek-ai/dsh-research-knowledge-bundle', 'packages/bundle/research-knowledge-bundle'],
+  ])('allows research to select %s while checking its dependency graph', (schedule, directory) => {
     const root = fixture()
-    const schedule = '@deepseek-ai/dsh-experimental-schedule-bundle'
     const research = '@deepseek-ai/dsh-research-app'
-    write(root, 'packages/experimental/schedule-bundle/package.json', {
+    write(root, `${directory}/package.json`, {
       name: schedule, icon: './icon.svg', exports: { './locale/*.json': './locale/*.json' },
       dependencies: { [core]: 'workspace:^' }, dsh: { bundle: { patch: './cordis.patch.yml' } },
     })
-    write(root, 'packages/experimental/schedule-bundle/cordis.patch.yml', [])
+    write(root, `${directory}/cordis.patch.yml`, [])
     write(root, 'packages/bundle/research-app/package.json', {
       name: research, dsh: { bundle: { patch: './cordis.patch.yml' } },
     })
@@ -151,7 +153,7 @@ describe('default product isolation', () => {
       + `export const DEFAULT_PROFILE_BUNDLES = ['${base}']\n`
       + `export const OPTIONAL_BUNDLES = ['${schedule}']\n`)
     expect(verifyDefaultProductIsolation(root).failures).toEqual([])
-    manifest(root, 'packages/experimental/schedule-bundle/package.json', { dependencies: { [experimental]: 'workspace:^' } })
+    manifest(root, `${directory}/package.json`, { dependencies: { [experimental]: 'workspace:^' } })
     expect(verifyDefaultProductIsolation(root).failures.join('\n')).toContain(`${schedule} dependencies -> ${experimental}`)
   })
 

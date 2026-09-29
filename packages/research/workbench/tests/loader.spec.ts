@@ -4,6 +4,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ResearchKnowledge from '../src/knowledge-plugin.ts'
 import { pathToFileURL } from 'node:url'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import * as DomainPlugin from '@deepseek-ai/dsh-storage-domain'
@@ -196,6 +197,7 @@ interface Harness {
 }
 
 interface BootOptions {
+  knowledge?: boolean
   componentRoot?: boolean
   /** Sessions already live when the service starts. */
   live?: FakeSession[]
@@ -254,7 +256,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
-    ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['research-mode-skills', ModeSkills],
+    ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['research-mode-skills', ModeSkills], ['research-knowledge-provider', ResearchKnowledge],
     ['skills', SkillRegistry], ['system-prompt', SystemPrompt], ['tools', ToolRuntime],
     ['adapters', { inject: ['storage'], apply(c: Context) {
       const backend = new MemoryStorageBackend(pool)
@@ -366,6 +368,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   await writeFile(configuration, [
     '- name: storage', '- name: adapters', '- name: domain', '  config:', '    backend: memory',
     '- name: skills', '- name: system-prompt', '- name: tools',
+    ...(options.knowledge === false ? [] : ['- id: knowledge-provider', '  name: research-knowledge-provider']),
     ...(options.toolModules ?? [[...RESEARCH_TOOL_MODULES]]).flatMap((modules, index) => [
       `- id: research-tools-${index}`, '  name: research-tools', '  config:', `    modules: ${JSON.stringify(modules)}`,
     ]),
@@ -595,17 +598,63 @@ describe('the research service records; it never drives the agent', () => {
     expect(() => second.service.getProject('missing' as never)).toThrow(/not found/)
   })
 
+  it('withdraws optional graph tools and methods on disable, preserves data, and shares them across modes on re-enable', async () => {
+    root = await mkdtemp(join(tmpdir(), 'research-graph-lifecycle-'))
+    const pool = new MemoryMediaPool()
+    const { service } = await boot(pool)
+    const project = await service.create({ title: 'Graph lifecycle', root: join(root, 'paper'), brief: '' })
+    const marker = join(project.root, '.research/kg/keep.txt')
+    await write(marker, 'retained research data')
+    const tools = () => ctx!.tools.schemas().map(tool => tool.name)
+    const skills = async () => (await ctx!.skills.list({ cwd: project.root })).map(skill => skill.name)
+    const provider = [...ctx!.loader.entries()].find(entry => entry.options.id === 'knowledge-provider')!
+    expect(tools()).toContain('research_knowledge')
+    for (const mode of ['general', 'ccfa', 'spark-to-paper']) {
+      await service.execute({ action: 'set-mode', projectId: project.id, mode }, signal, 'user')
+      expect(await skills()).toContain('research-knowledge')
+      const result = await service.execute({ action: 'novelty', projectId: project.id,
+        claim: 'Compare sparse attention kernels', references: [{ title: 'Attention', text: 'Sparse attention kernels' }],
+        path: `novelty-${mode}.json` }, signal, 'agent')
+      expect(result.content).toContain('lexical')
+    }
+    const inFlight = ctx!.researchKnowledge.run(signal, async (_engine, workSignal) => new Promise<void>((_resolve, reject) => {
+      workSignal.addEventListener('abort', () => { reject(workSignal.reason) }, { once: true })
+    }))
+    const cancelled = expect(inFlight).rejects.toThrow(/disabled/)
+    await Promise.resolve()
+    await provider.update({ disabled: true }); await ctx!.loader.await()
+    await cancelled
+    expect(tools()).not.toContain('research_knowledge')
+    expect(tools()).toContain('research_project')
+    expect(await skills()).not.toContain('research-knowledge')
+    expect((await service.snapshot()).knowledge).toEqual({ enabled: false })
+    await expect(service.execute({ action: 'graph-view', projectId: project.id }, signal, 'agent')).rejects.toThrow(/disabled|enable/i)
+    expect(await readFile(marker, 'utf8')).toBe('retained research data')
+    await provider.update({ disabled: false }); await ctx!.loader.await()
+    expect(tools()).toContain('research_knowledge')
+    expect(await skills()).toContain('research-knowledge')
+    expect((await service.execute({ action: 'graph-view', projectId: project.id, query: 'attention' }, signal, 'user')).knowledgeGraph?.nodes.length).toBeGreaterThan(0)
+    expect(await readFile(marker, 'utf8')).toBe('retained research data')
+    await ctx!.fiber.dispose(); ctx = undefined
+    const restarted = await boot(pool, { knowledge: false })
+    expect(restarted.service.knowledgeEnabled).toBe(false)
+    expect(tools()).not.toContain('research_knowledge')
+    expect((await restarted.service.snapshot()).projects.some(item => item.id === project.id)).toBe(true)
+    expect(await readFile(marker, 'utf8')).toBe('retained research data')
+  })
+
   it('shows a project\'s sessions the skills of its mode, and swaps them when the mode changes', async () => {
     root = await mkdtemp(join(tmpdir(), 'research-skills-'))
     const { service } = await boot(new MemoryMediaPool())
     const names = async (cwd?: string): Promise<string[]> => (await ctx!.skills.list({ cwd })).map(skill => skill.name).sort()
     const p = await service.create({ title: 'Skills', root: join(root, 'p'), brief: '' })
-    // The general mode adds no skills of its own; nothing outside a project gets mode skills either.
-    expect(await names(p.root)).toEqual([])
-    expect(await names(join(root, 'elsewhere'))).toEqual([])
-    expect(await names()).toEqual([])
+    // The graph skill is shared; mode-specific skills still follow the current project's mode.
+    expect(await names(p.root)).toEqual(['research-knowledge'])
+    expect(await names(join(root, 'elsewhere'))).toEqual(['research-knowledge'])
+    expect(await names()).toEqual(['research-knowledge'])
     await service.execute({ projectId: p.id, action: 'set-mode', mode: 'spark-to-paper', route: 'idea' }, signal, 'agent')
     expect(await names(join(p.root, 'paper'))).toEqual([
+      'research-knowledge',
       'ts-figure-svg', 'ts-idea2story', 'ts-kg-build', 'ts-paper', 'ts-paper-cite', 'ts-paper-data', 'ts-paper-experiment',
       'ts-paper-figure', 'ts-paper-latex', 'ts-paper-plan', 'ts-paper-refine', 'ts-paper-review', 'ts-paper-write',
     ])
@@ -614,7 +663,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(loaded?.content).toMatch(/^\s*# spark-to-paper/)
     expect(loaded?.content).not.toMatch(/^---/)
     await service.execute({ projectId: p.id, action: 'set-mode', mode: 'general' }, signal, 'user')
-    expect(await names(p.root)).toEqual([])
+    expect(await names(p.root)).toEqual(['research-knowledge'])
     // A new project in a pack mode lists that pack's skills at once.
     const q = await service.create({ title: 'Direct', root: join(root, 'q'), brief: '', mode: 'spark-to-paper' })
     expect(await names(q.root)).toContain('ts-paper')

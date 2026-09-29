@@ -117,6 +117,15 @@ function parts(element: Element | null): string[] {
 const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }
 
 describe('a research tool call', () => {
+  it('opens a graph result with the query that produced it', () => {
+    const opened: unknown[] = []
+    const block = answered('research_knowledge', { action: 'recall', query: 'sparse attention' }, { message: 'Recalled patterns' })
+    const face = { ...props(block).props, openKnowledge: (params: unknown) => { opened.push(params) } }
+    const view = render(<ResearchToolCard {...face} />)
+    fireEvent.click(view.getByRole('button', { name: zh.kgOpen }))
+    expect(opened).toEqual([{ query: 'sparse attention', pattern: undefined }])
+  })
+
   it('updates a preparing call from the call-local argument hook', () => {
     const block = { phase: 'preparing' as const, callId: 'preparing', name: 'research_evidence', turn: 1, step: 1, time: 1000, subCalls: [] }
     let partial = '{"action":"import","paths":["data/'

@@ -341,9 +341,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'target', description: 'known Session identity or durable direct-parent subagent address to display.' }],
       },
       {
-        signature: 'openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>',
+        signature: 'openWorkspace( workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void, canReuse?: (sessionId: SessionId) => boolean, ): Promise<void>',
         description: 'Connect a Workspace and open its Session unless a later navigation supersedes it.',
-        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'beforeOpen', description: 'optional synchronous preparation for the selected Session, skipped after supersession; a throw aborts the open and releases the retained reference.' }],
+        parameters: [{ name: 'workspaceId', description: 'target Workspace.' }, { name: 'beforeOpen', description: 'optional synchronous preparation for the selected Session, skipped after supersession; a throw aborts the open and releases the retained reference.' }, { name: 'canReuse', description: 'inspect a retained candidate; false creates a fresh Session without changing the candidate\'s draft.' }],
         returns: 'completion; a superseded request may create a Session but does not open it.',
         throws: ['on failure; a refused creation is also shown through the Workspace notice unless a later navigation or disposal superseded the request.'],
       },
@@ -400,7 +400,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Workspace Controller\'s Client service face.',
     methods: [
       {
-        signature: 'create(input: { path: string }): Promise<WorkspaceView>',
+        signature: 'create(input: WorkspaceCreateRequest): Promise<WorkspaceView>',
         description: 'Register an existing path as a Workspace.',
         parameters: [{ name: 'input', description: 'Host create payload.' }],
         returns: 'the created or idempotently resolved Workspace.',
@@ -1032,8 +1032,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type UseFactorySlot<F extends keyof SlotFactoryMap & string> = <N extends FactoryLocalNameOf<F>>(name: N, fallback: FactoryLocalComponent<F, N>) => SlotComponent<FactoryLocalInputPropsOf<F, N>>;',
   },
   {
+    name: 'WorkspaceCreateRequest',
+    declaration: 'export type WorkspaceCreateRequest = {\n    readonly path: string;\n    readonly location?: never;\n} | {\n    readonly location: WorkspaceLocation;\n    readonly path?: never;\n};',
+  },
+  {
     name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly location: WorkspaceLocation;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
 ]
 

@@ -682,11 +682,11 @@ const TOOL_PACKAGES: ToolPackage[] = [
     writes: ['tool/call', 'tool/result', 'the research project ledger'],
     mount(ctx) {
       // The schemas are static; the service is reached only when a tool executes, which harvest never does.
-      registerResearchTools(ctx, {} as never)
+      registerResearchTools(ctx, { knowledgeEnabled: true } as never)
       return Promise.resolve()
     },
     note:
-      'The research edition ships these tools with its research agent preset. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory.',
+      'The research edition ships these tools with its research agent preset; `research_knowledge` is available only while the Research Knowledge Graph plugin is enabled. Each family tool takes an `action` and the typed fields of that action; `projectId` is optional because the project is resolved from the session working directory.',
   },
 ]
 
