@@ -242,17 +242,15 @@ export function SidebarRoot({
           return darwinDesktop || brandAction === 'none'
             ? <span className={clsx(css.brand, css.wide, brandAction === 'none' && css.brandPlain)}>{identity}</span>
             : (
-              <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500}>
-                <button
-                  type="button"
-                  className={clsx(css.brand, css.wide)}
-                  aria-label={t('session.new.label')}
-                  aria-keyshortcuts={newShortcut?.aria}
-                  onClick={() => { startSession() }}
-                >
-                  {identity}
-                </button>
-              </Tooltip>
+              <button
+                type="button"
+                className={clsx(css.brand, css.wide)}
+                aria-label={t('session.new.label')}
+                aria-keyshortcuts={newShortcut?.aria}
+                onClick={() => { startSession() }}
+              >
+                {identity}
+              </button>
             )
         })()}
         {!darwinDesktop && toggle}

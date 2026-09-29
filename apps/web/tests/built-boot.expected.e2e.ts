@@ -132,7 +132,8 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   const writeRow = mutationRows.find(row => row.getAttribute('data-variant') === 'write'
     && row.textContent?.includes('new-demo.txt'))
   if (writeRow === undefined) throw new Error('fixture write row missing')
-  expect(within(writeRow).getAllByText('+1 -0', { exact: true })).toHaveLength(1)
+  expect(within(writeRow).getAllByText('+1', { exact: true })).toHaveLength(1)
+  expect(within(writeRow).getAllByText('-0', { exact: true })).toHaveLength(1)
   expect(writeRow.querySelector('[data-diff]')).toBeNull()
   for (const row of mutationRows) {
     const toggle = row.querySelector('[data-expandable]')
@@ -143,7 +144,8 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   const writeDiff = writeRow.querySelector<HTMLElement>('[data-diff]')
   if (writeDiff === null) throw new Error('expanded fixture write diff missing')
   within(writeDiff).getByText('hello fixture', { exact: true })
-  expect(within(writeRow).getAllByText('+1 -0', { exact: true })).toHaveLength(1)
+  expect(within(writeRow).getAllByText('+1', { exact: true })).toHaveLength(1)
+  expect(within(writeRow).getAllByText('-0', { exact: true })).toHaveLength(1)
   expect(writeDiff.textContent).not.toContain('+1 -0')
 
   // The web render intent reaches the assembled boot graph: the fixture's

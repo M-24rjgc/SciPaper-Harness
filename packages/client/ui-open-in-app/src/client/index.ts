@@ -4,19 +4,23 @@
  * file defaults and application lists come from the serving Host desktop.
  */
 
+import { createElement } from 'react'
+import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-documentpreview/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-files/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import { OPEN_IN_APP_ICON_PREFIX_ROUTE } from '@deepseek-ai/dsh-host-open-in-app/shared'
 import { OpenInAppController } from './controller.ts'
-import { OpenInAppAction, type OpenInAppActionInjected } from './OpenInAppAction.tsx'
+import { OpenInAppAction, type OpenInAppActionInjected, type OpenInAppActionProps } from './OpenInAppAction.tsx'
 import { OpenInAppPathController } from './open-path.ts'
 import { OpenPathAction, type OpenPathInjected } from './OpenPathAction.tsx'
 import { FileRouteAction } from './FileRouteAction.tsx'
@@ -39,8 +43,8 @@ export type { OpenPathEmptyActionProps } from './OpenPathEmptyAction.tsx'
 export const inject = ['sessions', 'slots', 'locale', 'remote', 'remote.session', 'shortcuts', 'layout']
 
 /**
- * Client plugin body: register the dictionaries, the header split button, and
- * the document preview's path controls.
+ * Client plugin body: register dictionaries, workspace directory controls, and
+ * document preview path controls.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -78,23 +82,41 @@ export function apply(ctx: ClientContext): void {
       } }
     },
   }), 'open-in-app: workspace command')
+  const directoryInjected = (): OpenInAppActionInjected => ({
+    hooks: {
+      openInAppApps: controller.apps,
+      openInAppChoice: controller.choice,
+      openInAppLaunch: controller.operation,
+      shortcuts: ctx.shortcuts.catalog,
+    },
+    launch: (appId, path) => controller.launch(appId, path),
+    choose: (appId) => { controller.choose(appId) },
+    iconUrl: appId => `${OPEN_IN_APP_ICON_PREFIX_ROUTE}/${appId}`,
+  })
+  function SessionOpenInAppAction(
+    props: PropsRuntime<'conversation.session.header.utilities'> & Omit<OpenInAppActionProps, 'absolutePath'>,
+  ) {
+    const { sessionId, useSessions } = props
+    const session = useSessions(state => state.byId[sessionId])
+    const cwd = session?.cwd
+    return cwd && session.execution?.kind !== 'ssh' ? createElement(OpenInAppAction, { ...props, absolutePath: cwd }) : null
+  }
+  // A remote workspace's paths do not exist on this machine, so the file tree offers no local opener for them.
+  function FilesOpenInAppAction(
+    props: PropsRuntime<'sidebar.right.tab.files.actions'> & OpenInAppActionProps,
+  ) {
+    const { sessionId, useSessions } = props
+    const local = useSessions(state => state.byId[sessionId]?.execution?.kind !== 'ssh')
+    return local ? createElement(OpenInAppAction, props) : null
+  }
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',
-    id: 'open-in-app',
-    order: -10,
-    locale: NS,
-    inject: (): OpenInAppActionInjected => ({
-      hooks: {
-        openInAppApps: controller.apps,
-        openInAppChoice: controller.choice,
-        openInAppLaunch: controller.operation,
-        shortcuts: ctx.shortcuts.catalog,
-      },
-      launch: (appId, path) => controller.launch(appId, path),
-      choose: (appId) => { controller.choose(appId) },
-      iconUrl: appId => `${OPEN_IN_APP_ICON_PREFIX_ROUTE}/${appId}`,
-    }),
-  }, OpenInAppAction))
+    id: 'open-in-app', order: -10, locale: NS, inject: directoryInjected,
+  }, SessionOpenInAppAction))
+  ctx.slots.inject('sidebar.right.tab.files.actions', () => ctx.slots.register({
+    name: 'sidebar.right.tab.files.actions',
+    id: 'open-in-app', locale: NS, inject: directoryInjected,
+  }, FilesOpenInAppAction))
   const applications: OpenPathInjected['applications'] = (path, signal) => paths.applications(path, signal)
   const pathInjected = (): OpenPathInjected => ({
     hooks: { openInAppDesktop: paths.desktop },

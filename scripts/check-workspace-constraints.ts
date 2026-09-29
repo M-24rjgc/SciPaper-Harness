@@ -64,6 +64,7 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh': ['lib/*.js', 'lib/types/*.d.ts'],
   '@deepseek-ai/dsh-desktop-host': [
     'lib/index.js',
+    'lib/cli.js',
     'lib/office-cli.js',
   ],
   // Sourcemaps stay out by payload policy; the worker-preview surface

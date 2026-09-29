@@ -8,9 +8,11 @@
   "main": "lib/index.js",
   "files": [
     "lib/index.js",
+    "lib/cli.js",
     "lib/office-cli.js"
   ],
   "dependencies": {
+    "koffi": "^3.1.0",
     "@deepseek-ai/libreoffice-kit": "^0.1.1",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh": "workspace:*",
@@ -31,11 +33,16 @@
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*"
   },
+  "devDependencies": {
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/dsh-skill": "workspace:*"
+  },
   "scipaper": {
     "kernel": {
       "name": "deepseek-harness",
-      "version": "0.2.0-rc.1",
-      "revision": "4878cdabd87d4041bdaff61d04c966883b9fd07a"
+      "version": "0.2.0-rc.2",
+      "revision": "639ed015397290b3745d163aafe02ffee4aa3f84"
     }
   }
 }

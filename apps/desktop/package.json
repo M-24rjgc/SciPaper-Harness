@@ -36,7 +36,10 @@
     "upload:mac:arm64": "tsx scripts/upload-target.ts mac-arm64",
     "upload:mac:x64": "tsx scripts/upload-target.ts mac-x64",
     "upload:win:x64": "tsx scripts/upload-target.ts win-x64",
-    "release:github": "tsx scripts/release-github.ts"
+    "release:github": "tsx scripts/release-github.ts",
+    "upload:latest:mac:arm64": "tsx scripts/upload-target.ts mac-arm64 --latest",
+    "upload:latest:mac:x64": "tsx scripts/upload-target.ts mac-x64 --latest",
+    "upload:latest:win:x64": "tsx scripts/upload-target.ts win-x64 --latest"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
@@ -82,8 +85,8 @@
   "scipaper": {
     "kernel": {
       "name": "deepseek-harness",
-      "version": "0.2.0-rc.1",
-      "revision": "4878cdabd87d4041bdaff61d04c966883b9fd07a"
+      "version": "0.2.0-rc.2",
+      "revision": "639ed015397290b3745d163aafe02ffee4aa3f84"
     }
   }
 }
