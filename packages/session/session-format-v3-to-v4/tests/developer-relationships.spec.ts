@@ -45,7 +45,7 @@ describe('V4 developer relationship admission', () => {
     } }
     const input = restore([...begin, system, emptyDeveloper, replacement])
     const session = Session.fromRestore(SessionId(input.header.id), input.events as SessionEvent[],
-      input.header as unknown as SessionHeader, SessionLogOffset(0), 'detached')
+      { ...input.header, version: 5 } as unknown as SessionHeader, SessionLogOffset(0), 'detached')
     expect(session.surface.nodes).toEqual([4, 3])
     expect(session.deriveMessages().map(message => message.id)).toEqual(['replacement'])
     expect(input.events[3]?.data).toEqual(emptyDeveloper.data)

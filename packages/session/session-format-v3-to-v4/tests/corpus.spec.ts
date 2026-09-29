@@ -79,7 +79,7 @@ it('refuses recorded parent/child clock conflicts and migrates consistent copies
         }
         expect(migrate(parent.artifact, aligned), parent.path).toEqual({
           ...parent.artifact,
-          header: { ...parent.artifact.header, version: 4 },
+          header: { ...parent.artifact.header, version: 5, execution: { kind: 'local' } },
           events: parent.artifact.events.map(migrateEvent),
         })
       }

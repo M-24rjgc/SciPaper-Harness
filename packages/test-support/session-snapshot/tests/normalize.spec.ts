@@ -696,7 +696,7 @@ describe('normalizeSessionSnapshot', () => {
     ].join('\n') + '\n'
     expect(normalizeSessionSnapshots([raw], ctx)).toEqual([[
       JSON.stringify({
-        type: 'session', id: '{{session:1}}', createdAt: 0, isSeeded: false, delegationDepth: 0,
+        type: 'session', id: '{{session:1}}', createdAt: 0, isSeeded: false, delegationDepth: 0, execution: { kind: 'local' },
       }),
       JSON.stringify({ type: 'turn/start', data: { turn: 1 } }),
       JSON.stringify({ type: 'step/start', data: { turn: 1, step: 1 } }),

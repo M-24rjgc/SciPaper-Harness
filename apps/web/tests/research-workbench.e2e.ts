@@ -78,9 +78,9 @@ beforeEach(() => { onTestFailed(() => saveFailureShot(page, 'research-workbench-
 /** A line break the folder menu puts after each path separator, so a long path wraps. */
 const WRAP = String.fromCodePoint(0x200b)
 
-/** The research the host records now, the untouched draft marked. */
+/** The person's own researches the host records now, the untouched draft marked; the shipped examples are not among them. */
 async function projects(): Promise<ResearchProject[]> {
-  return (await scaffold.ctx.research.snapshot()).projects
+  return (await scaffold.ctx.research.snapshot()).projects.filter(project => project.example !== true)
 }
 
 /**

@@ -83,7 +83,7 @@ describe('V3 to V4 source preservation', () => {
     expect(JSON.stringify({ header, rows })).toBe(before)
     expect(stage().headerInheritedEventCount).toBe(0)
     expect(migrate([])).toEqual({ events: [], cut: 0 })
-    expect(restore(rows)).toEqual({ header: { ...header, version: 4 }, inheritedEventCount: 0, events: rows })
+    expect(restore(rows)).toEqual({ header: { ...header, version: 5, execution: { kind: 'local' } }, inheritedEventCount: 0, events: rows })
     expect(restore(rows)).toEqual(restore(rows))
   })
 
@@ -163,7 +163,7 @@ describe('V3 to V4 source preservation', () => {
     expect(() => restore([{ ...fact, extra: 1 }])).toThrow(/field|member/)
   })
 
-  it.each([0, 1, 2, 3])('restores a seeded V%i chain, including upstream cardinality changes, and reopens V4', (version) => {
+  it.each([0, 1, 2, 3])('restores a seeded V%i chain, including upstream cardinality changes, and reopens the current format', (version) => {
     const rows = [
       { type: 'turn/start', data: { turn: 1 } },
       { type: 'step/start', data: { turn: 1, step: 1 } },
@@ -181,7 +181,7 @@ describe('V3 to V4 source preservation', () => {
     const reader = createSessionFormatCatalogWithChildren([]).createRestore(physical, { recovery: 'strict', validation: 'current' })
     for (const row of source) reader.decodeRow(version === 3 ? releasedV3SessionFormatCodec.encodeEvent(row) : row)
     const artifact = reader.finish()
-    expect(artifact.header.version).toBe(4)
+    expect(artifact.header.version).toBe(5)
     expect(artifact.inheritedEventCount).toBe(8)
     expect(artifact.events.filter(event => event.type === 'system/message')).toHaveLength(2)
     expect(artifact.events.at(-1)?.seq).toBe(8)
@@ -205,7 +205,7 @@ describe('V3 to V4 source preservation', () => {
 
     const reader = createSessionFormatCatalogWithChildren([]).createRestore(physical, { recovery, validation: 'current' })
     for (const row of rows) reader.decodeRow(row)
-    expect(reader.finish()).toEqual({ ...artifact, header: { ...artifact.header, version: 4 } })
+    expect(reader.finish()).toEqual({ ...artifact, header: { ...artifact.header, version: 5, execution: { kind: 'local' } } })
   })
 
   it.each(['strict', 'recoverable'] as const)('refuses foreign delivery after the final inherited cut during %s restoration', (recovery) => {
