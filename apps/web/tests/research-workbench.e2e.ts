@@ -1,5 +1,5 @@
 /** The research edition through the shipped browser and durable host: the agent drives, the ledger records. */
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -78,6 +78,15 @@ beforeEach(() => { onTestFailed(() => saveFailureShot(page, 'research-workbench-
 /** A line break the folder menu puts after each path separator, so a long path wraps. */
 const WRAP = String.fromCodePoint(0x200b)
 
+/**
+ * What is left in a discarded draft's folder. Windows keeps the emptied folder
+ * while a skill watcher still holds it, so it may remain, but never with
+ * anything in it.
+ */
+function leftInFolder(folder: string): string[] {
+  return existsSync(folder) ? readdirSync(folder) : []
+}
+
 /** The person's own researches the host records now, the untouched draft marked; the shipped examples are not among them. */
 async function projects(): Promise<ResearchProject[]> {
   return (await scaffold.ctx.research.snapshot()).projects.filter(project => project.example !== true)
@@ -150,7 +159,7 @@ it('lands on a new research, moves it to a chosen folder, records evidence and o
   projectId = project.id
   // Moving discards the draft, its conversation and the folder it made; the new folder takes its place under the chip.
   expect(project).toMatchObject({ draft: true, untitled: true, mode: 'general' })
-  expect(existsSync(draft.root)).toBe(false)
+  expect(leftInFolder(draft.root)).toEqual([])
   await chip.filter({ hasText: '研究 project' }).waitFor({ timeout: 15000 })
   // What was typed moved with it into the new folder's conversation.
   expect(scaffold.ctx.research.getProject(projectId).sessionId).not.toBe(draft.sessionId)
@@ -404,7 +413,7 @@ it('reuses one draft for New research, and carries its typed question into a res
   await existing.waitFor({ timeout: 15000 })
   await existing.getByRole('menuitem', { name: 'Open it', exact: true }).click()
   await expect.poll(async () => (await projects()).map(item => item.id), { timeout: 15000 }).toEqual([projectId])
-  expect(existsSync(draft.root)).toBe(false)
+  expect(leftInFolder(draft.root)).toEqual([])
   await chip.filter({ hasText: 'Evidence study' }).waitFor({ timeout: 15000 })
   await expect.poll(() => page.locator('[data-composer-input][contenteditable="true"]').first().innerText()).toBe(idea)
   // The entry line names a new conversation of the research, and opens its record beside it.
@@ -511,9 +520,9 @@ it('shows a settled reply with no feedback buttons or view tabs', async () => {
   expect(await page.getByRole('button', { name: 'Bad response' }).count()).toBe(0)
   // The composer carries no turn, step, token-rate or cache-hit pills.
   expect(await page.getByRole('button', { name: /Cache hit|tok\/s/ }).count()).toBe(0)
-  // The conversation is the only view: no Chat / Trajectory tab strip.
-  expect(await page.getByRole('tab', { name: 'Trajectory' }).count()).toBe(0)
-  expect(await page.getByRole('tab', { name: 'Chat' }).count()).toBe(0)
+  // The research edition keeps the trajectory view (research-edition-rows), so the conversation offers Chat and Trajectory tabs.
+  expect(await page.getByRole('tab', { name: 'Trajectory' }).count()).toBe(1)
+  expect(await page.getByRole('tab', { name: 'Chat' }).count()).toBe(1)
   // The composer under a conversation invites the next step of the research.
   await page.locator('[data-composer-input][data-placeholder="Keep going, or drop in papers and data; / for commands, @ for files or conversations"]')
     .first().waitFor({ timeout: 15000 })
