@@ -20,8 +20,12 @@ import type { ResearchKey } from './locales.ts'
 import { NoResearch, type ResearchTabProps } from './Tabs.tsx'
 import styles from './Rail.module.css'
 
-/** Runs that still occupy a supervisor, and therefore may still be moving. */
-const OPEN_RUN_STATUS = ['queued', 'running', 'unknown']
+/**
+ * Runs being started or running, which the 实验 row calls running. A run
+ * whose state is unconfirmed is not among them: its launch reply was lost,
+ * so the row says 状态待确认 for it, as its card and the board do.
+ */
+const MOVING_RUN_STATUS: readonly string[] = ['queued', 'running']
 /** The phase id both mode packs give their experiments; its presence on the route is what makes runs expected. */
 const EXPERIMENTS_PHASE = 'experiments'
 /** Groups of open issues listed; the rest wait for the next check or the conversation. */
@@ -352,14 +356,17 @@ function CountRow(props: CountRowProps): ReactNode {
 /**
  * 资料 · 论点 · 文件 · 实验 (Sources, claims, files, experiments), each
  * opening its tab beside the conversation and named as that tab is. 实验
- * shows only on a route with an experiments phase, or once a run exists.
+ * shows only on a route with an experiments phase, or once a run exists;
+ * it says 状态待确认 in the needs-you colour while a run's state is
+ * unconfirmed, and 运行中 while one is being started or running.
  */
 function Counts(props: RecordProps): ReactNode {
   const { project, t } = props
   const modes = useModes(props)
   const opening = useAction()
   const stale = project.evidence.filter(item => item.stale).length
-  const openRuns = project.experiments.filter(run => OPEN_RUN_STATUS.includes(run.status)).length
+  const unconfirmed = project.experiments.some(run => run.status === 'unknown')
+  const moving = project.experiments.some(run => MOVING_RUN_STATUS.includes(run.status))
   const runsExpected = project.experiments.length > 0 || modePhases(modes, project).includes(EXPERIMENTS_PHASE)
   return <section className={styles.counts}>
     <CountRow
@@ -374,7 +381,10 @@ function Counts(props: RecordProps): ReactNode {
       label={t('railExperimentsLabel')}
       value={project.experiments.length === 0 ? t('railNotStarted') : String(project.experiments.length)}
       onOpen={() => { props.openBoard() }}
-      {...(openRuns > 0 ? { badge: <span className={styles.runningTag}>{t('runRunning')}</span> } : {})}
+      badge={<>
+        {unconfirmed && <span className={styles.unconfirmedTag}>{t('unknown')}</span>}
+        {moving && <span className={styles.runningTag}>{t('runRunning')}</span>}
+      </>}
     />}
     <ActionError t={t} error={opening.error} />
   </section>
