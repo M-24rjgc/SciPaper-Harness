@@ -34,6 +34,7 @@ import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/t
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
 import type { WebScaffold } from './scaffold.ts'
 import { launchResearchScaffold } from './research-scaffold.ts'
+import { REPO_ROOT } from './support.ts'
 
 const HOME = process.env.DSH_RESEARCH_DEMO_HOME
 const TEX_BIN = process.env.DSH_RESEARCH_TEST_TEX_BIN
@@ -332,9 +333,12 @@ it.skipIf(!HOME)('generates the example projects into the Research Workbench hom
 
   const overlay = join(backup, 'overlay.yml')
   await writeFile(overlay, '- id: agent-default-model\n  config:\n    provider: deepseek-official\n    model: deepseek-flash\n')
-  // The examples are made in the research edition as shipped, none of the inherited rows it turns off.
+  // The examples are made in the research edition as shipped, none of the inherited rows it turns off,
+  // with the shared knowledge graph bundle the shipped profiles compose (the CCFA idea phase recalls from it).
+  const knowledge = join(REPO_ROOT, 'packages/bundle/research-knowledge-bundle')
   const scaffold: WebScaffold = await launchResearchScaffold({
-    extraOverlayPath: overlay,
+    extraInstallAnchors: [join(knowledge, 'package.json')],
+    extraOverlayPath: [join(knowledge, 'cordis.patch.yml'), overlay],
   })
   const transcript: string[] = []
   const toolErrors: string[] = []
