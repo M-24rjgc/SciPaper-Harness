@@ -19,9 +19,9 @@ A desktop research agent that reads the literature, runs your experiments and wr
 
 <p align="center"><a href="https://github.com/M-24rjgc/SciPaper-Harness/releases"><strong>Download for Windows</strong></a></p>
 
-<a href="https://github.com/M-24rjgc/SciPaper-Harness/releases/download/v0.2.0-alpha.7/scipaper-harness-promo-90s.mp4"><img src="docs/assets/readme/promo.jpg" width="720" alt="Watch the 90-second introduction"></a>
+https://github.com/user-attachments/assets/31070dc4-7744-4b20-a822-a7739fcbc639
 
-<sub>▶ Watch the 90-second introduction (Chinese captions with English subtitles)</sub>
+<sub>The 90-second introduction (Chinese captions with English subtitles)</sub>
 
 </div>
 

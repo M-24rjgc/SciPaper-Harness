@@ -19,9 +19,9 @@
 
 <p align="center"><a href="https://github.com/M-24rjgc/SciPaper-Harness/releases"><strong>下载 Windows 版</strong></a></p>
 
-<a href="https://github.com/M-24rjgc/SciPaper-Harness/releases/download/v0.2.0-alpha.7/scipaper-harness-promo-90s.mp4"><img src="docs/assets/readme/promo.jpg" width="720" alt="观看 90 秒介绍视频"></a>
+https://github.com/user-attachments/assets/31070dc4-7744-4b20-a822-a7739fcbc639
 
-<sub>▶ 观看 90 秒介绍视频（中文字幕，附英文小字）</sub>
+<sub>90 秒介绍视频（中文字幕，附英文小字）</sub>
 
 </div>
 
