@@ -20,6 +20,10 @@ export const FILE_GENERIC_WRITE = 0x00120116
 export const DELETE = 0x00010000
 /** Delete or rename a directory child. */
 export const FILE_DELETE_CHILD = 0x0040
+/** Change an object's DACL; an object's owner holds it implicitly. */
+export const WRITE_DAC = 0x00040000
+/** Change an object's owner or its mandatory label; ownership does not imply it. */
+export const WRITE_OWNER = 0x00080000
 /**
  * Capability-SID access mask granting write, delete, and child deletion.
  * WRITE_DAC and WRITE_OWNER stay excluded so a confined child cannot rewrite
@@ -105,6 +109,12 @@ export const FILE_SHARE_WRITE = 0x00000002
 export const FILE_SHARE_DELETE = 0x00000004
 /** CreateFile disposition that opens or creates the file. */
 export const OPEN_ALWAYS = 4
+/** CreateFile disposition that opens only an existing object. */
+export const OPEN_EXISTING = 3
+/** CreateFile flag that lets the call open a directory handle. */
+export const FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
+/** Win32 error reported when an access check refuses the requested rights. */
+export const ERROR_ACCESS_DENIED = 5
 /** LockFileEx exclusive-lock flag. */
 export const LOCKFILE_EXCLUSIVE_LOCK = 0x2
 /** LockFileEx immediate-failure flag. */

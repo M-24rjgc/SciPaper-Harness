@@ -27,6 +27,8 @@ int wmain()
   P(STANDARD_RIGHTS_WRITE);
   P(DELETE);
   P(FILE_DELETE_CHILD);
+  P(WRITE_DAC);
+  P(WRITE_OWNER);
   P(((FILE_GENERIC_WRITE | DELETE | FILE_DELETE_CHILD) & ~STANDARD_RIGHTS_WRITE));
   P(FILE_SHARE_READ);
   P(FILE_SHARE_WRITE);
@@ -34,6 +36,9 @@ int wmain()
   P(GENERIC_READ);
   P(GENERIC_WRITE);
   P(OPEN_ALWAYS);
+  P(OPEN_EXISTING);
+  P(FILE_FLAG_BACKUP_SEMANTICS);
+  P(ERROR_ACCESS_DENIED);
   P(LOCKFILE_EXCLUSIVE_LOCK);
   P(LOCKFILE_FAIL_IMMEDIATELY);
   P(ERROR_LOCK_VIOLATION);
@@ -84,6 +89,9 @@ int wmain()
   static_assert(((FILE_GENERIC_WRITE | DELETE | FILE_DELETE_CHILD) & ~STANDARD_RIGHTS_WRITE) == 0x110156, "sandbox grant mask");
   static_assert(FILE_SHARE_READ == 0x1 && FILE_SHARE_WRITE == 0x2 && FILE_SHARE_DELETE == 0x4, "share modes");
   static_assert(OPEN_ALWAYS == 4, "open always");
+  static_assert(WRITE_DAC == 0x40000 && WRITE_OWNER == 0x80000, "security-descriptor write rights");
+  static_assert(OPEN_EXISTING == 3 && FILE_FLAG_BACKUP_SEMANTICS == 0x02000000, "directory handle open");
+  static_assert(ERROR_ACCESS_DENIED == 5, "access denied");
   static_assert(LOCKFILE_EXCLUSIVE_LOCK == 0x2 && LOCKFILE_FAIL_IMMEDIATELY == 0x1, "lockfile flags");
   static_assert(ERROR_LOCK_VIOLATION == 33, "lock violation");
   static_assert(INHERITED_ACE == 0x10, "inherited ace flag");

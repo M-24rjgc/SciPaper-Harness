@@ -9,9 +9,11 @@
  * whose per-test lock file is removed in cleanup.
  */
 
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Win32Error } from '@deepseek-ai/dsh-win32-process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import koffi from 'koffi'
 
@@ -26,6 +28,12 @@ const isWin32 = process.platform === 'win32'
 
 /** FILE_READ_DATA (winnt.h line ~5895): the harmless mask the explicit test ACE grants. */
 const FILE_READ_DATA = 0x0001
+
+/** The "Modify" file mask (0x1301BF): read, write, execute and delete, without WRITE_DAC or WRITE_OWNER. */
+const FILE_MODIFY = 0x001301BF
+
+/** SECURITY_INFORMATION flag that stops the DACL from inheriting its parent's ACEs. */
+const PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
 
 /** koffi SID layout: revision@0, subAuthorityCount@1, identifierAuthority@2 (6 bytes, big-endian), subAuthority@8. */
 const SID_STRUCT = koffi.struct('DSH_ACL_SPEC_SID', {
@@ -202,6 +210,34 @@ function readTypedAces(api: Win32Bindings, path: string): TypedAce[] {
   }
 }
 
+/** The signed-in account's SID string, as `whoami` reports it. */
+function currentUserSid(): string {
+  const row = execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true })
+  const sid = /"(S-1-[\d-]+)"\s*$/u.exec(row.trim())?.[1]
+  if (sid === undefined) throw new Error(`whoami reported no user SID: ${row}`)
+  return sid
+}
+
+/**
+ * Replace the directory's DACL with a protected one holding exactly
+ * `entries` (inheritable to subfolders and files). The owner is untouched:
+ * the test account keeps its implicit READ_CONTROL and WRITE_DAC, which is
+ * what lets it set the DACL again afterwards.
+ */
+function setProtectedDacl(api: Win32Bindings, path: string, entries: Array<{ sid: NativePtr; mask: number }>): void {
+  const newAclSlot = allocPtrSlot()
+  const packed = Buffer.concat(entries.map(entry => buildExplicitAccess(entry.sid, abi.GRANT_ACCESS, entry.mask)))
+  const mergeResult = api.setEntriesInAclW(entries.length, packed, null, newAclSlot)
+  expect(mergeResult, `SetEntriesInAclW setup (${mergeResult})`).toBe(abi.ERROR_SUCCESS)
+  const newAcl = decodePtr(newAclSlot)
+  expect(newAcl).not.toBeNull()
+  const applyResult = api.setNamedSecurityInfoW(
+    path, abi.SE_FILE_OBJECT, (abi.DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION) >>> 0, null, null, newAcl, null,
+  )
+  if (newAcl !== null) api.localFree(newAcl)
+  expect(applyResult, `SetNamedSecurityInfoW setup (${applyResult})`).toBe(abi.ERROR_SUCCESS)
+}
+
 describe.skipIf(!isWin32)('ACL editing', () => {
   const scratchDirs: string[] = []
   afterEach(() => {
@@ -333,6 +369,47 @@ describe.skipIf(!isWin32)('ACL editing', () => {
       if (!isNullPtr(capabilitySid)) api.localFree(capabilitySid)
       if (!isNullPtr(lowSid)) api.localFree(lowSid)
       if (!isNullPtr(world)) api.localFree(world)
+    }
+  })
+
+  it('a folder that grants the account only Modify refuses the grant unchanged and names WRITE_OWNER; Full control lets the same grant through', async () => {
+    // The DACL a folder created directly on a non-system drive root (D:\) inherits:
+    // Authenticated Users Modify; the creating account owns it and holds only
+    // its implicit READ_CONTROL and WRITE_DAC, never WRITE_OWNER.
+    const api = await win32()
+    const dir = scratch()
+    const authenticatedUsers = sidFromString(api, 'S-1-5-11')
+    const account = sidFromString(api, currentUserSid())
+    const capabilitySid = sidFromString(api, 'S-1-4-4242-31')
+    const lowSid = lowLabelSid(api)
+    const world = worldSid(api)
+    try {
+      setProtectedDacl(api, dir, [{ sid: authenticatedUsers, mask: FILE_MODIFY }])
+      let caught: unknown
+      try {
+        grantWrite(api, dir, capabilitySid, lowSid, world)
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(Win32Error)
+      expect((caught as Win32Error).api).toBe('SetNamedSecurityInfoW')
+      expect((caught as Win32Error).win32Code).toBe(5)
+      expect((caught as Win32Error).message).toContain(`grantWrite(${dir}): the signed-in account lacks WRITE_OWNER on this folder`)
+      expect((caught as Win32Error).message).not.toContain('WRITE_DAC')
+      // Nothing was applied: no capability ACE, no ambient-delete deny, no label.
+      expect(readDirectAces(api, dir).map(ace => ace.sid)).toEqual(['S-1-5-11'])
+      expect(readLabelAces(api, dir)).toEqual([])
+
+      // The remedy the error names: Full control for the account.
+      setProtectedDacl(api, dir, [{ sid: authenticatedUsers, mask: FILE_MODIFY }, { sid: account, mask: abi.FILE_ALL_ACCESS }])
+      grantWrite(api, dir, capabilitySid, lowSid, world)
+      expect(readDirectAces(api, dir).some(ace => ace.sid === 'S-1-4-4242-31')).toBe(true)
+      expect(readLabelAces(api, dir)).toEqual([{ sid: 'S-1-16-4096', mask: abi.SYSTEM_MANDATORY_LABEL_NO_WRITE_UP }])
+      revokeWrite(api, dir, capabilitySid)
+    } finally {
+      for (const sid of [authenticatedUsers, account, capabilitySid, lowSid, world]) {
+        if (!isNullPtr(sid)) api.localFree(sid)
+      }
     }
   })
 

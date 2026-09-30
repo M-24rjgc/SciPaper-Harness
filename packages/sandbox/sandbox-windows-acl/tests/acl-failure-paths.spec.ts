@@ -510,6 +510,106 @@ describe('mergeAndApply failure paths', () => {
   })
 })
 
+describe('a refused apply names the missing caller right', () => {
+  /** The open a probe issues for one right: shared, existing-only, directory handle. */
+  const PROBE_SHARE = abi.FILE_SHARE_READ | abi.FILE_SHARE_WRITE | abi.FILE_SHARE_DELETE
+
+  /**
+   * A stub whose SetNamedSecurityInfoW apply returns `applyCode` and whose
+   * directory probes answer per right: a Win32 code refuses that right's
+   * open with the code, an absent entry opens a probe handle (13n). The lock
+   * file open keeps its ordinary handle (7n).
+   */
+  function refusedApi(applyCode: number, refusals: { writeDac?: number; writeOwner?: number }, overrides: Partial<Win32Bindings> = {}) {
+    let lastError = 0
+    const closeHandle = vi.fn((_handle: NativePtr) => 1)
+    const createFileW = vi.fn((_name: string, access: number) => {
+      if (access !== abi.WRITE_DAC && access !== abi.WRITE_OWNER) return 7n as NativePtr
+      const refused = access === abi.WRITE_DAC ? refusals.writeDac : refusals.writeOwner
+      if (refused === undefined) return 13n as NativePtr
+      lastError = refused
+      return -1n as NativePtr // INVALID_HANDLE_VALUE
+    })
+    const api = aclApi({
+      setNamedSecurityInfoW: vi.fn(() => applyCode),
+      createFileW,
+      closeHandle,
+      getLastError: vi.fn(() => lastError),
+      ...overrides,
+    })
+    return { api, createFileW, closeHandle }
+  }
+
+  /** Run `action` and return the Win32Error it throws. */
+  function refusal(action: () => unknown): Win32Error {
+    try {
+      action()
+    } catch (error) {
+      if (error instanceof Win32Error) return error
+      throw error
+    }
+    throw new Error('expected the apply to be refused')
+  }
+
+  it('names WRITE_OWNER when the owner holds only its implicit WRITE_DAC (a Modify-only folder)', () => {
+    const { api, createFileW, closeHandle } = refusedApi(abi.ERROR_ACCESS_DENIED, { writeOwner: abi.ERROR_ACCESS_DENIED })
+    const error = refusal(() => { grantWrite(api, 'D:\\Research', craftSid(1, 0), craftLowLabelSid(), craftWorldSid()) })
+    expect(error.api).toBe('SetNamedSecurityInfoW')
+    expect(error.win32Code).toBe(abi.ERROR_ACCESS_DENIED)
+    expect(error.message).toContain('grantWrite(D:\\Research): the signed-in account lacks WRITE_OWNER on this folder, which the sandbox needs to write the folder\'s integrity label')
+    expect(error.message).toContain('The folder was not changed. Give the account Full control of this folder, its subfolders and files')
+    expect(error.message).not.toContain('WRITE_DAC')
+    expect(createFileW).toHaveBeenCalledWith('D:\\Research', abi.WRITE_DAC, PROBE_SHARE, null, abi.OPEN_EXISTING, abi.FILE_FLAG_BACKUP_SEMANTICS, null)
+    expect(createFileW).toHaveBeenCalledWith('D:\\Research', abi.WRITE_OWNER, PROBE_SHARE, null, abi.OPEN_EXISTING, abi.FILE_FLAG_BACKUP_SEMANTICS, null)
+    expect(closeHandle).toHaveBeenCalledWith(13n) // the WRITE_DAC probe handle
+  })
+
+  it('names both rights and the ownership remedy when the account may not change the permissions at all', () => {
+    const { api } = refusedApi(abi.ERROR_ACCESS_DENIED, { writeDac: abi.ERROR_ACCESS_DENIED, writeOwner: abi.ERROR_ACCESS_DENIED })
+    const error = refusal(() => { grantWrite(api, 'D:\\Shared', craftSid(1, 0), craftLowLabelSid(), craftWorldSid()) })
+    expect(error.message).toContain('grantWrite(D:\\Shared): the signed-in account lacks WRITE_DAC and WRITE_OWNER on this folder, so it may not change the folder\'s permissions')
+    expect(error.message).toContain('Use a folder the account owns with Full control')
+  })
+
+  it('leaves the error unattributed when every needed right opens', () => {
+    const { api, closeHandle } = refusedApi(abi.ERROR_ACCESS_DENIED, {})
+    const error = refusal(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0), craftLowLabelSid(), craftWorldSid()) })
+    expect(error.message).toBe('SetNamedSecurityInfoW failed (Win32 5): grantWrite(C:\\granted)')
+    expect(closeHandle.mock.calls.filter(([handle]) => handle === 13n)).toHaveLength(2)
+  })
+
+  it('leaves the error unattributed when a probe open fails for another reason', () => {
+    const { api } = refusedApi(abi.ERROR_ACCESS_DENIED, { writeOwner: 32 }) // ERROR_SHARING_VIOLATION
+    const error = refusal(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0), craftLowLabelSid(), craftWorldSid()) })
+    expect(error.message).toBe('SetNamedSecurityInfoW failed (Win32 5): grantWrite(C:\\granted)')
+  })
+
+  it('does not probe an apply refused with another code', () => {
+    const { api, createFileW } = refusedApi(1307, { writeOwner: abi.ERROR_ACCESS_DENIED }) // ERROR_INVALID_OWNER
+    const error = refusal(() => { grantWrite(api, 'C:\\granted', craftSid(1, 0), craftLowLabelSid(), craftWorldSid()) })
+    expect(error.message).toBe('SetNamedSecurityInfoW failed (Win32 1307): grantWrite(C:\\granted)')
+    expect(createFileW).toHaveBeenCalledTimes(1) // the lock file only
+  })
+
+  it('probes only WRITE_DAC for a revoke that keeps the shared label', () => {
+    const sid = craftSid(1, 0)
+    const otherSid = craftSid(1, 0, [0, 0, 0, 0, 0, 6])
+    const { api, createFileW } = refusedApi(
+      abi.ERROR_ACCESS_DENIED,
+      { writeDac: abi.ERROR_ACCESS_DENIED, writeOwner: abi.ERROR_ACCESS_DENIED },
+      {
+        getNamedSecurityInfoW: readStub(
+          craftPair(otherSid, craftWorldSid(), abi.ACCESS_DENIED_ACE_TYPE, abi.FILE_DELETE_CHILD, true, true), null, 6n,
+        ),
+      },
+    )
+    const error = refusal(() => revokeWrite(api, 'C:\\granted', sid))
+    expect(error.message).toContain('revokeWrite(C:\\granted): the signed-in account lacks WRITE_DAC on this folder')
+    expect(error.message).not.toContain('WRITE_OWNER')
+    expect(createFileW.mock.calls.some(([, access]) => access === abi.WRITE_OWNER)).toBe(false)
+  })
+})
+
 describe('revokeWrite label handling', () => {
   /** The SECURITY_INFORMATION and SACL of the last apply. */
   function applyArgs(setNamedSecurityInfoW: Mock<Win32Bindings['setNamedSecurityInfoW']>): { information: number; sacl: unknown } {
