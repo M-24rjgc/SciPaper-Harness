@@ -44,8 +44,10 @@ describe('V4 developer relationship admission', () => {
       ...coordinates, message: { id: 'replacement', role: 'system', source: { kind: 'system-prompt' }, content: [{ type: 'text', text: 'Updated' }] },
     } }
     const input = restore([...begin, system, emptyDeveloper, replacement])
+    // The released V4 artifact is adopted into the current header: the same identity, in the current format.
+    const current: SessionHeader = { version: 5, id: SessionId(input.header.id), createdAt: 1, isSeeded: false, delegationDepth: 0 }
     const session = Session.fromRestore(SessionId(input.header.id), input.events as SessionEvent[],
-      { ...input.header, version: 5 } as unknown as SessionHeader, SessionLogOffset(0), 'detached')
+      current, SessionLogOffset(0), 'detached')
     expect(session.surface.nodes).toEqual([4, 3])
     expect(session.deriveMessages().map(message => message.id)).toEqual(['replacement'])
     expect(input.events[3]?.data).toEqual(emptyDeveloper.data)

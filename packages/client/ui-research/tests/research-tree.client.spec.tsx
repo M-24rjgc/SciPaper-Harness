@@ -256,7 +256,8 @@ describe('what the tree lists', () => {
     expect(tree.face.commands).toEqual([])
     expect(keys()).not.toContain(`add:${summary.id}`)
     expect(keys()).not.toContain(`add:${attention.id}`)
-  })
+    // Installing the shipped example files takes longer than the default five seconds on a hosted Windows runner.
+  }, 30000)
 
   it('keeps text and attachment drafts reachable while hiding empty non-current conversations', async () => {
     const world: World = {
