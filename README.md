@@ -37,7 +37,7 @@ Two methods are built in: spark-to-paper and CCFA each guide a whole paper phase
 
 A one-line idea, a proposal, or a folder of PDFs, data and logs is enough. Every research gets a folder of its own, which you can change until the first message is sent. The switch in the composer sets how often the agent asks you: **Checkpoints** stop at key decisions, **Automatic** carries the paper through on its own.
 
-![The composer's autonomy switch: Checkpoints or Automatic](docs/assets/readme/entry.en.png)
+![The start screen: this research's folder, example prompts, and the Checkpoints switch beside the composer](docs/assets/readme/entry.en.png)
 
 At a fork the agent stops with a short question, its recommendation first and each option's trade-off beside it. Its checks only tell you what is still missing; they never stop you.
 
