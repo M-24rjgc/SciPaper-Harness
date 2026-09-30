@@ -153,6 +153,40 @@ it('shows fallback progress and error details when the shell omits optional fiel
   } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }
 })
 
+it('draws a progress bar that follows the download, stays full while verifying, and is absent otherwise', async () => {
+  const f = fixture()
+  try {
+    await f.emit(available)
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    await f.emit({ phase: 'downloading', version: available.version, percent: 58.4 })
+    const bar = screen.getByRole('progressbar', { name: '更新下载进度' })
+    expect(bar.getAttribute('aria-valuenow')).toBe('58')
+    expect(bar.getAttribute('aria-valuemin')).toBe('0')
+    expect(bar.getAttribute('aria-valuemax')).toBe('100')
+    expect((bar.firstElementChild as HTMLElement).style.inlineSize).toBe('58.4%')
+    await f.emit({ phase: 'downloading', version: available.version, percent: 140 })
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100')
+    await f.emit({ phase: 'downloading', version: available.version, percent: -5 })
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0')
+    await f.emit({ phase: 'downloading' })
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('0')
+    await f.emit({ phase: 'verifying', version: available.version })
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100')
+    f.view.rerender(<f.Indicator dictionary={en} />)
+    expect(screen.getByRole('progressbar', { name: 'Update download progress' })).toBeTruthy()
+    await f.emit({ phase: 'error', version: available.version, failure: 'download' })
+    expect(screen.queryByRole('progressbar')).toBeNull()
+  } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }
+})
+
+it('draws no progress bar when the bridge itself failed', async () => {
+  const f = fixture()
+  await act(async () => { f.status.reject(new Error('IPC unavailable')) })
+  expect(screen.getByRole('button', { name: '重试更新' })).toBeTruthy()
+  expect(screen.queryByRole('progressbar')).toBeNull()
+  f.view.unmount()
+})
+
 it.each(['checking', 'verifying', 'installing'] as const)('shows only the version during %s in both locales', async (phase) => {
   const f = fixture()
   try {

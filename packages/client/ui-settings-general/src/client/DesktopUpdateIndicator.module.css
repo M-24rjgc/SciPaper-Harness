@@ -1,4 +1,6 @@
 .indicator {
+  position: relative;
+  overflow: hidden;
   display: inline-grid;
   grid-template-columns: 14px max-content;
   align-items: center;
@@ -37,6 +39,23 @@
   corner-shape: round;
   background: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
 }
+
+.track {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary-new-colorprimary-new-color) 18%, transparent);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  background: var(--dsw-alias-brand-primary-new-colorprimary-new-color);
+  transition: inline-size 0.3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
 
 .errorDot { background: currentColor; width: 6px; height: 6px; border-radius: 50%; corner-shape: round; }
 .spinner { animation: spin 1s linear infinite; }
