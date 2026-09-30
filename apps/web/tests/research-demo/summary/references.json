@@ -1,0 +1,188 @@
+[
+ {
+  "key": "laban2022summac",
+  "doi": "10.1162/tacl_a_00453",
+  "title": "SummaC: Re-Visiting NLI-based Models for Inconsistency Detection in Summarization",
+  "year": 2022
+ },
+ {
+  "key": "fabbri2022qafacteval",
+  "doi": "10.18653/v1/2022.naacl-main.187",
+  "title": "QAFactEval: Improved QA-Based Factual Consistency Evaluation for Summarization",
+  "year": 2022
+ },
+ {
+  "key": "kryscinski2020factcc",
+  "doi": "10.18653/v1/2020.emnlp-main.750",
+  "title": "Evaluating the Factual Consistency of Abstractive Text Summarization",
+  "year": 2020
+ },
+ {
+  "key": "wang2020qags",
+  "doi": "10.18653/v1/2020.acl-main.450",
+  "title": "Asking and Answering Questions to Evaluate the Factual Consistency of Summaries",
+  "year": 2020
+ },
+ {
+  "key": "durmus2020feqa",
+  "doi": "10.18653/v1/2020.acl-main.454",
+  "title": "FEQA: A Question Answering Evaluation Framework for Faithfulness Assessment in Abstractive Summarization",
+  "year": 2020
+ },
+ {
+  "key": "maynez2020faithfulness",
+  "doi": "10.18653/v1/2020.acl-main.173",
+  "title": "On Faithfulness and Factuality in Abstractive Summarization",
+  "year": 2020
+ },
+ {
+  "key": "fabbri2021summeval",
+  "doi": "10.1162/tacl_a_00373",
+  "title": "SummEval: Re-evaluating Summarization Evaluation",
+  "year": 2021
+ },
+ {
+  "key": "pagnoni2021frank",
+  "doi": "10.18653/v1/2021.naacl-main.383",
+  "title": "Understanding Factuality in Abstractive Summarization with FRANK: A Benchmark for Factuality Metrics",
+  "year": 2021
+ },
+ {
+  "key": "goyal2021dae",
+  "doi": "10.18653/v1/2021.naacl-main.114",
+  "title": "Annotating and Modeling Fine-grained Factuality in Summarization",
+  "year": 2021
+ },
+ {
+  "key": "honovich2022true",
+  "doi": "10.18653/v1/2022.naacl-main.287",
+  "title": "TRUE: Re-evaluating Factual Consistency Evaluation",
+  "year": 2022
+ },
+ {
+  "key": "zha2023alignscore",
+  "doi": "10.18653/v1/2023.acl-long.634",
+  "title": "AlignScore: Evaluating Factual Consistency with A Unified Alignment Function",
+  "year": 2023
+ },
+ {
+  "key": "lewis2020bart",
+  "doi": "10.18653/v1/2020.acl-main.703",
+  "title": "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension",
+  "year": 2020
+ },
+ {
+  "key": "kryscinski2022booksum",
+  "doi": "10.18653/v1/2022.findings-emnlp.488",
+  "title": "BOOKSUM: A Collection of Datasets for Long-form Narrative Summarization",
+  "year": 2022
+ },
+ {
+  "key": "huang2021govreport",
+  "doi": "10.18653/v1/2021.naacl-main.112",
+  "title": "Efficient Attentions for Long Document Summarization",
+  "year": 2021
+ },
+ {
+  "key": "cohan2018discourse",
+  "doi": "10.18653/v1/N18-2097",
+  "title": "A Discourse-Aware Attention Model for Abstractive Summarization of Long Documents",
+  "year": 2018
+ },
+ {
+  "key": "krishna2023longeval",
+  "doi": "10.18653/v1/2023.eacl-main.121",
+  "title": "LongEval: Guidelines for Human Evaluation of Faithfulness in Long-form Summarization",
+  "year": 2023
+ },
+ {
+  "key": "min2023factscore",
+  "doi": "10.18653/v1/2023.emnlp-main.741",
+  "title": "FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation",
+  "year": 2023
+ },
+ {
+  "key": "liu2023geval",
+  "doi": "10.18653/v1/2023.emnlp-main.153",
+  "title": "G-Eval: NLG Evaluation using Gpt-4 with Better Human Alignment",
+  "year": 2023
+ },
+ {
+  "key": "laban2023summedits",
+  "doi": "10.18653/v1/2023.emnlp-main.600",
+  "title": "SummEdits: Measuring LLM Ability at Factual Reasoning Through The Lens of Summarization",
+  "year": 2023
+ },
+ {
+  "key": "williams2018mnli",
+  "doi": "10.18653/v1/N18-1101",
+  "title": "A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference",
+  "year": 2018
+ },
+ {
+  "key": "cao2021cliff",
+  "doi": "10.18653/v1/2021.emnlp-main.532",
+  "title": "CLIFF: Contrastive Learning for Improving Faithfulness and Factuality in Abstractive Summarization",
+  "year": 2021
+ },
+ {
+  "key": "nan2021entity",
+  "doi": "10.18653/v1/2021.eacl-main.235",
+  "title": "Entity-level Factual Consistency of Abstractive Text Summarization",
+  "year": 2021
+ },
+ {
+  "key": "liu2023rose",
+  "doi": "10.18653/v1/2023.acl-long.228",
+  "title": "Revisiting the Gold Standard: Grounding Summarization Evaluation with Robust Human Evaluation",
+  "year": 2023
+ },
+ {
+  "key": "grenander2019leadbias",
+  "doi": "10.18653/v1/D19-1620",
+  "title": "Countering the Effects of Lead Bias in News Summarization via Multi-Stage Training and Auxiliary Losses",
+  "year": 2019
+ },
+ {
+  "key": "kryscinski2019critical",
+  "doi": "10.18653/v1/D19-1051",
+  "title": "Neural Text Summarization: A Critical Evaluation",
+  "year": 2019
+ },
+ {
+  "key": "goodrich2019factual",
+  "doi": "10.1145/3292500.3330955",
+  "title": "Assessing The Factual Accuracy of Generated Text",
+  "year": 2019
+ },
+ {
+  "key": "tang2023understanding",
+  "doi": "10.18653/v1/2023.acl-long.650",
+  "title": "Understanding Factual Errors in Summarization: Errors, Summarizers, Datasets, Error Detectors",
+  "year": 2023
+ },
+ {
+  "key": "lattimer2023scale",
+  "doi": "10.18653/v1/2023.emnlp-main.105",
+  "title": "Fast and Accurate Factual Inconsistency Detection Over Long Documents",
+  "year": 2023
+ },
+ {
+  "key": "zhang2023extractive",
+  "doi": "10.18653/v1/2023.acl-long.120",
+  "title": "Extractive is not Faithful: An Investigation of Broad Unfaithfulness Problems in Extractive Summarization",
+  "year": 2023
+ },
+ {
+  "key": "scialom2021questeval",
+  "doi": "10.18653/v1/2021.emnlp-main.529",
+  "title": "QuestEval: Summarization Asks for Fact-based Evaluation",
+  "year": 2021
+ },
+ {
+  "key": "roit2023rlef",
+  "doi": "10.18653/v1/2023.acl-long.344",
+  "title": "Factually Consistent Summarization via Reinforcement Learning with Textual Entailment Feedback",
+  "year": 2023
+ }
+]

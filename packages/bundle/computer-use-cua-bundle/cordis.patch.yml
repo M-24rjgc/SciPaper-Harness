@@ -1,0 +1,5 @@
+- insert:
+    - id: computer-use
+      name: '@deepseek-ai/dsh-computer-use'
+    - id: computer-use-cua-native
+      name: '@deepseek-ai/dsh-computer-use-cua-driver-native'

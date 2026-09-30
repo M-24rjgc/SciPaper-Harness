@@ -1,0 +1,293 @@
+// @vitest-environment jsdom
+
+/**
+ * The figure gallery panel. Every search and save it sends goes through the
+ * validator the service parses commands with, so a control that builds a
+ * request the service would refuse fails here.
+ */
+import { afterEach, describe, expect, it } from 'vitest'
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
+import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
+import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
+import type { GalleryFigure, GalleryPage, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import { Gallery } from '../src/client/Gallery.tsx'
+import type { GallerySearchRequest, WorkbenchProps } from '../src/client/contract.ts'
+import { galleryImageUrl } from '../src/client/format.ts'
+import { zh } from '../src/client/locales.ts'
+
+afterEach(() => { cleanup() })
+
+const t = (key: string, params?: Record<string, unknown>): string => {
+  const template = (zh as Record<string, string>)[key] ?? key
+  return params ? template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match) : template
+}
+
+function figure(id: string, extra: Partial<GalleryFigure> = {}): GalleryFigure {
+  return { id, venue: 'neurips', year: 2024, title: `Figure ${id}`, authors: ['Ada Lovelace'], pattern: 'architecture', paper: `https://papers.example/${id}`, width: 800, height: 400, ...extra }
+}
+
+const FACETS: GalleryPage['facets'] = {
+  venue: { neurips: 5, iclr: 3, chi: 1 }, year: { 2024: 6, 2026: 2, 2023: 1 },
+  pattern: { architecture: 4, pipeline: 5, 'hand-drawn': 1 }, tier: { award: 1, oral: 2 },
+}
+const SOURCE = { name: 'Top-Conf Figure Gallery', repository: 'https://github.com/owner/gallery', commit: 'c', license: 'MIT' }
+const page = (figures: GalleryFigure[], total = figures.length, basis: GalleryPage['basis'] = 'browse', offset = 0): GalleryPage =>
+  ({ total, offset, figures, basis, facets: FACETS, source: SOURCE })
+
+interface Pending { request: GallerySearchRequest; answer: (value: GalleryPage) => void; fail: (reason: unknown) => void }
+/** A save the host is still working on: it settles when its job does. */
+interface Saving { command: ResearchCommand; finish: (value: ResearchResponse) => void; fail: (reason: unknown) => void }
+
+interface Harness {
+  props: WorkbenchProps & { project: ResearchProject }
+  searches: Pending[]
+  saves: Saving[]
+}
+
+function harness(project: ResearchProject): Harness {
+  const searches: Pending[] = []
+  const saves: Saving[] = []
+  const props = {
+    t, project,
+    searchFigures: (request: GallerySearchRequest) => {
+      expect(commandSchema.parse(request)).toBeTruthy()
+      return new Promise<GalleryPage>((answer, fail) => { searches.push({ request, answer, fail }) })
+    },
+    run: (command: ResearchCommand) => {
+      expect(commandSchema.parse(command)).toBeTruthy()
+      return new Promise<ResearchResponse>((finish, fail) => { saves.push({ command, finish, fail }) })
+    },
+  } as unknown as WorkbenchProps & { project: ResearchProject }
+  return { props, searches, saves }
+}
+
+const project = (): ResearchProject => newProject({ root: '/research/agents', title: 'Agents', brief: '' }, 'w' as WorkspaceId)
+/** Let the work a press started run its first step. */
+const settle = async (): Promise<void> => { await act(async () => { await Promise.resolve() }) }
+async function answer(pending: Pending | undefined, value: GalleryPage): Promise<void> {
+  await act(async () => { pending?.answer(value); await Promise.resolve() })
+}
+async function finish(saving: Saving | undefined, outcome: { value: ResearchResponse } | { reason: unknown }): Promise<void> {
+  await act(async () => {
+    if ('value' in outcome) saving?.finish(outcome.value)
+    else saving?.fail(outcome.reason)
+    await Promise.resolve()
+  })
+}
+const submitSave = (detail: HTMLElement): void => {
+  fireEvent.submit(within(detail).getByRole('button', { name: zh.gallerySave }).closest('form')!)
+}
+
+describe('the figure gallery panel', () => {
+  it('shows an example research\'s figures with their papers, and saves nothing into it', async () => {
+    const shipped = { ...project(), example: true }
+    const h = harness(shipped)
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('iclr2025-1')]))
+    fireEvent.click(view.getByRole('button', { name: /Figure iclr2025-1/ }))
+    const detail = view.getByRole('article', { name: 'Figure iclr2025-1' })
+    expect(within(detail).getByRole('link', { name: zh.galleryOpenPaper })).toBeTruthy()
+    expect(within(detail).queryByRole('button', { name: zh.gallerySave })).toBeNull()
+    expect(within(detail).queryByLabelText(zh.galleryLabel)).toBeNull()
+    expect(h.saves).toEqual([])
+  })
+
+  it('browses the gallery first, with filters drawn from its facets', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    // Before the first page arrives the filters have nothing to offer.
+    expect(within(view.getByRole('combobox', { name: zh.galleryPatternLabel })).getAllByRole('option')).toHaveLength(1)
+    expect(h.searches[0]?.request).toEqual({ action: 'find-reference-figures', projectId: h.props.project.id, limit: 24, offset: 0 })
+    await answer(h.searches[0], page([
+      figure('iclr2025-1', { venue: 'iclr', year: 2025, award: 'best', tier: 'oral' }),
+      figure('neurips2024-2', { tier: 'spotlight' }),
+      figure('chi2024-3', { venue: 'chi' }),
+    ], 30))
+    expect(view.getByText('共 30 张 · 按录取等级与设计分排序')).toBeTruthy()
+    const cards = view.getAllByRole('button', { pressed: false })
+    expect(cards.map(card => card.textContent)).toEqual([
+      'Figure iclr2025-1ICLR 2025最佳论文与荣誉提名', 'Figure neurips2024-2NeurIPS 2024Spotlight', 'Figure chi2024-3CHI 2024',
+    ])
+    expect(within(cards[0]!).getByRole('img').getAttribute('src')).toBe(galleryImageUrl('iclr2025-1'))
+    const options = (name: string): string[] => within(view.getByRole('combobox', { name })).getAllByRole('option').map(option => option.textContent ?? '')
+    expect(options(zh.galleryPatternLabel)).toEqual(['图的类型 · 全部', '流程图 (5)', '架构图 (4)', 'hand-drawn (1)'])
+    expect(options(zh.galleryVenueLabel)).toEqual(['会议 · 全部', 'CHI (1)', 'ICLR (3)', 'NeurIPS (5)'])
+    expect(options(zh.galleryYearLabel)).toEqual(['年份 · 全部', '2026 (2)', '2024 (6)', '2023 (1)'])
+    expect(options(zh.galleryTierLabel)).toEqual(['录取等级 · 全部', '最佳论文与荣誉提名 (1)', 'Oral (2)', 'Spotlight (0)'])
+    expect(view.getByRole('link', { name: '来自 Top-Conf Figure Gallery' }).getAttribute('href')).toBe(SOURCE.repository)
+  })
+
+  it('narrows with each filter and ranks by the submitted query, one page after another', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('neurips2024-1')], 1))
+    fireEvent.change(view.getByRole('combobox', { name: zh.galleryPatternLabel }), { target: { value: 'pipeline' } })
+    fireEvent.change(view.getByRole('combobox', { name: zh.galleryVenueLabel }), { target: { value: 'iclr' } })
+    fireEvent.change(view.getByRole('combobox', { name: zh.galleryYearLabel }), { target: { value: '2026' } })
+    fireEvent.change(view.getByRole('combobox', { name: zh.galleryTierLabel }), { target: { value: 'oral' } })
+    fireEvent.change(view.getByRole('searchbox', { name: zh.galleryQuery }), { target: { value: '  agent memory ' } })
+    fireEvent.submit(view.getByRole('search'))
+    const base = { action: 'find-reference-figures', projectId: h.props.project.id, limit: 24, offset: 0 }
+    expect(h.searches.slice(1).map(item => item.request)).toEqual([
+      { ...base, pattern: 'pipeline' },
+      { ...base, pattern: 'pipeline', venue: 'iclr' },
+      { ...base, pattern: 'pipeline', venue: 'iclr', year: 2026 },
+      { ...base, pattern: 'pipeline', venue: 'iclr', year: 2026, tier: 'oral' },
+      { ...base, pattern: 'pipeline', venue: 'iclr', year: 2026, tier: 'oral', query: 'agent memory' },
+    ])
+    await answer(h.searches[5], page([figure('iclr2026-1'), figure('iclr2026-2')], 3, 'semantic'))
+    expect(view.getByText('共 3 张 · 按关键词与语义排序')).toBeTruthy()
+    // Typing without searching again does not change what the next page continues.
+    fireEvent.change(view.getByRole('searchbox', { name: zh.galleryQuery }), { target: { value: 'something else' } })
+    fireEvent.click(view.getByRole('button', { name: zh.galleryMore }))
+    expect(h.searches[6]?.request).toMatchObject({ query: 'agent memory', offset: 2 })
+    await answer(h.searches[6], page([figure('iclr2026-3')], 3, 'semantic', 2))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent?.slice(0, 17))).toEqual([
+      'Figure iclr2026-1', 'Figure iclr2026-2', 'Figure iclr2026-3',
+    ])
+    expect(view.queryByRole('button', { name: zh.galleryMore })).toBeNull()
+  })
+
+  it('keeps only the latest answer, and says what went wrong with it', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    const fail = async (pending: Pending | undefined, reason: unknown): Promise<void> => {
+      await act(async () => { pending?.fail(reason); await Promise.resolve() })
+    }
+    fireEvent.submit(view.getByRole('search'))
+    // The first search answers after the second: it is dropped.
+    await answer(h.searches[1], page([], 0, 'keyword'))
+    await answer(h.searches[0], page([figure('neurips2024-1')]))
+    expect(view.getByText(zh.galleryEmpty)).toBeTruthy()
+    // So is the failure of a search that a newer one replaced; the newest one's failure is shown.
+    fireEvent.submit(view.getByRole('search'))
+    fireEvent.submit(view.getByRole('search'))
+    await fail(h.searches[2], new Error('late'))
+    expect(view.queryByRole('alert')).toBeNull()
+    await fail(h.searches[3], new Error('gallery offline'))
+    expect(view.getByRole('alert').textContent).toBe('gallery offline')
+    fireEvent.submit(view.getByRole('search'))
+    await fail(h.searches[4], 'unreadable')
+    expect(view.getByRole('alert').textContent).toBe('unreadable')
+    fireEvent.submit(view.getByRole('search'))
+    await answer(h.searches[5], page([figure('neurips2024-1')]))
+    expect(view.queryByRole('alert')).toBeNull()
+  })
+
+  it('waits for the new query before loading more and drops an older query page that arrives late', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('old-a'), figure('old-b')], 4))
+    const more = view.getByRole('button', { name: zh.galleryMore })
+    fireEvent.click(more)
+    fireEvent.click(more)
+    expect(h.searches).toHaveLength(2)
+    expect(more).toHaveProperty('disabled', true)
+
+    fireEvent.change(view.getByRole('searchbox'), { target: { value: 'new query' } })
+    fireEvent.submit(view.getByRole('search'))
+    fireEvent.click(more)
+    expect(h.searches).toHaveLength(3)
+    await answer(h.searches[1], page([figure('old-c'), figure('old-d')], 4, 'browse', 2))
+    expect(more).toHaveProperty('disabled', true)
+
+    await answer(h.searches[2], page([figure('new-a'), figure('new-b')], 3, 'keyword'))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent)).toEqual([
+      'Figure new-aNeurIPS 2024', 'Figure new-bNeurIPS 2024',
+    ])
+    fireEvent.click(view.getByRole('button', { name: zh.galleryMore }))
+    expect(h.searches[3]?.request).toMatchObject({ query: 'new query', offset: 2 })
+    await answer(h.searches[3], page([figure('new-c')], 3, 'keyword', 2))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent)).toEqual([
+      'Figure new-aNeurIPS 2024', 'Figure new-bNeurIPS 2024', 'Figure new-cNeurIPS 2024',
+    ])
+    expect(view.queryByRole('button', { name: zh.galleryMore })).toBeNull()
+  })
+
+  it('continues the displayed query after a replacement search fails', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([figure('old-a')], 2))
+    fireEvent.change(view.getByRole('searchbox'), { target: { value: 'failed query' } })
+    fireEvent.submit(view.getByRole('search'))
+    await act(async () => { h.searches[1]?.fail(new Error('offline')); await Promise.resolve() })
+    expect(view.getByRole('alert').textContent).toBe('offline')
+    fireEvent.click(view.getByRole('button', { name: zh.galleryMore }))
+    expect(h.searches[2]?.request).toEqual({ action: 'find-reference-figures', projectId: h.props.project.id, limit: 24, offset: 1 })
+    await answer(h.searches[2], page([figure('old-b')], 2, 'browse', 1))
+    expect(view.getAllByRole('button', { pressed: false }).map(card => card.textContent)).toEqual([
+      'Figure old-aNeurIPS 2024', 'Figure old-bNeurIPS 2024',
+    ])
+  })
+
+  it('opens a figure with its paper, and saves it as a reference under the label given, saying so until the host job settles', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    const crowd = ['A One', 'B Two', 'C Three', 'D Four', 'E Five', 'F Six']
+    await answer(h.searches[0], page([
+      figure('iclr2025-1', { venue: 'iclr', year: 2025, authors: crowd, tier: 'oral', pattern: 'pipeline' }),
+    ]))
+    fireEvent.click(view.getByRole('button', { name: /Figure iclr2025-1/ }))
+    const detail = view.getByRole('article', { name: 'Figure iclr2025-1' })
+    expect(within(detail).getByText('A One, B Two, C Three, D Four 等 2 人')).toBeTruthy()
+    expect(within(detail).getByText('ICLR 2025 · 流程图 · Oral')).toBeTruthy()
+    expect(within(detail).getByRole('link', { name: zh.galleryOpenPaper }).getAttribute('href')).toBe('https://papers.example/iclr2025-1')
+    expect(within(detail).getByText(zh.galleryCopyright)).toBeTruthy()
+    expect(view.getByRole('button', { pressed: true }).textContent).toMatch(/^Figure iclr2025-1/)
+    expect(within(detail).queryByRole('status')).toBeNull()
+
+    fireEvent.change(within(detail).getByRole('textbox', { name: zh.galleryLabel }), { target: { value: 'agent-loop' } })
+    submitSave(detail)
+    // The save is held off and says it is working from the press until the host job settles.
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
+    expect(within(detail).getByRole('button', { name: zh.gallerySave })).toHaveProperty('disabled', true)
+    await settle()
+    expect(h.saves.map(item => item.command)).toEqual([
+      { action: 'fetch-reference-figures', projectId: h.props.project.id, galleryIds: ['iclr2025-1'], label: 'agent-loop' },
+    ])
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
+    await finish(h.saves[0], { value: { message: 'saved', paths: ['figures/refs/agent-loop.png'] } })
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaved)
+    expect(within(detail).getByRole('button', { name: zh.gallerySave })).toHaveProperty('disabled', false)
+    expect(within(detail).queryByRole('alert')).toBeNull()
+  })
+
+  it('says why a save failed beside it, lets it be tried again, and starts afresh on another figure', async () => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    await answer(h.searches[0], page([
+      figure('neurips2024-2', { authors: ['Ada Lovelace', 'Alan Turing'] }),
+      figure('iclr2025-3', { venue: 'iclr', year: 2025 }),
+    ]))
+    fireEvent.click(view.getByRole('button', { name: /Figure neurips2024-2/ }))
+    const detail = view.getByRole('article', { name: 'Figure neurips2024-2' })
+    expect(within(detail).getByText('Ada Lovelace, Alan Turing')).toBeTruthy()
+    expect(within(detail).getByText('NeurIPS 2024 · 架构图')).toBeTruthy()
+    submitSave(detail)
+    await settle()
+    expect(h.saves[0]?.command).toMatchObject({ galleryIds: ['neurips2024-2'], label: 'method-overview' })
+    await finish(h.saves[0], { reason: new Error('the gallery host refused the download') })
+    expect(within(detail).getByRole('alert').textContent).toBe(t('actionFailed', { reason: 'the gallery host refused the download' }))
+    expect(within(detail).queryByRole('status')).toBeNull()
+    // The panel's own search line stays clear: the failure belongs to the save.
+    expect(view.getAllByRole('alert')).toHaveLength(1)
+
+    // Trying again clears the old reason while the new attempt runs.
+    submitSave(detail)
+    expect(within(detail).queryByRole('alert')).toBeNull()
+    expect(within(detail).getByRole('status').textContent).toBe(zh.gallerySaving)
+
+    // Another figure starts afresh, and the save left running on the first one never reaches it.
+    fireEvent.click(view.getByRole('button', { name: /Figure iclr2025-3/ }))
+    const next = view.getByRole('article', { name: 'Figure iclr2025-3' })
+    expect(within(next).queryByRole('status')).toBeNull()
+    expect(within(next).getByRole('textbox', { name: zh.galleryLabel })).toHaveProperty('value', 'method-overview')
+    await settle()
+    await finish(h.saves[1], { value: { message: 'saved' } })
+    expect(within(next).queryByRole('status')).toBeNull()
+    expect(within(next).queryByRole('alert')).toBeNull()
+    fireEvent.click(within(next).getByRole('button', { name: zh.close }))
+    expect(view.queryByRole('article')).toBeNull()
+  })
+})

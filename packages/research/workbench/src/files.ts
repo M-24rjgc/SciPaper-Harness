@@ -1,0 +1,292 @@
+/** Contained file access and immutable revisions for ordinary research files. */
+import { createHash, randomUUID } from 'node:crypto'
+import { createReadStream, existsSync, realpathSync } from 'node:fs'
+import { copyFile, mkdir, open, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep, win32 } from 'node:path'
+import { defaultDshHome, resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+
+/**
+ * Resolve a project path and reject traversal through existing symlinks.
+ * @param root - existing project directory.
+ * @param path - relative or absolute candidate; its resolved location must stay inside the project.
+ * @returns absolute path under the canonical root, including for a not-yet-created file.
+ */
+export async function projectPath(root: string, path: string): Promise<string> {
+  const canonicalRoot = await realpath(root)
+  const target = resolve(canonicalRoot, path)
+  const within = (candidate: string): boolean => {
+    const rel = relative(canonicalRoot, candidate)
+    return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
+  }
+  if (!within(target)) throw new Error('The requested file is outside this research project')
+  let parent = target
+  while (true) {
+    try {
+      const canonical = await realpath(parent)
+      if (!within(canonical)) throw new Error('A project symlink points outside the research project')
+      return target
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      // The walk ends at the canonical root at the latest, which exists.
+      parent = dirname(parent)
+    }
+  }
+}
+
+/**
+ * Hash a file without loading large datasets into memory.
+ * @param path - file to read.
+ * @returns lowercase hexadecimal SHA-256 digest.
+ */
+export async function hashFile(path: string): Promise<string> {
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
+  return hash.digest('hex')
+}
+
+/**
+ * Hash a UTF-8 input or a byte array.
+ * @param value - UTF-8 text or raw bytes to hash.
+ * @returns lowercase hexadecimal SHA-256 digest.
+ */
+export function hashBytes(value: string | Uint8Array): string { return createHash('sha256').update(value).digest('hex') }
+
+/**
+ * Atomically replace one file using a private sibling staging file.
+ * @param path - destination file; missing parent directories are created.
+ * @param data - UTF-8 text or raw bytes replacing the destination content.
+ */
+export async function atomicWrite(path: string, data: string | Uint8Array): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  const temp = `${path}.${randomUUID()}.tmp`
+  await writeFile(temp, data, { flag: 'wx', mode: 0o600 })
+  await rename(temp, path)
+}
+
+/**
+ * Copy one immutable revision only once, rejecting unequal existing content.
+ * @param source - file whose current bytes are retained.
+ * @param destination - immutable revision path; identical existing bytes are accepted.
+ */
+export async function keepRevision(source: string, destination: string): Promise<void> {
+  await mkdir(dirname(destination), { recursive: true })
+  try { await copyFile(source, destination, 1) }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await hashFile(source) !== await hashFile(destination)) throw error
+  }
+}
+
+/**
+ * Create a file that must not exist yet, atomically with respect to other writers.
+ * @param path - destination path whose parent directory already exists.
+ * @param content - bytes for the new file.
+ * @returns false when the path already exists; other failures throw.
+ */
+export async function writeNew(path: string, content: Uint8Array): Promise<boolean> {
+  try {
+    await writeFile(path, content, { flag: 'wx' })
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
+    throw error
+  }
+}
+
+/**
+ * Read a bounded text artifact; binary sources use dedicated extractors.
+ * @param path - file to decode as UTF-8.
+ * @param limit - maximum file size in bytes; larger files are rejected.
+ * @returns decoded text.
+ */
+export async function readText(path: string, limit: number): Promise<string> {
+  if ((await stat(path)).size > limit) throw new Error(`Text exceeds the ${limit} byte limit: ${path}`)
+  return readFile(path, 'utf8')
+}
+
+/** Extensions of file types that never hold editable text: images, PDF, archives, office documents, fonts, arrays. */
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tif', '.tiff', '.ico', '.pdf',
+  '.zip', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.tar', '.rar',
+  '.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp',
+  '.otf', '.ttf', '.woff', '.woff2', '.npy', '.npz', '.pt', '.pth', '.pkl', '.parquet',
+])
+/** How much of a file's start is read to find a NUL byte, which text files never contain. */
+const TEXT_PROBE_BYTES = 8192
+
+/**
+ * Whether a file holds bytes that a text editor would destroy: a known binary
+ * type by its extension, or, under any other name, a file whose first 8 KiB
+ * contain a NUL byte. A file that does not exist is judged by its name alone.
+ * @param path - absolute path of the file.
+ * @returns true for a binary file.
+ */
+export async function isBinaryFile(path: string): Promise<boolean> {
+  if (BINARY_EXTENSIONS.has(extname(path).toLowerCase())) return true
+  if (!existsSync(path)) return false
+  const handle = await open(path, 'r')
+  try {
+    const probe = Buffer.alloc(TEXT_PROBE_BYTES)
+    const { bytesRead } = await handle.read(probe, 0, TEXT_PROBE_BYTES, 0)
+    return probe.subarray(0, bytesRead).includes(0)
+  } finally { await handle.close() }
+}
+
+/** Case-fold a path where the platform's filesystem is case-insensitive. */
+function foldCase(value: string, platform: NodeJS.Platform): string { return platform === 'win32' ? value.toLowerCase() : value }
+
+/** The path module whose rules the platform's filesystem follows. */
+function pathsOf(platform: NodeJS.Platform): typeof posix { return platform === 'win32' ? win32 : posix }
+
+/**
+ * Compare two absolute directories after resolution, case-folded on Windows.
+ * @param a - first directory path.
+ * @param b - second directory path.
+ * @param platform - operating system whose path and case rules apply.
+ * @returns whether the resolved spellings match, without resolving symlinks.
+ */
+export function sameDirectory(a: string, b: string, platform: NodeJS.Platform = process.platform): boolean {
+  const paths = pathsOf(platform)
+  return foldCase(paths.resolve(a), platform) === foldCase(paths.resolve(b), platform)
+}
+
+const WINDOWS_SYSTEM_DIRECTORIES = ['windows', 'program files', 'program files (x86)', 'programdata']
+const POSIX_SYSTEM_PREFIXES = ['/root', '/tmp', '/usr', '/etc', '/var', '/bin', '/sbin', '/lib', '/opt', '/proc', '/sys', '/dev', '/boot', '/snap']
+
+/**
+ * Refuse project roots that make confinement meaningless or dangerous:
+ * filesystem roots, the user home directory itself and system locations on
+ * any drive. Mirrors the remote root floor enforced for SSH environments.
+ * @param root - absolute candidate for a project root.
+ * @param platform - whose path rules apply; the host's by default.
+ * @param home - the user's home directory on that platform.
+ */
+export function assertUsableProjectRoot(root: string, platform: NodeJS.Platform = process.platform, home = homedir()): void {
+  const paths = pathsOf(platform)
+  const resolved = paths.resolve(root)
+  const parsed = paths.parse(resolved)
+  if (parsed.root === resolved) throw new Error('Choose a dedicated project directory, not a filesystem root')
+  if (foldCase(resolved, platform) === foldCase(paths.resolve(home), platform)) {
+    throw new Error('Choose a dedicated project directory, not the home directory')
+  }
+  const system = platform === 'win32'
+    // split() always yields a first element, so String() never sees undefined.
+    ? WINDOWS_SYSTEM_DIRECTORIES.includes(foldCase(String(paths.relative(parsed.root, resolved).split(paths.sep)[0]), platform))
+    : POSIX_SYSTEM_PREFIXES.some(prefix => resolved === prefix || resolved.startsWith(`${prefix}/`))
+  if (system) throw new Error('Choose a dedicated project directory outside system locations')
+}
+
+/**
+ * Whether a project-relative path names the service-owned metadata directory.
+ * Checked on the normalized path and case-folded, so `./.research`,
+ * `paper/../.research` and `.RESEARCH` are all recognised.
+ * @param relativePath - path relative to the project root, either separator.
+ * @returns whether the normalized first component names the metadata directory.
+ */
+export function isMetadataPath(relativePath: string): boolean {
+  const normalized = posix.normalize(relativePath.replaceAll('\\', '/')).replace(/^\.\//, '')
+  return normalized.split('/')[0]?.toLowerCase() === '.research'
+}
+
+/** Why a command on an example research was refused; the words both the person and the agent read. */
+export const EXAMPLE_READ_ONLY = '这是示例研究，只能查看 / This is an example research and is read-only'
+
+/**
+ * Whether a project lives in shipped `research/examples` or legacy `demo`.
+ * Legacy examples in the default home stay protected when a trial selects another home.
+ * Examples are read-only: nothing is recorded into them, whoever asks.
+ * @param root - the project's absolute root.
+ * @param home - the product's data directory.
+ * @returns true for an example research.
+ */
+export function isExampleRoot(root: string, home: string = resolveDshHome()): boolean {
+  const canonical = (path: string): string => existsSync(path) ? realpathSync.native(path) : path
+  return [join(home, 'demo'), join(home, 'research', 'examples'), join(defaultDshHome(), 'demo')]
+    .some(directory => isInside(directory, root) || isInside(canonical(directory), canonical(root)))
+}
+
+/**
+ * Whether an absolute path lies inside a root, compared after resolution and case-folded on Windows.
+ * @param root - containing directory.
+ * @param path - candidate path.
+ * @param platform - operating system whose path and case rules apply.
+ * @returns true for the root itself or a descendant; symlinks are not resolved.
+ */
+export function isInside(root: string, path: string, platform: NodeJS.Platform = process.platform): boolean {
+  const paths = pathsOf(platform)
+  const rel = paths.relative(foldCase(paths.resolve(root), platform), foldCase(paths.resolve(path), platform))
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${paths.sep}`) && !paths.isAbsolute(rel))
+}
+
+/**
+ * Directories whose contents are credentials or keys. Nothing is imported from
+ * them, whoever asks: an approval dialog is no place to notice that a path
+ * leads into the harness's own credential store. The one exception is the
+ * attachment store's files directory inside the data home ({@link isAttachment}).
+ * @param home - the product's data directory, holding its credential store.
+ * @returns the absolute directories.
+ */
+export function protectedDirectories(home: string): string[] {
+  return [home, ...['.ssh', '.gnupg', '.aws', '.azure', '.kube', '.docker'].map(name => join(homedir(), name))]
+}
+
+/**
+ * Where the attachment store keeps the files a person attached to a
+ * conversation: `<data home>/attachments/v1/files`, the layout
+ * `@deepseek-ai/dsh-attachment-local` writes (`storedFilePath`).
+ * @param home - the product's data directory.
+ * @returns the absolute directory.
+ */
+export function attachedFilesDirectory(home: string): string {
+  return join(home, 'attachments', 'v1', 'files')
+}
+
+/** Whether a path lies inside a root and is not the root itself. */
+function below(root: string, path: string): boolean {
+  return isInside(root, path) && !sameDirectory(root, path)
+}
+
+/**
+ * Whether a path names something the person attached to a conversation: it lies
+ * below the attachment store's files directory, and still does once links are
+ * resolved. Attaching a file is the person's consent to import it; nothing else
+ * in the data home is.
+ * @param path - absolute path of a candidate source.
+ * @param home - the product's data directory.
+ * @returns true for an attached file or a folder below the store; false for the store itself, anything
+ * outside it, a path that does not exist, and a link that leads out of the store.
+ */
+export async function isAttachment(path: string, home: string = resolveDshHome()): Promise<boolean> {
+  const store = attachedFilesDirectory(home)
+  if (!below(store, path)) return false
+  let real: [string, string]
+  // A path that does not exist, or a store that was never created, holds no attachment.
+  try { real = await Promise.all([realpath(store), realpath(path)]) } catch { return false }
+  return below(...real)
+}
+
+/**
+ * The message of a thrown value, whatever was thrown.
+ * @param error - caught value, including non-Error throws.
+ * @returns Error.message or the value's string representation.
+ */
+export function errorText(error: unknown): string { return error instanceof Error ? error.message : String(error) }
+
+/**
+ * Truncate text to a byte budget without splitting a multibyte character.
+ * @param text - text encoded as UTF-8 for budgeting.
+ * @param limit - nonnegative maximum output size in bytes.
+ * @returns the original text when it fits, otherwise the longest complete UTF-8 prefix within the limit.
+ */
+export function truncateBytes(text: string, limit: number): string {
+  const bytes = Buffer.from(text, 'utf8')
+  if (bytes.length <= limit) return text
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  // Valid input can only break at the cut point, so at most three bytes go:
+  // three bytes back from the limit is always a character boundary.
+  const floor = Math.max(0, limit - 3)
+  for (let end = limit; end > floor; end--) {
+    try { return decoder.decode(bytes.subarray(0, end)) } catch { /* the byte cut lands inside a multibyte character */ }
+  }
+  return decoder.decode(bytes.subarray(0, floor))
+}

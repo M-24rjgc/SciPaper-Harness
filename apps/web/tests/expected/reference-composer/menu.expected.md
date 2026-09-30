@@ -1,0 +1,9 @@
+- listbox "Trigger suggestions":
+  - text: Files & folders
+  - option "folderx/ Browse folder" [selected]:
+    - text: folderx/
+    - button "Browse folder"
+  - option "reference.txt"
+  - text: Conversations
+  - option "reference-order-target-session {{cwd}} · {{age}}"
+  - option "reference-source-session {{cwd}} · {{age}}"

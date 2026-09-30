@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/session/session-format-v4-to-v5/README.md
+/:
+  en: e56960c1998d46f2
+  zh: 359c1b37a931d352
+/deepseek-ai-dsh-session-format-v4-to-v5:
+  en: 5c911c36fc777867
+  zh: 523c41bb93008361
+/deepseek-ai-dsh-session-format-v4-to-v5/summary:
+  en: c52ca2771aa87872
+  zh: 617b61564c240232
+/deepseek-ai-dsh-session-format-v4-to-v5/table-of-contents:
+  en: 19f65af2a97ba305
+  zh: ebc7cf3f2862a476
+/deepseek-ai-dsh-session-format-v4-to-v5/use-this-package:
+  en: fcaeb1a7b805e818
+  zh: aa3ec9986fb5c3b9
+/deepseek-ai-dsh-session-format-v4-to-v5/header-and-event-contract:
+  en: 5d18bcaf27619626
+  zh: d86c8de3464f15c9
+/deepseek-ai-dsh-session-format-v4-to-v5/native-v5-admission:
+  en: a2d4ea4197cb776b
+  zh: 3792baa58d28c358
+/deepseek-ai-dsh-session-format-v4-to-v5/further-exploration:
+  en: a673f9cf997c7a13
+  zh: 5a4acd58f501aca9
+/deepseek-ai-dsh-session-format-v4-to-v5/model-experience:
+  en: 2fba3f839cc50297
+  zh: 1a9e5a3a1cfadb97
+/deepseek-ai-dsh-session-format-v4-to-v5/model-experience/kv-cache-effect:
+  en: 976131fd4c854bab
+  zh: 39b597fc0706471e
+/deepseek-ai-dsh-session-format-v4-to-v5/known-limitations-and-deferred-work:
+  en: ca08f36c1bfae75a
+  zh: 85c5c9b15d29c913
+/deepseek-ai-dsh-session-format-v4-to-v5/known-limitations-and-deferred-work/dev-note:
+  en: 783f23e6596a276a
+  zh: f74cbaa62d781d4c

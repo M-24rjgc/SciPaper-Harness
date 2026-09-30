@@ -1,0 +1,32 @@
+/* Research tool calls in the conversation: a row per call in the tool rows' own measure, and a card per research check. The chrome is neutral; the verified green marks only a clean check, and the warn clay what a check found. */
+
+.call { display: flex; flex-direction: column; min-width: 0; }
+.separator { flex: none; width: 2px; height: 2px; margin: 0 8px; border-radius: 1px; background: var(--dsw-alias-label-caption); }
+.phrase { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: calc(24px + var(--dsh-content-font-delta, 0px)); color: var(--dsw-alias-label-tertiary); }
+.stopped { flex: none; margin-left: 8px; font-size: 12px; color: var(--dsw-alias-state-warn-primary); }
+.hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.failure { margin: 2px 0 4px 22px; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-state-error-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.raw { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 6px 22px; min-width: 0; }
+.rawPart { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rawHead { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); }
+.rawBody { margin: 0; max-height: 240px; overflow: auto; padding: 8px 10px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; font: var(--dsw-font-markdown-code-block-small); color: var(--dsw-alias-label-secondary); }
+
+.check { display: flex; flex-direction: column; gap: 6px; margin: 4px 0; padding: 8px 12px; min-width: 0; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); }
+.checkHead { display: flex; flex-wrap: wrap; align-items: center; row-gap: 2px; min-width: 0; font-size: var(--dsh-content-font-size-secondary, 13px); line-height: 20px; }
+.leading { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 6px; color: var(--dsw-alias-label-tertiary); }
+.passMark { width: 14px; height: 14px; color: var(--dsw-alias-state-success-primary); }
+.part { flex: none; color: var(--dsw-alias-label-secondary); }
+.passed { flex: none; color: var(--dsw-alias-state-success-primary); }
+.notPassed { flex: none; color: var(--dsw-alias-state-warn-primary); }
+.groups { list-style: none; margin: 0; padding: 0 0 0 22px; display: flex; flex-direction: column; gap: 2px; }
+.group { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: 12px; line-height: 1.6; }
+.groupName { flex: none; color: var(--dsw-alias-label-primary); }
+.fileName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-tertiary); }
+.file { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: none; background: none; font: inherit; color: var(--dsw-alias-label-secondary); text-align: left; text-decoration: underline; text-decoration-color: var(--dsw-alias-border-l4); text-underline-offset: 2px; cursor: pointer; }
+.file:hover { text-decoration-color: currentColor; }
+.file:focus-visible, .detailsToggle:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.details { padding-left: 22px; }
+.detailsToggle { font-size: 11px; line-height: 1.6; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
+.detailLine { margin: 4px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--dsw-alias-label-secondary); overflow-wrap: anywhere; }
+.where { color: var(--dsw-alias-label-tertiary); }
+.graphLink { margin: 6px 0 4px 24px; border: 0; padding: 3px 0; background: transparent; color: var(--dsw-alias-brand-primary); font: inherit; cursor: pointer; }

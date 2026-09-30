@@ -1,0 +1,170 @@
+"""Run real detached child processes; no GPU, network or user experiments are used."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+RUNNER = Path(__file__).resolve().parents[1] / 'runtime' / 'experiment_runner.py'
+
+
+class RunnerTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows CreateProcess application-name behavior')
+    def test_worker_supplies_an_application_name_only_for_absolute_executables(self):
+        module_spec = importlib.util.spec_from_file_location('experiment_runner_spawn', RUNNER)
+        runner = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(runner)
+        for command in [sys.executable, 'python', r'.\python.exe']:
+            self.setup_script('pass')
+            spec_path = self.root / 'spec.json'
+            spec = json.loads(spec_path.read_text(encoding='utf8'))
+            spec['python'] = command
+            spec_path.write_text(json.dumps(spec), encoding='utf8')
+            with mock.patch.object(runner.subprocess, 'Popen') as spawn:
+                spawn.return_value.pid = os.getpid()
+                spawn.return_value.poll.return_value = 0
+                spawn.return_value.wait.return_value = 0
+                runner.worker(self.root)
+                options = spawn.call_args.kwargs
+                if command == sys.executable:
+                    self.assertEqual(options['executable'], runner.executable_path(command))
+                else:
+                    self.assertNotIn('executable', options)
+                self.assertTrue(options['creationflags'] & subprocess.CREATE_NO_WINDOW)
+
+    def test_windows_executable_conversion_preserves_command_lookup(self):
+        module_spec = importlib.util.spec_from_file_location('experiment_runner_paths', RUNNER)
+        runner = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(runner)
+        with mock.patch.object(runner.os, 'name', 'nt'):
+            for command, expected in [
+                ('C:/tools/old/../python.exe', r'\\?\C:\tools\python.exe'),
+                (r'\\server\share\python.exe', r'\\?\UNC\server\share\python.exe'),
+                (r'\\?\C:\tools\python.exe', r'\\?\C:\tools\python.exe'),
+                ('python', 'python'),
+                (r'.\tools\python.exe', r'.\tools\python.exe'),
+            ]:
+                self.assertEqual(runner.executable_path(command), expected)
+        with mock.patch.object(runner.os, 'name', 'posix'):
+            self.assertEqual(runner.executable_path('/opt/python'), '/opt/python')
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='科研 runner space ')
+        self.root = Path(self.temporary.name)
+
+    def tearDown(self):
+        if (self.root / 'state.json').exists():
+            self.call('cancel')
+            self.wait()
+        self.temporary.cleanup()
+
+    def setup_script(self, content, budget=10):
+        script = self.root / 'script.py'
+        script.write_text(content, encoding='utf8')
+        (self.root / 'spec.json').write_text(json.dumps(dict(argv=['{python}', str(script)], python=sys.executable, cwd=str(self.root), gpuIds=[], seed=42, maxSeconds=budget, metricsPath='metrics.json')), encoding='utf8')
+
+    def call(self, action):
+        return json.loads(subprocess.check_output([sys.executable, str(RUNNER), action, str(self.root)], text=True, encoding='utf8'))
+
+    def wait(self):
+        for _ in range(80):
+            state = self.call('status')
+            if state['status'] not in ('queued', 'running'):
+                return state
+            time.sleep(.15)
+        self.fail('Supervisor did not settle')
+
+    def test_detached_survival_and_duplicate_submission(self):
+        self.setup_script("import time,os,json,pathlib\np=pathlib.Path('launches');p.write_text(p.read_text()+'x' if p.exists() else 'x')\ntime.sleep(1)\nassert os.environ['CUDA_VISIBLE_DEVICES']==''\npathlib.Path(os.environ['RESEARCH_METRICS_PATH']).write_text(json.dumps({'accuracy':.75}))\n")
+        first = self.call('launch')
+        second = self.call('launch')
+        self.assertEqual(first['runnerPid'], second['runnerPid'])
+        result = self.wait()
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['metrics']['accuracy'], .75)
+        self.assertEqual((self.root / 'launches').read_text(), 'x')
+
+    def test_cancel_owned_process(self):
+        self.setup_script('import time\ntime.sleep(90)')
+        self.call('launch'); self.call('cancel')
+        self.assertEqual(self.wait()['status'], 'cancelled')
+
+    def test_run_time_limit(self):
+        self.setup_script('import time\ntime.sleep(90)', budget=1)
+        self.call('launch')
+        self.assertIn('maxSeconds', self.wait()['message'])
+
+    def test_cwd_outputs_are_collected(self):
+        self.setup_script("import os,pathlib\n"
+                          "pathlib.Path('outputs/plots').mkdir(parents=True)\npathlib.Path('outputs/plots/curve.csv').write_text('x,y')\n"
+                          "pathlib.Path(os.environ['RESEARCH_OUTPUT_DIR'], 'direct.txt').write_text('ok')\n")
+        work = self.root / 'work'
+        work.mkdir()
+        spec = json.loads((self.root / 'spec.json').read_text(encoding='utf8'))
+        (self.root / 'spec.json').write_text(json.dumps(dict(spec, cwd=str(work))), encoding='utf8')
+        self.call('launch')
+        self.assertEqual(self.wait()['status'], 'completed')
+        self.assertEqual((self.root / 'outputs' / 'plots' / 'curve.csv').read_text(), 'x,y')
+        self.assertEqual((self.root / 'outputs' / 'direct.txt').read_text(), 'ok')
+
+    def test_restart_identity_and_stale_queue(self):
+        (self.root / 'state.json').write_text(json.dumps(dict(status='running', runnerPid=99999999, runnerIdentity='other-boot', updatedAt=time.time())))
+        self.assertEqual(self.call('status')['status'], 'interrupted')
+        (self.root / 'state.json').write_text(json.dumps(dict(status='queued', updatedAt=time.time()-60)))
+        self.assertEqual(self.call('status')['status'], 'interrupted')
+
+    def test_status_preserves_a_supervisor_result_committed_during_identity_lookup(self):
+        module_spec = importlib.util.spec_from_file_location('experiment_runner', RUNNER)
+        runner = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(runner)
+        self.setup_script("import time,os,json,pathlib\n"
+                          "while not pathlib.Path('finish.request').exists(): time.sleep(.01)\n"
+                          "pathlib.Path(os.environ['RESEARCH_METRICS_PATH']).write_text(json.dumps({'score': .91}))\n")
+        launched = self.call('launch')
+        original_identity = runner.identity
+
+        def wait_for_completion(pid):
+            (self.root / 'finish.request').touch()
+            self.assertEqual(self.wait()['status'], 'completed')
+            for _ in range(100):
+                birth = original_identity(pid)
+                if birth != launched['runnerIdentity']:
+                    return birth
+                time.sleep(.01)
+            self.fail('Supervisor did not exit')
+
+        with mock.patch.object(runner, 'identity', side_effect=wait_for_completion):
+            observed = runner.inspect(self.root)
+        self.assertEqual(observed['status'], 'completed')
+        self.assertEqual(observed['metrics'], {'score': .91})
+        self.assertEqual(json.loads((self.root / 'state.json').read_text(encoding='utf8')), observed)
+
+    def test_status_reports_the_last_complete_progress_line(self):
+        self.setup_script("import json,os,pathlib\n"
+                          "p=pathlib.Path(os.environ['RESEARCH_PROGRESS_PATH'])\n"
+                          "p.write_text(json.dumps({'epoch':1,'acc':.5,'progress':.5})+'\\n'+json.dumps({'epoch':2,'acc':.7,'ok':True,'progress':1,'note':'fold 2/2'})+'\\n{\"epoch\": 3')\n")
+        self.call('launch')
+        state = self.wait()
+        self.assertEqual(state['status'], 'completed')
+        self.assertEqual(state['progress']['values'], {'epoch': 2, 'acc': .7})
+        self.assertEqual((state['progress']['fraction'], state['progress']['note']), (1, 'fold 2/2'))
+        self.assertIsInstance(state['progress']['at'], float)
+        # A fraction outside 0..1 is not a fraction, a numeric note is just a number, and lines that are not objects are passed over.
+        (self.root / 'progress.jsonl').write_text('{"epoch": 4, "progress": 7, "note": 3}\n[1, 2]\n')
+        self.assertEqual(self.call('status')['progress'], {'values': {'epoch': 4, 'note': 3}, 'at': (self.root / 'progress.jsonl').stat().st_mtime})
+        (self.root / 'progress.jsonl').write_text('not json\n')
+        self.assertNotIn('progress', self.call('status'))
+
+    def test_non_finite_metrics_cannot_become_successful_evidence(self):
+        self.setup_script("import pathlib,os\npathlib.Path(os.environ['RESEARCH_METRICS_PATH']).write_text('{\"loss\": NaN}')")
+        self.call('launch')
+        self.assertEqual(self.wait()['status'], 'failed')
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

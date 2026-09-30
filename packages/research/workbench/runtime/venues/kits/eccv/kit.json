@@ -1,0 +1,30 @@
+{
+  "id": "eccv",
+  "name": "ECCV 2026 (LNCS)",
+  "from": "ECCV",
+  "files": [
+    "eccv.sty",
+    "eccvabbrv.sty",
+    "llncs.cls",
+    "splncs04.bst"
+  ],
+  "documentclass": "[runningheads]{llncs}",
+  "isClass": true,
+  "stylePackage": "eccv",
+  "citationStyle": "numeric",
+  "bibstyle": "splncs04",
+  "options": {
+    "review": "review,year=2026,ID=*****",
+    "final": "final,year=2026"
+  },
+  "author": "\\author{@@authors@@}\n\\authorrunning{@@authors@@}\n\\institute{@@affil@@\\\\\n\\email{@@email@@}}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

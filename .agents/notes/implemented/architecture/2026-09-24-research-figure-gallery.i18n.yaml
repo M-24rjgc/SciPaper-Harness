@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-24-research-figure-gallery.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-research-figure-gallery.md
+/agent-note-a-figure-gallery-of-top-venue-figure-1s-for-every-research-mode:
+  en: ee4c88a50bebc2dd
+  zh: ef257db5ff333dbc
+/agent-note-a-figure-gallery-of-top-venue-figure-1s-for-every-research-mode/problem:
+  en: 56ebfc60a0b8e455
+  zh: c73d20735f443463
+/agent-note-a-figure-gallery-of-top-venue-figure-1s-for-every-research-mode/decision:
+  en: cab9dad2cc98e7c2
+  zh: 8d02de2808190698
+/agent-note-a-figure-gallery-of-top-venue-figure-1s-for-every-research-mode/consequences:
+  en: 295afca481b7ab5a
+  zh: 9d5791849f06c018
+/agent-note-a-figure-gallery-of-top-venue-figure-1s-for-every-research-mode/alternatives-considered:
+  en: a1bebf66af68cb80
+  zh: 1199012c074e0e3f

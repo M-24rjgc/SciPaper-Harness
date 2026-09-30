@@ -1,0 +1,28 @@
+{
+  "id": "llncs",
+  "name": "Springer LNCS (llncs)",
+  "from": "Springer",
+  "files": [
+    "llncs.cls",
+    "splncs04.bst"
+  ],
+  "documentclass": "[runningheads]{llncs}",
+  "isClass": true,
+  "stylePackage": null,
+  "citationStyle": "numeric",
+  "bibstyle": "splncs04",
+  "options": {
+    "review": "runningheads",
+    "final": "runningheads"
+  },
+  "author": "\\author{@@authors@@}\n\\institute{@@affil@@\\\\\n\\email{@@email@@}}",
+  "anonymousAuthor": "\\author{Anonymous Authors}\n\\institute{Anonymous Institution}",
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

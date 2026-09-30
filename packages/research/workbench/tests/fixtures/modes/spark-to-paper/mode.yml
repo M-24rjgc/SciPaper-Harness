@@ -1,0 +1,98 @@
+# A paper pipeline built only from base checks, with the shipped pack's id and
+# routes, so checks.spec tests the base checks and phase progress without the
+# upstream gates (those run through Python; spark-pack.spec covers them).
+id: spark-to-paper
+order: 10
+name: { en: spark-to-paper, zh: spark-to-paper }
+summary: { en: A fixture pipeline, zh: 测试流水线 }
+source: { repo: https://example.org/spark, version: 1.0.0, license: MIT }
+paperRoot: paper
+routes:
+  - { id: idea, name: { en: Idea, zh: 想法 }, summary: { en: An idea, zh: 想法 } }
+  - { id: proposal, name: { en: Proposal, zh: 提案 }, summary: { en: A proposal, zh: 提案 } }
+  - { id: data, name: { en: Data, zh: 数据 }, summary: { en: Measured results, zh: 实测结果 } }
+defaultRoute: proposal
+phases:
+  - id: story
+    label: { en: Story, zh: 研究故事 }
+    routes: [idea]
+    requires:
+      - when: [{ file: story.json }, { file: "{idea,story,proposal,brief}*.md" }]
+        message: Build the story from the idea and write story.json
+        hint: { en: No story yet, zh: 还没有研究故事 }
+  - id: data
+    label: { en: Data, zh: 数据 }
+    routes: [data]
+    requires:
+      - when: dataEvidence
+        hint: { en: No measured results yet, zh: 还没有实测结果 }
+  - id: plan
+    label: { en: Plan, zh: 规划 }
+    checks: [structure]
+    requires:
+      - when: [{ file: blueprint.json }, { file: "{outline,plan}*.md" }, { sections: 4 }]
+        message: Write the blueprint (blueprint.json or outline.md)
+        hint: { en: No blueprint yet, zh: 还没有蓝图 }
+  - id: cite
+    label: { en: Citations, zh: 引用 }
+    checks: [cite]
+    requires:
+      - when: { bibEntries: 1 }
+        hint: { en: No bibliography yet, zh: 还没有参考文献 }
+  - id: write
+    label: { en: Write, zh: 写作 }
+    routes: [idea, proposal]
+    checks: [structure, cite, numbers]
+    requires:
+      - when: manuscript
+        hint: { en: No manuscript yet, zh: 还没有稿件 }
+  - id: write
+    label: { en: Write, zh: 写作 }
+    routes: [data]
+    checks: [structure, cite, numbers, placeholders]
+    requires:
+      - when: manuscript
+        hint: { en: No manuscript yet, zh: 还没有稿件 }
+  - id: refine
+    label: { en: Refine, zh: 润色 }
+    requires:
+      - when: manuscript
+        hint: { en: No manuscript yet, zh: 还没有稿件 }
+  - id: review
+    label: { en: Review, zh: 评审 }
+    checks: [review]
+    requires:
+      - when: reviewCurrent
+        message: No current review — run the adversarial review and write reviews/review.md
+        hint: { en: No current review, zh: 没有当前的评审 }
+  - id: figures
+    label: { en: Figures, zh: 图表 }
+    checks: [figures]
+    requires:
+      - when: diagram
+        hint: { en: No architecture diagram yet, zh: 还没有架构图 }
+  - id: latex
+    label: { en: LaTeX, zh: 编译排版 }
+    checks: [compile, visual]
+    requires:
+      - when: pagesInspected
+        hint: { en: Pages not looked at, zh: 页面还没看过 }
+  - id: experiments
+    label: { en: Experiments, zh: 实验 }
+    routes: [idea, proposal]
+    checkpoint: true
+    deferrable: experiments-deferred
+    checks: [placeholders, numbers, figures, compile]
+    requires:
+      - when: resultsOrData
+        hint: { en: No results yet, zh: 还没有结果 }
+      - when: noActiveRuns
+        hint: { en: Runs still going, zh: 还有运行没结束 }
+  - id: submission
+    label: { en: Submission, zh: 投稿 }
+    checks: all
+    requires:
+      - when: reviewCurrent
+        hint: { en: No current review, zh: 没有当前的评审 }
+      - when: pagesInspected
+        hint: { en: Pages not looked at, zh: 页面还没看过 }

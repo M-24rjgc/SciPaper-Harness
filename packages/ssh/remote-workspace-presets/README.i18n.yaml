@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/ssh/remote-workspace-presets/README.md
+/:
+  en: 39db3562ebfd5889
+  zh: 32b5260fb0f0ee44
+/deepseek-ai-dsh-remote-workspace-presets:
+  en: 86d0224a55e74dac
+  zh: dc8ca8273a4017e6
+/deepseek-ai-dsh-remote-workspace-presets/summary:
+  en: fc938bbcd0ba76dd
+  zh: 74dfed55dbdea1ce
+/deepseek-ai-dsh-remote-workspace-presets/table-of-contents:
+  en: 76368b6b1da79c80
+  zh: b4a2a0e132e8ddf8
+/deepseek-ai-dsh-remote-workspace-presets/use-this-package:
+  en: 58c815245099917a
+  zh: e466f826c07fb2b8
+/deepseek-ai-dsh-remote-workspace-presets/understand-the-implementation:
+  en: 86b53fb437d31faa
+  zh: a27672fbc1fb6b51
+/deepseek-ai-dsh-remote-workspace-presets/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-remote-workspace-presets/model-experience/remote-workspace-tools:
+  en: d7961c7a1ee41fe9
+  zh: 3945685863b6ab8d
+/deepseek-ai-dsh-remote-workspace-presets/model-experience/remote-workspace-tools/what-the-model-sees:
+  en: db0c2724f7ec4996
+  zh: c1641bf686d665e1
+/deepseek-ai-dsh-remote-workspace-presets/model-experience/remote-workspace-tools/token-effect:
+  en: 149c0e311c16e25a
+  zh: 178fbe12c1da1527
+/deepseek-ai-dsh-remote-workspace-presets/model-experience/remote-workspace-tools/kv-cache-effect:
+  en: 2dbe319f629c75d3
+  zh: c086bc37ce200eb4
+/deepseek-ai-dsh-remote-workspace-presets/known-limitations-and-deferred-work:
+  en: d609df734343c144
+  zh: 34010c108dd5ef08
+/deepseek-ai-dsh-remote-workspace-presets/known-limitations-and-deferred-work/dev-note:
+  en: a1c37d2defcad571
+  zh: c82dac3e482c5f5c

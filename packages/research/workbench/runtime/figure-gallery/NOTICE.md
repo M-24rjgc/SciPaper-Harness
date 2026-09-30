@@ -1,0 +1,5 @@
+# Figure gallery: notice
+
+`index.json.gz` is built from [Top-Conf Figure Gallery](https://github.com/qwdwqfwq/topconf-paper-figure-gallery) at commit `665761f` by `scripts/build_figure_gallery.py`. The gallery collects hand-reviewed Figure 1 and teaser figures of ICLR, ICML, NeurIPS, CVPR, ACL and AAAI papers from 2023 to 2026. Its code and index are released under the MIT licence in `LICENSE` beside this file.
+
+The index keeps, for each figure, the paper's title, authors, venue, year, links, the gallery's visual-pattern tag, its Oral, Spotlight and award marks, the image's size and the gallery's design score. It holds no image. Every figure stays under the copyright of its paper's authors and publisher (see the gallery's `IMAGES_POLICY.md`): the platform fetches only the figures the agent or the person chooses, from the gallery itself, caches them in the product home, and saves each one into a project with a record of its paper. The figures are layout references to study, never material for the paper. An image the gallery takes down can no longer be fetched.

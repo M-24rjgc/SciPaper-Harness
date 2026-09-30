@@ -1,0 +1,4 @@
+system,summac,qafacteval,human_consistent_rate
+lead-3,0.712,0.638,0.910
+bart-large,0.583,0.521,0.740
+bart-large-rl,0.641,0.577,0.820

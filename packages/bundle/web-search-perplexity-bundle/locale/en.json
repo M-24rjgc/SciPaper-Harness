@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Perplexity search",
+    "description": "Search the web through Perplexity. An API key is required; search remains unavailable until configured."
+  }
+}

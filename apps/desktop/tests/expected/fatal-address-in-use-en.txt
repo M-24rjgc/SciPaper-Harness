@@ -1,0 +1,5 @@
+SciPaper Harness is unavailable
+The application could not start or stopped unexpectedly.
+Another SciPaper Harness instance (such as the desktop app or one started from the command line) is running. They cannot start at the same time. Quit the other running instance, then restart.
+Exit
+Restart

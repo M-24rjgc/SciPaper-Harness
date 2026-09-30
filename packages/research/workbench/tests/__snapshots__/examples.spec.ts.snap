@@ -1,0 +1,59 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`official example conversation persistence > persists and reopens authored content with exact streams, then adds no events on reinitialization > ccfa-sparse-attention 1`] = `
+[
+  {
+    "content": [
+      {
+        "text": "研究对象：内容自适应稀疏注意力。核心问题：在保留比例相同时，按内容分配注意力预算，是否比固定模式保留更多任务信息？本研究材料中的九条数值为合成演示数据，不代表真实训练结果。",
+        "type": "text",
+      },
+    ],
+    "role": "user",
+  },
+  {
+    "content": [
+      {
+        "text": "研究札记与实验设计已收录在本项目。
+
+候选机制将注意力矩阵划分为块，根据查询与键的内容计算相关性得分，并在固定预算内选择得分最高的块。固定稀疏对照保留同样数量的块，使比较能够区分分配规则与预算。
+
+合成演示表 data/pilot.csv 包含三个配对行。稠密参照的平均准确率为 90%，固定稀疏为 86%，内容自适应为 88%；两个稀疏条件均保留 25% 的条目，各条件样本标准差为 1 个百分点。内容自适应相对固定稀疏高 2 个百分点，同时比稠密参照低 2 个百分点。figures/attention-tradeoff.svg 展示同一组均值，code/analyze.py 可复算表格。
+
+这些数值不证明真实任务上的优势。experiments/design.zh.md 将预算匹配、随机选择对照、预算扫描，以及包含选择器开销的延迟和显存测量分别对应到待检验结论。中英文正文位于 paper/paper.md 与 paper/paper.zh.md，可阅读版位于 paper/main.pdf。",
+        "type": "text",
+      },
+    ],
+    "role": "assistant",
+  },
+]
+`;
+
+exports[`official example conversation persistence > persists and reopens authored content with exact streams, then adds no events on reinitialization > spark-summary-consistency 1`] = `
+[
+  {
+    "content": [
+      {
+        "text": "研究对象：摘要的源文支持性。候选机制为每条事实性陈述关联源文片段，并修订或省略缺少支持的内容。结果表中的六个分数为合成演示数据，没有模型评测或人工标注。",
+        "type": "text",
+      },
+    ],
+    "role": "user",
+  },
+  {
+    "content": [
+      {
+        "text": "本项目保留了从结果表到研究札记的完整材料。
+
+一致性定义为摘要中被源文支持的事实性陈述比例。data/results.csv 包含三个配对行：普通方法平均为 87%，基于证据的方法平均为 91%，各自样本标准差为 1 个百分点。每个配对行相差 4 个百分点。figures/consistency.svg 使用 0 到 100 的量表展示均值，code/analyze.py 可复算均值和配对差异。
+
+百分比与百分点变化分别报告。由于这些数值是编写的合成演示数据，不能据此作显著性、泛化或实际事实性提升的判断。实验设计进一步区分一致性、覆盖率和可读性：仅删除内容可能提高支持比例，却损失信息。真正检验支持性检查机制，需要固定模型、源文、长度预算和解码设置，采用配对文档、盲法标注及支持性检查消融。
+
+中英文正文位于 paper/paper.md 与 paper/paper.zh.md，可阅读版位于 paper/main.pdf；数据说明和评测定义分别位于 data/ABOUT.md 与 experiments/design.zh.md。",
+        "type": "text",
+      },
+    ],
+    "role": "assistant",
+  },
+]
+`;

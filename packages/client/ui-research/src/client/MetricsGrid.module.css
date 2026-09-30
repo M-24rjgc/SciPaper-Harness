@@ -1,0 +1,4 @@
+.grid { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.metric { display: flex; flex-direction: column; gap: 3px; }
+.name { font-size: 11px; color: var(--dsw-alias-label-tertiary); }
+.value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }

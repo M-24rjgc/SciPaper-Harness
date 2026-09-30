@@ -1,0 +1,561 @@
+# Agent Note：以研究与对话为中心重新设计 SciPaper Harness
+
+Status: implemented
+
+[English](2026-09-25-research-conversation-first-redesign.md) | 中文
+
+## 问题
+
+SciPaper Harness 是构建在 DeepSeek Harness Web 外壳上的科研应用，但它在科研产品旁边仍带着外壳自己的开发者产品。每条回复都提供「好的回答 / 有问题的回答」，而在基础组合包的 `FEEDBACK_ONLY` 遥测模式下，一次评分或 `/feedback` 就会把这段对话的 Session 日志交给 `harness-telemetry.deepseeksvc.com`；桌面应用从未设置 `DSH_TELEMETRY_DISABLED`。每个 DeepSeek 官方模型请求还会在 `dsh_session_log` 字段里附带整份 Session 日志。界面上还有与科研无关的开发者控件：Cordis 插件徽标、一个 agent preset 选择标签（选其他选项就会失去科研工具）、轨迹标签页、终端标签页、Session 日志下载、「在…中打开」按钮，以及插件和 preset 设置页。文案也在替外壳说话：运行中的一轮显示「深度求索中...」（DeepSeek 的中文名），入口页让用户选择「工作区」，首次启动对话框提出「配置 DeepSeek 官方模型」，仿佛那是产品自己的模型，窗口标题则是产品的旧名 Research Workbench。除此之外，入口页、新建路径、右侧栏和 agent 的流程已经长成了两个功能重叠的应用，其中好几个控件什么也不做。
+
+负责人批准了一次重新设计：「研究」是用户唯一创建的对象，对话是主界面，右侧面板只报告。它按顺序分步交付，每一步都保持应用可用；本 note 在每一步交付时记录这一步。
+
+## 决策
+
+### 第 1 步：不发遥测、不收反馈、不提供开发者控件
+
+由 Web 组合包的 patch（`packages/bundle/web-app/cordis.patch.yml`）关闭这些行，不改外壳代码，只有一个外壳包清单去掉了一条依赖边（见下文）。`web` profile 与 Desktop Host 都在 base 之上组合这个组合包，因此两者都不再包含它们。
+
+- **遥测与反馈。** 按 id 禁用 `session-telemetry-otel` 和 `command-feedback`（base 的行）；`message-feedback` 与 `ui-message-feedback` 以禁用状态插入。组合结果因此没有导出器、没有 `/feedback`、没有评分按钮，也没有 `messageFeedback` 和 `sessionFeedback` 两个 Remote。
+- **模型请求不再附带 Session 日志。** `session-log-deepseek` 保持挂载，但设为 `enabled: false`。DeepSeek 模型仍是普通的服务商，只是其请求不再带 `dsh_session_log` 字段。
+- **桌面端开关。** 无论继承的环境是什么，Electron 壳都以 `DSH_TELEMETRY_DISABLED=1` 启动 Host。Host 像 `dsh` 启动器那样应用这个开关：值非空且组合中有遥测行时，在所有插件组合包、profile 自己的 patch 和桌面叠加层之后，再用最后一个 patch 禁用它（`apps/desktop-host/src/layers.ts` 中的 `desktopPatchLayers`）。agent 启动的进程会继承该变量。
+- **开发者控件。** 以禁用状态插入：`session-log-download`（Session 日志下载与 `/export`）、`open-in-app` 与 `ui-open-in-app`（桌面端原本就已关闭）、`ui-cordis`（Cordis 插件徽标）、`ui-agent-preset`（空白对话上的 preset 标签、会话头部的 preset 名称和 preset 设置分区）、`ui-settings-plugins` 与 `ui-settings-plugin-inventory`（插件设置页）、`ui-sidebar-terminal`（终端标签页）和 `ui-trajectory`（轨迹视图，因此会话头部不再画视图标签）。
+- **Preset 与自主程度。** 每段对话都从名录默认的 `research` 组合。`research-auto` 在权限列表中的显示名为 `全自动 · Automatic`。
+- **产品标题。** 科研版客户端构建 profile（`scripts/client-build-environment.ts`）把 `DSH_CLIENT_TITLE` 设为 `SciPaper Harness`，页面标题以及随之而来的桌面窗口标题都使用它。
+- **一条清单依赖边。** `ui-attachment` 的 `dsh.client.inject` 不再列出 `ui-trajectory`。它向轨迹图片 slot 的贡献通过 `ctx.slots.inject` 等待该 slot，本身是可选的；而 Web 名录不保留指向未组合的包的依赖边（`assembly-bundle-roster.client.spec.ts`）。
+
+`packages/bundle/research-app/tests/research-edition-rows.ts` 把每个被禁用的行只列一次。旁边的 `independence.spec.ts` 固定了组合后的各行，包括没有任何启用的行写着遥测端点；`apps/desktop/tests/desktop-telemetry.spec.ts` 通过 `desktopPatchLayers` 固定桌面组合，开关也在其中。科研场景按交付时的状态运行这些行：`apps/web/tests/research-workbench.e2e.ts`（它也从 `research` preset 组合）、示例生成器 `research-demo.e2e.ts`，以及 `shipped-composition.e2e.ts` 中检查交付默认值的测试。继承来的 Web 场景继续组合这些被禁用的行，因为 Playwright 脚手架的 `enableInheritedRows` 默认为 true，所以它们及其金标准仍按录制时的样子测试上游插件。组装后的 jsdom 通道挂载交付时的名录，只有其中的轨迹图片场景重新组合轨迹视图这一行（`mountAssembledApp({ enableRows: ['ui-trajectory'] })`）。批准的方案原本要求更新回放金标准，这里没有这样做（见其他方案）。
+
+### 第 2 步：外壳文案说的是「研究」，不是工作区，也不是某家公司
+
+文案改在五个外壳包的词典里，不改任何键，也不改任何组件。一个 locale 命名空间每种语言只接受一份词典（`ctx.locale.register` 会拒绝第二份），所以别的插件无法替换这些值。先写中文，英文随之对应。
+
+| 包 | 键 | 中文 | English |
+|---|---|---|---|
+| `ui-chat` | `chat.deepDiving`，运行中那一轮下方的状态行 | 思考中… | Thinking… |
+| `ui-conversation` | `hero.headline` | 今天想推进什么？ | What shall we work on today? |
+| `ui-conversation` | `placeholder.hero`，空白对话的输入框 | 说说你的研究问题，或把论文、数据拖进来（/ 调用指令，@ 引用文件或对话） | Describe your research question, or drop in papers and data; / for commands, @ for files or conversations |
+| `ui-conversation` | `placeholder.default` | 接着说，或把论文、数据拖进来（/ 调用指令，@ 引用文件或对话） | Keep going, or drop in papers and data; / for commands, @ for files or conversations |
+| `ui-conversation` | `placeholder.workspace`，尚未选定文件夹时的输入框 | 先在左侧新建或打开一项研究 | Start new research or open one on the left first |
+| `ui-conversation` | `hero.chooseWorkspace`，尚未选定文件夹时的文件夹标签和输入框名称 | 选择研究 | Choose research |
+| `ui-settings-models` | `onboardingTitle`，首次启动的密钥对话框 | 添加一个模型服务的 API Key 即可开始使用 | Add an API key for a model service to get started |
+| `ui-settings-models` | `onboardingDescription` | 这里可直接填写 DeepSeek 的密钥；其他提供方可在 设置 › 模型 中添加。 | You can enter a DeepSeek key here; add other providers in Settings › Models. |
+| `ui-sidebar-files` | `guide.title`，右侧面板起始页上的文件入口 | 研究文件 | Research files |
+| `ui-sidebar-files` | `guide.description` | 浏览这项研究的文件夹 | Browse this research's folder |
+| `ui-sidebar-files` | `noWorkspace` | 这段对话没有研究文件夹。 | This conversation has no research folder. |
+| `ui-sidebar-files` | `error.outsideWorkspace` | 这个目录在研究文件夹之外，侧栏不会读取它。 | That directory is outside the research folder, so the sidebar will not read it. |
+| `ui-reference` | `crumb.root`，`@` 逐级进入文件夹时的第一段路径 | 研究文件夹 | Research folder |
+| `ui-reference` | `section.sessions`，`@` 菜单里的对话分区 | 对话（不变） | Conversations |
+
+- **状态行**不再带有外壳背后那家公司的名字。
+- **首次启动对话框**仍然只提供 DeepSeek 凭据，所以文案写明它要的是什么：一个模型服务的密钥，这里填 DeepSeek 的，其他提供方在「模型」设置里添加。它不再把 DeepSeek 说成产品自己的模型。
+- **两句输入框提示**各是一句话；中文里的指令提示放在全角括号内。英文的 `@` 菜单把这个分区叫作 Conversations，与提示里的用词一致。
+- **文件夹只用一个词。** 这一步改到的每个字符串都把研究的文件夹叫作「研究文件夹 / research folder」，文件入口叫作「研究文件 / Research files」。批准方案的步骤原文写的是「项目文件」和「项目文件夹」，但方案的对象模型规定「项目」和「工作区」不出现在界面上；之后为文件标签页命名的步骤沿用这一步的用词。
+- **文件标签页**的标签名仍是「文件 / Files」。
+
+五个包的单元 spec 以字面文本固定新值，使用各 spec 渲染的语言。引用旧值的浏览器金标准和定位器只改了那几行。另有三个继承来的金标准（`subagent-conversation` 与 `subagent-interrupt`）把子会话的访问模式标签读作 `全自动 · Automatic`，即第 1 步给 `research-auto` 的显示名，此前它们记录的是 `Custom`。两个 `lifecycle-chrome` 入口页金标准也换成了 ui-research 当前的入口页段落，这些段落在金标准录制之后改过。`onboarding-deepseek-config` 中密钥对话框的金标准也按同样方式修改，但没有任何运行会比较它：该场景先要等待上游的欢迎声明，而 ui-research 覆盖了它。`deepseek-messages-settings` 与 `onboarding-usable-provider` 会在浏览器里打开新的对话框。`apps/web/tests/research-workbench.e2e.ts` 用英文读取尚无研究时的入口页（标题、Choose research 标签和兜底提示）、一项研究的空白对话、已完成回复下方的输入框，并用中文读取新研究的入口页。
+
+### 第 3 步：科研界面不再毁坏文件，也不再自作主张
+
+改动在 `ui-research` 和科研宿主里，外壳代码不变。
+
+- **保存不会清空二进制文件。** `writeArtifact` 在读写任何内容之前就拒绝对二进制文件执行 `save-artifact`，无论谁发起。判断方式：按扩展名（图片、PDF、压缩包、Office 文档、字体、数组文件），或者在其他文件名下，文件前 8 KiB 含有 NUL 字节（`files.ts` 中的 `isBinaryFile`）。`read-artifact` 对这类文件返回 `binary: true` 且不带文本，文件面板随之不显示编辑器，并禁用「保存」。在输入任何内容之前「保存」也不可用，因此默认的新文件路径不会被写成空文件。
+- **不再自己打开或启动任何东西。** 原先只要科研对话一挂载就打开科研标签页的 dock 已移除；什么也不做的入口卡片、承诺行，以及输入框上方的论点与图卡片也一并移除。科研标签页只从标题栏的状态标签打开。标题栏的「项目文件夹」「实验看板」「配图灵感」三个按钮移到标签页的工具行，与研究文件并列。
+- **侧栏只报告。** 它去掉了模式选择、「运行检查」「推进流程」，以及从未真正探测、却显示「已就绪」的环境块。模式由助手设定，检查由助手运行，目标由助手推进。自主度选择先保留在侧栏，第 8 步再移到输入框下方。只有当路线含实验阶段或已有运行时，才显示「实验」一行。
+- **每个控件各自显示进度与失败。** 插件级的 `busy` 与 `error` 已移除：`useAction`（`Action.tsx`）让每个控件有自己的进行中状态，并在旁边显示失败原因。`run` 会跟随宿主后台任务直到结束，因此控件的进行中状态与实际工作一样长，失败的任务会显示它的消息。
+- **运行。** 「停止」会先问一次：确认取消这次实验？停止后无法继续。（`StopRun.tsx`）。排队中的运行显示为灰色的「排队中」，不再显示为「运行中」。「用它画图」把句子追加到输入框里，不再覆盖已输入的内容。
+- **较小的修正。**
+  - 论点面板只在论点所属的项目里查找它，因为论点 id 只在项目内唯一。
+  - 打开对话时，最多等待五秒，直到会话列表里出现它，否则打开该研究文件夹的空白对话；此前卡片可能抛出 `unknown session`。
+  - 设置去掉了「主模型」：它能保存，却从未被读取。
+  - 从未探测过的环境状态不再显示标签。
+- **遮蔽开发者单元格。** 空占位替换了输入框下方的轮次、步数、token 速率与缓存命中小胶囊（`conversation.composer.dock#stats`），通用设置里的默认权限（`settings.general.item#permission`，它由研究的自主度决定），以及「打开配置文件」操作（`settings.action#open-document`）。只有当 `ui-research` 的 `hideDeveloperCells` 为 true 时才注册这些占位，Web 组合包在它的行上设了这个值。客户端行的 `config` 只会到达包的 Host 半边，所以由这一半校验它，并作为 `__DSH_RESEARCH__` 全局变量放进每个服务出去的页面，做法与 `client-connection` 把重连时序交给浏览器相同；浏览器半边在应用时读取它。Web e2e 脚手架为继承来的场景把它关掉（与第 1 步的那些行一起），因此它们的金标准仍保留这些小胶囊。
+
+### 第 4 步：一种含义一种颜色
+
+品牌、按钮、业务强调色、成功色和链接原本是同一种青绿色，所以「已完成」「运行中」「建议」和「在这里操作」看起来一模一样。科研主题（`ui-theme/src/styles/research.css`）现在给每种含义各自的 token，科研界面按含义使用它们。
+
+| 含义 | Token | 浅色 | 深色 |
+|---|---|---|---|
+| 品牌，以及在哪里操作：烧瓶标志、发送、焦点框、选中 | `brand-primary`、`state-business-*`（外壳的强调色）、`button-info-*` | 青绿 `#15635f` | 青绿 `#7bc4bb`，发送 `#3f8f86` |
+| 经检查或证据核实 | `state-success-*` | 绿 `#3b7a1f`，底 `#e9f2e1` | `#98c46a`，底 `#26331d` |
+| 进行中 | `state-ongoing-*`，新增的别名（基础主题 `deepseek-450` / `-100`，深色 `-400` / `-800`） | 蓝 `#3366cc`，底 `#e8eefa` | `#8fb0e6`，底 `#26324a` |
+| 需要用户处理 | `state-warn-*` | 陶土色，不变 | 不变 |
+| 已完成、待进行、中性 | `label-secondary`、`label-tertiary`、`border-l4` | — | — |
+
+- **各自用在哪里。** 运行中的标记、进度条、侧栏的运行中标签和看板的实时指示使用进行中的蓝色。已完成的阶段和已结束的运行是中性色；运行中的运行，其标签为中性，旁边是蓝色标记。焦点框和选中状态使用品牌色。装饰性的标记（论点面板的缩略图与引文竖线）为中性，迷你折线图使用第一个图表颜色。
+- **外壳 CSS。** fork 自己的侧栏覆盖样式把「新研究」从实心按钮改成浅色底（强调色的浅底配品牌色文字），让输入框拥有唯一的实心按钮。侧栏和入口页的烧瓶标志从 `state-success` 改为 `brand-primary`（`SidebarRoot.module.css`、`HeroShell.module.css`）。
+- **对比度。** 浅色下每种状态色在自己的浅底上文字对比度不低于 4.6:1，在页面上不低于 5:1；深色下不低于 5.8:1。深色的发送按钮，白色图标对比度为 3.8:1。
+- **颜色从来不是唯一的信号。** OKLab 检查（`validate_palette.js`）中蓝色与青绿色的差值为 ΔE 18，可以通过。绿色与青绿色为 12.8，这已是贴着这种青绿色的绿色能达到的最大差值。在红色弱下绿色与陶土色很接近，深色主题在绿色弱下几乎一样。因此每个「已核实」标记都带 ✓ 或文字，每个「需要你处理」标记都带文字，运行中的标记都带标签。
+
+### 第 5 步：示例说明自己是示例，也没有任何东西写进它们
+
+示例研究（`<数据目录>/demo`，由 `research-demo.e2e.ts` 生成）看起来和用户自己的研究一样：启动时会打开它们，里面的决策显示为「你」，一段对话或一次检查也能写进去。
+
+- **标记。** `isExampleRoot(root)`（`files.ts`）用的正是生成器自己的规则：根目录位于 `<数据目录>/demo` 之内。`publicProject` 和 `projectBrief` 会加上 `example: true`；这个标记不存储，所以不会改动任何示例文件或记录。生成器让宿主运行在隔离的数据目录下，却把示例写在另一个目录下，因此在它生成示例时，这条规则不会命中。
+- **宿主防护（纵深防御）。** 对示例执行任何会记录内容的命令，`execute` 都会拒绝，无论来自用户还是 agent，并提示 `这是示例研究，只能查看 / This is an example research and is read-only`。拒绝发生在任何耗时工作之前，被拒绝的编译不会在示例的文件夹里运行 TeX。读取照常可用。检查会运行并返回结果，但不保存。`board-update` 与 `board-refresh` 被拒绝，`board-view` 从不刷新，因此不会写入看板缓存。无论经由什么路径，`mutate` 都拒绝修改示例的记录；后台观测跳过示例里的运行；`create` 对已有的示例原样返回、不绑定会话，但不会在示例目录中新建研究或文件夹。
+- **在浏览器里。**
+  - 标题栏状态标签以虚线框的「示例 ·」开头。
+  - 科研标签页顶部有一条说明：示例研究：随应用提供的演示，只能查看。以用户名义存储的回答显示为「示例作者」，因为那从来不是读者本人的回答。自主度选择不可操作。
+  - 侧栏把示例排在用户自己的研究之后，并各自标上「示例」。
+  - `guardExampleComposers`（`examples.ts`）通过 `conversation.blocks` 让示例里每段对话的输入框保持不可输入，并显示：这是示例研究，只能查看。点「新研究」开始你自己的研究。每个会话只有一个阻挡位，`ui-model-selection` 也会设置和清除它，因此只要别的插件清除了阻挡，守卫就会重新放上自己的阻挡。
+
+### 第 6 步：进展只有一份记录
+
+侧栏的阶段、标题栏状态标签和 agent 的项目简报读的都是 `lastCheck`，即最近一次报告，不论它的范围，所以一次阶段检查会顶替全文检查，「检查通过」旁边还摆着没完成的阶段。现在 `research_check` 只维护一份进展记录，由一个宿主函数说明研究的现状。
+
+- **报告写明运行了什么。** 每份 `CheckReport` 带有 `gatesRun`，每个阶段带有 `unmet` 键：先是未满足要求的键（`requirementKey`，由条件构成，在阶段内唯一），再是每个有错误的决定性检查对应的 `errors:<check>`。英文的 `missing` 行留给模型。同时是阶段名和基础检查名的 scope（例如 spark-to-paper 的 `cite`）指阶段，并运行它的门禁，这也正是报告的筛选早已假定的。发现所指的文件不在磁盘上时，这条发现不再带文件和行号，CCFA 指向不存在的 `submission/checks.md` 的链接因此消失。
+- **合并规则。** `mergeProgress`（`progress.ts`）把每份报告并入 `project.progress`：只有报告运行了决定某阶段的全部门禁，该阶段才会变化；报告运行过的每项检查整体替换它的发现；`full` 只来自 scope 为 `all` 的检查；模式或路线不同的报告让进展重新开始。`research_check` 是唯一的写入方：`export` 仍把自己的报告放进投稿包，但不记录任何内容。`lastCheck` 仍会写入。
+- **读取时补种。** 没有 `progress` 的记录，会把它 scope 为 `all` 的 `lastCheck` 读作进展（`storedProgress`）。旧报告的英文行按要求的 message 或检查给出的原因文字对应到要求上，`N error(s) in …` 对应到错误键，因此随应用提供的示例无需修改任何示例文件或记录，就能显示各阶段和提示。存储报告的 schema 把缺失的 `gatesRun` 或 `unmet` 读作空。
+- **现状。** `standing(project)` 推导出各阶段（done、current、pending 或 deferred，带检查点标记和模式包的提示）、下一阶段及其第一条提示、`finished`、`checkedAt`、`changedSinceCheck`，以及按检查分组的待处理问题。文件时间取 `.research`、`exports`、`.git` 与 `node_modules` 之外最新的修改时间，每个根目录缓存 30 秒（`FileTimes`），超过 5,000 个文件时为 `unknown`；unknown 永远不算已完成。`snapshot()` 像 `publicProject` 加上 `example` 那样给每个项目加上它，从不存储。`projectBrief` 的阶段（`state`、`checkpoint`，以及由提示得出的 `missing`）、下一阶段、提示和已推迟的阶段都取自它，另外加上 `checkedAt`、`changedSinceCheck`、`finished` 和 `paperRoot`。`scripts/gen-cordis-catalog.ts` 把 `ResearchStanding` 与其他由 `types.ts` 说明的科研记录类型列在一起。
+- **模式包。** 每条要求带 `hint: {en, zh}`，每个门禁带 `label: {en, zh}`，每个模式包带 `paperRoot`（general 和 CCFA 为 `paper`，CCFA 的技能写的是 `paper/main.tex`；spark-to-paper 为 `.`）；三者都是必填项。spark-to-paper 的实验阶段声明 `deferrable: experiments-deferred`，模式包声明 `reviewAgainst: "sections/*.tex"`，因此拼装 `main.tex` 不会让评审过期。基础检查有内置名称（`CHECK_LABELS`）。
+- **决策键。** `record-decision` 接受可选的 `key` 短标识，并存进这条决策。可推迟的阶段在未完成、且有决策带上它的键时处于推迟状态。推迟的阶段永远不算完成；阶段自己的检查通过时它就是已完成，不论是否推迟过。
+- **在浏览器里。** `Rail.tsx` 按现状绘制：已完成是中性色的 ✓，当前阶段是 `brand-primary` 色的圆环，未开始是空心标记，「已推迟」用警示色，检查点阶段注明「开始前会先问你」，当前阶段下方是模式包自己的提示，下面是「检查于 {相对时间}」以及「检查后有改动」。「待处理」最多列出三组，用读者的语言命名（引用 · 2 个错误）；只有宿主在磁盘上找到了文件，这一组才能打开它，检查自己的原话收在「详细信息」里。`standingText` 显示为 `{mode} · {phase} {done}/{total}`，完成时为 `{mode} · 已完成 ✓`，推迟阶段之前已无待做阶段时为 `{mode} · 实验已推迟`，每个阶段都已完成但论文还没完成时为 `{mode} · 待复查`。
+
+### 第 7 步：由助手选定模式、给研究命名，并且只保留一个目标（宿主、人设与技能部分）
+
+记录里原先写着每项研究的模式都是用户选的；`set-mode` 会删掉理由，也不记录决策；`current` 在研究之外会报错；`create` 能在任意文件夹里建研究；也没有任何东西告诉第二段对话已经有目标在运行。现在，宿主、人设与技能按已批准方案第 4 节的流程工作。
+
+- **模式要选定，而不是默认认定。** `createProject` 只在调用方指定了模式时才把模式交给记录，因此只有这时 `newProject` 才写入 `modeSetBy: user`。创建时没有指定模式的研究处于 `general`，`modeSetBy` 不设置：模式尚未选定。
+- **`set-mode` 自己记录决策。** 它接受 `decidedBy`（`user` 或 `agent`，缺省时为调用方），据此设置 `modeSetBy`，并追加一条 key 为 `mode` 的决策：问题是「模式与路线」，回答是以 id 写成的 `<mode>` 或 `<mode> · <route>`，理由即其 rationale。只有给出了理由，它才替换 `modeReason`。模式或路线改变时，`progress` 换成新组合的一份空记录，因此在别的模式下检查过的阶段不会借存储的 `lastCheck` 再回来。
+- **`rename {title}`** 设置标题，清除 `untitled`，并把同一标题给文件夹对应的 Workspace，除非已有别的 Workspace 用了这个标题（Workspace 标题唯一，见 `workspace-controller/commands.ts`）；这时结果会说明文件夹保留原来的名字。`untitled` 是新增的可选记录字段，表示产品起的占位标题；第 9 步的草稿研究会设置它。
+- **运行记下提交它的对话。** `execute` 接收调用方的会话，`submitExperiment` 把它记在运行上，即 `sessionId`。从桌面端提交的运行和更早记录的运行都没有它。
+- **`activeGoals(project)`** 通过目标服务读取目标：它遍历 `ctx.agents.list()`，保留工作目录所在的最内层研究正是这一项的顶层会话，并逐个调用 `ctx.goals.get(agent)`。已完成的目标、没有目标的会话、目标日志无法重放的会话都会跳过，其余按「推进中、受阻、已暂停」排序，同类中最新的在前。服务现在注入 `agents` 与 `goals`，两者都是基础 bundle 中的宿主平面服务。未加载的对话看不到，因为目标服务读取的是已加载会话的投影。
+- **工具。** `current` 从不报错：在研究之外，或对话没有文件夹时，它返回 `{project: null, hint}`。`create` 只把本对话自己的文件夹设为研究；其他 `root` 一律拒绝，并在消息中请 agent 让用户使用「新研究」和「更改位置」；位于某项研究之内的文件夹返回那项研究的简报，而不是新建一项嵌套的研究。`set-autonomy` 的说明写明只在用户用话语要求时使用。
+- **项目简报**新增 `modeChosen`、`modeSetBy`、`routingSettled`（用户选定了模式，或已有 key 为 `mode` 的决策）、`activeGoal`（读者自己的目标优先，否则取服务报告的第一个，附带 `thisConversation` 与持有目标的其他对话数）以及 `untitled`；它的指引会说明模式何时尚未选定、路线何时已定、目标已在哪里运行，以及研究何时还需要一个标题。模式包的技能改为在开始某阶段的工作时加载，而不是为一个问题加载。检查点阶段本来就在简报里（`phases[].checkpoint`，以及「Checkpoint before: …」）。
+- **人设**（`presets/research/agent.cordis.yml`）以方案 4.8 节的文字开头，保留诚信与「hands」两段。最后一条关于直接导入附件的要点留到第 8 步，那一步才允许导入附件存储里的文件。
+- **技能。** `research-modes` 承载唯一一张模式与路线表、模式尚未选定时的规则，并说明 `set-mode` 会记录决策、定下路线。`ts-paper` 与 `ccf-pipeline-orchestrator` 只在 `routingSettled` 为 false 时重新选路线，只在 `activeGoal` 显示没有目标时才创建目标。`ts-paper-experiment` 与 `running-experiments` 在什么都跑不了时记录 `experiments-deferred`，并说明论文保持提案形态。`results-ingest` 只提 `results.facts.json`，`paper-writing` 按简报的 `paperRoot` 放稿件，`ccf-common` 把 `ccfa.yaml` 称为技能的工作笔记，把 `research_check` 称为研究进展的记录。`references/upstream.md` 与 NOTICE 文件都没有改动。
+- **示例生成器与 e2e。** 示例生成器脚本里的 `set-mode` 调用带上理由（用户在检查点选定的那处还带 `decidedBy: user`），之后不再另记一条模式决策。科研 Web e2e 断言：新建对话框会带上它的选择框里的模式，因此记录把这个模式记为用户的选择；并断言 `set-mode` 记下了用户的决策。在第 9 步去掉这个对话框之前，只有 agent 或示例生成器不指定模式而创建的研究，才会以「模式尚未选定」开始。
+
+第 1 步遗留的模型可见文字也一并修改。Web bundle 的 `system-prompt` 行设置 `includeHarnessIdentity: false`，agent 只由人设来介绍自己。`harness:source`（`app-boot`）、`app:web-surface` 与 `DSH_WEB_URL` 的说明（`web-app`）没有可以配置文字的字段，所以直接改了措辞：「the implementation checkout of this application」「this application's Web GUI」「the Web GUI serving this session」。四份 Web 系统提示词金标准文件、`fresh-round-trip` 的 Web 上下文金标准和 Web surface 金标准只在这些行上改动，`replay-round-trip.e2e.ts` 期望人设是第一段。`independence.spec.ts` 固定了这一行。
+
+### 第 7 步：研究工具的调用以读者的语言呈现（ui-research）
+
+研究工具的调用原先落到通用工具行，只显示工具的线上名称和第一个字符串参数，于是一次检查显示为 `research_check · cite`，报告是原始 JSON。现在 `ui-research` 为每个研究工具在 `tool.call.toolview` 按键注册一张卡片；外壳代码不变。
+
+- **卡片内容从哪里来。** `toolCallValues.ts` 只从记录下的调用与结果推导：调用的状态（进行中、已返回、失败、已中止）、参数，以及工具返回的 JSON 值（每个研究工具都以一个文本块返回）。研究记录只负责命名：阶段用报告所在模式的模式包标签，检查用项目 `standing` 给出的名称，模式与路线用模式包里的名字；其余一律用 id。Host 的 `presentCall` 标题仍留在 `tools.ts`，Web 客户端从未读取它们。
+- **每次调用一行。** `ResearchToolCard` 写明工具名称和这次调用做了什么（`研究资料 · 导入 3 个文件`、`研究记录 · 设定模式：spark-to-paper · 从实测结果开始`），沿用工具行的 24px 行高和烧瓶标志。十个工具的每个 action 都有自己的说法；本版本不认识的 action 显示为 `执行 <action>`，参数尚未写完的调用只显示工具名。原始参数与结果收在行的展开内容里；失败时在行下就地显示宿主给出的原因（`没能完成：…`），中止的调用写明已中止。
+- **每次检查一张卡片。** `ResearchCheckCard` 写作 `研究检查 · {范围} · 通过 | 未通过 · n 个错误 · n 个提醒`。没有发现错误却仍未通过的检查会说明原因：阶段范围为 `n 项要求未满足`，全部范围为 `n 个阶段未完成`。卡片按检查列出前三组发现（有错误的在前），每组附上它提到的第一个文件；全部发现与未完成阶段的原话收在「详细信息」后。只有报告带有 `gatesRun`（表明宿主会丢弃不存在的文件）时，文件才能在右侧栏打开；示例里的报告早于这一变化，文件显示为文本。只有干净的报告才有绿色 ✓（`state-success`）；未通过的报告用提醒色圆点，「未通过」用 `state-warn`。不是报告的结果回退为普通行。
+- **测试。** `tool-call-values.client.spec.ts` 用示例生成器的脚本调用和宿主新旧两种格式的报告作输入，并对照 Host 自己的工具定义（`registerResearchTools`）检查：宿主注册的每个研究工具都有卡片，声明的每个 action 都有说法。`research-tool-view.client.spec.tsx` 渲染卡片，`plugin.client.spec.ts` 检查十项注册。
+
+### 第 8 步：自主程度就是每段对话的权限，附件即用户的同意（宿主与人设）
+
+自主程度原先只是项目简报里的一行，外加侧栏里一个把 `/permission` 发给侧栏所在对话的选择框。这项研究的其他对话，包括由目标推进的对话，都保持原来的预设。在「全自动」下，连用户刚附加的 PDF 也会被拒绝：附件存储位于产品数据目录之内，而导入会拒绝整个数据目录。
+
+- **由宿主应用自主程度。** `AUTONOMY_PRESETS`（`schema.ts`）把 `checkpoints` 对应到 `workspace-write`（越权请求会询问），把 `automatic` 对应到 `research-auto`（越权请求直接拒绝）。服务注入 `permissionPresets` 与 `sessions`，用 `ctx.permissionPresets.set` 把对应的预设设到研究的每个在线会话上：绑定到研究的会话；否则是工作目录所在的最内层研究正是这一项的会话，与客户端 `sessionProject` 的规则相同。`projectAt`、`activeGoals` 和这里的查找现在共用一个 `innermost`。以下时机都会应用：任一方的每次 `set-autonomy`（即使取值不变）；项目创建之后，因为绑定的会话在记录存在之前就已上线；服务启动时；以及服务自己的 `session/created` 监听器里，每个会话上线时。
+- **在默认值固定之后运行。** 权限服务在构造函数里注册它的 `session/created` 监听器，并在其中固定设置里的默认值。科研服务注入了它，因此启动得更晚；而 Cordis 按注册顺序调用监听器。顺序在用户的默认预设不同时才起作用：如果科研监听器先运行，它会发现无需改动，随后固定默认值时会写入用户的默认值。
+- **不改动的会话。** 示例的会话不追加任何权限事件。委派出的子会话（`origin: subagent`）保持委派时固定为 `never` 的审批策略。不在任何研究里的会话不受影响。为某个会话设置预设失败时只记录日志、不抛出，因为在 `session/created` 中抛出会导致该会话无法打开。权限配置行不同时配置这两个预设，服务就不加载；web-app bundle 已经配置。
+- **模型看到什么。** `set` 追加 `permission/preset`（只写日志）和 `approval/policy`；只有沙箱改变时才追加 `sandbox/mode`。每次请求运行时上下文里的审批语句由这份日志折叠得出。与 `/permission` 命令不同，这里不注入切换通知。共享的回放场景里没有研究，因此没有金标准文件改动。示例生成器原本就为全自动项目设置了 `research-auto`，现在会发现它已经设好。
+- **附件。** `isAttachment`（`files.ts`）接受位于 `<数据目录>/attachments/v1/files` 之下、解析链接后仍在那里的路径；这是 `@deepseek-ai/dsh-attachment-local` 的 `storedFilePath` 的目录结构。`assertImportable` 放行这样的路径，仍拒绝数据目录的其余部分（凭据、`file-objects`、files 目录本身、用 `..` 跳出的路径、存储里指向外部的链接）以及各密钥目录。审批钩子对这样的路径不询问；项目之外的其他路径在检查点下仍会询问，在全自动下直接拒绝。`research_evidence` 的 `paths` 说明写明了这一点。
+- **人设**加上方案 4.8 节的最后一条：用户附加到对话里的文件可以直接导入；研究文件夹之外的其他路径，请用户把文件附加进来。没有金标准文件引用科研人设；`preset.spec.ts` 固定了这一条。
+- **测试。** `loader.spec.ts` 覆盖：创建、嵌套研究、绑定的会话、之后才上线的会话、子会话、研究之外的会话、设置失败的会话、双方的 `set-autonomy`、示例、重启，以及拒绝加载。`research.spec.ts` 导入附加的文件和文件夹，并拒绝数据目录的其余部分。`tools.spec.ts` 覆盖审批钩子。科研 Web e2e 验证：没人打开过的对话上线即为 `research-auto`，自主程度的改变会到达它和绑定的对话。
+
+### 第 8 步：自主度在输入框里修改（ui-research）
+
+- **按钮。** `AutonomyChip.tsx` 占用输入框的访问模式位置（`conversation.input.permission`，优先级 −1）。在研究的对话里它显示 `检查点 ▾` 或 `全自动 ▾`，菜单（ui-primitives 的 `Menu`）在「自主程度，用于这项研究的每段对话」下提供「检查点 — 关键决策先问我」和「全自动 — 不打断我，越权操作直接拒绝」。选择后经插件的 `run` 发送 `set-autonomy`，由宿主把预设应用到这项研究的每段对话；浏览器不再发送 `/permission`。命令进行期间按钮显示所选项并暂停操作，失败原因显示在它旁边。
+- **手动输入的预设。** 按钮读取对话的 `permissions` 投影。它与自主度对应的预设不同时（检查点 → `workspace-write`，全自动 → `research-auto`），按钮以提醒色显示 `本对话：<预设>`。两个自主度预设用自主度的名字，其余叫仅可查看、完全权限、自动审查和自定义，其他预设按其键名显示。此时选择任一自主度，即使与记录相同也会发送 `set-autonomy`，让宿主重新应用；没有差异时，选择当前的自主度不发送任何命令。
+- **示例。** 按钮是静态文字「示例 · 只读」。
+- **研究之外按钮什么也不画。** 渲染器只画单一单元格里优先级最低的条目，条目只有崩溃才会让出位置，所以外壳的按钮无法露出来。在那里 `/permission` 仍会打开外壳的选择器。
+- **与开发者单元格一同受开关控制。** 只有 `hideDeveloperCells` 打开时才注册按钮，因此关闭这个开关的继承 Web 场景保留访问模式按钮和它们的金标准。
+- **侧栏。** 自主度下拉框、它的 `/permission` 命令和注入的 `command` 都已移除。侧栏和项目文件面板显示「自主程度」和 `检查点（在输入框下方更改）`；示例只显示名字。
+- **测试。** `autonomy-chip.client.spec.tsx` 覆盖按钮，`plugin.client.spec.ts` 覆盖它在开关下的注册。研究 Web e2e 用按钮修改自主度，等对话换成 `research-auto`，输入 `/permission read-only` 后看到 `This conversation: Read only`，再选一次 Automatic 恢复一致。
+
+### 第 9 步：启动与「新研究」交给研究的入口策略；品牌行只是标识（外壳）
+
+两个外壳包各增加一个配置字段（S1、S2）。两者默认都是上游行为，由 Web bundle 的 patch 设置科研版的取值。
+
+- **S1，`ui-workspace` 的 `entry`。** `Config.entry` 取 `recent`（默认，即上游规则）或 `policy`。`UiWorkspace.setEntryPolicy({ land, startNew })` 注册一个策略并返回其释放函数；第二次注册会抛错，过期的释放函数不会移除更新的策略。在 `policy` 下：
+  - Session 列表和 Workspace 列表都就绪且没有选中项时，运行 `land()`，取代最近 Workspace 的连接。`clearArchivedCurrent` 清除已归档的选中项之后、当前 Session 离开列表之后，以及没有选中项时有策略注册，也会运行 `land()`。另一个策略调用仍在进行或回退正在连接时不会开始；某次调用结束后仍无选中项时也不会再次运行，因此什么也不选的策略不会循环。
+  - 不带作用域的 `startSession()`（侧边栏的「新研究」）运行 `startNew()`；`startSession(workspaceId)` 仍复用或创建该 Workspace 的空白 Session。
+  - 如果两个列表都就绪后 5 秒内（`ENTRY_POLICY_WAIT_MS`）没有策略注册，这次启动使用 `recent` 规则。之后才注册的策略仍会接管不带作用域的操作以及此后每一次失去选中项。
+  - 两个调用的抛错或 rejection 以 `entry policy land failed:` 或 `entry policy startNew failed:` 记录到日志，不会 reject 到调用方。上次访问时恢复的选择会保留，与 `recent` 相同。在 `recent` 下，已注册的策略被保留但从不调用，因此 ui-research 注册的策略不影响继承场景。
+  - 策略只打开列表中已有的 Session（`sessions.open` 拒绝未列出的 id）；两个调用都不带取消信号。
+- **S2，`ui-sidebar` 的 `brandAction`。** `new-session`（默认）让展开的品牌行保持为第二个 New Session 按钮。`none` 把同样的标记和名称放进普通的 `div`（`.brandPlain`，默认光标），且不设 `aria-hidden`，因此名称读作文本，标记仍是装饰性的。
+- **送达浏览器。** 客户端行的 `config` 只到达 Host 端，而两个包的 Host 端此前都是空的 `apply`。现在每个 Host 端校验自己的 `Config`，并且只在取值不是默认值时推送一条 `webserver/index-inject` 全局变量（`__DSH_WORKSPACE__ = { entry: 'policy' }`、`__DSH_SIDEBAR__ = { brandAction: 'none' }`），与 `client-connection` 和 ui-research 的 `__DSH_RESEARCH__` 做法相同。浏览器端在 apply 时读取该全局变量，缺失即视为默认值，因此默认行下发的页面逐字节不变，jsdom 装配通道运行默认值。
+- **Web bundle** 在 `ui-workspace` 上设置 `entry: policy`，在 `ui-sidebar` 上设置 `brandAction: none`，由 `independence.spec.ts` 固定。Web e2e 脚手架的 `enableInheritedRows` 在继承场景中把两者恢复为默认值，与 `hideDeveloperCells: false` 并列。
+- **一行继承的 JSDoc。** `ui-layout` 的 `setInitialRightbarWidth` 是本 fork 新增的方法，补上了 `@param`；缺少它时 `gen-cordis-inspect-catalog` 拒绝运行。
+- **测试。** `workspaces-service.client.spec.ts` 覆盖：启动时、归档之后以及当前 Session 离开列表之后的 `land()`；不带作用域操作的 `startNew()` 与保持不变的带作用域操作；5 秒回退及其结束；等待期间与回退之后注册的策略；调用进行中不运行 `land()`；失败写入日志；一次只接受一个策略与过期的释放函数；`recent` 忽略已注册的策略。两个包的 `apply.client.spec.ts` 覆盖 Host 端的全局变量和浏览器端对它的读取，`sidebar-root.client.spec.tsx` 覆盖纯标识的品牌行。两个包原有的全部 spec，以及启动与侧边栏相关的 Web e2e 文件，不作改动即通过。
+
+### 第 9 步：「新研究」打开唯一一份未动过的草稿研究（宿主端）
+
+- **研究存放位置。** 新研究放在 `<研究存放位置>/<yyyy-mm-dd>-<n>`：取 `researchHome` 偏好（设置 › 科研 › 研究存放位置），没有时取服务的 `researchHome` 配置字段，再没有时取 `<用户目录>/SciPaper`（`src/drafts.ts` 中的 `resolveResearchHome`）。它不在常被 OneDrive 同步的「文档」里，路径是纯 ASCII，方便 TeX。`configure` 拒绝相对路径和位于示例之中的路径，快照以 `researchHome` 报告当前生效的位置。Web e2e 脚手架把这个配置字段固定到它自己的临时文件夹里，因此任何场景都不会写入开发者的用户目录。
+- **草稿。** `start-new` 是经由 `execute` 的桌面端命令，答复 `{project, sessionId}`：未动过的草稿；没有时在下一个空闲的 `n` 新建一项研究，包括记录（`untitled`，标题「新研究」，general 模式且 `modeSetBy` 不设置）、以文件夹名命名的 Workspace 和一段空白对话。它与项目创建走同一条逐一执行的链，因此连点两次只会得到一份草稿。它从不在示例之中、另一项研究之内或系统文件夹里复用或新建草稿。
+- **未动过。** 一项研究在以下条件都成立时就是草稿（`draft: true`，在快照和这几个命令的答复中推导得出，从不存储）：记录里除了占位标题和自主程度之外什么都没有（`blankRecord`），它的每段对话在 `ctx.sessionController.list` 中都是空白的（没有开始过轮次），它的文件夹里只有空的初始文件夹，并且它不是示例。发现含有已开始对话的研究会被记住，因为对话不会重新变回空白。
+- **更改位置。** `relocate {projectId, root, confirmNonEmpty?}` 答复 `example`、`existing`（那项研究及其绑定的对话）、`nested`（包括草稿自己的文件夹）、`needs-confirm`，或 `moved`：在该文件夹新建研究，沿用草稿的自主程度并带一段空白对话，然后丢弃草稿。
+- **丢弃。** `discard-draft` 和一次移动都会归档草稿的空白对话，删除它文件夹的 Workspace 注册和它的记录，然后删除仍为空的各个初始文件夹；根目录由草稿创建时（记录中的 `createdRoot` 说明这一点）也删除根目录。里面有任何内容的文件夹都会保留，无法删除的文件夹会记入日志。
+- **agent。** `execute` 拒绝 agent 调用这三个命令。`research_project` 没有新增操作，它的 `create` 仍然只把对话自己的文件夹设为研究。
+
+### 第 9 步：启动、「新研究」和入口页交给研究（ui-research）
+
+- **入口策略。** `entry.ts` 在插件运行期间通过 `uiWorkspace.setEntryPolicy` 注册 `land` 和 `startNew`。`land()` 先重新读取记录，再打开用户自己最近用过的研究（不是示例，不是未动过的草稿，文件夹仍在 Workspace 列表中）里已开始的最新对话：在列表中、顶层、未归档、非空白、不是视觉检查的审阅对话。没有已开始的对话时，打开它文件夹的空白对话。研究的「最近用过」按它的对话或记录最后一次变化计算。用户没有自己的研究时调用 `startNew()`；读不到记录时说明原因，不新建任何东西。`startNew()` 发送 `start-new` 并打开草稿的对话；那段对话已在屏幕上时，入口行显示「这里就是一项新的研究，直接说说你的问题。」四秒。
+- **迟到的打开。** 两个调用都不带取消信号，所以每次打开都先调用 `layout.beginNavigation()`。只有该导航仍是最新的、选中项仍是开始时那一个（或没有）、插件仍在运行时才打开。只打开列表里已有的会话，最多等五秒，否则入口行说明原因。
+- **启动时绝不停在示例里。** 两个列表都就绪、记录也到了之后，若上次访问恢复的选中项在示例里，就让位给 `land()`。每次注册只做一次；用户之后自己打开的示例保持不动。
+- **草稿的移动。** 「更改位置…」发送 `relocate`，并带上选择该项时捕获的文件夹位置的 `onPick`。`moved`：等两个列表都收录新文件夹的对话后调用这个 `onPick`，把输入框里的草稿和附件移过去，再等选中项到达。宿主在答复前会归档草稿的对话，于是 ui-workspace 在此期间会清空选中项并调用 `land()`；移动进行中 `land()` 什么也不做，移动结束时若没有选中项再落地。`existing` 提供「打开它」，`nested` 提供「打开「X」」：草稿被带进那项研究的空白对话，然后用 `discard-draft` 删除草稿。`needs-confirm` 提供「就用这里」，即带 `confirmNonEmpty` 再发一次 `relocate`；草稿自己文件夹里的 `nested` 和 `example` 提供另选文件夹。失败显示在入口行。
+- **文件夹菜单。** `FolderMenu.tsx` 以优先级 −1 占据 `conversation.hero.workspace`。按钮本身仍是外壳的 `WorkspaceChip`，显示 Workspace 的名字：即草稿的文件夹名，`rename` 之后是研究标题。菜单依次是「保存在 <路径>」、只对未动过的草稿显示的「更改位置…」、在 `session.canOpenWorkspacePath()` 答复可以时显示的「在资源管理器中打开」，以及列出用户其他研究（最新的在前）的「换到另一项研究 ›」，它通过 `onPick` 带上草稿，草稿本身留在原处。所选文件夹的情况显示在按钮处的第二个菜单里。宿主没有文件夹选择窗口时（`directory-picker/unavailable`，即 browse 选择器），用对话框输入绝对路径。菜单与开发者单元格一样在 `hideDeveloperCells` 下注册，因此继承的 Web 场景仍用外壳的选择器。
+- **入口行与「试试」。** `EntryScreen.tsx` 填入 `conversation.hero.welcome`：草稿或不在任何研究里的文件夹什么都不显示；研究的空白对话显示 `新对话 · {模式} · {阶段} n/m · 研究记录`，「研究记录」打开研究标签页；示例显示 `示例研究 · 只能查看`；以及在该界面上出现的提示。输入框上方（`conversation.input.dock`），在草稿的对话仍为空白且没有输入时，「试试：「…」「…」」把 `heroOpeningMaterials` 或 `heroOpeningIdea` 加进草稿，什么也不发送。
+- **删除。** 「新建项目目录…」按钮（`research-create`）、输入框的文件夹按钮（`research-new-project`）、`NewProject.tsx`、它们对话框的样式以及相关的键。`ResearchProjects` 保留到第 10 步；Workbench 自己的新建表单保留到第 11 步。
+- **设置。** 设置 › 科研 最上面是「研究存放位置」：当前生效的文件夹（`snapshot.researchHome`），未设置偏好时标「默认位置」，另有「更改…」（宿主的文件夹选择窗口，或输入路径）和「恢复默认」，都通过 `configure` 保存。
+- **注入面。** `pickDirectory` 答复 `FolderPick`（`picked`、`cancelled`、`unavailable`）；入口页的各个位置共用 `ResearchEntryInjected`。插件另注入 `remote.session` 与 `workspaces`。
+- **测试与基准。** `entry.client.spec.ts`、`entry-screen.client.spec.tsx`、`folder-menu.client.spec.tsx` 覆盖流程和各个位置；`plugin.client.spec.ts` 覆盖注册、启动时的示例规则、移动期间的保护和迟到打开的保护。研究 Web e2e 启动即落在脚手架固定的研究存放位置里的草稿上，把它连同输入框文字移到输入的文件夹并重命名，「新研究」复用草稿并显示提示，对已有文件的文件夹先询问，再把输入的问题带进已有的研究并丢弃草稿。76 个继承的 ARIA 基准去掉了输入框的文件夹按钮，两个 `lifecycle-chrome` 入口页基准还去掉了入口按钮，只改这些行。
+
+### 第 10 步：「移出列表」归档一项研究的对话；内容搜索在第一次搜索时开启（宿主与组合包）
+
+- **`archive-project {projectId}`**，即桌面端的「移出列表」。它归档这项研究中尚未归档的每段顶层对话：绑定到它的那段，以及每段在它文件夹里工作、且不在其中嵌套的其他研究里的对话。归档用的是 `ctx.workspaceRegistry.archiveSession`，与 shell 的归档操作和「已归档会话」设置页经由 `workspaces` Remote 用到的是同一套归档；会话控制器本身没有归档接口。在归档第一段对话之前，记录先存下 `archivedAt` 和这次要归档的对话 id（`archivedConversations`，一段都没归档时不设置）。委派出的子会话（`origin: subagent`）不受影响，磁盘上的内容都不改变。再次执行时保留 `archivedAt`，并归档此后新增的对话。对示例拒绝执行（`EXAMPLE_READ_ONLY`），对未动过的草稿也拒绝（`还没开始的新研究不能移出列表 / The untouched new research cannot be removed from the list`）。
+- **`unarchive-project {projectId}`**，即「恢复」，先取消归档 `archivedConversations` 中的对话，再清除这两个字段，因此中途中断的恢复可以重做。用户在移出之前自己归档的对话保持归档；仍在列表中的研究原样答复。
+- **用户自己的命令。** 这两个命令和草稿命令一样在创建队列上逐一运行，因此研究不会在还是草稿时被归档。`execute` 拒绝 agent 调用它们；`PERSON_ONLY` 列出全部五个命令（`isPersonCommand`）。
+- **推导出的标记。** `archivedAt` 存在时，`publicProject` 加上 `archived: true`；它从不存储。
+- **哪些地方跳过已移出的研究。** 后台观测（`refreshRunning`）跳过它的运行，直到研究恢复；`experiment-wait` 与 `experiment-refresh` 在被调用时仍会观测运行。`blankRecord` 要求没有 `archivedAt`，因此已移出的研究永远不会被快照标为草稿，也不会被 `start-new` 重新打开。
+- **`showExamples`。** 可选的布尔偏好，与 `researchHome` 一样通过 `configure` 保存；没有设置时视为 true。
+- **内容搜索（D17）。** Web 组合包的 `session-query-sqlite` 行设为 `openAt: first-search`，并重述 base 行的另一个键 `path: ':memory:'`。`independence.spec.ts` 固定整份配置。`lazy-search-startup.compat.spec.ts` 要求 web 行为 `first-search`、base 行为 `never`。
+- **测试。** `loader.spec.ts` 覆盖跨重启的移出与恢复、用户此前自己的归档、嵌套研究、委派出的子会话、草稿、示例、`showExamples`，以及恢复之前不被观测的运行。`drafts.spec.ts` 覆盖 `blankRecord` 中的 `archivedAt`。
+
+### 第 10 步：侧栏列出研究及其对话（ui-research）
+
+- **研究树。** `ResearchTree.tsx` 在 `hideDeveloperCells` 下以优先级 −1 占据侧栏的浏览位置（`sidebar.workspaces`），与其他开发者单元格的遮蔽相同；继承的 Web 场景仍用外壳的 Workspace 浏览器。浏览器仍注册在下面，所以它的 `sidebar.workspaces.directoryFlow` 子插槽一直为文件夹选择器保持声明（`plugin.client.spec.ts` 检查这一点）。「研究项目」卡片（`ProjectEntry.tsx`、`sidebar.projects`）在所有组合中都已去掉。
+- **对话归属**（`treeValues.ts`）：它绑定的研究，或文件夹包含它工作目录的研究；否则列出它的 Workspace 所在的研究；否则就是那个 Workspace，显示为没有研究的文件夹；再否则不属于任何文件夹。已归档的对话、子会话和视觉检查的审阅对话从不成行，但运行中的子会话仍会点亮它所在研究的圆点。移出列表（`archived`）的研究连同对话一起隐藏，它的文件夹也不算没有研究的文件夹。研究被移出期间，从已归档对话列表里单独恢复的对话仍然隐藏，直到研究恢复。
+- **各行。** 自己的研究按最近使用排列（已开始的最新对话或研究记录，以最后变化的为准）。一行显示标题（`untitled` 时为斜体占位名「新研究」）、右侧的 `standingPhrase`（通用模式下不显示）和一个圆点：研究的某段对话在等待批准、计划审阅或问题回答（会话的待处理交互）时显示提醒色，有对话或它的实验在运行时显示进行中的蓝色。未动过的草稿是没有子行的一行。展开的研究按新到旧列出顶层对话；空白对话只在它显示在屏幕上时出现（斜体「新对话」）。最后一行是「＋ 新对话」（`startSession(workspaceId)`），在那段空白对话上和示例里不显示。
+- **点击。** 点研究会打开它已开始的最新对话，没有时打开它文件夹的空白对话，示例里从不这样做；点屏幕上正在显示的研究则折叠或展开。草稿打开它的空白对话。
+- **分组。** 「示例」在最下面：用户还没有自己的研究或正在看示例时展开，`showExamples` 为 false 时隐藏。只有在某个已登记的文件夹没有研究，或有对话不属于任何文件夹时，才出现「其他文件夹」。用户手动展开或收起的行，在页面存续期间把这个选择保存在研究树自己的 store 里。
+- **菜单。** 研究：「重命名」（`rename`）、「在资源管理器中打开」（`session.openWorkspacePath` reveal，仅在 `canOpenWorkspacePath` 时）、「移出列表」（`archive-project`）；草稿没有「移出列表」，示例只有「在资源管理器中打开」。对话：「重命名」（会话自己的 `rename`）和「移出列表」（`uiWorkspace.archiveSession`）；示例的对话没有菜单。文件夹：「设为研究…」先问名称，再以该文件夹为根发送 `create`；「移出列表」先归档这个文件夹列出的每段对话，再删除它的 Workspace 登记。失败原因显示在对应行下面。
+- **搜索与窄栏。** 标题行的搜索即时匹配研究名称和对话标题，并在最后一次按键 250 毫秒后通过 `sessions.search` 搜索对话内容；结果是一个平铺列表，写明每段对话所在的位置和匹配的段落。收起的窄栏只保留搜索按钮：点击后展开侧栏，并在滑动结束后把光标放进搜索框。
+- **键盘与 ARIA。** 平铺的 `role="tree"`，每行带 `aria-level`、`aria-posinset`、`aria-setsize`、`aria-expanded` 和 `aria-selected`；同一时间只有一行在 Tab 顺序里；上下键移动，右键展开或进入子行，左键收起或回到上一级，Home、End 到两端，Enter、空格激活，菜单键或 Shift+F10 打开行菜单；菜单关闭后焦点回到这一行。
+- **设置 › 科研。** 「显示示例研究」是一个开关，通过 `configure` 立即保存；「已移出的研究」列出每项移出列表的研究及其文件夹和「恢复」（`unarchive-project`）。保存模型分工表单时保留 `showExamples`。
+- **ui-research 的其他改动。** `land()` 和「换到另一项研究」都跳过移出列表的研究；对移出列表的研究点「打开它」时，会先恢复它，再带入草稿。`standingText` 改为基于新的 `standingPhrase`。
+- **测试与基准。** `tree-values.client.spec.ts` 和 `research-tree.client.spec.tsx` 覆盖推导、点击、键盘、菜单、对话框、搜索与窄栏；`plugin.client.spec.ts` 覆盖注册、被遮蔽浏览器声明的子插槽和研究树的注入面；设置、入口与文件夹菜单的测试覆盖移出列表的研究。研究 Web e2e 读取研究树，打开对话和「＋ 新对话」，按对话内容找到对话，重命名、移出并恢复一项研究，并切换「显示示例研究」；已完成回复的场景改为经「其他文件夹」打开它的对话。`lifecycle-chrome` 的 `hero` 和 `plan-active` 两个基准去掉了「研究项目」导航，只改这些行。
+
+### 第 11 步：次要工具成为对话旁的标签页，工作台移除（ui-research）
+
+- **标签页类型。** ui-research 在 builtin 档再注册四种右侧栏标签页类型。每种的主体以各自的 id（`@deepseek-ai/dsh-client-ui-research/board`、`/sources`、`/gallery`、`/drawio`）挂在 `sidebar.right.pane.tab`，注入面与科研标签页相同。三种页面类型注册随语言更新的标签标题。引导页仍只列出科研标签页。每个主体显示它所在对话的研究（`useSessionProject`）：对话不在任何研究里时，显示科研标签页的那句提示；示例开头显示「示例研究：随应用提供的演示，只能查看。」
+  - **实验看板（`research-board`）。** 即 `Board.tsx`，去掉了手动提交运行的表单。示例中不绘制带确认的「停止」。既没有运行也没有分区时显示「这项研究还没有实验。需要时助手会在这里登记运行。」
+  - **资料（`research-sources`，`Sources.tsx`）。** 每份资料显示作者 · 年份、`DOI …`、研究手里有它的什么（全文、仅摘要、仅元数据或数据），过期时标「需要更新」。「在原文里打开这一页」在侧栏的查看器里打开它的 `path`，「全文」打开 `fullTextPath`。下方是带状态标签的论点，色调与论点面板一致；点击论点通过 `focusClaim` 打开论点面板。作者和年份在文献资料的 `reference.json` 里，研究记录不带这些字段。注入面的 `reference(projectId, source)` 通过 `/api/research/file` 读取它，按项目、路径和版本保存结果。读取被拒绝或失败，或者记录里没有作者时，返回 undefined，不显示署名，之后的标签页会再读一次。带 `{ section: 'claims' }`（`SidebarRightTabParamsMap` 里的一项）打开时滚动到论点，其他打开都滚动到顶部，因为新标签页沿用同一窗格上一个标签页留下的滚动位置。这个标签页不导入、不检索、不核对任何东西。
+  - **配图灵感（`research-gallery`）。** 即 `Gallery.tsx`。示例中没有「存为参考图」表单。单张图的详情在宽度不到约 520 px 时排成一列。
+  - **draw.io（`research-drawio`）。** 一种资源类型，`patterns: ['*.drawio']`，`canOpen` 接受 `parseFileAddress` 能解析的任何文件地址。对每个 `.drawio` 地址（包括文件标签页打开的），它都排在文本查看器的 fallback 档之前。
+    - 主体把文件（绝对路径照原样，相对路径按所在对话的工作目录）解析成研究文件夹里的路径；不在研究文件夹里时显示「这个 draw.io 文件不在研究文件夹里，这里无法编辑。」
+    - 图通过 `read-artifact` 载入。研究记录里没有的文件先登记（`register-artifact`，类型 `diagram`，不带关联）。示例不能登记，这时显示「研究记录里没有这张图。」
+    - 保存沿用工作台的做法：`save-artifact` 带上编辑器载入时的版本和文件自己的关联。自动保存防抖 1.5 秒，一次只写一个，以最新的为准。标签页关闭时还在等待的自动保存，在关闭时写入。
+    - 快照的 `components` 未显示 draw.io 已安装时，提供「安装组件」。安装完成后重新读取研究记录，框架以安装次数为 key，因此会重新载入。
+    - 示例的图以 `autosave: 0` 和 `noSaveBtn=1` 载入，保存消息一律忽略。
+- **打开方式。** `openBoard()`、`openSources(section?)`、`openGallery()` 取代 `expand(projectId, panel, artifactId)`，与原有的 `openFiles()` 并列。每个都先调用 `layout.setInitialRightbarWidth`，再调用 `sidebarRight.openTab`。实验看板和配图灵感建议 560 px，科研标签页和资料建议 320 px（D16）。
+  - **记录栏计数。** 「证据」打开资料，「论点」打开资料并定位到论点，文件计数打开文件标签页，「实验」打开实验看板。
+  - **记录栏工具行。** 打开实验看板、配图灵感和文件标签页。
+  - **运行卡片。** 「看板」打开实验看板。
+- **项目文件通过当前显示的对话打开。** 侧栏的文件查看器只认领会话范围的文件地址。`openFile` 生成的 `dsh-resource://file/absolute/…` 地址没有任何类型认领，会抛出异常，所以待处理问题的链接、论点面板里的原文和检查卡片里的文件都以「没能完成」失败。现在 `projectFileAddress(sessionId, root, path)` 用 `@deepseek-ai/dsh-util-workspace-path` 的 `sessionFileAddress`（它取代了开发依赖 `dsh-util-crypto`）生成 `dsh-resource://file/session/<id>/<绝对路径>`，`openFile` 传入当前会话。宿主读取会话范围的绝对路径时不把它限定在 workspace 内。
+- **移除。**
+  - `Workbench.tsx` 及其 CSS 模块，以及 `main` 注册。
+  - `ModeSelect.tsx` 连同 `modeChoice`、`parseModeChoice`、`chosenMode`，以及 `ActionButton`。
+  - `expand()`，以及焦点 store 的 `projectId`、`panel`、`artifactId`。
+  - `ResearchView.response`，只有工作台显示它。
+  - 只有工作台用到的 77 个文案键，其中包括指称完整工作台的四个。
+  - 改名：`galleryAuthorsMore` 改为资料标签页也用的 `authorsMore`。
+  - 移动：`ResearchMark` 和 `ResearchBrand` 移到 `Brand.tsx`。
+  - 保留：`openConversation` 留在注入面上。
+- **文件操作。** 外壳的文件标签页没有放单个文件操作的位置，所以单个文件不提供「用默认程序打开」或「在资源管理器中打开」，外壳不改。
+- **测试。**
+  - 新增 spec：`tabs`、`sources`、`diagram`、`brand` 和 `contract`。
+  - 扩充的 spec：`board` 和 `gallery` 覆盖示例；`plugin` 覆盖各项注册、打开方式及其宽度、会话范围的地址、`reference` 以及安装后的读取。
+  - 科研 Web e2e 经资料标签页打开论点，通过标题栏状态标签回到科研标签页。新增的场景打开资料以及文本查看器里的一份资料文件、实验看板的空状态，并从文件标签页打开一个 `.drawio` 文件：它先被登记，再提供安装。
+  - `gen-client-catalog` 记下新的占位组件，去掉科研的 `main` key。
+
+### 第 11 步：研究记录读取研究的进度，运行卡片只留在自己的对话里（ui-research）
+
+- **研究记录（`Rail.tsx`）。** 科研标签页、它的引导项和标题栏状态标签的提示都改称「研究记录 / Research record」，与入口行已经用的叫法一致。从上到下：
+  - **研究。** 标题；示例带虚线的「示例」标签；文件夹以浅色显示，`session.canOpenWorkspacePath()` 答复可以时显示「在资源管理器中打开」。示例开头是「示例研究：随应用提供的演示，只能查看。」。注入面新增 `canReveal` 钩子和 `reveal(path)`，失败时以宿主的原因拒绝；研究树的菜单也用它。
+  - **模式 · 路线 · 谁选定。** `spark-to-paper · 从实测结果开始 · 你选定`，或「助手选定」，示例里是「示例作者选定」，下面是 `modeReason`。没有路线时用模式包的默认路线。`modeSetBy` 未设置时显示「模式待定」。「想换模式？」经标签页位置自己的 `useInput` 和 `inputActions`，把「我想把这项研究换成别的模式，你看哪种合适？」加进旁边对话的草稿，不发送；示例里没有这个按钮。自主程度一行不变。
+  - **现在。** `nowLine`（`activity.ts`）取下列第一条成立的：
+    - 研究的某段对话在等批准、计划审阅或问题回答：「等你回答（对话「X」）」，不是本对话时带「跳过去」；
+    - 有目标在推进轮次：「助手正在推进：{当前阶段}（对话「X」）」，没有阶段的模式里不写阶段；
+    - 有实验在运行（排队中和状态待确认的不算）：「n 个实验运行中」，带「打开实验看板」；
+    - 有目标受阻：「助手在等你：见对话「X」」，带「跳过去」；
+    - 检查过以后的当前阶段：「下一步：{阶段} — {第一条提示}」；
+    - 有已推迟的阶段且已没有当前阶段：「{阶段}已推迟：结果格保留「--」，等你补上结果后继续」；
+    - 已完成：「全部检查通过」，✓ 用 `state-success`；
+    - 从未检查过：「还没有检查过」；
+    - 各阶段都已完成但论文未完成：「各阶段都已完成，还需要再检查一次」；
+    - 通用模式（包括模式待定）：「通用模式：直接在对话里提需求」。
+  - **「现在」一行的细节。** 下一步、已完成、未检查和需复查这几行提供「在对话中提出：{那句话}」（「继续：{阶段}」「导出投稿包」「检查一下现在的进度」），点击把这句话加进草稿；示例里一句也不提供。对话按标题称呼，空白或不在列表里时称「新对话」。等你处理的几行用提醒色，目标和运行两行用进行中的蓝色。
+  - **阶段和待处理。** 保持第 6 步的做法，放在「阶段」标题下。检查之前阶段下面什么也不显示，由「现在」一行说明。
+  - **决策。** 最新的三条，标「你 / 助手」（示例里是「示例作者」），只写问题和答案。key 为 `mode` 的决策显示为「模式与路线」，模式和路线用模式包里的名称；模式包或路线已不在时显示 id。
+  - **计数。** 「资料」（带「待更新」标签）、「论点」「文件」「实验」，名称与它们打开的标签页一致。文件计数就地显示自己的失败提示。
+  - **工具行。** 不变。
+  - **移除。** 决策的理由行、检查之前阶段下面的提示、`ProjectStatus`，以及文案键 `checkNever`、`railSourcesLabel`（证据）和 `artifacts`（论文与图表）。
+- **此刻的动态（`activity.ts`）。** `researchActivity` 读取：
+  - 属于这项研究的已列出对话（`sessionProject`），以及其中第一段等你处理的对话；
+  - 快照带来的目标；
+  - 在运行的实验。
+
+  由这些推导出一个圆点，提醒优先于进行中。`conversationSignal`、`goalSignal`、`strongestSignal` 从 `treeValues.ts` 移到这里。研究树的行圆点也读取研究的目标：受阻为提醒，推进轮次为进行中，暂停的不显示。
+- **只有一份草稿（宿主）。** 只有最新的那项未动过的研究才是草稿。文件又被删掉的研究、仍是空白时被恢复到列表的研究，也都是未动过的，以前都会被当作草稿，研究树里就会出现两行斜体的「新研究」。现在 `drafts` 检查每份空白记录，只保留最新的一份，较早的那项成为普通研究，可以移出列表。`discard` 只要求它的研究未动过，因为搬走的草稿旁边此时已有一份更新的草稿。
+- **快照里的目标（宿主）。** `ResearchProject.goals` 在每份快照里带上 `activeGoals(project)`：推导得出、从不存储，没有目标时不出现。`activeGoals` 接受可选的 `projects` 列表，一份快照里的每个项目都按同一份列表归属。typert 校验器和 remotes 包都带上了这个字段。
+- **标题栏状态标签（`Header.tsx`）。**
+  - 它的形式：模式未选定时是「模式待定」；没有阶段时只写模式（通用）；`{模式} · {阶段} n/m`；`{模式} · 已完成` 加一个已核实的 ✓；延后阶段之前已无未完成的阶段时只写 `{阶段}已推迟`；`{模式} · 待复查`。示例里都加在「示例 ·」之后。位置由 `standingPlace`（`format.ts`）给出，`standingPhrase` 也读它。
+  - 去掉了「· 全自动」后缀；自主程度由输入框的按钮显示。
+  - 圆点是这项研究的，用进行中的蓝色闪动，用户偏好减少动效时不闪。
+  - 点击调用注入面新增的 `toggleProgress()`：`sidebarRight.isExpanded()` 成立且 `sidebarRight.active()` 是科研标签页时收起面板（`toggleExpanded()`），否则像 `showProgress()` 一样打开科研标签页。
+- **设置里保存的、不是科研助手的默认预设。**
+  - 默认值从哪里读：只要 `modeSelectionEnabled` 不为 false，Agent 预设名单就用 `agent-presets.default`（用户层，盖在该行 `default` 之上）组合不指定预设的会话。
+  - ui-research 用 `ctx.settingsScope.bind` 绑定这个命名空间（新增注入 `settingsScope`）。绑定不新增线路读取，设置镜像会在设置文件变化时刷新它。
+  - `presetDefaults`（`presets.ts`）给出 `research`（命名空间的组合 `default`）和 `saved`（用户的 `default` 指向另一个预设且选择开启时）。
+  - 于是在用户自己研究的任何一段对话里，研究记录都会写「新对话会使用「{预设}」而不是科研助手：设置里把它存成了默认。」，并提供「改回科研助手」，它执行 `scope.unset('default')`。
+  - 被拒绝的设置写入会重新读取而不是报错，所以清除之后若默认值仍在，就报告为「设置里仍保存着原来的默认」。
+  - `agentPreset` 投影指向另一个预设的对话显示「此对话未使用科研助手，研究工具不可用。新开一段对话即可。」；与保存默认那一行同时出现时只留第一句。
+  - 示例两者都不显示。外壳和预设代码都没有改动。
+- **运行卡片（`RunPanel.tsx`）。**
+  - 只显示 `sessionId` 是本对话的运行。别的对话提交的运行和没有记下对话的运行只在看板上。
+  - 空白对话里没有未结束的运行时什么都不画。
+  - 示例里没有「重新连上」「知道了」「停止」「用它画图」，状态待确认的说明改为「提交回执丢了，无法确认它是否还在跑。」；「日志」和「看板」保留。
+  - 属性改为输入框停靠位的 `PropsRuntime<'conversation.input.dock'>`，`RunPanelOwnerProps` 去掉了。
+- **实验看板（`Board.tsx`）。**
+  - 示例的看板以 `refresh: false` 读取一次，之后不再跟进，因为宿主不会再读示例的看板。它不绘制「立即读取」和「每 15 秒」，状态待确认的横幅写作「{名称}：状态无法确认」。
+  - 示例之外，看板上的运行卡片为状态待确认的运行提供「重新连上」和「知道了」（`experiment-refresh`、`experiment-dismiss`，各自就地显示失败提示）。别的对话提交的运行、没有记下对话的运行，在任何输入框上方都没有卡片。横幅写作「{名称}：状态无法确认，请在下方「正在运行」里它的卡片上重新连上」。
+- **测试。**
+  - 新增 spec：`activity`、`presets`。`rail` 重写。`header`、`run-panel`、`board`、`tree-values`、`plugin` 有扩充，其中 `plugin` 覆盖 `toggleProgress`、`reveal`、预设 scope 和清除。宿主 `loader` spec 覆盖快照里的目标。
+  - 科研 Web e2e 在检查后读取模式一行和「现在」一行，把建议的那句话加进草稿；研究记录显示时用标题栏状态标签收起面板再打开，从计数打开「资料」；并以助手身份从当前对话提交一次运行，运行卡片随之出现在这段对话里。
+
+### 收尾：继承的测试通道保留上游的首次运行流程，测试不再写入真实的用户目录
+
+- **首次运行声明。** ui-research 对 harness 首次运行声明的遮蔽，现在和其他只属于本产品的遮蔽一样受 `hideDeveloperCells` 控制。发行版仍然跳过这条声明；继承的 Web 通道重新显示它，因此 `onboarding-deepseek-config` 通过，并重新比对它的密钥对话框 golden，`remote-welcome` 和 `submission-echo` 也通过。
+- **设置顺序。** 「科研」设置分区取 order 24，排在「已归档会话」（25）前一位。两者原来都是 25，设置导航的顺序取决于哪个插件先载入。
+- **「全自动」预设。** 它的说明改为一句中文，与 Auto review 一致，`/permission` 选择器因此仍比输入框窄。`access-confirmation` 把它和三个标准预设一起列为预期。
+- **测试不写入真实的用户目录。** `default-web-process`、`hmr-live` 和 `smoke-real` 在 scaffold 之外启动发行版的 Web 配置。入口规则的「新研究」建在 `homedir()` 下，所以它们现在把 `USERPROFILE` 和 `HOME` 设在自己的临时目录里。`default-product-isolation` 等待研究树，因为它现在就是发行版的侧栏。
+- **Windows 上继承的 Web e2e。** 跑了全部 Web e2e 文件，并与第 1 步之前那次提交上的同一批文件对比，没有发现别的由这次改版造成的失败。其余失败在第 1 步之前就以同样的方式失败：回放日志和 golden 里的 `bash` 工具与 POSIX 路径、预设列表里的科研预设，以及客户端构建记录。
+
+## 考虑过的其他方案
+
+**直接移除这些行，而不是禁用。** 遥测和 `/feedback` 行属于 base 组合包，headless、ACP 和 SDK profile 都共用它，在那里移除会一并改变这些 profile。Web 的行本可以从 insert 列表中删掉，但禁用的行把这个选择原地写明，部署方也只需一行就能重新打开；这与 Web patch 禁用而不是删掉 agent 层各行的理由相同。
+
+**在 base 组合包中关闭遥测。** 这会改变本产品并不交付的 CLI profile，而且 base 组合包自己的测试固定着上游的默认值。`web` profile 与桌面端组合的正是 Web 组合包。
+
+**由 `ui-research` 覆盖这些控件的 slot 来隐藏它们。** 空的占位只能藏起按钮，插件和它的 Host Remote 仍然挂载，评分仍可能通过别的路径授权上传。禁用的行则两半都不挂载。
+
+**只在桌面子进程里设置这个变量。** Desktop Host 原本不读取 `DSH_TELEMETRY_DISABLED`，只有 CLI 启动器会应用它。只设变量能传到 agent 的进程，却影响不到 Host 自己的组合。
+
+**把所有继承来的金标准改成交付时的行。** 约 75 个继承来的金标准记录了「对话 / 轨迹」标签条，54 个记录了评分按钮，而那些被禁用插件的场景没有这些行就根本无法运行。改写这些金标准会让约 80 个上游场景失去它们要测试的内容；在 Windows 上刷新还会把该平台的失败写进 CI 在 Linux 上比较的金标准。于是继承来的场景继续组合这些行，而科研场景运行并断言交付时的组合。
+
+**由 `ui-research` 替换这些文案（第 2 步）。** locale 服务会拒绝同一命名空间的第二份词典；而为了换几个字去重新注册每个 slot、画出同样的组件，等于把外壳组件复制进科研包。
+
+**连同文字一起改键名（第 2 步）。** `chat.deepDiving`、`hero.chooseWorkspace` 和 `placeholder.workspace` 是外壳组件读取的标识符。换新名字要改组件代码，而界面上看不出任何区别。
+
+**为文案刷新金标准（第 2 步）。** 理由与第 1 步相同，金标准原地修改，只改引用旧值的那几行；刷新改写的也正是这几行。
+
+**只按扩展名识别二进制文件（第 3 步）。** 名字不常见的数据集或检查点文件仍会被清空。NUL 字节探测最多读取 8 KiB，而文本文件从不含 NUL 字节。
+
+**把 `state-business` 改指蓝色来表示运行中（第 4 步）。** 外壳在约 30 处把 `state-business` 当作强调色（光标、待处理圆点、悬停规则、引用标签、焦点框），光标和所有强调色都会变成运行中的蓝色。改由新增的 `state-ongoing` 别名表示进行中的工作。
+
+**采用方案里的绿色 `#2e7d4f`（第 4 步）。** 它与品牌青绿色在浅色下只差 ΔE 7，深色下只差 5.6，「已核实」和品牌会被看成同一种颜色；叶绿色能把两者分开。
+
+**在记录里存示例标记，或用 `/permission read-only` 标记示例（第 5 步）。** 存储标记就得修改每一条示例记录，而这些记录归生成器所有。权限预设会往示例的会话日志里追加事件，而且仍挡不住宿主自己的命令写入。由文件夹位置推导标记，两者都不需要。
+
+**保留一个错误横幅，并在每次操作时清除（第 3 步）。** 面板上方的横幅不告诉人是哪个按钮失败了，两个同时进行的操作还会互相覆盖消息。每个控件旁边一行失败提示，就不需要任何清除规则。
+
+**按范围各存一份报告，或只让 scope 为 `all` 的检查写入（第 6 步）。** 按范围存报告，每个读取方都得自己判断每个阶段以哪份为新。只让 `all` 写入，又会丢掉 agent 在每个阶段末尾运行的阶段检查。按运行过的门禁合并，阶段检查仍然有用，也永远不会凭不完整的证据把阶段标为完成。
+
+**按位置给要求编号（第 6 步）。** 模式包一改，序号就会指向另一条要求，存储的进展会显示错误的提示。由条件构成的键不怕调整顺序，条件改了也只是失去提示。
+
+**在存储迁移中补种进展（第 6 步）。** `migrateProject` 运行时拿不到模式注册表，无法把旧报告的英文行对应到要求键上。在解析出模式的地方补种就可以，而且在下一次检查之前不改动任何存储的记录。
+
+**让推迟算作完成（第 6 步）。** 那样论文会在结果格还是「--」的时候显示「已完成」（D18）。
+
+**把评审移到 latex 阶段之后（第 6 步）。** 这会打乱 ts-paper 的阶段顺序。拿评审与它读过的章节比较，不论重新编译多少次都成立。
+
+**直接从会话投影读目标，或把目标存进记录（第 7 步）。** 目标投影归目标服务所有，服务还会拒绝无法重放的日志；绕过服务去读，就得把这条规则再抄一遍。把目标抄进台账，会让会话日志拥有的事实多出第二份记录，目标一变它就过期。
+
+**去掉 `create` 的 `root` 参数（第 7 步）。** 那样仍传文件夹的模型会在不知情的情况下把研究建在工作目录里。保留参数并拒绝其他文件夹，就能告诉它另一个文件夹里的研究从哪里来。
+
+**用读者的语言写模式决策的回答（第 7 步）。** 这份记录由两种界面语言和 agent 共用。模式与路线的 id 对三方都准确，而 key `mode` 让研究记录能用读者的语言称呼这项决策。
+
+**模式改变时删除 `progress`（第 7 步）。** 删掉之后会重新读存储的 `lastCheck`，回到先前的模式时旧阶段就会回来。给新模式与路线一份空记录，则什么都从未检查开始。
+
+**改写网页搜索的端点说明（第 7 步）。** 它的失败文字仍先让用户去 Settings > Plugins > Plugin configuration > Web search，而这个版本不带这个页面，之后才给出 `DEEPSEEK_SEARCH_BASE_URL` 与 `web-search-deepseek` 配置的兜底办法。无需密钥的会话快照 `web-search-endpoint-guidance` 录下了一段引用这段文字的模型回复，改它需要用密钥重新实录；在那之前保持不变。
+
+**把中文标题写进 Host 的 `presentCall`（第 7 步）。** Web 客户端不使用 Host 的呈现器（[客户端推导呈现](2026-08-23-client-derived-tool-presentation.zh.md)），而且 Host 标题只有一种语言。
+
+**把 Host 的 `CHECK_LABELS` 复制到客户端（第 7 步）。** 第二份副本会走样；有发现的检查，standing 里已经带着它的名称。
+
+**把自主程度到预设的对应做成 Config 字段（第 8 步）。** 输入框的自主程度标签要用同一个对应关系来识别手动输入的预设，而客户端行的 config 到不了浏览器，所以可配置的宿主对应关系会成为标签可能与之不一致的第二份副本。每个预设允许什么，仍在权限配置行里配置。
+
+**继续由浏览器应用预设（第 8 步）。** 浏览器只能影响它打开着的对话；由目标推进的对话，或没人打开过的对话，会在过时的预设下运行。
+
+**走 `/permission` 的路径，即带通知的 `ctx.approval.setPolicy`（第 8 步）。** 它需要一个在线的 agent，并且每次改变都会在每段对话里加一条用户可见的通知。运行时上下文语句已经说明了当前的策略，方案指定的也是 `permissionPresets.set`。
+
+**只在 `session/created` 中应用（第 8 步）。** 新研究绑定的会话在记录存在之前就已上线，会一直保持默认值，直到下次加载。
+
+**按字面路径放行附件目录，或放行整个 `attachments`（第 8 步）。** 存储里的链接可以指向数据目录的任何位置；`file-objects` 和图片对象也不是用户按名字附加的文件。解析链接、只接受 `files/**`，其余部分仍被拒绝。
+
+**研究之外退回外壳的按钮（第 8 步）。** 插槽模型没有可以让位的条目。在 ui-research 里画 `PermissionSelect` 要导入别的插件的组件，重写一遍则要复制它的目录读取和风险确认。
+
+**不受开关控制地注册（第 8 步）。** 会话不在研究里的继承场景会失去金标准里记录的访问模式按钮。
+
+**用权限目录里的名字（第 8 步）。** 要在 ui-research 里加上 `remote.permissionPresets` 的读取及其失效处理。目录里的名字是宿主的，外壳按钮对内置预设也会换成自己词典里的名字。
+
+**浏览器继续发送 `/permission`（第 8 步）。** 它只到达屏幕上的那段对话。
+
+**像 ui-research 一样始终发布页面全局变量（第 9 步）。** 默认行会给每个下发的页面多加一段脚本，两个包「Host 入口保持惰性」的 spec 也要改。只发布非默认值，默认页面保持不变。
+
+**用 `initialSession: none` 开关加研究侧的启动逻辑（第 9 步）。** 它只在启动时消除竞态。`clearArchivedCurrent` 和当前 Session 被移除之后仍然没有选中项，「新研究」也仍会继承当前文件夹。
+
+**只要没有选中项，每次通知都运行 `land()`（第 9 步）。** 什么也不选的策略（`start-new` 失败、研究存放位置不可写）会在每次列表变化时调用 Host。触发条件只有状态转变：启动、失去选中项、注册。
+
+**第二次注册时替换先前的策略，或维护一个栈（第 9 步）。** 两个插件都注册策略是组合错误；抛错会在加载时指出它。
+
+**为 5 秒等待设一个 Config 字段（第 9 步）。** 这段等待防范的是插件缺失，不是调优选择。
+
+**把品牌行做成什么也不做的按钮，或隐藏它（第 9 步）。** 没有动作的按钮是死控件（D13）；隐藏这一行会让侧边栏失去产品标识。
+
+**把 `set-autonomy` 算作改动（`revision === 1`）（第 9 步）。** 自主程度选择器就在草稿的输入框里，打字之前选「全自动」就会让草稿变成一项独立的研究：「更改位置」会消失，下一次「新研究」会再建一个文件夹。改为由记录内容判断，`relocate` 沿用自主程度。
+
+**研究存放位置只用偏好（第 9 步）。** 在入口策略下，启动时会先于任何测试的配置调用 `start-new`，于是每个 Web e2e 都会在开发者的 `%USERPROFILE%\SciPaper` 里建文件夹。配置字段才是组合能够固定的东西。
+
+**根目录一空就删除（第 9 步）。** 用户在选择之前自己建的文件夹不是草稿建的；`createdRoot` 记录是哪一种。
+
+**用会话事件或 `inspect` 判断是否空白（第 9 步）。** 事件只覆盖本进程中在线的会话，`inspect` 会复制在线会话的整份日志。会话列表的 `blank` 位正是外壳复用空白对话时所用的依据。
+
+**不归档旧对话（第 9 步）。** 会话日志无法删除；列表元数据未命中缓存的冷会话会读成非空白，于是它会重新出现在没有文件夹的对话中。归档是注册表提供的唯一移除方式。
+
+**在 ui-research 里画这个按钮（第 9 步）。** 外壳自己画 `WorkspaceChip`，只把菜单交给这个位置；第二个按钮需要新的 hero 插槽，方案已放弃这一做法。
+
+**为「更改位置」做应用内文件夹浏览器（第 9 步）。** 外壳的 browse 流程填的是 `conversation.hero.workspace.directoryFlow`，只有 Workspace 选择器声明了它；从研究菜单渲染它会破坏插槽归属。输入路径覆盖了没有文件夹选择窗口的宿主。
+
+**把文件夹的情况显示在入口行（第 9 步）。** 「打开它」要调用文件夹位置自己的 `onPick`，入口行拿不到；按钮处的菜单拿得到。
+
+**「换到另一项研究」时丢弃草稿（第 9 步）。** 草稿就是那一份可复用的「新研究」；留着它没有代价，下一次「新研究」会再打开它。
+
+**读不到记录时让 `land()` 新建草稿（第 9 步）。** 在快照漏掉的研究旁边再建一份草稿会造成重复；说明原因，才能把选择留给用户。
+
+**由浏览器逐段归档对话（第 10 步）。** 浏览器不掌握「最内层研究」规则，也不会记下自己归档了哪些；标签页中途关闭会让一项研究只归档了一半，且无从恢复。
+
+**像 `discard-draft` 那样删除记录或 Workspace 注册（第 10 步）。** 移出必须可以撤销；删除 Workspace 还会丢掉这个文件夹的会话登记。
+
+**由「每段对话都已归档」推导「已移出」（第 10 步）。** 没有对话的研究，或用户逐段自己归档了对话的研究，看起来会完全一样；恢复时还会取消归档用户自己归档的对话。
+
+**先归档、后存记录（第 10 步）。** 两步之间出错会留下已归档的对话，却没有记录说明是哪些。先存记录的最坏情况只是记下了一个从未归档的 id，注册表的取消归档会忽略它。
+
+**把委派出的子会话也归档（第 10 步）。** shell 从不单独列出它们；归档后它们会作为单独的行出现在「已归档会话」页上。
+
+**拒绝对已移出研究的命令（第 10 步）。** 它的运行本应继续进行，用户也可以从「已归档会话」重新打开一段已归档的对话；只停止后台观测。
+
+**改造外壳的 Workspace 浏览器（第 10 步）。** 它列出的是文件夹而不是研究，并提供添加工作区、视图选项、未分组、分叉会话和删除工作区；去掉这些要改外壳代码。遮蔽则让外壳保持原样。
+
+**用嵌套的 `role="group"` 结构（第 10 步）。** 带 `aria-level`、`aria-posinset` 和 `aria-setsize` 的平铺树是合法的 ARIA，而且键盘只需遍历一个有序的行列表。
+
+**把展开状态保存到重新加载之后（第 10 步）。** 重新加载后，屏幕上的研究会自己展开；而已移出或已丢弃的研究的键会越积越多。
+
+**移植浏览器的拖动排序（第 10 步）。** 方案接受按最近使用排序，手动顺序对研究没有意义。
+
+**「移出列表」只删除文件夹的 Workspace 登记（第 10 步）。** 它的对话会重新出现在「未归入文件夹的对话」里；先归档这些对话，才能把它们从所有列表中移走，之后仍可从「已归档会话」恢复。
+
+**读取目标投影来决定进行中的圆点（第 10 步）。** ui-research 里的列表行没有带类型的目标状态，读取它要引入 goal 包的类型；运行中的标记已经覆盖了目标的各轮。
+
+**把单独恢复的对话列在「其他文件夹」下（第 10 步）。** 那会把一项已移出研究的对话说成不属于任何文件夹；恢复研究后，它会回到本来的位置。
+
+**保留精简后的工作台（第 11 步）。** 主面板会替换对话，正是方案要去掉的第二个应用（第 3.5 节与第 10 节）。右侧栏标签页把报告集中在对话旁这一处。
+
+**把看板做成对话视图标签（第 11 步）。** 这会带回视图标签条，并把报告移进主界面（D16）。
+
+**用新的布局动作强制 560 px（第 11 步）。** `ILayout` 只建议首次宽度。加宽一个已打开的面板需要外壳新增方法，第 11 步不加；停靠栏的「全屏」已经能让看板占满整个界面。
+
+**通过文档预览的扩展名注册表渲染 draw.io（第 11 步）。** `documentPreviews` 在文本标签页内分派渲染器，沿用它的载入方式和工具栏，并通过 workspace-files Remote 读取字节。编辑器需要研究记录里的文件和版本（`read-artifact`、`save-artifact`）以及自己的框架；认领 `*.drawio` 的标签页类型两者都能给，而且不用改外壳。
+
+**每次打开都登记这张图（第 11 步）。** 这会把外部修改连同文件的关联一起记录下来，一旦某份关联资料过期就会失败，还会写入没人要求的版本。只有研究记录不认识的文件才登记。
+
+**在快照里带上作者和年份（第 11 步）。** 研究记录没有这些字段，示例的记录也从不重写。推导字段会在每次快照时读取所有文献记录，而文件路由已能按需提供这份记录。
+
+**把文件操作放进标签页菜单（第 11 步）。** `sidebar.right.tab.menu.item` 扩展的是标签页自己的菜单，不是文件树的某一行；单个文件的操作需要文件标签页里的位置。
+
+**让文本查看器支持绝对范围（第 11 步）。** 这是外壳改动，而会话范围的地址用现成的查看器就能打开同一个文件。
+
+**从 `agentPresets.list()` 读取默认预设（第 11 步）。** 它的 `isDefault` 标出当前生效的默认，却标不出部署的默认；客户端要么自己写死 `research`，要么分不清保存的覆盖值和本版自带的默认。设置命名空间两层都有，而且它的镜像会跟随设置文件变化。
+
+**让名单忽略过期的保存默认值（第 11 步）。** 这要改预设包的选择规则，还会不声不响地丢掉设置里仍保存着的选择。把它显示出来并提供清除，由用户决定。
+
+**按组合行识别科研预设（第 11 步）。** 每份快照都要读每个预设的组合、查找科研工具那一行。本版不提供预设选择器，部署的默认预设就是科研助手的预设。
+
+**在浏览器里从会话列表的 `goal` 投影推导目标（第 11 步）。** 对这个窗口没有绑定的会话，列表行只带缓存的投影提示，另一段对话里在推进的目标会显示得晚，甚至不显示。宿主的 `activeGoals` 读取实时的目标服务，与项目简报一致。
+
+**在每段对话里显示没记下对话的运行（第 11 步）。** 规格第 3.3 节保留了它们。这会让一项研究的运行重新出现在它的每段对话里。看板会列出它们，并提供卡片上的操作。
+
+**只用停靠栏自己的收起关闭研究记录（第 11 步）。** 规格让标题栏状态标签成为进出研究记录的那扇门。`ISidebarRight` 已经提供 `isExpanded()`、`active()` 和 `toggleExpanded()`，不需要改外壳。
+
+**在状态标签上保留自主程度（第 11 步）。** 输入框的按钮已经显示它（第 8 步），规格列出的状态标签形式也不含它。
+
+**保留「研究进展」这个标签名（第 11 步）。** 规格和入口行都把这块面板叫作「研究记录」。一块面板只用一个名字。
+
+**重新生成不含声明的继承 golden（收尾）。** 继承通道的用途是按上游的发行方式检验上游插件。在那里遮蔽它们的第一步，会让所有检查上游首次运行流程的测试都看不到它。
+
+**给研究宿主加一个指定存放位置的环境变量（收尾）。** 那是只为测试添加的产品设置。启动器本来就拥有自己的临时目录，`homedir()` 会随之改变。
+
+## 影响
+
+- 只有当用户配置了 DeepSeek 模型，或存入 DeepSeek 密钥时，Web 与 Desktop 组合才会连接 DeepSeek 服务；存入密钥也会启用 `web_search` 背后的 DeepSeek 网页搜索服务。它们运行的任何部分都不会创建 `.anonymous-user-id`。插件设置页已禁用，GUI 中没有网页搜索的开关。
+- 产品不再有发送反馈或下载 Session 日志的途径。[SciPaper Harness as an independent product](2026-09-24-scipaper-independent-identity.zh.md) 记录了产品其余的请求身份。
+- GUI 不能选择 preset，也不能编辑名录。此前通过已移除的设置分区保存的默认 preset（`agent-presets.default`）会继续生效，GUI 中也看不到它，直到有人修改设置文件。
+- 只为已移除的浏览器半边服务的 Host 行 `plugin-inventory` 与 `terminal-controller` 仍然挂载，但不再有使用者。
+- 入口页、输入框、文件入口和首次启动对话框不再出现「工作区」，也不再把 DeepSeek 说成产品本身。其他外壳文案仍写着「工作区」，例如工作区列表、目录选择器的标题「选择工作区目录」和权限预设「工作区内修改」，直到替换这些控件的步骤为止。
+- 在第 9 步的入口策略落地之前，尚未选定文件夹时「新研究」不会创建研究，而兜底提示正是在这时显示，所以提示里的「新建」指向一个暂时还做不到这件事的按钮；打开列表中已有的研究，或用文件夹标签选择文件夹，都可以用。
+- 在交付的组合中仍会显示、并且提到 DeepSeek、Harness 或 DSH 的外壳 locale 字符串，指的都是用户自己选择的模型（模型选择器里 DeepSeek 模型的说明、「模型」设置中 DeepSeek 端点的占位地址）。关于 DeepSeek Harness 0.1 的继承欢迎声明位于 `ui-settings-models`，但 `ui-research` 用一个什么也不渲染的组件占据了这一引导步骤；网页搜索的说明则在已禁用的插件设置页上。模型可见的系统提示词不再把 DeepSeek Harness 或 DSH 说成产品；网页搜索服务端点失败时的说明仍指向 Settings > Plugins（见「考虑过的其他方案」），缺少密钥时的错误则指向产品确实有的「模型」页。
+- 继承来的用户指南（`docs/user/guide`）和上游 Agent Note 仍引用外壳的旧标签，例如 **Choose workspace** 和 `Deep diving...`。
+- 想做检查、推进流程或换模式时，用户现在在对话里向助手提出。
+- 在第 9 步之前，「新建项目目录…」胶囊按钮和输入框里的文件夹按钮仍是把研究放进指定文件夹的仅有的直接途径。
+- 示例不能继续推进，即使是正打开它的用户也不行；复制一份示例留给新手引导来做（`复制为我的研究`）。在第 9 步之前，启动时仍可能进入示例，但现在它会说明自己是示例。
+- 外壳自身的成功标记（已完成的待办、diff 的新增行、连接指示）在科研版中现在显示为「已核实」的绿色，这正是它们约定俗成的含义。
+- 侧栏、标题栏状态标签和项目简报说法一致，因为三者读的是同一份现状。阶段检查只改变它运行过门禁的那些阶段，全文汇总只随全文检查变化。
+- 文件超过 5,000 个的项目永远不会显示为已完成，也永远不显示「检查后有改动」。每次快照对已检查过的项目最多每 30 秒列一次文件。
+- 在 spark-to-paper 中，`research_check scope: cite` 和 `figures` 现在也会运行该阶段的门禁。
+- 缺少提示、门禁名称或 `paperRoot` 的模式包不再加载。
+- `lastCheck` 仍会写入，但不再有读取方；早期版本存下的任务结果保留它们原有的报告字段。
+- 在第 8 步之前，侧栏仍保留自主度选择；在第 11 步之前，侧栏还没有「现在」一行。
+- 第 7 步之前创建的记录带着旧创建路径写下的 `modeSetBy: user`，读作已选定。在 `set-mode` 开始记录决策之前由 agent 设置过模式的记录读作 `routingSettled: false`，所以其模式包的入口技能可能再选一次路线。
+- 随应用提供的示例保留当时生成器记下的单独模式决策；重新生成的示例每次 `set-mode` 只会有一条决策。
+- 未加载的对话里的目标不会出现在 `activeGoal` 中，因此 agent 可能在它旁边再建一个。
+- 继承来的 Web 场景组合的是同一个 `system-prompt` 行，所以它们的提示词金标准也和科研版一起去掉了开场的身份句。
+- 范围为某个基础检查的干净检查（例如通用模式下的 `figures`）显示检查 id，因为快照只在某项检查有发现时才带它的名称。
+- 在某段对话里用 `/permission` 手动输入的预设，一直有效，直到再次设置自主程度或这段对话被重新加载。
+- 权限配置行缺少 `workspace-write` 或 `research-auto` 的组合中，科研服务不会加载。
+- 附件存储由所有对话共用，因此在另一段对话里附加的文件路径也可以导入；agent 只能从本对话的消息里得知附件路径。
+- 示例生成器自己调用的 `permissionPresets.set(..., 'research-auto')` 现在是多余的，保持不动。
+- 在随附的版本里，不属于任何研究的对话在输入框里没有访问控制；`/permission` 仍可用。
+- 挂载 ui-research 却不设 `hideDeveloperCells` 的组合保留外壳的访问模式按钮，没有自主度控件，尽管侧栏仍指向输入框。
+- 手动输入的预设一直有效，直到这项研究下一次选择自主度。
+- 对话的投影晚于研究记录到达时，按钮会短暂显示 `本对话：…`。
+- 没有注册策略时（ui-research 未加载），启动等待 5 秒后连接最近的 Workspace，「新研究」保持上游规则。
+- 组合出厂行的研究 Web 场景在 `entry: policy` 和 `brandAction: none` 下运行：侧边栏只有一个「新研究」按钮。
+- 某次策略调用结束后仍无选中项时，在用户操作或再次失去选中项之前不会选中任何内容。
+- `docs/config-catalog.md` 列出两个包的配置。
+- `existing` 和 `nested` 不改动任何东西；打开那项研究并用 `discard-draft` 丢弃草稿由客户端负责。
+- 对话被归档的草稿，会由 `start-new` 得到一段新的空白对话；记录仍保留原来绑定的那段。
+- 读不到会话列表时，快照和命令答复都不标记草稿，`start-new` 直接失败，而不会再建一份草稿。
+- 草稿存在期间，每次快照都会列一次会话。
+- 草稿文件夹里出现任何文件（包括 `.DS_Store` 这类系统文件），它就成为一项独立的研究。
+- 在设置中更改的研究存放位置对下一份草稿生效；已有的草稿在被移动之前留在原处。
+- 研究存放位置位于某项研究之内时，「新研究」会被拒绝，直到设置更改为止。
+- 宿主没有文件夹选择窗口时（远程浏览器、经 SSH 启动），「更改位置…」和「研究存放位置」要输入绝对路径。
+- 移动后的研究对话若五秒内没有出现在列表里，输入的草稿留在已归档的草稿对话里，入口行说明原因。
+- 「换到另一项研究」之后，未动过的草稿仍在列表里，直到下一次「新研究」重新打开它或一次移动丢弃它。
+- 按钮显示文件夹对应 Workspace 的名字，因此重命名未能改写 Workspace 标题的研究，按钮上显示文件夹名。
+- 已移出的研究仍在 `projects()` 中：agent 的 `research_project list`、`projectAt` 以及 `relocate` 的 `existing` 与 `nested` 答复仍能找到它（`archived: true`），在它文件夹里打开的对话仍属于它。
+- 这两个命令都会增加记录的 `revision` 并更新 `updatedAt`，因此刚恢复的研究算作刚用过。
+- 移出之后才在它文件夹里开始的对话，要等再次执行 `archive-project` 才会归档。
+- 用户从「已归档会话」单独取消归档的对话仍留在 `archivedConversations` 中；之后恢复研究对它不再有任何作用。
+- 研究移出期间结束的运行，在恢复后的第一次观测时收集结果。
+- 内容搜索使用内存索引，每次启动后在第一次搜索时建立。
+- 挂载 ui-research 但未开启 `hideDeveloperCells` 的组合，侧栏显示外壳的 Workspace 浏览器，没有研究列表，因为卡片已经去掉。
+- 研究树不能拖动排序，也没有视图选项；哪些行展开在重新加载后会重置。
+- 两轮之间的目标、排队中的实验和状态待确认的实验都不显示圆点。
+- 移出列表的文件夹会失去 Workspace 登记；它的对话从「已归档会话」恢复后，成为不属于任何文件夹的对话。
+- 研究被移出期间单独恢复的对话，在研究恢复之前哪里都不显示。
+- 只有右侧面板还没有宽度时，实验看板才以 560 px 打开。科研标签页已经设成 320 px 之后，看板按面板现有的宽度打开，「全屏」能让它占满界面。
+- 在某个窗格里新打开的标签页，沿用上一个标签页留下的滚动位置。资料标签页会滚动到它要显示的部分，实验看板和配图灵感不会。
+- 已登记的图若在上次记录之后被研究工具以外的方式改过，保存会因版本冲突被拒绝，直到编译或助手再次记录它。不再有「接纳外部修改」。
+- 打开研究记录里没有的 `.drawio` 文件，会把它记为一张图的第 1 版。
+- 每次页面载入时，每份文献资料要为署名发一次请求。文献记录读不到的资料不显示署名。
+- 在文件标签页里，单个文件既不能在资源管理器中打开，也不能用默认程序打开。
+- 没人加载过的对话里的目标不显示圆点，也不出现在「现在」一行，因为目标服务只看得到已加载的对话。
+- 桌面端提交的运行，以及运行开始记录对话之前记下的运行，在任何输入框上方都没有卡片，由看板列出。
+- 等你回答的问题，只在外壳的待处理交互表带着它时计入；各交互域只为这个窗口跟进的对话发布它。
+- 「现在」一行的第一条与研究树的圆点一样，也把批准和计划审阅算在内，都写作「等你回答」。
+- 模式待定时，「现在」一行写「通用模式：直接在对话里提需求」，旁边是「模式待定」。
+- 换了 id 的科研预设副本会被当作别的预设，它的对话会显示这条提示。
+- 保存默认的提示只出现在研究记录里，标题栏状态标签和入口页都不提。「改回科研助手」只清除 `default`，`modeSelectionEnabled` 保持原样。
+- 没有保存过读取结果的示例看板显示「尚未读取」，且无法读取。
+- 草稿旁边较早的未动过的研究，以正体的「新研究」列出，和其他研究一样可以移出列表。
+- 只有科研标签页是当前窗格的当前标签页时，状态标签才会收起面板。前面是别的标签页时，它打开研究记录，并只在面板还没有宽度时建议 320 px。
+- 在 Windows 上失败的 Web e2e 文件，除了这次收尾修好的，都和第 1 步之前一样失败。`preview-boot` 在第 1 步之前也失败；它现在停在更后面，等待旧入口页的文件夹输入框。使用真实密钥的冒烟测试没有做对比。

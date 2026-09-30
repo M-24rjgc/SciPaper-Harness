@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="510" viewBox="0 0 900 510" role="img" aria-labelledby="title desc">
+  <title id="title">Attention allocation at a matched sparse budget</title>
+  <desc id="desc">Synthetic mean accuracy: dense 90%, fixed sparse 86%, content-adaptive 88%. Sparse methods both retain 25% of entries. Values do not establish real model performance.</desc>
+  <rect width="900" height="510" fill="#f8fafc"/>
+  <g font-family="Arial, sans-serif" fill="#18283b">
+    <text x="55" y="55" font-size="25" font-weight="700">Attention allocation</text>
+    <text x="55" y="86" font-size="17" fill="#526375">Synthetic demonstration · three paired rows per condition</text>
+    <text x="58" y="124" font-size="15">Mean accuracy (%)</text>
+    <g stroke="#dde5ed" stroke-width="1">
+      <path d="M95 370H825 M95 310H825 M95 250H825 M95 190H825 M95 130H825"/>
+    </g>
+    <g font-size="14" fill="#526375">
+      <text x="62" y="375">80</text><text x="62" y="315">83</text><text x="62" y="255">86</text><text x="62" y="195">89</text><text x="62" y="135">92</text>
+    </g>
+    <rect x="170" y="170" width="145" height="200" rx="6" fill="#94a3b8"/>
+    <rect x="390" y="250" width="145" height="120" rx="6" fill="#e6a34b"/>
+    <rect x="610" y="210" width="145" height="160" rx="6" fill="#308b91"/>
+    <g font-size="22" font-weight="700" text-anchor="middle">
+      <text x="242" y="158">90</text><text x="462" y="238">86</text><text x="682" y="198">88</text>
+    </g>
+    <g font-size="17" text-anchor="middle">
+      <text x="242" y="405">Dense</text><text x="462" y="405">Fixed sparse</text><text x="682" y="405">Content-adaptive</text>
+      <text x="242" y="433" fill="#526375">Retained: 100%</text><text x="462" y="433" fill="#526375">Retained: 25%</text><text x="682" y="433" fill="#526375">Retained: 25%</text>
+    </g>
+    <text x="55" y="479" font-size="15" fill="#526375">Axis starts at 80%. No latency, memory or real-benchmark claim is inferred.</text>
+  </g>
+</svg>

@@ -1,0 +1,50 @@
+[
+ {
+  "key": "beltagy2020longformer",
+  "openalex": "https://openalex.org/W3015468748",
+  "title": "Longformer: The Long-Document Transformer",
+  "year": 2020
+ },
+ {
+  "key": "zaheer2020bigbird",
+  "openalex": "https://openalex.org/W3045733172",
+  "title": "Big Bird: Transformers for Longer Sequences",
+  "year": 2020
+ },
+ {
+  "key": "hsieh2024ruler",
+  "openalex": "https://openalex.org/W4394778349",
+  "title": "RULER: What's the Real Context Size of Your Long-Context Language Models?",
+  "year": 2024
+ },
+ {
+  "key": "bai2024longbench",
+  "doi": "10.18653/v1/2024.acl-long.172",
+  "title": "LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding",
+  "year": 2024
+ },
+ {
+  "key": "shah2024flashattention3",
+  "openalex": "https://openalex.org/W4400611982",
+  "title": "FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-precision",
+  "year": 2024
+ },
+ {
+  "key": "jiang2024minference",
+  "openalex": "https://openalex.org/W4415797534",
+  "title": "MInference 1.0: Accelerating Pre-filling for Long-Context LLMs via Dynamic Sparse Attention",
+  "year": 2024
+ },
+ {
+  "key": "lu2025moba",
+  "openalex": "https://openalex.org/W4407764033",
+  "title": "MoBA: Mixture of Block Attention for Long-Context LLMs",
+  "year": 2025
+ },
+ {
+  "key": "yuan2025nsa",
+  "doi": "10.18653/v1/2025.acl-long.1126",
+  "title": "Native Sparse Attention: Hardware-Aligned and Natively Trainable Sparse Attention",
+  "year": 2025
+ }
+]

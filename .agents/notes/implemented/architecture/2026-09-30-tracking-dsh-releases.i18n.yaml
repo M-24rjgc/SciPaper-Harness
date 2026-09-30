@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-30-tracking-dsh-releases.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-30-tracking-dsh-releases.md
+/agent-note-tracking-deepseek-harness-releases-by-real-merges:
+  en: 2e8672a0d2d59ddd
+  zh: a1fd355799208781
+/agent-note-tracking-deepseek-harness-releases-by-real-merges/problem:
+  en: 1336703200e77f22
+  zh: f4b837b5486110ae
+/agent-note-tracking-deepseek-harness-releases-by-real-merges/decision:
+  en: 111c7f32d324cdb3
+  zh: 3f05fb1ece70f2d6
+/agent-note-tracking-deepseek-harness-releases-by-real-merges/consequences:
+  en: d57a069cef419223
+  zh: 71782be64fa1dd21
+/agent-note-tracking-deepseek-harness-releases-by-real-merges/alternatives-considered:
+  en: dc75fa1074d089f2
+  zh: cf9e543457bc4ee1

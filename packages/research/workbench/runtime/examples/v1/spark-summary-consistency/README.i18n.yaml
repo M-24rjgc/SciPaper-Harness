@@ -1,0 +1,10 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/research/workbench/runtime/examples/v1/spark-summary-consistency/README.md
+/evidence-grounded-summary-consistency:
+  en: e5d88ab78a18e562
+  zh: 3e8dcb6c5787936e
+/evidence-grounded-summary-consistency/contents:
+  en: 18b995fec16064ac
+  zh: 3be52bcf6680bc82

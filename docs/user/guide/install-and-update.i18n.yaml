@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for install-and-update.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/install-and-update.md
+/install-and-update-scipaper-harness:
+  en: 7104ede54eaef4a9
+  zh: 17dde57a9a080176
+/install-and-update-scipaper-harness/install:
+  en: 77254db5ada8ace5
+  zh: 386f278519369d29
+/install-and-update-scipaper-harness/update:
+  en: 690ff14caf119234
+  zh: ac33429d519471d1
+/install-and-update-scipaper-harness/your-data:
+  en: 75fffb25d76e6981
+  zh: b4b88d80b6c6b98b
+/install-and-update-scipaper-harness/build-from-source:
+  en: 0552e33e2bd9031e
+  zh: 518a6e2499a31e04

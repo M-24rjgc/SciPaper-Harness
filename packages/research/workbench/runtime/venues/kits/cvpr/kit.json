@@ -1,0 +1,28 @@
+{
+  "id": "cvpr",
+  "name": "CVPR author kit",
+  "from": "CVPR",
+  "files": [
+    "cvpr.sty",
+    "ieeenat_fullname.bst"
+  ],
+  "documentclass": "[10pt,twocolumn,letterpaper]{article}",
+  "isClass": false,
+  "stylePackage": "cvpr",
+  "citationStyle": "numeric",
+  "bibstyle": "ieeenat_fullname",
+  "options": {
+    "review": "review",
+    "final": "final"
+  },
+  "author": "\\author{@@authors@@\\\\\n@@affil@@\\\\\n{\\tt\\small @@email@@}}",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

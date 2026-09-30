@@ -1,0 +1,30 @@
+<mxfile host="Research Workbench">
+  <diagram id="architecture" name="Architecture">
+    <mxGraphModel dx="900" dy="420" grid="1" gridSize="10" guides="1" page="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="blocks" value="Query / key blocks&lt;br&gt;(64 tokens each)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#68675f;fillColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="0" y="40" width="150" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="score" value="Block scores&lt;br&gt;(mean-pooled keys)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#68675f;fillColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="200" y="40" width="150" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="select" value="Top-k block selection&lt;br&gt;(k = n / 4)" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#15635f;fillColor=#e6efed;fontColor=#104f4c;" vertex="1" parent="1">
+          <mxGeometry x="400" y="40" width="150" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="attention" value="Block-sparse attention" style="rounded=1;whiteSpace=wrap;html=1;strokeColor=#68675f;fillColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="600" y="40" width="150" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="fixed" value="Fixed blocks&lt;br&gt;(baseline)" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;strokeColor=#b65328;fillColor=#f7e9df;fontColor=#8a3d1d;" vertex="1" parent="1">
+          <mxGeometry x="300" y="150" width="150" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;strokeColor=#68675f;" edge="1" parent="1" source="blocks" target="score"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;strokeColor=#68675f;" edge="1" parent="1" source="score" target="select"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;strokeColor=#68675f;" edge="1" parent="1" source="select" target="attention"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;dashed=1;strokeColor=#b65328;" edge="1" parent="1" source="blocks" target="fixed"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;html=1;dashed=1;strokeColor=#b65328;" edge="1" parent="1" source="fixed" target="attention"><mxGeometry relative="1" as="geometry"/></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

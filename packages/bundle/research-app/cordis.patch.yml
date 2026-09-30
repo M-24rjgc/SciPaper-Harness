@@ -1,0 +1,122 @@
+# SciPaper product composition over the shared DSH base and Web bundles.
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    personaSuffix: Your working directory is {{cwd}}.
+    personaPrefix: You are a research collaborator powered by the {{model}} model.
+
+- id: session-query-sqlite
+  config:
+    path: ':memory:'
+    openAt: first-search
+
+- id: agent-preset-registry
+  config:
+    default: research
+
+- id: session-telemetry-otel
+  disabled: true
+- id: desktop-product-telemetry
+  disabled: true
+- id: product-analytics
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: session-log-deepseek
+  config:
+    enabled: false
+- id: command-feedback
+  disabled: true
+- id: message-feedback
+  disabled: true
+- id: ui-message-feedback
+  disabled: true
+- id: deepseek-account
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: account-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: ui-settings-session-log
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+
+- id: session-log-download
+  disabled: true
+- id: ui-conversation
+  config:
+    showTrajectoryWithoutDeveloperTools: true
+- id: ui-cordis
+  disabled: true
+- id: ui-agent-preset
+  disabled: true
+
+- id: ui-sidebar
+  config:
+    brandAction: none
+- id: ui-workspace
+  config:
+    entry: policy
+
+- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      research-auto:
+        sandbox: workspace-write
+        approval: never
+        name: 全自动 · Automatic
+        description: 工作区内修改，不弹审批；越权请求直接拒绝，无人值守时不会卡住。
+
+- insert:
+    - id: lsp
+      name: '@deepseek-ai/dsh-lsp'
+    - id: lsp-stdio
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          typescript:
+            command: !!js process.execPath
+            args:
+              - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('typescript-language-server/package.json')), 'lib/cli.mjs')
+              - --stdio
+            extensionToLanguage:
+              '.ts': typescript
+              '.tsx': typescriptreact
+              '.js': javascript
+              '.jsx': javascriptreact
+              '.mjs': javascript
+              '.cjs': javascript
+    - id: browser-use
+      name: '@deepseek-ai/dsh-browser-use'
+    - id: browser-use-playwright
+      name: '@deepseek-ai/dsh-browser-use-playwright-mcp'
+      config:
+        mode: launch
+        headless: false
+        persistentProfile: true
+    - id: remote-workspace-presets
+      name: '@deepseek-ai/dsh-remote-workspace-presets'
+      config:
+        researchTools: true
+    - id: research-workbench
+      name: '@deepseek-ai/dsh-research-workbench'
+      config:
+        maxSourceBytes: 67108864
+        pollIntervalMs: 5000
+        maxReviewPages: 12
+    - id: ui-research
+      name: '@deepseek-ai/dsh-client-ui-research'
+      config:
+        hideDeveloperCells: true

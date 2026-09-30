@@ -1,0 +1,84 @@
+# Python Plot Recipes
+
+Use `resources/python/ccfa_plot_recipes.py` when the user wants concrete Python plotting code, a runnable demo, or a starting point for a paper figure. The bundled recipes are original CCFA code. They are inspired by public visualization galleries and libraries, but they do not copy external code.
+
+## Recipe Library Contract
+
+The bundled library must remain:
+
+- Self-contained: standard library only, so demos run in bare environments.
+- Editable: exports SVG text and shapes rather than raster-only images.
+- Evidence-bound: consumes supplied data only.
+- Themeable: palettes and layout can be adapted without changing chart logic.
+- Portable: recipes can be translated into Matplotlib, Seaborn, Plotly, Altair, Bokeh, or Plotnine when those dependencies exist.
+
+## Available Recipes
+
+| Recipe | Best for | Avoid when |
+| --- | --- | --- |
+| `lollipop_rank` | Headline metric comparison, benchmark result ranking, compact bar replacement. | Differences are tiny and uncertainty dominates. |
+| `slopegraph` | Paired changes such as base vs big, before vs after, old vs new. | Metrics are on unrelated scales without clear normalization or labels. |
+| `heatmap_matrix` | Dense model/config/dataset matrices and table-to-visual summaries. | Exact numeric lookup is more important than pattern reading. |
+| `donut_chart` | Composition, proportions, dataset/source split, error taxonomy, or budget allocation. | Exact comparison between many categories is the main task; use bars instead. |
+| `grouped_bar_chart` | Categorical comparisons across methods, datasets, ablations, cohorts, or settings. | Too many groups make labels unreadable; use small multiples or heatmaps. |
+| `volcano_plot` | Effect-size versus significance screening, feature/gene/module discovery, or large ablation scans. | P-values, effect sizes, or thresholds are not supplied. |
+| `correlation_heatmap` | Metric-feature relationships, module interactions, dataset correlations, or diagnostic matrices. | The sample size is too small or correlation is not meaningful for the data type. |
+| `ridgeline_density` | Seed distributions, sample distributions, uncertainty, repeated-run behavior. | The paper only has one value per group. |
+| `small_multiple_lines` | Trends across datasets, scales, ablations, or time. | Panels do not share a comparable visual grammar. |
+| `radial_scorecard` | Multi-criterion profile summaries for exploratory or slide visuals. | The figure is the main scientific evidence; radial charts can overstate shape differences. |
+
+## How To Adapt
+
+1. Reuse the relevant visual contract: scientific question, supplied data, intended size, and placement. Import a selected recipe; read only its signature or implementation when needed. Do not load the full library or rebuild an existing plotting pipeline for a local change.
+2. Pick a recipe by evidence shape, not by aesthetics.
+3. Keep the proposed method color stable across related figures. Existing palettes remain available; `ccfa_gem`, `ccfa_nocturne`, `ccfa_ceramic`, `ccfa_orchid`, `ccfa_arctic`, `ccfa_wine`, and `ccfa_ink` expose the established showcase alternatives. See `palette-and-accessibility.md` only when choosing or changing color roles.
+4. Use the final-size typography and spacing rules in `visual-contract.md`. `Theme` defaults to Times New Roman; for a comic treatment, pass `Theme(font="Comic Sans MS, cursive")`. Keep a single primary family, readable axis labels, and restrained headings. Avoid duplicating a manuscript caption as a large internal title.
+5. Use natural title or sentence case for ordinary visible English, while preserving canonical uppercase acronyms and initialisms such as `CCF`, `AI`, `QA`, `SVG`, and `PDF`. Never use all caps for complete ordinary-language titles, panel names, legends, axes, annotations, badges, or table headers; use font weight, size, color, or spacing for emphasis instead.
+6. Use direct labels whenever possible; do not make reviewers decode a legend for the main message.
+7. For composite figures, combine 2-5 coordinated panels only when each panel answers a distinct reviewer question.
+8. If the recipe does not fit the evidence, compose a new one using the same primitives: canvas, axis, direct labels, semantic palette, and source note.
+9. Read the canonical upstream data by path instead of copying the dataset into each figure folder. Keep authoring code, reusable assets, and build previews at the paths resolved by the shared artifact contract. Save each requested export at its canonical destination and update it in place. Reuse one data load and theme for a figure batch; regenerate only affected panels/exports after a local change.
+
+## Custom Plot Invention Prompt
+
+When inventing a new plot, fill this before coding:
+
+```text
+Scientific question:
+Data shape:
+Primary comparison:
+Secondary structure:
+What the viewer should notice first:
+What must not be visually exaggerated:
+Required labels/units:
+Candidate grammar:
+Why a standard chart is insufficient:
+Accessibility checks:
+```
+
+Then design a plot grammar:
+
+- Anchor: the first visual object the reader should inspect.
+- Contrast: color, alignment, slope, position, or grouping.
+- Context: uncertainty, baseline, scale, or source note.
+- Scope: the evaluated settings and statistical meaning needed to interpret the visual.
+
+## Composite Dashboard Rules
+
+Use a composite figure when a single chart would hide the analysis structure. A useful composite dashboard usually combines:
+
+- one composition view, such as donut or stacked bars;
+- one categorical comparison, such as grouped bars;
+- one relationship view, such as correlation heatmap or scatter;
+- one discovery/screening view, such as volcano or ranked hits.
+
+Keep the figure publishable:
+
+- Use one shared title and a clear panel title for every subfigure.
+- Keep each panel visually independent; do not force all panels into one color scale.
+- Use different but harmonious palettes across panels.
+- Avoid shrinking text below readability; use fewer panels if labels become fragile.
+
+## External-Inspiration Boundary
+
+Public galleries are inspiration, not source material to paste. Borrow ideas such as direct labeling, small multiples, density summaries, grammar-of-graphics layering, and publication style defaults. Do not copy source code, datasets, proprietary examples, or distinctive layout compositions.

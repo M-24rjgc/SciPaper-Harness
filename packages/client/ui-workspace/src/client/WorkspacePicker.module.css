@@ -1,0 +1,45 @@
+/* The adoption error dialog's footer and message styles; the dialog itself is
+ * the shared Modal (same figma dialog family as the browser's own dialogs). */
+.modalAction {
+  min-width: 72px;
+}
+
+.modalError,
+.menuStatus {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.modalError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.menuStatus {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.sshForm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sshField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.sshField input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}

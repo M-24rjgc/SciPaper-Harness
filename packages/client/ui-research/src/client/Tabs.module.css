@@ -1,0 +1,14 @@
+.root { display: flex; flex-direction: column; gap: 14px; padding: 15px 13px 18px; min-height: 100%; box-sizing: border-box; color: var(--dsw-alias-label-primary); font-size: 12.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.root * { box-sizing: border-box; }
+.root h2, .root h3, .root h4, .root p { margin: 0; }
+.root button { border: 0.5px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); border-radius: var(--dsw-radius-sm); padding: 5px 10px; cursor: pointer; font: inherit; font-size: 12px; transition: background .15s ease; }
+.root button:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.root button:disabled { opacity: .45; cursor: default; }
+.root button:focus-visible, .root input:focus-visible, .root select:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.root label { display: flex; flex-direction: column; gap: 4px; color: var(--dsw-alias-label-secondary); font-size: 11px; min-width: 0; }
+.root input, .root select { border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font: inherit; font-size: 12px; padding: 5px 8px; min-width: 0; }
+.root code, .root pre { font: 11px/1.6 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
+.root pre { white-space: pre-wrap; }
+.empty { margin: 0; font-size: 12px; line-height: 1.75; color: var(--dsw-alias-label-tertiary); }
+.exampleBanner { margin: 0; padding: 7px 9px; border: 0.5px dashed var(--dsw-alias-border-l4); border-radius: var(--dsw-radius-sm); font-size: 11.5px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
+.title { display: inline-flex; align-items: center; gap: 6px; }

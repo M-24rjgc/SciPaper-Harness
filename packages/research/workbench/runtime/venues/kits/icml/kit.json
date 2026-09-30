@@ -1,0 +1,31 @@
+{
+  "id": "icml",
+  "name": "ICML 2026",
+  "from": "ICML",
+  "files": [
+    "icml2026.sty",
+    "icml2026.bst",
+    "algorithm.sty",
+    "algorithmic.sty",
+    "fancyhdr.sty"
+  ],
+  "documentclass": "{article}",
+  "isClass": false,
+  "stylePackage": "icml2026",
+  "citationStyle": "author_year",
+  "bibstyle": "icml2026",
+  "options": {
+    "review": "",
+    "final": "accepted"
+  },
+  "author": "",
+  "anonymousAuthor": null,
+  "missing": [],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

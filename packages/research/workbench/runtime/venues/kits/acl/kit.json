@@ -1,0 +1,29 @@
+{
+  "id": "acl",
+  "name": "ACL (acl.sty)",
+  "from": "ACL",
+  "files": [
+    "acl.sty"
+  ],
+  "documentclass": "[11pt]{article}",
+  "isClass": false,
+  "stylePackage": "acl",
+  "citationStyle": "author_year",
+  "bibstyle": "acl_natbib",
+  "options": {
+    "review": "review",
+    "final": "final"
+  },
+  "author": "\\author{@@authors@@ \\\\\n@@affil@@ \\\\\n\\texttt{@@email@@}}",
+  "anonymousAuthor": null,
+  "missing": [
+    "acl_natbib.bst"
+  ],
+  "rename": {},
+  "extra": {},
+  "stage": {
+    "review": "",
+    "final": ""
+  },
+  "notes": []
+}

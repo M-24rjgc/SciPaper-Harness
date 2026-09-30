@@ -1,0 +1,3 @@
+.confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.question { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.status { font-size: 12px; color: var(--dsw-alias-label-tertiary); }

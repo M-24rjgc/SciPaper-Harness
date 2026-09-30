@@ -1,0 +1,8 @@
+SciPaper Harness
+SciPaper Harness
+Add an API key to get started
+You can enter a DeepSeek key here; add any other model provider in Settings › Models.
+Enter API key [password]
+Save and continue [disabled]
+Set up later
+Back to sign in

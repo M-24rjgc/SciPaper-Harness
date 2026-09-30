@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write README.md
+/:
+  en: 92163b67c648e9e1
+  zh: 92163b67c648e9e1
+/scipaper-harness:
+  en: e79be6089c13a82d
+  zh: b7267f1dcc8fb0b0
+/scipaper-harness/why-researchers-use-it:
+  en: 8e8edccd07fd9e4f
+  zh: 649cef7fc419a7be
+/scipaper-harness/everything-a-paper-needs-in-one-place:
+  en: ed37d9916439e313
+  zh: c6d4159c13421e64
+/scipaper-harness/ready-for-a-research-pc:
+  en: 30ceaed9aa3f8ebc
+  zh: c2e2ab0c5d7798ab
+/scipaper-harness/see-it-work:
+  en: 131c09a7abbadd58
+  zh: 9e9e1545edf3d1bf
+/scipaper-harness/get-started:
+  en: 7682b84d17bc0c1e
+  zh: 2cee37ff51fec4d1
+/scipaper-harness/preview:
+  en: 5e64cc8660083834
+  zh: 883e23f419a4aef8
+/scipaper-harness/for-developers:
+  en: c592ed65e3640e20
+  zh: 1b19efa2c47ea594
+/scipaper-harness/credits:
+  en: 797452c19c287a17
+  zh: 8059dabf320ce34f
+/scipaper-harness/license:
+  en: 7b5f7a55ff3978c1
+  zh: 603bb58689bfe569

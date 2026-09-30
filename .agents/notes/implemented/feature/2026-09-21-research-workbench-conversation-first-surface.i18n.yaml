@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-21-research-workbench-conversation-first-surface.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-21-research-workbench-conversation-first-surface.md
+/agent-note-research-workbench-as-a-conversation-first-surface:
+  en: e59d70a0559d3ecf
+  zh: 577d3d3ae5c44051
+/agent-note-research-workbench-as-a-conversation-first-surface/problem:
+  en: acdfa2590a3873b1
+  zh: 6fcbc1cc9d1dc014
+/agent-note-research-workbench-as-a-conversation-first-surface/decision:
+  en: 8ec728973dfe3547
+  zh: b71820c32d1ceca1
+/agent-note-research-workbench-as-a-conversation-first-surface/alternatives-considered:
+  en: 54dea80d830182d0
+  zh: 98e0c656880e1135
+/agent-note-research-workbench-as-a-conversation-first-surface/consequences:
+  en: 029abe84ec28132c
+  zh: 5597fee78655a2a1

@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-24-research-experiment-board.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-24-research-experiment-board.md
+/agent-note-an-experiment-board-the-agent-lays-out-and-scripts-keep-current:
+  en: 51f2e220c7efdd47
+  zh: 136403de9748992e
+/agent-note-an-experiment-board-the-agent-lays-out-and-scripts-keep-current/problem:
+  en: caa292fe0b728626
+  zh: d5e80f907b964e52
+/agent-note-an-experiment-board-the-agent-lays-out-and-scripts-keep-current/decision:
+  en: f9d3c579d6ae1930
+  zh: 302653a16325941e
+/agent-note-an-experiment-board-the-agent-lays-out-and-scripts-keep-current/consequences:
+  en: 0035894177dca29f
+  zh: 9fef06f9e5d026d5
+/agent-note-an-experiment-board-the-agent-lays-out-and-scripts-keep-current/alternatives-considered:
+  en: 4e6c09298b3bf7af
+  zh: 693c5a3b75db4768

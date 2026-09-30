@@ -1,0 +1,18 @@
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border: 0; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-module-platform); font-family: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+.chip:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.chip:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.separator { color: var(--dsw-alias-label-caption); }
+.stage { color: var(--dsw-alias-label-secondary); }
+.verified { color: var(--dsw-alias-state-success-primary); }
+.example { padding: 0 4px; border: 0.5px dashed var(--dsw-alias-border-l4); border-radius: 4px; color: var(--dsw-alias-label-secondary); }
+/* The chip's dot: ongoing blue while something of the research moves, warn while something waits for the person. */
+.dot { flex: none; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; }
+.dot[data-signal='ongoing'] { background: var(--dsw-alias-state-ongoing-primary); box-shadow: 0 0 0 2px var(--dsw-alias-state-ongoing-tertiary); animation: research-chip-pulse 1.6s var(--ds-ease-in-out) infinite; }
+.dot[data-signal='waiting'] { background: var(--dsw-alias-state-warn-primary); }
+@keyframes research-chip-pulse {
+  50% { opacity: 0.45; }
+}
+.hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .dot[data-signal='ongoing'] { animation: none; }
+}

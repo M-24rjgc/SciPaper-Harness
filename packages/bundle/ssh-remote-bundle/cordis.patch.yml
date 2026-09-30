@@ -1,0 +1,25 @@
+- id: subprocess
+  disabled: &remoteActive !!js process.env.DSH_SSH_ENABLE_REMOTE === '1' && process.env.DSH_DESKTOP_HOST !== '1' && ['DSH_SSH_HOST', 'DSH_SSH_NODE', 'DSH_SSH_HELPER', 'DSH_SSH_HELPER_HASH', 'DSH_SSH_WORKSPACE'].every(key => typeof process.env[key] === 'string' && process.env[key].length > 0)
+- id: sandbox
+  disabled: *remoteActive
+- id: fs-sandbox
+  disabled: *remoteActive
+- insert:
+    - id: ssh
+      name: '@deepseek-ai/dsh-ssh'
+      disabled: &remoteInactive !!js process.env.DSH_SSH_ENABLE_REMOTE !== '1' || process.env.DSH_DESKTOP_HOST === '1' || !['DSH_SSH_HOST', 'DSH_SSH_NODE', 'DSH_SSH_HELPER', 'DSH_SSH_HELPER_HASH', 'DSH_SSH_WORKSPACE'].every(key => typeof process.env[key] === 'string' && process.env[key].length > 0)
+      config:
+        host: !!js process.env.DSH_SSH_HOST
+        node: !!js process.env.DSH_SSH_NODE
+        helper: !!js process.env.DSH_SSH_HELPER
+        helperHash: !!js process.env.DSH_SSH_HELPER_HASH
+        workspace: !!js process.env.DSH_SSH_WORKSPACE
+    - id: fs-ssh
+      name: '@deepseek-ai/dsh-fs-ssh'
+      disabled: *remoteInactive
+    - id: subprocess-ssh
+      name: '@deepseek-ai/dsh-subprocess-ssh'
+      disabled: *remoteInactive
+    - id: sandbox-ssh
+      name: '@deepseek-ai/dsh-sandbox-ssh'
+      disabled: *remoteInactive

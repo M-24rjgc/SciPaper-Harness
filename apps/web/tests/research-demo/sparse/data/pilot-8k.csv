@@ -1,0 +1,4 @@
+method,context,accuracy,relative_flops
+full,8192,0.842,1.00
+fixed-block-4x,8192,0.836,0.26
+dynamic-block-4x,8192,0.841,0.27

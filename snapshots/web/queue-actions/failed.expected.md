@@ -1,0 +1,7 @@
+- alert: Queue submission failed (session/agent-busy)
+- textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations":
+  - paragraph: Queue submission to retry
+- button "Add files or run commands"
+- 'button "Access mode, current: Workspace Write"': Workspace Write
+- button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
+- button "Queue message"

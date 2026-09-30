@@ -1,0 +1,8 @@
+SciPaper Harness
+SciPaper Harness
+添加一个 API Key 开始使用
+这里可直接填写 DeepSeek 的密钥；其他模型服务商可在 设置 › 模型 中添加。
+输入 API 密钥 [password]
+保存并继续 [disabled]
+稍后配置
+返回登录

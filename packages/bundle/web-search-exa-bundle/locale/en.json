@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Exa search",
+    "description": "Search the web through Exa. An API key is required; search remains unavailable until configured."
+  }
+}
