@@ -22,7 +22,7 @@ Releases are previews on the `alpha` channel: a new one may change how projects 
 
 - `~/.research-workbench` holds the project records, conversations, settings and the cache of downloaded gallery figures.
 - A project's own files (paper, figures, code, data, runs) stay in the folder you chose for it.
-- API keys are stored in `~/.research-workbench/.credentials.yaml` in your user profile, readable only by your account. They are never written into a project or passed to experiment environments.
+- API keys are stored in `~/.research-workbench/.credentials.yaml` in your user profile. They are never written into a project or passed to experiment environments.
 
 Updating or uninstalling the application leaves all of this in place.
 

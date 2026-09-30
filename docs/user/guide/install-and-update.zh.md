@@ -22,7 +22,7 @@ draw.io、Python 和 uv 随安装包一起提供，编辑示意图和运行实�
 
 - `~/.research-workbench` 保存项目记录、对话、设置，以及已下载的配图库图片缓存。
 - 项目自己的文件（论文、图、代码、数据、实验运行）都留在你为它选择的文件夹里。
-- API 密钥保存在你用户目录下的 `~/.research-workbench/.credentials.yaml`，只有你的账户能读取；它们从不写进项目，也不会传给实验环境。
+- API 密钥保存在你用户目录下的 `~/.research-workbench/.credentials.yaml`；它们从不写进项目，也不会传给实验环境。
 
 更新或卸载软件都不会动这些数据。
 
