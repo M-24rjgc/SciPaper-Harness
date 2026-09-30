@@ -19,6 +19,10 @@ A desktop research agent that reads the literature, runs your experiments and wr
 
 <p align="center"><a href="https://github.com/M-24rjgc/SciPaper-Harness/releases"><strong>Download for Windows</strong></a></p>
 
+<a href="https://github.com/M-24rjgc/SciPaper-Harness/releases/download/v0.2.0-alpha.7/scipaper-harness-promo-90s.mp4"><img src="docs/assets/readme/promo.jpg" width="720" alt="Watch the 90-second introduction"></a>
+
+<sub>▶ Watch the 90-second introduction (Chinese captions with English subtitles)</sub>
+
 </div>
 
 ![SciPaper Harness at work: the agent reports an experiment's results beside the paper's progress](docs/assets/readme/workspace.en.png)
@@ -26,23 +30,33 @@ A desktop research agent that reads the literature, runs your experiments and wr
 ## Why researchers use it
 
 - **Every claim shows its evidence.** Open any conclusion and see the page, the quote or the experiment run behind it. When a source changes, everything built on it is flagged until it is brought up to date.
-- **Numbers come from real runs.** Experiments run in your own Python environments, on this machine or over SSH, keep going after you close the window, and every table cell traces back to the run that produced it.
+- **Numbers come from real runs.** Experiments run in your own Python environments, on this machine or over SSH, and keep going after you close the window. A finished run's metrics become evidence on their own, and if a submission receipt is lost, the run is checked, never submitted twice.
+- **No result, no number.** Until a run finishes, its table cell reads "–". The paper never carries a figure the experiments did not produce.
 - **Start from wherever you are.** A one-line idea, a proposal, or a folder of PDFs, data and logs.
-- **You decide how often it asks.** Stop at the key decisions, or let it carry the paper through on its own.
+- **You decide how often it asks.** At a key decision it stops with its recommendation listed first and you choose, or you let it carry the paper through on its own. Checks tell you what is still missing; they never stop you.
 
 ![A conclusion opened to the two experiment runs that support it](docs/assets/readme/claim.en.png)
 
 ## Everything a paper needs, in one place
 
-- **Literature you can cite.** References are verified through Crossref, OpenAlex and arXiv, with the open-access full text beside them.
-- **Your venue's template.** 139 CCF venues with their official style files, compiled and checked page by page.
-- **Figures reviewers remember.** About 3,500 hand-picked Figure 1s from top venues to learn from, image drafts from gpt-image-2, and editable SVG or draw.io figures exported to vector PDF.
+- **Literature you can cite.** Every reference is fetched again from Crossref, OpenAlex or arXiv before it is imported, never taken on the model's word, with the open-access full text beside it.
+- **Your venue's template.** 139 conference and publisher templates with their official style files. Review builds hide the author block, and every compiled page is checked.
+- **Figures reviewers remember.** 3,528 hand-picked Figure 1s from top venues, filtered by type, venue, year and award; image drafts from gpt-image-2; editable SVG or draw.io figures exported to vector PDF.
 - **Proven methods, built in.** spark-to-paper and CCFA guide a whole paper phase by phase; the general mode gives you every tool with no fixed pipeline.
-- **A map of research ideas.** A knowledge graph of problem-to-solution patterns finds the closest work and tells you how new your idea is.
+- **A map of research ideas.** A knowledge graph of 318 problem-to-solution patterns drawn from 29,240 papers finds the closest work and tells you how new your idea is.
 
 ![The figure gallery: top-venue Figure 1s by type, venue, year and recognition](docs/assets/readme/gallery.en.png)
 
 ![Three pages of an example paper, with result figures drawn from its experiment data](docs/assets/readme/paper.png)
+
+## Ready for a research PC
+
+- **Python, uv and draw.io come with it.** Experiments and figures work out of the box and leave your own environments alone.
+- **TeX is found, not replaced.** It uses the MiKTeX or TeX Live you already have, and downloads a private TinyTeX only when there is none.
+- **Run here or over SSH.** A remote GPU server works too, and a dropped connection is retried.
+- **No data collection.** No telemetry and no user ID; conversations go only to the model provider you choose.
+- **Your choice of model.** DeepSeek, Kimi, GLM, OpenAI, Anthropic or your own gateway.
+- **Chinese and English.** Switch the interface in one click; your research content stays as written.
 
 <a id="run"></a>
 
@@ -52,7 +66,7 @@ A desktop research agent that reads the literature, runs your experiments and wr
 2. Add your model provider's key in Settings.
 3. Tell it what you are working on.
 
-It keeps itself up to date. The [install and update guide](docs/user/guide/install-and-update.md) covers the details.
+It keeps itself up to date, and shows a progress bar at the bottom of the sidebar while an update downloads. The [install and update guide](docs/user/guide/install-and-update.md) covers the details.
 
 ## Preview
 
