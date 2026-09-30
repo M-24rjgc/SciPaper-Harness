@@ -211,6 +211,55 @@ function hasExactLabel(labelAcl: NativePtr, lowLabelSidPtr: NativePtr): boolean 
 type LabelEdit = { kind: 'apply'; acl: NativePtr } | { kind: 'clear' } | { kind: 'keep' }
 
 /**
+ * The caller right each half of an apply needs on the directory: WRITE_DAC
+ * for the DACL, WRITE_OWNER for the mandatory label (the label lives in the
+ * SACL, and ownership implies only READ_CONTROL and WRITE_DAC).
+ */
+const APPLY_RIGHTS = [
+  { information: abi.DACL_SECURITY_INFORMATION, right: abi.WRITE_DAC, name: 'WRITE_DAC' },
+  { information: abi.LABEL_SECURITY_INFORMATION, right: abi.WRITE_OWNER, name: 'WRITE_OWNER' },
+] as const
+
+/**
+ * Explain an apply the access check refused, naming the needed rights the
+ * caller does not hold on the directory. Each right is probed with one
+ * directory open (`FILE_FLAG_BACKUP_SEMANTICS` opens a directory handle;
+ * nothing is read or written) and counts as missing only when that open is
+ * refused with `ERROR_ACCESS_DENIED`. Diagnosis only: another apply code, an
+ * unattributed refusal, and the probe handle's close leave the original error
+ * as it was. The usual cause is a folder created directly on a non-system
+ * drive: its inherited DACL grants Authenticated Users Modify and the owner
+ * only its implicit rights, so WRITE_OWNER is absent.
+ * @param api - the binding table.
+ * @param path - the directory the apply targeted.
+ * @param information - the SECURITY_INFORMATION the apply carried.
+ * @param applyResult - the SetNamedSecurityInfoW result.
+ * @returns the reason appended to the error detail, or an empty string.
+ */
+function deniedApplyReason(api: Win32Bindings, path: string, information: number, applyResult: number): string {
+  if (applyResult !== abi.ERROR_ACCESS_DENIED) return ''
+  const missing: string[] = []
+  for (const needed of APPLY_RIGHTS) {
+    if ((information & needed.information) === 0) continue
+    const handle = api.createFileW(
+      path, needed.right, abi.FILE_SHARE_READ | abi.FILE_SHARE_WRITE | abi.FILE_SHARE_DELETE,
+      null, abi.OPEN_EXISTING, abi.FILE_FLAG_BACKUP_SEMANTICS, null,
+    )
+    if (!isInvalidHandle(handle)) api.closeHandle(handle) // best-effort: the probe must not mask the apply's error
+    else if (api.getLastError() === abi.ERROR_ACCESS_DENIED) missing.push(needed.name)
+  }
+  if (missing.length === 0) return ''
+  const lacks = `: the signed-in account lacks ${missing.join(' and ')} on this folder`
+  if (missing.includes('WRITE_DAC')) {
+    return `${lacks}, so it may not change the folder's permissions. The folder was not changed.`
+      + ' Use a folder the account owns with Full control, such as one under the user profile'
+  }
+  return `${lacks}, which the sandbox needs to write the folder's integrity label; the folder grants the account Modify, not Full control`
+    + ' (the default for a folder created directly on a non-system drive such as D:\\). The folder was not changed.'
+    + ' Give the account Full control of this folder, its subfolders and files (Properties > Security), or use a folder under the user profile'
+}
+
+/**
  * Shared tail of grantWrite and revokeWrite: merge `entries` into `oldAcl`
  * (null = no explicit DACL yet; SetEntriesInAclW builds one from scratch),
  * free the descriptor before applying the merged ACL, apply the merged DACL
@@ -252,14 +301,16 @@ function mergeAndApply(
   // The descriptor block (oldAcl included) is dead after the merge — free it
   // before applying, exactly like the POC.
   const freedDescriptor = descriptor !== null ? api.localFree(descriptor) : null
+  const information = labelEdit.kind === 'keep' ? abi.DACL_SECURITY_INFORMATION : abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION
   const applyResult = api.setNamedSecurityInfoW(
-    path, abi.SE_FILE_OBJECT,
-    labelEdit.kind === 'keep' ? abi.DACL_SECURITY_INFORMATION : abi.DACL_SECURITY_INFORMATION | abi.LABEL_SECURITY_INFORMATION,
+    path, abi.SE_FILE_OBJECT, information,
     null, null, newAcl, labelEdit.kind === 'apply' ? labelEdit.acl : null,
   )
   const freedNew = api.localFree(newAcl)
   const freedLabel = labelEdit.kind === 'apply' ? api.localFree(labelEdit.acl) : null
-  if (applyResult !== abi.ERROR_SUCCESS) throwWin32(api, 'SetNamedSecurityInfoW', applyResult, `${label}(${path})`)
+  if (applyResult !== abi.ERROR_SUCCESS) {
+    throwWin32(api, 'SetNamedSecurityInfoW', applyResult, `${label}(${path})${deniedApplyReason(api, path, information, applyResult)}`)
+  }
   if (freedDescriptor !== null && !isNullPtr(freedDescriptor)) throwLastError(api, 'LocalFree', `${label}(${path}) descriptor`)
   if (!isNullPtr(freedNew)) throwLastError(api, 'LocalFree', `${label}(${path}) new ACL`)
   if (freedLabel !== null && !isNullPtr(freedLabel)) throwLastError(api, 'LocalFree', `${label}(${path}) label ACL`)
@@ -367,7 +418,9 @@ function hasForeignGrant(oldAcl: NativePtr, sidPtr: NativePtr): boolean {
  * survive (same shape as {@link revokeWrite}). Runs under the per-path lock.
  * The directory must be owned by the caller AND grant WRITE_OWNER (the label
  * lives in the SACL; owner-implicit rights cover only READ_CONTROL and
- * WRITE_DAC) — a Full-control workspace satisfies both.
+ * WRITE_DAC) — a Full-control workspace satisfies both. A directory that
+ * refuses either right fails unchanged, and the error names the missing right
+ * and the remedy ({@link deniedApplyReason}).
  * @param api - the binding table.
  * @param path - the directory whose DACL and label gain the grant (the workspace or temp root).
  * @param sidPtr - the capability SID the ACE names.
