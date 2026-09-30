@@ -540,6 +540,21 @@ describe('the record counts what the research holds and opens its tools', () => 
     expect(calm.getByTitle(zh.railExperimentsLabel).textContent).toBe(`${zh.railExperimentsLabel}1`)
   })
 
+  it('calls runs running only while one is being started or running, and says 状态待确认 in the needs-you colour for one whose launch reply was lost', () => {
+    const routed = project('spark-to-paper')
+    routed.experiments.push(run('done', 'completed'), run('lost', 'unknown'))
+    const unsure = mount([routed]).rail.getByTitle(zh.railExperimentsLabel)
+    expect(unsure.textContent).toBe(`${zh.railExperimentsLabel}${zh.unknown}2`)
+    expect(within(unsure).getByText(zh.unknown).className).toContain('unconfirmedTag')
+    expect(within(unsure).queryByText(zh.runRunning)).toBeNull()
+    cleanup()
+    // A running run beside it keeps its own tag, in the ongoing colour.
+    routed.experiments.push(run('going', 'running'))
+    const row = mount([routed]).rail.getByTitle(zh.railExperimentsLabel)
+    expect(row.textContent).toBe(`${zh.railExperimentsLabel}${zh.unknown}${zh.runRunning}3`)
+    expect(within(row).getByText(zh.runRunning).className).toContain('runningTag')
+  })
+
   it('shows the runs row only on a route with an experiments phase, or once a run exists', () => {
     // A route that plans experiments says none has started yet.
     expect(mount([project('spark-to-paper', 'proposal')]).rail.getByTitle(zh.railExperimentsLabel).textContent).toBe(`${zh.railExperimentsLabel}${zh.railNotStarted}`)
