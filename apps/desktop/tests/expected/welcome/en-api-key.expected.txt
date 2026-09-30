@@ -1,7 +1,7 @@
 SciPaper Harness
 SciPaper Harness
 Add an API key to get started
-Configure official DeepSeek models to start using Harness
+You can enter a DeepSeek key here; add any other model provider in Settings › Models.
 Enter API key [password]
 Save and continue [disabled]
 Set up later

@@ -1,6 +1,6 @@
 SciPaper Harness
 SciPaper Harness
 Welcome to SciPaper Harness
-Build potential. Explore intelligence.
+From a research question to a finished paper, with the model you choose.
 Sign in
 Add API Key

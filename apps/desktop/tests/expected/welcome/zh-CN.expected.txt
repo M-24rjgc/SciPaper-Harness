@@ -1,6 +1,6 @@
 SciPaper Harness
 SciPaper Harness
 欢迎使用 SciPaper Harness
-组装无限可能，共探智能上限
+从研究问题到成稿论文，模型由你选择
 登录
 添加 API Key

@@ -10,7 +10,7 @@ This guide covers installing SciPaper Harness on Windows, how it keeps itself up
 2. Run it. The installer is not code-signed yet, so Windows warns about an unknown publisher: choose **More info**, then **Run anyway**. You can pick the installation folder.
 3. Open SciPaper Harness and add your model provider and its key in **Settings → Models**. Under **Settings → Research**, the image-generation key (gpt-image-2) and the embedding key are optional.
 
-LaTeX, draw.io, Python and uv come with the installer, so compiling a paper, editing a diagram and running an experiment work without installing anything else.
+draw.io, Python and uv come with the installer, so editing a diagram and running an experiment work without installing anything else. LaTeX does not: to compile a paper, SciPaper Harness uses the MiKTeX or TeX Live already installed on your computer, or the TeX binary directory you set under **Settings → Research**, and never changes that installation. Only when it finds none does it download a private copy of TinyTeX, the first time it needs one; LaTeX packages a paper is missing are installed only into that private TinyTeX.
 
 ## Update
 
@@ -22,7 +22,7 @@ Releases are previews on the `alpha` channel: a new one may change how projects 
 
 - `~/.research-workbench` holds the project records, conversations, settings and the cache of downloaded gallery figures.
 - A project's own files (paper, figures, code, data, runs) stay in the folder you chose for it.
-- API keys are kept in the operating system's credential store, never in a project.
+- API keys are stored in `~/.research-workbench/.credentials.yaml` in your user profile, readable only by your account. They are never written into a project or passed to experiment environments.
 
 Updating or uninstalling the application leaves all of this in place.
 

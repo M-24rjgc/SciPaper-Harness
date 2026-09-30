@@ -1,4 +1,4 @@
-- alert: This session is already in use, possibly by another running DSH instance (such as dsh web or the desktop app). Quit other running DSH instances and try again.
+- alert: This session is already in use, possibly by another running SciPaper Harness instance (such as the desktop app or one started from the command line). Quit other running instances and try again.
 - textbox "Message or run a task, / commands, @ files or sessions":
   - paragraph: Queue submission to retry
 - button "Add files or run commands"
