@@ -19,7 +19,7 @@ A desktop research agent that reads the literature, runs your experiments and wr
 
 <p align="center"><a href="https://github.com/M-24rjgc/SciPaper-Harness/releases"><strong>Download for Windows</strong></a></p>
 
-<a href="https://github.com/M-24rjgc/SciPaper-Harness/blob/main/docs/assets/promo/scipaper-harness-promo-90s.mp4"><img src="docs/assets/readme/promo.jpg" width="720" alt="Watch the 90-second introduction"></a>
+<a href="https://github.com/M-24rjgc/SciPaper-Harness/releases/download/v0.2.0-alpha.7/scipaper-harness-promo-90s.mp4"><img src="docs/assets/readme/promo.jpg" width="720" alt="Watch the 90-second introduction"></a>
 
 <sub>▶ Watch the 90-second introduction (Chinese captions with English subtitles)</sub>
 
@@ -27,62 +27,66 @@ A desktop research agent that reads the literature, runs your experiments and wr
 
 ![SciPaper Harness at work: the agent reports an experiment's results beside the paper's progress](docs/assets/readme/workspace.en.png)
 
-## Why researchers use it
+SciPaper Harness works the way a careful researcher does. It reads what is already known before committing to an idea, runs experiments instead of describing them, and writes no sentence it cannot trace back to a source or a run. This page follows one paper from its first idea to submission.
 
-- **Every claim shows its evidence.** Open any conclusion and see the page, the quote or the experiment run behind it. When a source changes, everything built on it is flagged until it is brought up to date.
-- **Numbers come from real runs.** Experiments run in your own Python environments, on this machine or over SSH, and keep going after you close the window. A finished run's metrics become evidence on their own, and if a submission receipt is lost, the run is checked, never submitted twice.
-- **No result, no number.** Until a run finishes, its table cell reads "–". The paper never carries a figure the experiments did not produce.
-- **Start from wherever you are.** A one-line idea, a proposal, or a folder of PDFs, data and logs.
-- **You decide how often it asks.** At a key decision it stops with its recommendation listed first and you choose, or you let it carry the paper through on its own. Checks tell you what is still missing; they never stop you.
+## From a spark to a paper
 
-![A conclusion opened to the two experiment runs that support it](docs/assets/readme/claim.en.png)
+Two methods are built in: spark-to-paper and CCFA each guide a whole paper phase by phase, and the general mode hands you every tool with no fixed pipeline. Whichever you pick, the path looks like this.
 
-## Everything a paper needs, in one place
+### 1. Start with what you have
 
-- **Literature you can cite.** Every reference is fetched again from Crossref, OpenAlex or arXiv before it is imported, never taken on the model's word, with the open-access full text beside it.
-- **Your venue's template.** 139 conference and publisher templates with their official style files. Review builds hide the author block, and every compiled page is checked.
-- **Figures reviewers remember.** 3,528 hand-picked Figure 1s from top venues, filtered by type, venue, year and award; image drafts from gpt-image-2; editable SVG or draw.io figures exported to vector PDF.
-- **Proven methods, built in.** spark-to-paper and CCFA guide a whole paper phase by phase; the general mode gives you every tool with no fixed pipeline.
-- **A map of research ideas.** A knowledge graph of 318 problem-to-solution patterns drawn from 29,240 papers finds the closest work and tells you how new your idea is.
+A one-line idea, a proposal, or a folder of PDFs, data and logs is enough. Every research gets a folder of its own, which you can change until the first message is sent. The switch in the composer sets how often the agent asks you: **Checkpoints** stop at key decisions, **Automatic** carries the paper through on its own.
 
-![The figure gallery: top-venue Figure 1s by type, venue, year and recognition](docs/assets/readme/gallery.en.png)
+![The composer's autonomy switch: Checkpoints or Automatic](docs/assets/readme/entry.en.png)
 
-![Three pages of an example paper, with result figures drawn from its experiment data](docs/assets/readme/paper.png)
-
-## Ready for a research PC
-
-- **Python, uv and draw.io come with it.** Experiments and figures work out of the box and leave your own environments alone.
-- **TeX is found, not replaced.** It uses the MiKTeX or TeX Live you already have, and downloads a private TinyTeX only when there is none.
-- **Run here or over SSH.** A remote GPU server works too, and a dropped connection is retried.
-- **No data collection.** No telemetry and no user ID; conversations go only to the model provider you choose.
-- **Your choice of model.** DeepSeek, Kimi, GLM, OpenAI, Anthropic or your own gateway.
-- **Chinese and English.** Switch the interface in one click; your research content stays as written.
-
-## See it work
-
-**It asks at the decisions that matter.** When the agent reaches a fork it stops with a short question, its recommendation listed first and the trade-off of each option beside it. The composer's Checkpoints / Automatic switch decides how often that happens for the whole research.
+At a fork the agent stops with a short question, its recommendation first and each option's trade-off beside it. Its checks only tell you what is still missing; they never stop you.
 
 ![A checkpoint question with three options, the recommended one first](docs/assets/readme/ask.en.png)
 
-![Checkpoints or Automatic: how often the agent stops to ask](docs/assets/readme/entry.en.png)
+### 2. Find out how new the idea is
 
-**It checks how new your idea is.** Before writing, the agent recalls the closest patterns from the built-in knowledge graph and builds the idea card on what already exists.
+Before it writes anything, the agent recalls the closest patterns from a built-in knowledge graph of 318 problem-to-solution patterns drawn from 29,240 papers, and builds the idea card on what already exists.
 
 ![The agent recalls similar patterns from the knowledge graph and writes the idea card from them](docs/assets/readme/graph.en.png)
 
-**Every reference is fetched again.** Each paper is looked up by DOI, checked and imported one by one; open-access papers open as full text beside the conversation.
+### 3. Read the literature and cite it properly
+
+Every reference is fetched again from Crossref, OpenAlex or arXiv and imported one paper at a time, never taken on the model's word. Open-access papers open as full text beside the conversation.
 
 ![One tool call per reference: verified and imported, not typed from memory](docs/assets/readme/literature.en.png)
 
 ![An imported open-access paper opened beside the conversation](docs/assets/readme/fulltext.en.png)
 
-**Experiments are runs, and runs are evidence.** A finished run records its metrics as evidence. If a run's submission receipt is lost, it shows "State unconfirmed" and waits for you to reconnect; it is never submitted a second time.
+### 4. Run the experiments
+
+Experiments run in your own Python environments, on this machine or over SSH, and keep going after you close the window. A finished run records its metrics as evidence by itself. If a run's submission receipt is lost, it shows "State unconfirmed" and waits for you to reconnect; it is never submitted a second time.
 
 ![Finished runs recorded as evidence, and one whose receipt was lost](docs/assets/readme/runs.en.png)
 
-**No result yet, no number.** The same table, compiled before and after the 32K runs finished. The 64K column stays "–" until those runs exist.
+### 5. Trust every number
 
-![A results table compiled before and after its runs finished](docs/assets/readme/tables.png)
+Open any conclusion to see the page, the quote or the runs behind it. When a source changes, everything built on it is flagged until it is brought up to date.
+
+![A conclusion opened to the two experiment runs that support it](docs/assets/readme/claim.en.png)
+
+Until a run has finished, its table cell reads "–", so the paper never carries a figure the experiments did not produce.
+
+### 6. Write it for the venue
+
+Pick from 139 conference and publisher templates with their official style files. Review builds hide the author block, and every compiled page is checked.
+
+![Three pages of an example paper, with result figures drawn from its experiment data](docs/assets/readme/paper.png)
+
+For figures, 3,528 hand-picked Figure 1s from top venues are there to learn from, filtered by type, venue, year and award. Image drafts come from gpt-image-2, and editable SVG or draw.io figures export to vector PDF.
+
+![The figure gallery: top-venue Figure 1s by type, venue, year and recognition](docs/assets/readme/gallery.en.png)
+
+## On your own machine
+
+- **Ready to run.** Python, uv and draw.io come with it and leave your own environments alone. TeX is found, not replaced: it uses the MiKTeX or TeX Live you already have, and downloads a private TinyTeX only when there is none.
+- **Here or over SSH.** A remote GPU server works too, and a dropped connection is retried.
+- **Nothing collected.** No telemetry and no user ID; conversations go only to the model provider you choose, whether DeepSeek, Kimi, GLM, OpenAI, Anthropic or your own gateway.
+- **Your language.** Switch the interface between Chinese and English in one click; your research content stays as written.
 
 <a id="run"></a>
 
