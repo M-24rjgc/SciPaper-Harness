@@ -1,8 +1,8 @@
 /**
- * Safe HTTP(S) retrieval for `ctx.web`: validates and pins public IP destinations, follows
- * only same-origin redirects, enforces time and size limits, classifies and decodes text,
- * and leaves presentation to `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies
- * or ambient credentials.
+ * Safe HTTP(S) retrieval for `ctx.web`: validates and pins public IP destinations (and, unless
+ * configured off, the fake-ip answers of a local proxy), follows only same-origin redirects,
+ * enforces time and size limits, classifies and decodes text, and leaves presentation to
+ * `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies or ambient credentials.
  * @module @deepseek-ai/dsh-web-fetch-http/provider
  */
 
@@ -15,7 +15,7 @@ import { isNonPublicIpLiteral, publicHttpNetwork } from './network.ts'
 import type { PublicAddress } from './network.ts'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from './policy.ts'
 
-/** Resolved provider limits (the plugin's schemastery Config supplies defaults). */
+/** Resolved provider limits and destination policy (the plugin's schemastery Config supplies defaults). */
 export interface HttpFetchLimits {
   /** Maximum response body size in bytes (read is aborted past this). */
   maxResponseBytes: number
@@ -27,6 +27,11 @@ export interface HttpFetchLimits {
   maxRedirects: number
   /** `User-Agent` header sent on every request. */
   userAgent: string
+  /**
+   * Whether a hostname whose every DNS answer lies in the fake-ip benchmarking ranges is fetched
+   * instead of refused. Applies to the default resolver; an injected one makes its own decision.
+   */
+  allowFakeIpDns: boolean
 }
 
 /** Resolve one hostname to an already policy-validated address set. */
@@ -38,15 +43,20 @@ export const LOCAL_FETCH_PROVIDER_ID = 'http'
 /** The anonymous public HTTP(S) fetch provider. */
 export class HttpFetchProvider implements WebFetchProvider {
   readonly id = LOCAL_FETCH_PROVIDER_ID
+  private readonly resolveAddresses: HttpFetchResolver
 
   /**
-   * @param limits - resolved transport and response limits.
-   * @param resolveAddresses - resolver that rejects non-public destinations before returning.
+   * @param limits - resolved transport and response limits, and the fake-ip destination switch.
+   * @param resolveAddresses - resolver that rejects non-public destinations before returning;
+   *   defaults to system DNS under the destination policy `limits` selects.
    */
   constructor(
     private readonly limits: HttpFetchLimits,
-    private readonly resolveAddresses: HttpFetchResolver = publicHttpNetwork.resolve,
-  ) {}
+    resolveAddresses?: HttpFetchResolver,
+  ) {
+    this.resolveAddresses = resolveAddresses
+      ?? ((hostname, signal) => publicHttpNetwork.resolve(hostname, signal, undefined, { allowFakeIp: limits.allowFakeIpDns }))
+  }
 
   /** No credentials to check — an anonymous public fetcher is always usable. */
   available(): boolean {

@@ -12,6 +12,7 @@ const limits: HttpFetchLimits = {
   timeoutMs: 5_000,
   maxRedirects: 5,
   userAgent: 'test-agent/1.0',
+  allowFakeIpDns: false,
 }
 
 /** Absolute-form targets the fake proxy saw; a populated entry proves the hop was tunnelled. */
@@ -120,6 +121,21 @@ describe('fetching through a proxy', () => {
       // the private or loopback destination those checks exist to refuse. The hop therefore takes
       // the validated path instead, where the existing refusal already covers it.
       await expect(new HttpFetchProvider(limits).fetch({ url: `http://${host}:8080/` }))
+        .rejects.toThrow(expect.objectContaining({ code: 'WEB_BLOCKED_URL' }))
+      expect(proxied).toEqual([])
+      expect(resolve).toHaveBeenCalledOnce()
+    },
+  )
+
+  it.each(['198.18.0.216', '198.19.255.255'])(
+    'refuses the fake-ip literal %s even though fake-ip DNS answers are allowed',
+    async (host) => {
+      const resolve = vi.spyOn(publicHttpNetwork, 'resolve')
+      disposeProxy = await installProxy()
+
+      // A hostname in that range is a proxy's placeholder answer. A literal states the destination
+      // itself, so handing it to the proxy would reach whatever this machine holds at that address.
+      await expect(new HttpFetchProvider({ ...limits, allowFakeIpDns: true }).fetch({ url: `http://${host}/` }))
         .rejects.toThrow(expect.objectContaining({ code: 'WEB_BLOCKED_URL' }))
       expect(proxied).toEqual([])
       expect(resolve).toHaveBeenCalledOnce()

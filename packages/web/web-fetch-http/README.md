@@ -29,7 +29,7 @@ Mount the provider in a composition that already loads the web service; it regis
 
 ### When to choose it
 
-Choose this backend when a deployment must fetch public pages with bounded output and safe transport: no credentials are sent, every resolved address must be public, each connection is pinned to the validated answer set, redirects cannot escape the origin, and every response is capped.
+Choose this backend when a deployment must fetch public pages with bounded output and safe transport: no credentials are sent, every resolved address must be public (or, by default, a local fake-ip proxy's placeholder answer), each connection is pinned to the validated answer set, redirects cannot escape the origin, and every response is capped.
 
 ### Minimal configuration
 
@@ -47,6 +47,7 @@ Load the web service and the provider; configurable limits have safe defaults an
 | `timeoutMs` | `30,000` | Fetch timeout — a resource backstop, not the model-facing tool budget |
 | `maxRedirects` | `5` | Maximum same-origin redirect hops (`0` follows none) |
 | `userAgent` | `deepseek-harness/…` | `User-Agent` header sent on every request |
+| `allowFakeIpDns` | `true` | Fetch a hostname whose every DNS answer is a fake-ip proxy placeholder in `198.18.0.0/15` or `2001:2::/48`; `false` refuses it |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-fetch-http) is the exhaustive source for every accepted field and its JSDoc.
 
@@ -61,11 +62,19 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 
 ### Transport behavior
 
-The provider keeps requests anonymous and bounded: it accepts only `http:` and `https:` URLs without embedded credentials and rejects URLs over 2,048 characters. It resolves each hostname once, rejects the complete result if any IPv4 or IPv6 address is not public unicast, and pins the connection to that validated set. IPv6 checks discover the active DNS64 prefix and reject translations to non-public IPv4. Each same-origin redirect repeats resolution and pinning; cross-origin redirects fail and require a fresh call. The provider also enforces byte, character, hop, and time caps, rejects unsupported content types, and sends an explicit product `User-Agent`.
+The provider keeps requests anonymous and bounded: it accepts only `http:` and `https:` URLs without embedded credentials and rejects URLs over 2,048 characters. It resolves each hostname once, rejects the complete result if any IPv4 or IPv6 address is not public unicast (the fake-ip exception below aside), and pins the connection to that validated set. IPv6 checks discover the active DNS64 prefix and reject translations to non-public IPv4. Each same-origin redirect repeats resolution and pinning; cross-origin redirects fail and require a fresh call. The provider also enforces byte, character, hop, and time caps, rejects unsupported content types, and sends an explicit product `User-Agent`.
+
+A request routed through an HTTP proxy (`HTTPS_PROXY` or `HTTP_PROXY`, set by the launcher or by the Desktop application from the operating system's proxy) skips local resolution and pinning, because the proxy resolves the origin. A hop the proxy policy bypasses keeps the resolved-and-pinned path, and an IP literal that the address checks refuse is never handed to a proxy.
+
+### Fake-ip proxies
+
+Clash, mihomo, and sing-box in fake-ip mode answer every DNS query with a placeholder address in `198.18.0.0/15` (IPv4) or `2001:2::/48` (IPv6) and map the connection back to the real hostname through their TUN interface. Both ranges are reserved for benchmarking (RFC 2544, RFC 5180) and are never real internet destinations, so such an answer says nothing about where the request goes. With `allowFakeIpDns` (the default), a hostname whose every address lies in those ranges is fetched: the connection is pinned to the placeholder addresses and the proxy resolves the real name, as an explicit HTTP proxy route already delegates resolution to its proxy. An answer that mixes a placeholder with any other non-public address, and an IP literal in those ranges, stay refused. Set `allowFakeIpDns: false` to refuse these answers; the refusal then names the likely cause and both remedies, this option and `HTTPS_PROXY`.
+
+The trade-off is that a hostname answered inside those ranges by a hostile or misconfigured resolver is no longer refused. On a machine without a fake-ip proxy the ranges are not routed and the connection fails; on a network that routes them to real hosts, such as some carrier and cloud networks, the request reaches those hosts. Deployments on such networks set `allowFakeIpDns: false`.
 
 ### Failures and recovery
 
-Failures throw `WebError` with a machine-routable code: `WEB_INVALID_URL`, `WEB_BLOCKED_URL`, `WEB_FETCH_TOO_LARGE`, `WEB_FETCH_TIMEOUT`, `WEB_REDIRECT_BLOCKED`, `WEB_UNSUPPORTED_CONTENT_TYPE`, `WEB_ABORTED`, or `WEB_PROVIDER_ERROR`. Direct callers can route on the code; the model-facing `web_fetch` tool surfaces the failure text to the model under its own error wrapper.
+Failures throw `WebError` with a machine-routable code: `WEB_INVALID_URL`, `WEB_BLOCKED_URL`, `WEB_FETCH_TOO_LARGE`, `WEB_FETCH_TIMEOUT`, `WEB_REDIRECT_BLOCKED`, `WEB_UNSUPPORTED_CONTENT_TYPE`, `WEB_ABORTED`, or `WEB_PROVIDER_ERROR`. Direct callers can route on the code; the model-facing `web_fetch` tool surfaces the failure text to the model under its own error wrapper. A `WEB_BLOCKED_URL` caused by a fake-ip answer says so and names both remedies.
 
 -----
 
@@ -96,7 +105,7 @@ The package is built on one separation and one layered timeout:
 
 ### Read path
 
-A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public, and pins the connection to the accepted addresses. It repeats that check for each same-origin redirect; a cross-origin redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
+A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public (an answer made only of fake-ip placeholders is accepted when `allowFakeIpDns` is on), and pins the connection to the accepted addresses. It repeats that check for each same-origin redirect; a cross-origin redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
 
 </details>
 
@@ -119,7 +128,7 @@ Read these pages when the package-level contract is not enough. They move from t
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `dsh-tool-web`, which renders this provider's `maxBodyChars`-bounded decoded text or markdown-shaped HTML under its fetch-result wrapper while redirects, headers, and transport limits remain hidden.
+Indirectly, through `dsh-tool-web`, which renders this provider's `maxBodyChars`-bounded decoded text or markdown-shaped HTML under its fetch-result wrapper while redirects, headers, and transport limits remain hidden. A refusal because of a fake-ip answer reaches the model as the `web_fetch` error text, which names the likely cause (a fake-ip proxy answering with a benchmarking-range address) and both remedies.
 
 #### KV Cache effect
 
@@ -134,6 +143,7 @@ These limits define when the provider is unsafe or a poor fit. They are current 
 
 - **Only textual content decodes** — html/xhtml and `text/*` plus JSON/XML families; a missing `Content-Type` or any binary type throws `WEB_UNSUPPORTED_CONTENT_TYPE`, and text-extractable PDF decoding is named deferred work.
 - **Charset comes only from the `Content-Type` header** (UTF-8 default) — an HTML `<meta charset>` declaration is ignored, and a declared-but-unrecognized charset label throws rather than falling back.
+- **Fake-ip answers are accepted by default** — a hostname answered entirely inside `198.18.0.0/15` or `2001:2::/48` is fetched, so on a network that routes those ranges to real hosts a name pointed there reaches them; set `allowFakeIpDns: false` on such networks. The check never accepts a mixed answer or an IP literal, and a proxied request is not checked locally at all.
 
 <a id="dev-note"></a>
 ### Dev Note

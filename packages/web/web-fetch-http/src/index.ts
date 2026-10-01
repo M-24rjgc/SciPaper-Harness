@@ -28,7 +28,7 @@ export const name = 'web-fetch-http'
 /** The web seam this provider registers into. */
 export const inject = ['web']
 
-/** Plugin config: the provider's transport and size limits plus its `User-Agent` (all defaulted). */
+/** Plugin config: the provider's transport and size limits, `User-Agent`, and fake-ip policy (all defaulted). */
 export interface Config {
   /** Maximum response body size in bytes. */
   maxResponseBytes?: number
@@ -40,6 +40,15 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /**
+   * Fetch a hostname whose every DNS answer lies in `198.18.0.0/15` or `2001:2::/48`, the
+   * benchmarking ranges where a fake-ip proxy (Clash, mihomo, sing-box) answers. Such an answer
+   * names a local proxy, not the destination: the proxy's TUN interface maps the connection back
+   * to the hostname and resolves it itself, so the fetch is exactly as trusted as an explicit
+   * HTTP proxy route. Set `false` to refuse these answers; mixed answers and IP literals in those
+   * ranges are refused either way.
+   */
+  allowFakeIpDns?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -48,6 +57,7 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().default(30_000),
   maxRedirects: z.number().default(5),
   userAgent: z.string().default(DEFAULT_USER_AGENT),
+  allowFakeIpDns: z.boolean().default(true),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -89,6 +99,7 @@ export function apply(ctx: Context, config: Config): void {
     timeoutMs: resolved.timeoutMs,
     maxRedirects: resolved.maxRedirects,
     userAgent: resolved.userAgent,
+    allowFakeIpDns: resolved.allowFakeIpDns,
   }
   ctx.web.registerFetchProvider(new HttpFetchProvider(limits))
 }

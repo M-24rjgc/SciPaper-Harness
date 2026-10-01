@@ -33,10 +33,27 @@ export interface PinnedResponse {
 /** Resolver signature used to test public-address policy without process DNS changes. */
 export type AddressResolver = (hostname: string, options: { all: true; order: 'verbatim' }) => Promise<LookupAddress[]>
 
+/** Which resolved destinations {@link resolvePublicAddresses} accepts beyond globally reachable unicast. */
+export interface PublicAddressPolicy {
+  /**
+   * Accept a hostname whose every address lies in the benchmarking ranges that fake-ip proxies
+   * answer from (see {@link isFakeIpAddress}). Such an answer says nothing about the real
+   * destination: a TUN-mode proxy intercepts the connection and resolves the name itself.
+   */
+  readonly allowFakeIp: boolean
+}
+
+/** The policy that accepts public unicast addresses only. */
+const STRICT_POLICY: PublicAddressPolicy = { allowFakeIp: false }
+
 /** RFC 6052 prefix lengths that may carry an IPv4 destination through NAT64. */
 const RFC6052_PREFIX_LENGTHS = [32, 40, 48, 56, 64, 96] as const
 const IPV4ONLY_DISCOVERY_HOST = 'ipv4only.arpa'
 const IPV4ONLY_SENTINELS = new Set(['192.0.0.170', '192.0.0.171'])
+/** RFC 2544 benchmarking space, where Clash, mihomo, and sing-box allocate fake-ip answers. */
+const FAKE_IP_V4_RANGE = ipaddr.IPv4.parseCIDR('198.18.0.0/15')
+/** RFC 5180 IPv6 benchmarking space, used for the AAAA half of the same answers. */
+const FAKE_IP_V6_RANGE = ipaddr.IPv6.parseCIDR('2001:2::/48')
 
 interface Nat64Prefix {
   readonly bytes: readonly number[]
@@ -64,18 +81,48 @@ export function isPublicIpAddress(input: string): boolean {
 }
 
 /**
+ * Return whether an address lies in a range a fake-ip proxy (Clash, mihomo, sing-box, and similar)
+ * answers from: `198.18.0.0/15` (RFC 2544) or `2001:2::/48` (RFC 5180). Both ranges are reserved
+ * for benchmarking and are never real internet destinations, so a local DNS answer inside them
+ * means a proxy on this machine intercepts the name.
+ *
+ * Only plain IPv4 and IPv6 spellings count. An IPv4-mapped IPv6 address inside the IPv4 range is
+ * not a fake-ip answer, because no proxy produces one.
+ *
+ * @param input - textual IPv4 or IPv6 address, bracketed or not.
+ * @returns true only for an address inside one of the two benchmarking ranges.
+ */
+export function isFakeIpAddress(input: string): boolean {
+  let parsed: ipaddr.IPv4 | ipaddr.IPv6
+  try {
+    parsed = ipaddr.parse(stripIpv6Brackets(input))
+  } catch {
+    return false
+  }
+  return parsed instanceof ipaddr.IPv4 ? parsed.match(FAKE_IP_V4_RANGE) : parsed.match(FAKE_IP_V6_RANGE)
+}
+
+/**
  * Resolve a hostname once and reject the complete answer set if any destination
  * is not public. The returned addresses are the only ones the transport may use.
+ *
+ * One exception, only when `policy.allowFakeIp` is set: a hostname whose every address is a
+ * fake-ip answer ({@link isFakeIpAddress}) is accepted, because the answer is a placeholder a
+ * proxy on this machine maps back to the real name. A mixed answer, or an IP literal in those
+ * ranges, stays refused: a literal states the destination itself, and a mixed answer is not what a
+ * fake-ip proxy produces.
  *
  * @param hostname - URL hostname, including brackets when it is an IPv6 literal.
  * @param signal - aborts the wait for system resolution; an in-flight OS lookup may finish unused.
  * @param resolver - lookup implementation, overridden only by focused tests.
+ * @param policy - which answers beyond public unicast are accepted; public unicast only by default.
  * @returns the validated, non-empty address set.
  */
 export async function resolvePublicAddresses(
   hostname: string,
   signal: AbortSignal,
   resolver: AddressResolver = systemLookup,
+  policy: PublicAddressPolicy = STRICT_POLICY,
 ): Promise<PublicAddress[]> {
   const unbracketed = stripIpv6Brackets(hostname)
   const literalFamily = isIP(unbracketed)
@@ -92,13 +139,14 @@ export async function resolvePublicAddresses(
     ? await discoverNat64Prefixes(signal, resolver)
     : []
 
+  const fakeIpAnswer = literalFamily === 0 && resolved.every(entry => isFakeIpAddress(entry.address))
   const addresses: PublicAddress[] = []
   for (const entry of resolved) {
     if ((entry.family !== 4 && entry.family !== 6) || isIP(entry.address) !== entry.family) {
       throw new WebError(`hostname "${hostname}" resolved to an invalid IP address`, 'WEB_PROVIDER_ERROR')
     }
-    if (!isPublicIpAddress(entry.address)) {
-      throw new WebError(`URL hostname "${hostname}" resolves to a non-public IP address`, 'WEB_BLOCKED_URL')
+    if (!(fakeIpAnswer && policy.allowFakeIp) && !isPublicIpAddress(entry.address)) {
+      throw new WebError(nonPublicMessage(hostname, fakeIpAnswer), 'WEB_BLOCKED_URL')
     }
     const translatedIpv4 = translatedIpv4Address(entry.address, nat64Prefixes)
     if (translatedIpv4 !== undefined && !isPublicIpAddress(translatedIpv4)) {
@@ -107,6 +155,18 @@ export async function resolvePublicAddresses(
     addresses.push({ address: entry.address, family: entry.family })
   }
   return addresses
+}
+
+/**
+ * Build the refusal text for a hostname that resolves to a non-public address. An answer made only
+ * of fake-ip addresses names its likely cause and both remedies, because the plain refusal reads
+ * as a blocked destination when the cause is a local proxy's DNS.
+ */
+function nonPublicMessage(hostname: string, fakeIpAnswer: boolean): string {
+  const refusal = `URL hostname "${hostname}" resolves to a non-public IP address`
+  if (!fakeIpAnswer) return refusal
+  return `${refusal}: a fake-ip proxy (Clash, mihomo, sing-box, ...) answered with a benchmarking-range address (198.18.0.0/15 or 2001:2::/48). `
+    + 'Set allowFakeIpDns on the web-fetch-http plugin so the proxy carries the request, or set HTTPS_PROXY so the proxy resolves the name'
 }
 
 /** Discover the active DNS64 prefix set using RFC 7050's reserved hostname. */
@@ -163,7 +223,8 @@ function embeddedIpv4Address(bytes: readonly number[], prefixLength: Nat64Prefix
  *
  * A proxied hop skips those checks because the proxy resolves the origin, but a literal needs no
  * resolution: the address is already stated, and handing it to a proxy running on this machine
- * would reach exactly the loopback or private service the checks exist to keep out of reach.
+ * would reach exactly the loopback or private service the checks exist to keep out of reach. A
+ * literal in the fake-ip ranges stays refused for the same reason: no DNS answer stands behind it.
  *
  * @param hostname - a URL's hostname, bracketed or not.
  * @returns true when the host is a literal address no request may be sent to.
@@ -183,7 +244,7 @@ export function isNonPublicIpLiteral(hostname: string): boolean {
  * only the URLs this tool fetches are the model's to choose.
  *
  * @param url - validated HTTP(S) URL the policy does not route through a proxy.
- * @param addresses - public addresses returned by {@link resolvePublicAddresses}.
+ * @param addresses - the address set {@link resolvePublicAddresses} accepted.
  * @param headers - request headers.
  * @param signal - request and body-read cancellation signal.
  * @returns a response plus the disposer its consumer must call.
@@ -254,7 +315,7 @@ type LookupCallback = (
 /**
  * Build the connector lookup that serves a fixed validated answer set.
  *
- * @param addresses - public addresses retained from the preceding resolution.
+ * @param addresses - addresses accepted by the preceding resolution.
  * @returns a Node-compatible lookup callback that performs no network resolution.
  */
 export function createPinnedLookup(addresses: readonly PublicAddress[]): (

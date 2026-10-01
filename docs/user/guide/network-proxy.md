@@ -2,7 +2,7 @@
 
 English | [中文](network-proxy.zh.md)
 
-DSH routes its outbound requests — model calls, web search, page fetches, and MCP servers over HTTP — through the proxy named by the standard proxy environment variables. It reads them at launch; nothing else needs configuring. A few paths stay direct by design or by runtime limit, listed under "What stays direct" below.
+DSH routes its outbound requests — model calls, web search, page fetches, and MCP servers over HTTP — through the proxy named by the standard proxy environment variables. It reads them at launch; nothing else needs configuring. The desktop application also follows the operating system's proxy when no variable names one, as "The desktop application follows the system proxy" below describes. A few paths stay direct by design or by runtime limit, listed under "What stays direct" below.
 
 ## Export the variables
 
@@ -27,7 +27,21 @@ This is the most common surprise, and it is not specific to DSH. There is no sin
 
 The "system proxy" switch in a proxy application such as Clash writes only the first one. Browsers pick it up; command-line tools never see it. That is why exporting the variables is a separate step, and why turning on TUN mode makes both work without any variables at all.
 
-DSH does not read the operating system's proxy settings. Export the variables, or use TUN mode.
+The `dsh` command and the Web UI do not read the operating system's proxy settings. Export the variables, or use TUN mode. The desktop application reads them when you export nothing, as the next section describes.
+
+## The desktop application follows the system proxy
+
+An application started from the Start menu, the Dock, or a launcher has no shell to export variables from. When the environment, including `$DSH_HOME/.env`, names no `HTTP_PROXY`, `HTTPS_PROXY`, or `ALL_PROXY`, the desktop application asks the operating system for its proxy, with the same resolution your browser gets (a manual proxy, a PAC script, or auto-detection), and hands the agent's Host process the answer as `HTTPS_PROXY`, `HTTP_PROXY`, and `NO_PROXY`. A proxy you export, or write to `$DSH_HOME/.env`, always wins.
+
+- Only an HTTP or HTTPS proxy is used. A SOCKS answer is logged in the Electron console and the Host connects directly.
+- The first entry of a PAC answer decides, and `DIRECT` means direct. The application asks about `https://example.com/` and `http://example.com/`, so a PAC script that routes by site is judged by those two names. If the HTTPS answer is direct, nothing is set.
+- On Windows the bypass list in Internet Settings is added to `NO_PROXY` for the entries that name a host or a domain. Address ranges such as `10.*` and `<local>` cannot be expressed, as described under "Choose what stays direct", and are skipped. Loopback is always bypassed. macOS and Linux carry no system bypass list over.
+- The answer is read each time the Host starts, so a changed system proxy applies after you restart the application.
+- Set `DSH_DESKTOP_SYSTEM_PROXY=off` in the environment the application starts with to turn this off. `DSH_DESKTOP_SYSTEM_PROXY_TIMEOUT_MS` (default `3000`) bounds the wait for the answer; a slow or failed answer leaves the Host direct and logs a warning.
+
+## Fake-IP mode (Clash, mihomo, sing-box)
+
+Proxy applications in fake-ip mode answer every DNS query with a placeholder address in `198.18.0.0/15` or `2001:2::/48` and, with TUN mode on, route the connection back to the real site. Without a proxy variable `web_fetch` resolves the name itself and sees only the placeholder, which used to be refused as a non-public address. DSH now accepts a name whose every address is such a placeholder, because the proxy resolves the real destination, just as it does for an explicit proxy. Set `allowFakeIpDns: false` in the `web-fetch-http` configuration to refuse them again; the refusal message then names this cause. A name that also resolves to a private address, and a URL that is itself an address in those ranges, are refused either way. With a proxy variable set, the proxy resolves the name and DSH makes no local check at all.
 
 ## Choose what stays direct
 

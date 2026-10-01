@@ -140,6 +140,18 @@ macOS 上自定义菜单保留 Electron 的标准 Window 菜单及应用隐藏�
 
 macOS 和 Linux 从图形界面启动的程序只继承会话管理器提供的环境，不包含 shell 启动文件导出的变量。第一个 Host 启动之前，Desktop 以 `<shell> -ilc` 运行一次账户的登录 shell（取自用户数据库，不看 `$SHELL`），读取定界符之间的 `env -0` 输出，使 `~/.zprofile` 和 `~/.zshrc`（或该 shell 的对应文件）对 Host、agent shell、终端和 profile 配置生效。读取与 profile 准备并行进行。读取进程没有终端输入，并设置 `DISABLE_AUTO_UPDATE=true`、`ZSH_TMUX_AUTOSTARTED=true` 和 `ZSH_TMUX_AUTOSTART=false`，避免 oh-my-zsh 和 tmux 插件阻塞。shell 的值覆盖继承的值，但 `PWD`、`OLDPWD`、`SHLVL`、`_`、上述读取变量以及启动方自有的 `DSH_*` 和 `ELECTRON_*` 除外；Desktop 在读取之前已按 `DSH_HOME` 等变量解析路径，因此 Host 保持相同的值。读取在结束定界符出现时完成，因此启动文件启动的后台进程可以继续运行，其输出被丢弃。候选 shell 无法启动、以非零状态退出、没有输出定界内容或超过 `DSH_DESKTOP_LOGIN_SHELL_TIMEOUT_MS`（1000 到 2147483647 的整数毫秒，默认 `10000`；超时会结束其进程组）时，Desktop 记录一条警告，并依次尝试 `/bin/zsh`、`/bin/bash` 和 `/bin/sh`；全部失败时 Host 使用继承的环境。读取命令使用 POSIX 语法，因此 csh、tcsh 或 nushell 等账户 shell 会失败，Host 改为获得第一个系统 shell 的启动文件所设置的环境。读取期间退出 Desktop 会结束正在运行的读取进程组。每个应用进程只读取一次，因此修改 shell 启动文件后需要退出并重新打开 Desktop。Windows 从图形界面启动的程序已经从注册表继承用户和系统环境变量，因此 Windows 跳过这一步。
 
+### 系统代理
+
+从开始菜单或 Dock 启动不会导出 `HTTPS_PROXY`，而 Host 的代理策略和 Node 的 `fetch` 只读取这些变量。只在代理软件里改了操作系统代理、却没有导出任何变量的用户，其 Host 的每个请求都会直接发出。每次启动 Host 时，用户没有指定代理的话，Desktop 就把操作系统的代理交给它：
+
+- **用户的选择优先。** Host 环境（登录 shell 合并之后）或 Harness 主目录 `.env` 中任何非空的 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`（大小写均可）都原样保留，也不再询问系统。
+- **解析。** Desktop 向 `session.defaultSession.resolveProxy` 询问 `https://example.com/` 和 `http://example.com/`，这与 Chromium 对浏览器请求的解析相同（手动代理、PAC 脚本或自动检测），并受 `DSH_DESKTOP_SYSTEM_PROXY_TIMEOUT_MS` 期限约束。
+- **决定。** 每个结果由第一个条目决定。`PROXY` 和 `HTTP` 条目变为 `http://host:port`，`HTTPS` 条目变为 `https://host:port`，带凭据、路径或没有可用地址的条目视为不支持。`DIRECT`、SOCKS 或 QUIC 条目（因为 Host 的策略无法路由，会记录为警告），以及解析失败或超出期限，都会让 Host 保持直连。
+- **变量。** HTTPS 结果是代理时，Host 从中得到 `HTTPS_PROXY`；只有 HTTP 结果也是代理时才设置 `HTTP_PROXY`，因为 Host 的策略会把 HTTP 代理复用于 `https:`。`NO_PROXY` 由用户自己的列表、loopback 条目组成，在 Windows 上还包括用 `reg.exe` 读取的 Internet 设置 `ProxyOverride` 值中的主机和域名条目。`10.*` 这类地址段和 `<local>` 无法表达，会被跳过并在控制台给出数量；不带前导 `*.` 的条目同时匹配子域名，比 Windows 的解读更宽。macOS 和 Linux 不沿用系统绕过列表。Host 运行的工具（如 `git` 和 shell 命令）通过 Host 的子进程环境规则继承这些变量。
+- **设置。** `DSH_DESKTOP_SYSTEM_PROXY` 取 `auto`（默认）或 `off`。`DSH_DESKTOP_SYSTEM_PROXY_TIMEOUT_MS` 是 1000 到 2147483647 的整数毫秒，默认 `3000`。其他取值会让启动失败并指出变量名。
+
+该决策及其替代方案记录在这份 [Agent Note](../../.agents/notes/implemented/bug-fix/2026-10-01-fake-ip-dns-and-system-proxy.zh.md) 中。
+
 ## 开发
 
 开发环境应用菜单提供“刷新页面”（macOS 为 Cmd+R，其他平台为 Ctrl+R）和“重启应用与 Host”。重启会等待 Host 关闭，再重新启动 Electron 和新的 Host；这两项操作都不会重新构建源码。

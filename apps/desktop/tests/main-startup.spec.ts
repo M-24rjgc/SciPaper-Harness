@@ -3,7 +3,7 @@ import { WINDOWS_TITLEBAR_HEIGHT } from '../src/windows-layout.ts'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import type { IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import type { MenuItemConstructorOptions, MessageBoxOptions } from 'electron'
 import { DESKTOP_IPC, type DesktopUpdateState } from '../src/ipc.ts'
@@ -61,6 +61,9 @@ const harness = await vi.hoisted(async () => {
     environment: { ...base, DSH_TEST_LOGIN_SHELL: 'login' }, failures: [{ shell: '/account/shell', reason: 'timeout' }],
   })
   const loginShell = vi.fn((base: NodeJS.ProcessEnv, _config: unknown, _options: { signal?: AbortSignal }) => readLoginShell(base))
+  // The operating system proxy as Electron resolves it, and the Windows bypass list; direct and absent by default.
+  const resolveProxy = vi.fn(async (_url: string): Promise<string> => 'DIRECT')
+  const proxyBypass = vi.fn(async (): Promise<string | undefined> => undefined)
   const updateCheck = vi.fn(async (_manual?: boolean): Promise<DesktopUpdateState> => updateState)
   const updateDownload = vi.fn(async (_version: string): Promise<DesktopUpdateState> => updateState)
   const updateInstall = vi.fn(async (_version: string): Promise<DesktopUpdateState> => updateState)
@@ -195,6 +198,7 @@ const harness = await vi.hoisted(async () => {
     windows, hosts, handlers, app, FakeWindow, FakeHost, powerMonitor, nativeTheme, analytics,
     trays, FakeTray, backgroundNotice, shellDialog,
     menu, popup, socketHeaders: vi.fn(), loginShell, readLoginShell, updateCheck, updateDownload, updateInstall,
+    resolveProxy, proxyBypass,
     platformDispose,
     platformCloseAndWait,
 
@@ -253,6 +257,8 @@ const harness = await vi.hoisted(async () => {
       updateState = { phase: 'idle' }
       updateCheck.mockReset().mockImplementation(async () => updateState)
       loginShell.mockReset().mockImplementation(base => readLoginShell(base))
+      resolveProxy.mockReset().mockImplementation(async () => 'DIRECT')
+      proxyBypass.mockReset().mockImplementation(async () => undefined)
       updateDownload.mockReset().mockImplementation(async () => updateState)
       updateInstall.mockReset().mockImplementation(async () => updateState)
       nativeTheme.themeSource = 'system'; nativeTheme.shouldUseDarkColors = false
@@ -293,6 +299,7 @@ vi.mock('electron', () => ({
   Menu: { setApplicationMenu: harness.menu.setApplicationMenu, buildFromTemplate: harness.menu },
   session: { defaultSession: {
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: harness.socketHeaders },
+    resolveProxy: harness.resolveProxy,
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: harness.protocolHandle },
   powerMonitor: harness.powerMonitor,
@@ -316,6 +323,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 vi.mock('../src/login-shell-environment.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/login-shell-environment.ts')>(),
   readDesktopLoginShellEnvironment: harness.loginShell,
+}))
+vi.mock('../src/system-proxy.ts', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/system-proxy.ts')>(),
+  readWindowsProxyOverride: harness.proxyBypass,
 }))
 vi.mock('../src/runtime-tree.ts', () => ({ readDesktopRuntime: () => ({ release: { version: '1.0.0' } }) }))
 vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: 'desktop-test-profile' }) }))
@@ -2074,6 +2085,108 @@ describe('desktop main startup', () => {
     expect(signal?.aborted).toBe(false)
     harness.app.emit('will-quit')
     expect(signal?.aborted).toBe(true)
+  })
+
+  /**
+   * Boot Desktop as a Start-menu launch does: a private Harness home and no proxy variable in the
+   * environment. `home` runs before the import, so it can write the Harness-home `.env`.
+   */
+  async function bootWithoutProxyEnvironment(home: (directory: string) => void = () => {}) {
+    const directory = mkdtempSync(join(tmpdir(), 'dsh-main-home-'))
+    onTestFinished(() => { rmSync(directory, { recursive: true, force: true }) })
+    home(directory)
+    vi.stubEnv('RESEARCH_WORKBENCH_HOME', directory)
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy']) {
+      vi.stubEnv(name, undefined)
+    }
+    await import('../src/main.ts')
+    await harness.preparing.promise
+    const boot = invoke(DESKTOP_IPC.boot)
+    harness.prepared.resolve()
+    await harness.hostStarted.promise
+    const host = harness.hosts[0]!
+    host.ready.resolve()
+    await Promise.all([boot, harness.navigated.promise])
+    return host
+  }
+
+  it('gives the Host the operating system proxy when neither the environment nor the Harness-home .env names one', async () => {
+    harness.resolveProxy.mockResolvedValue('PROXY 127.0.0.1:7897; DIRECT')
+    harness.proxyBypass.mockResolvedValue('localhost;*.corp.test;10.*')
+
+    const host = await bootWithoutProxyEnvironment()
+
+    expect(host.environment).toMatchObject({
+      HTTPS_PROXY: 'http://127.0.0.1:7897',
+      HTTP_PROXY: 'http://127.0.0.1:7897',
+      NO_PROXY: 'localhost,127.0.0.1,::1,[::1],*.corp.test',
+      DSH_TEST_LOGIN_SHELL: 'login',
+    })
+    expect(harness.resolveProxy).toHaveBeenCalledWith('https://example.com/')
+    expect(harness.resolveProxy).toHaveBeenCalledWith('http://example.com/')
+    expect(console.info).toHaveBeenCalledWith(expect.stringContaining('the Host uses http://127.0.0.1:7897'))
+  })
+
+  it('reads the bypass list only where Windows keeps it', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'darwin', arch: 'arm64', resourcesPath: 'desktop-test-resources' })
+    harness.resolveProxy.mockResolvedValue('PROXY 127.0.0.1:7897')
+
+    const host = await bootWithoutProxyEnvironment()
+
+    expect(host.environment).toMatchObject({ HTTPS_PROXY: 'http://127.0.0.1:7897' })
+    expect(harness.proxyBypass).not.toHaveBeenCalled()
+  })
+
+  it('lets a proxy the user exported win over the system proxy', async () => {
+    harness.resolveProxy.mockResolvedValue('PROXY 127.0.0.1:7897')
+    harness.loginShell.mockImplementation(async base => ({
+      environment: { ...base, DSH_TEST_LOGIN_SHELL: 'login', HTTPS_PROXY: 'http://corp-proxy.test:3128' }, failures: [],
+    }))
+
+    const host = await bootWithoutProxyEnvironment()
+
+    expect(host.environment).toMatchObject({ HTTPS_PROXY: 'http://corp-proxy.test:3128' })
+    expect(host.environment).not.toHaveProperty('HTTP_PROXY')
+    expect(harness.resolveProxy).not.toHaveBeenCalled()
+  })
+
+  it('lets a proxy in the Harness-home .env win over the system proxy', async () => {
+    harness.resolveProxy.mockResolvedValue('PROXY 127.0.0.1:7897')
+
+    const host = await bootWithoutProxyEnvironment((directory) => {
+      writeFileSync(join(directory, '.env'), 'HTTPS_PROXY=http://127.0.0.1:7890\n')
+    })
+
+    expect(host.environment).not.toHaveProperty('HTTPS_PROXY')
+    expect(harness.resolveProxy).not.toHaveBeenCalled()
+  })
+
+  it('does not ask the system when DSH_DESKTOP_SYSTEM_PROXY is off', async () => {
+    vi.stubEnv('DSH_DESKTOP_SYSTEM_PROXY', 'off')
+    harness.resolveProxy.mockResolvedValue('PROXY 127.0.0.1:7897')
+
+    const host = await bootWithoutProxyEnvironment()
+
+    expect(host.environment).not.toHaveProperty('HTTPS_PROXY')
+    expect(harness.resolveProxy).not.toHaveBeenCalled()
+  })
+
+  it('starts the Host directly and warns when the system proxy cannot be resolved', async () => {
+    harness.resolveProxy.mockRejectedValue(new Error('network service crashed'))
+
+    const host = await bootWithoutProxyEnvironment()
+
+    expect(host.environment).not.toHaveProperty('HTTPS_PROXY')
+    expect(console.warn).toHaveBeenCalledWith('desktop system proxy: network service crashed; the Host connects directly')
+  })
+
+  it('fails startup loudly on a misspelled DSH_DESKTOP_SYSTEM_PROXY', async () => {
+    vi.stubEnv('DSH_DESKTOP_SYSTEM_PROXY', 'disabled')
+    await import('../src/main.ts')
+    await harness.dialogShown.promise
+    const options = harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions
+    expect(options.detail).toContain('DSH_DESKTOP_SYSTEM_PROXY must be "auto" or "off"')
+    expect(harness.hosts).toHaveLength(0)
   })
 
   it('prepares recovery offscreen and starts one Host before choosing the first visible window', async () => {

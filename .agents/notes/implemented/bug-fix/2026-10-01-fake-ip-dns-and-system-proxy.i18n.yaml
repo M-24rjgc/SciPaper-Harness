@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-01-fake-ip-dns-and-system-proxy.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-01-fake-ip-dns-and-system-proxy.md
+/agent-note-fake-ip-dns-answers-and-the-system-proxy-no-longer-block-web-fetch:
+  en: b06a729d310153aa
+  zh: 4318f16ee0bfa731
+/agent-note-fake-ip-dns-answers-and-the-system-proxy-no-longer-block-web-fetch/problem:
+  en: 46938b3d55fe1bd5
+  zh: 95eff6cf1b4a14c7
+/agent-note-fake-ip-dns-answers-and-the-system-proxy-no-longer-block-web-fetch/decision:
+  en: a98cd526f52c4d56
+  zh: b06b996c6e5c04fa
+/agent-note-fake-ip-dns-answers-and-the-system-proxy-no-longer-block-web-fetch/alternatives-considered:
+  en: 91f97615afaf1e0b
+  zh: a8da9feb947a8f1f
+/agent-note-fake-ip-dns-answers-and-the-system-proxy-no-longer-block-web-fetch/consequences:
+  en: 22776b6cad65ce28
+  zh: 2e6b0fc7799f1be9
+/agent-note-fake-ip-dns-answers-and-the-system-proxy-no-longer-block-web-fetch/testing:
+  en: f343780c43cc2c6e
+  zh: c9595368fc4cd69f

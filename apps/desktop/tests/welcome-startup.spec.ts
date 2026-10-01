@@ -89,6 +89,7 @@ vi.mock('electron', () => ({
   nativeTheme: state.nativeTheme,
   session: { defaultSession: {
     setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn(), webRequest: { onBeforeSendHeaders: vi.fn() },
+    resolveProxy: vi.fn(async () => 'DIRECT'),
   } },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
   ipcMain: {

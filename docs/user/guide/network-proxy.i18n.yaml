@@ -3,14 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/guide/network-proxy.md
 /run-dsh-behind-a-network-proxy:
-  en: 7659888fbb3e2e0d
-  zh: 96c019583f5bf7ab
+  en: 9667c0903e068488
+  zh: 579b295bbffc8d18
 /run-dsh-behind-a-network-proxy/export-the-variables:
   en: bc478752186faaa1
   zh: de8d1c1bdfdd618f
 /run-dsh-behind-a-network-proxy/why-your-browser-is-proxied-but-your-terminal-is-not:
-  en: d565b202923482a1
-  zh: 7eb5a36a3d7504d7
+  en: 30d753b52d090e79
+  zh: 1b0b2a2fc5cd70dd
+/run-dsh-behind-a-network-proxy/the-desktop-application-follows-the-system-proxy:
+  en: 0a964dfc70a9fdb7
+  zh: 7a51cb29bdc5e4c8
+/run-dsh-behind-a-network-proxy/fake-ip-mode-clash-mihomo-sing-box:
+  en: db8d9094ded7f4ef
+  zh: de899063a0a5fb0c
 /run-dsh-behind-a-network-proxy/choose-what-stays-direct:
   en: 307f5b01e6e09661
   zh: 39eccb0287afc128

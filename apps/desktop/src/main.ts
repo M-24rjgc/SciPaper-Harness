@@ -6,6 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import {
   app,
   BrowserWindow,
@@ -48,6 +49,7 @@ import { DesktopUpdateSchedule, resolveDesktopUpdateScheduleConfig } from './upd
 import { desktopUpdateErrorSummary, presentDesktopUpdate } from './update-presentation.ts'
 import { desktopErrorState } from './startup-error.ts'
 import { readDesktopLoginShellEnvironment, resolveDesktopLoginShellConfig } from './login-shell-environment.ts'
+import { readWindowsProxyOverride, resolveDesktopSystemProxyConfig, withDesktopSystemProxy } from './system-proxy.ts'
 import { DesktopMandatoryUpdatePolicy, resolveDesktopPolicyConfig, type DesktopPolicyState } from './mandatory-update-policy.ts'
 import { desktopClientMetadata, desktopClientVersion } from './client-metadata.ts'
 import { DesktopMandatoryUpdateWindow } from './mandatory-update-window.ts'
@@ -340,8 +342,22 @@ async function main(): Promise<void> {
     for (const failure of result.failures) console.warn(`desktop login shell: ${failure.shell} failed (${failure.reason})`)
     return result.environment
   })
+  const systemProxy = resolveDesktopSystemProxyConfig(process.env)
   let hostEnvironment: NodeJS.ProcessEnv = process.env
-  const prepareHostEnvironment = async (): Promise<void> => { hostEnvironment = await loginShell }
+  // Runs for every Host start, so a changed system proxy applies after the next restart.
+  const prepareHostEnvironment = async (): Promise<void> => {
+    const proxied = await withDesktopSystemProxy(await loginShell, {
+      config: systemProxy,
+      homeEnvFile: dshHomePath('.env'),
+      resolveProxy: url => session.defaultSession.resolveProxy(url),
+      readBypassList: process.platform === 'win32' ? () => readWindowsProxyOverride() : undefined,
+    })
+    for (const { level, message } of proxied.notices) {
+      if (level === 'warn') console.warn(message)
+      else console.info(message)
+    }
+    hostEnvironment = proxied.environment
+  }
   let quitting = false
   let startup: Promise<void> | undefined
   let workspaceRecovery: Promise<void> | undefined
