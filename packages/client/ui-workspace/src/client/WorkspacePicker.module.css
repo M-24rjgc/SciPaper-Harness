@@ -37,7 +37,7 @@
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
-  border: 1px solid var(--dsw-alias-border-l4);
+  border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: var(--dsw-radius-md);
   background: transparent;
   color: var(--dsw-alias-label-primary);

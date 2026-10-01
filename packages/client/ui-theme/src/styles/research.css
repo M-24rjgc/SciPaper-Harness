@@ -45,6 +45,16 @@ body[data-research-workbench]:not([data-ds-dark-theme]) {
   --dsw-alias-chart-4: #eda100;
   --dsw-alias-chart-5: #e87ba4;
   --dsw-alias-chart-6: #008300;
+  /* Domain map regions, in this order, muted so the research's own marks stand out over them; the last is no region. */
+  --dsw-alias-map-1: #2e7d74;
+  --dsw-alias-map-2: #3e6fa8;
+  --dsw-alias-map-3: #9a6a14;
+  --dsw-alias-map-4: #7e4f93;
+  --dsw-alias-map-5: #a8486a;
+  --dsw-alias-map-6: #5e6e22;
+  --dsw-alias-map-7: #b5562f;
+  --dsw-alias-map-8: #4f5e66;
+  --dsw-alias-map-none: #c9c5bb;
 }
 body[data-research-workbench][data-ds-dark-theme] {
   --dsw-alias-bg-base: #1c211f;
@@ -68,4 +78,13 @@ body[data-research-workbench][data-ds-dark-theme] {
   --dsw-alias-chart-4: #c98500;
   --dsw-alias-chart-5: #d55181;
   --dsw-alias-chart-6: #008300;
+  --dsw-alias-map-1: #5fb3a8;
+  --dsw-alias-map-2: #7fa6da;
+  --dsw-alias-map-3: #d1a24a;
+  --dsw-alias-map-4: #b48ac8;
+  --dsw-alias-map-5: #d884a2;
+  --dsw-alias-map-6: #9dae5a;
+  --dsw-alias-map-7: #e0895f;
+  --dsw-alias-map-8: #8e9ea6;
+  --dsw-alias-map-none: #4a504c;
 }

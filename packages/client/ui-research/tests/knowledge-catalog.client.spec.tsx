@@ -54,6 +54,7 @@ function harness(preferences: ResearchPreferences = {}, example = false) {
     useDirectories: (select: (value: object) => unknown) => select({}),
     useResearch: (select: (value: object) => unknown) => select({ snapshot, tasks: [] }),
     useTabInfo: () => ({ tab: { navigation: { revision: 1, params: {} } } }),
+    useInput: (select: (value: object) => unknown) => select({ draft: '' }), inputActions: { setDraft: vi.fn() },
     refresh: async () => {}, configure, openKnowledge,
     run: async (request: ResearchCommand): Promise<ResearchResponse> => {
       commands.push(request)

@@ -2,15 +2,22 @@
  * The domain map as a client draws it: the map compressed into base64 typed arrays, placements and marks
  * described by name, paper details for a hover card. Pure functions over a parsed map and the built-in graph.
  */
-import { paperUrl, type GraphFile, type GraphPaper } from './knowledge.ts'
+import { paperUrl, type GraphFile, type GraphPaper, type GraphPattern, type RecallIndices } from './knowledge.ts'
 import { locateTarget, type Annotation } from './knowledge-annotations.ts'
-import { densityAt, describeGap, paperPosition, regionAt, type KnowledgeMap, type MapPlacement, type MapRegion } from './knowledge-map.ts'
-import type { KnowledgeMarkView, MapPaperView, MapPlacementView, MapViewPage } from './types.ts'
+import {
+  densityAt, describeGap, hitsFromRecall, paperPosition, placeFromHits, regionAt, type KnowledgeMap, type MapPattern, type MapPlacement,
+  type MapRegion,
+} from './knowledge-map.ts'
+import type { KnowledgeMarkView, MapPaperView, MapPlacementView, MapSearchView, MapViewPage } from './types.ts'
 
 /** A paper's region value where no region reaches it. */
 export const NO_REGION = 255
 /** Papers named per placement. */
 const NEAREST = 5
+/** Papers a search lists. */
+const SEARCH_PAPERS = 10
+/** Patterns a search lists. */
+const SEARCH_PATTERNS = 5
 const QUANTA = 65535
 
 /**
@@ -56,13 +63,39 @@ export function encodeMapView(map: KnowledgeMap, graph: GraphFile): Extract<MapV
  * @returns the placement as a client shows it.
  */
 export function placementView(map: KnowledgeMap, graph: GraphFile, placement: MapPlacement): MapPlacementView {
+  const papers = placement.support.filter(hit => hit.kind === 'paper').slice(0, NEAREST)
+  const heaviest = Math.max(...papers.map(hit => hit.weight))
   return {
     x: placement.x, y: placement.y, confidence: placement.confidence,
     ...placement.region === undefined ? {} : { region: placement.region.label },
     alternatives: placement.alternatives.map(({ x, y, share }) => ({ x, y, share })),
-    nearest: placement.support.filter(hit => hit.kind === 'paper').slice(0, NEAREST)
-      .map(hit => ({ index: hit.index, title: (graph.papers[hit.index] as GraphPaper).title })),
+    nearest: papers.map(hit => ({
+      index: hit.index, title: (graph.papers[hit.index] as GraphPaper).title,
+      weight: heaviest > 0 ? Math.round(hit.weight / heaviest * 100) / 100 : 0,
+    })),
     crowding: densityAt(map, placement).percentile,
+  }
+}
+
+/**
+ * A search as the map shows it.
+ * @param map - the map.
+ * @param graph - the built-in graph.
+ * @param query - the search text.
+ * @param basis - how the recall behind the search ranked patterns.
+ * @param indices - the built-in graph's rankings behind that recall.
+ * @returns where the search lands, its best papers and its closest patterns that hold papers on the map.
+ */
+export function searchView(map: KnowledgeMap, graph: GraphFile, query: string, basis: MapSearchView['basis'], indices: RecallIndices): MapSearchView {
+  const placement = placeFromHits(map, hitsFromRecall(indices))
+  return {
+    query, basis, ...placement === undefined ? {} : { placement: placementView(map, graph, placement) },
+    papers: indices.papers.slice(0, SEARCH_PAPERS).map(({ index }) => ({ index, title: (graph.papers[index] as GraphPaper).title })),
+    patterns: indices.patterns.flatMap(({ index }) => {
+      // A pattern without papers has no position on the map. placeFromHits above refuses a pattern the map lacks.
+      const centre = map.patterns[index] as MapPattern
+      return centre.members === 0 ? [] : [{ index, name: (graph.patterns[index] as GraphPattern).name, x: centre.x, y: centre.y }]
+    }).slice(0, SEARCH_PATTERNS),
   }
 }
 
@@ -79,11 +112,16 @@ export function exactPlacement(map: KnowledgeMap, graph: GraphFile, index: numbe
   const region = regionAt(map, point)
   return {
     ...point, confidence: 1, ...region === undefined ? {} : { region: region.label }, alternatives: [],
-    nearest: [{ index, title: (graph.papers[index] as GraphPaper).title }], crowding: densityAt(map, point).percentile, exact: true,
+    nearest: [{ index, title: (graph.papers[index] as GraphPaper).title, weight: 1 }],
+    crowding: densityAt(map, point).percentile, exact: true,
   }
 }
 
-/** A title reduced to lowercase letters and digits, for matching a reference to a paper of the graph. */
+/**
+ * A title reduced to lowercase letters and digits, for matching a reference to a paper of the graph.
+ * @param title - a paper's or reference's title.
+ * @returns the title without case, accents, spacing or punctuation.
+ */
 export function titleKey(title: string): string {
   return title.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
 }

@@ -268,7 +268,7 @@ describe('a damaged marks file', () => {
     expect(read.problems.at(-2)).toMatch(/^mark 1011 is malformed/)
     // A change repairs the file: what was honored is written back, beside a copy of the original.
     const change = await removeAnnotation(root, 'ai:paper:p0500', NOW)
-    expect(change).toMatchObject({ changed: true, backup: expect.stringMatching(/\.bak$/) as unknown })
+    expect(change).toMatchObject({ changed: true, backup: expect.stringMatching(/\.bak$/) as string })
     expect((await readAnnotations(root))).toMatchObject({ problems: [] })
     expect((await readAnnotations(root)).annotations).toHaveLength(MAX_ANNOTATIONS - 1)
   })
@@ -278,7 +278,7 @@ describe('a damaged marks file', () => {
     await writeStored(root, JSON.stringify({ version: 1, annotations: [record('p1'), { broken: true }] }))
     const change = await removeAnnotation(root, 'ai:paper:none', NOW)
     expect(change).toMatchObject({
-      changed: false, problems: [expect.stringMatching(/^mark 2 is malformed/)], backup: expect.stringMatching(/\.bak$/) as unknown,
+      changed: false, problems: [expect.stringMatching(/^mark 2 is malformed/)], backup: expect.stringMatching(/\.bak$/) as string,
     })
     expect(await readAnnotations(root)).toEqual({ annotations: [record('p1')], problems: [] })
   })

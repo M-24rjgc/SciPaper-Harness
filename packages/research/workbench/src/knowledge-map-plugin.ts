@@ -4,11 +4,12 @@ import { runtimeAsset } from './components.ts'
 import { builtinIndices, type Embedder, type KnowledgeBase, type RecallIndices } from './knowledge.ts'
 import { readAnnotations } from './knowledge-annotations.ts'
 import { hitsFromRecall, loadKnowledgeMap, placeFromHits, type KnowledgeMap } from './knowledge-map.ts'
-import { encodeMapView, exactPlacement, mapPaperViews, markViews, paperByTitle, placementView } from './knowledge-map-view.ts'
+import { encodeMapView, exactPlacement, mapPaperViews, markViews, paperByTitle, placementView, searchView } from './knowledge-map-view.ts'
 import type {} from './knowledge-plugin.ts'
+import { readHonour } from './knowledge-marks-state.ts'
 import { readRecalls } from './knowledge-recall-log.ts'
 import { OperationScope } from './operation-scope.ts'
-import type { MapOverlayPage, MapPaperView, MapPlacementView, MapViewPage, ResearchProject } from './types.ts'
+import type { MapOverlayPage, MapPaperView, MapPlacementView, MapSearchView, MapViewPage, ResearchProject } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { researchKnowledgeMap: ResearchKnowledgeMap }
@@ -86,6 +87,25 @@ export class ResearchKnowledgeMap extends Service {
   }
 
   /**
+   * Where a search text lands on the map, with the papers and patterns it matched. Nothing is recorded: a search is
+   * the person's, not a recall of the agent's.
+   * @param root - the project root, whose marks recall honours.
+   * @param query - the search text.
+   * @param embedder - semantic pattern ranking, when configured.
+   * @param signal - caller cancellation.
+   * @returns the search's placement and matches.
+   */
+  search(root: string, query: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapSearchView> {
+    return this.run(signal, async (engine, scoped) => {
+      const map = await this.loaded(engine)
+      const graph = await engine.builtinGraph()
+      const recall = await engine.recall(root, query, 5, embedder, scoped)
+      // The built-in graph loaded above, so the recall ranked it.
+      return searchView(map, graph, query, recall.basis, builtinIndices(recall) as RecallIndices)
+    })
+  }
+
+  /**
    * What a research places over the map: its idea (the agent's latest recall query, else the brief), its
    * imported literature, the papers its recent recalls returned, and its marks.
    * @param project - the research record.
@@ -138,7 +158,7 @@ export class ResearchKnowledgeMap extends Service {
       const { annotations } = await readAnnotations(project.root)
       const own = await engine.graphOf(project.root, 'project')
       const marks = markViews(annotations, { ai: graph, ...own === undefined ? {} : { project: own } })
-      return { built: true, ...idea === undefined ? {} : { idea }, library, recalled, marks }
+      return { built: true, ...idea === undefined ? {} : { idea }, library, recalled, marks, honour: await readHonour(project.root) }
     })
   }
 }

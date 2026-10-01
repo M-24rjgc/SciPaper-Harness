@@ -93,6 +93,17 @@ A gap candidate is an area below 10% of the median paper density, enclosed by de
 
 The shipped gaps lie between "object detection / point cloud", "video / gaussian splatting" and "semantic segmentation"; between "video / gaussian splatting", "image / diffusion" and "multimodal / visual"; between "contrastive learning / vision", "attention / transformers" and "multimodal / visual"; between "attention / transformers" and "multimodal / visual"; between "reasoning / language models", "multi-agent / planning" and "code / generation"; and between "reinforcement learning / policy" and "multi-agent / planning". Recurring makes a gap a stable property of this kind of projection, not a finding about research. A gap means "sparse in this map". The papers of two regions may be far apart in the text space, or the 2D projection may have had no room to place work between them. The corpus covers only the conferences upstream collected. A gap is a prompt to search the literature, not evidence that the topic is unexplored. `describeGap` words it that way.
 
+### Original-space check of the shipped gaps
+
+Recurring across layouts does not show that papers on the two sides of a gap are unlike each other in the space the map was built from, so the six gaps were tested there (the build's 128-dimension LSA space with the recorded neighbours fused in; rebuilding with the pinned versions gave a byte-identical asset). For each gap the share of its rim papers' 10 nearest neighbours that lie inside or across it, the share of rim-to-rim links that cross it, and how many papers are more similar to both ends of an across pair than the ends are to each other were compared with 400 control shapes of the same size elsewhere on the map. The thresholds were written down before any gap was measured. The disc version of the test could not return "real" for any gap, because a disc does not follow the gaps' shapes, so a version that uses each gap's own shape was added after seeing the first results; its thresholds were not changed.
+
+- Gap 0 (object detection, video / splatting, segmentation) holds up: its rim papers have far fewer original neighbours across it than the controls (p about 0.002 on three statistics), and the independent embedding does not confirm it (p 0.14).
+- Gap 2 (contrastive learning, attention, multimodal) leans the same way (p 0.03 to 0.12).
+- Gaps 3 and 5 are inconclusive. Gaps 1 and 4 are artefacts of the drawing: papers on either side are as linked as in the controls.
+- The p-values are approximate, because the controls overlap on one map, and only gap 0 would survive correcting for six tests.
+
+None of this supports "few papers study this". Every gap stays "sparse in this map", the layer is off until the person turns it on, and the viewer names how often a gap recurred but not whether it is real.
+
 ## Asset
 
 `ai-map.bin` is 321,487 bytes: 117 KB of paper coordinates and three 64 KB grids (density, region, gap) at 256 × 256, plus pattern, region, gap and string records. Two builds in the same environment produced identical bytes. The asset was built without the embedding endpoint: the qwen vectors were used only to choose the method and to measure it, and none of them is stored.

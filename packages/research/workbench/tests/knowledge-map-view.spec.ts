@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { GraphFile } from '../src/knowledge.ts'
 import type { Annotation } from '../src/knowledge-annotations.ts'
 import type { KnowledgeMap, MapPlacement } from '../src/knowledge-map.ts'
-import { encodeMapView, exactPlacement, mapPaperViews, markViews, NO_REGION, paperByTitle, placementView, titleKey } from '../src/knowledge-map-view.ts'
+import {
+  encodeMapView, exactPlacement, mapPaperViews, markViews, NO_REGION, paperByTitle, placementView, searchView, titleKey,
+} from '../src/knowledge-map-view.ts'
 
 const paper = (id: string, title: string, pattern: number, extra: Partial<GraphFile['papers'][number]> = {}): GraphFile['papers'][number] => ({
   id, title, pattern, domain: 0, idea: `${title} idea`, problem: '', solution: '', story: `${title} story`, score: 0.5, similar: [], ...extra,
@@ -79,14 +81,39 @@ describe('placements', () => {
   it('names the region and the supporting papers, not the patterns, and reports crowding', () => {
     const view = placementView(map(), GRAPH, placement())
     expect(view).toMatchObject({ region: 'attention / sparse', confidence: 0.8, alternatives: [{ x: 0.8, y: 0.2, share: 0.2 }] })
-    expect(view.nearest).toEqual([{ index: 0, title: 'Block Sparse Attention Kernels for Long Context' }])
+    expect(view.nearest).toEqual([{ index: 0, title: 'Block Sparse Attention Kernels for Long Context', weight: 1 }])
     expect(view.crowding).toBeGreaterThan(0.5)
     expect(placementView(map(), GRAPH, placement({ region: undefined }))).not.toHaveProperty('region')
+  })
+  it('weighs each nearby paper against the heaviest, and a placement no paper supports names none', () => {
+    const support: MapPlacement['support'] = [
+      { kind: 'paper', index: 1, weight: 0.4, distance: 0.1 }, { kind: 'pattern', index: 0, weight: 2, distance: 0 },
+      { kind: 'paper', index: 0, weight: 0.3, distance: 0.2 },
+    ]
+    expect(placementView(map(), GRAPH, placement({ support })).nearest.map(paper => paper.weight)).toEqual([1, 0.75])
+    expect(placementView(map(), GRAPH, placement({ support: [{ kind: 'paper', index: 2, weight: 0, distance: 0 }] })).nearest[0]?.weight).toBe(0)
+    expect(placementView(map(), GRAPH, placement({ support: [] })).nearest).toEqual([])
   })
   it('sits exactly on a paper the map holds, with or without a region', () => {
     expect(exactPlacement(map(), GRAPH, 0)).toMatchObject({ x: 0.25, y: 0.25, confidence: 1, exact: true, region: 'attention / sparse' })
     expect(exactPlacement(map(), GRAPH, 2)).not.toHaveProperty('region')
     expect(exactPlacement(map(), GRAPH, 9)).toBeUndefined()
+  })
+})
+
+describe('searchView', () => {
+  it('places a search, lists its papers and keeps only the patterns that hold papers on the map', () => {
+    const wide = map()
+    wide.patterns.push({ index: 1, x: 0.8, y: 0.8, spread: 0, members: 0 })
+    const view = searchView(wide, GRAPH, 'sparse attention', 'semantic+lexical', {
+      papers: [{ index: 0, score: 2 }, { index: 1, score: 1 }], patterns: [{ index: 1, score: 0.5 }, { index: 0, score: 0.4 }],
+    })
+    expect(view).toMatchObject({ query: 'sparse attention', basis: 'semantic+lexical', papers: [{ index: 0, title: GRAPH.papers[0]?.title }, { index: 1 }] })
+    expect(view.patterns).toEqual([{ index: 0, name: 'Sparse attention at scale', x: 0.3, y: 0.3 }])
+    expect(view.placement?.region).toBe('attention / sparse')
+  })
+  it('places nothing when nothing matched', () => {
+    expect(searchView(map(), GRAPH, 'zzz', 'lexical', { papers: [], patterns: [] })).toEqual({ query: 'zzz', basis: 'lexical', papers: [], patterns: [] })
   })
 })
 

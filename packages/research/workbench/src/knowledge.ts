@@ -18,6 +18,7 @@ import {
   applyAnnotations, describeAnnotations, readAnnotations, type AnnotationSummary, type AnnotationWhy, type GraphSource,
   type RecallCandidate, type SkippedItem,
 } from './knowledge-annotations.ts'
+import { readHonour } from './knowledge-marks-state.ts'
 import type { KnowledgeGraphNode, KnowledgeGraphPage, KnowledgeGraphQuery, KnowledgeReference } from './types.ts'
 
 const tierSchema = z.enum(['A', 'B', 'C', ''])
@@ -600,7 +601,9 @@ export class KnowledgeBase {
     const byName = new Map(graphs.map(graph => [graph.source, graph]))
     const ranked = [...fuse(rankings)].sort((a, b) => b[1] - a[1])
     const rankedPapers = [...fuse(paperRankings)].sort((a, b) => b[1] - a[1])
-    const marks = await readAnnotations(root)
+    const paused = !await readHonour(root)
+    const marks: Awaited<ReturnType<typeof readAnnotations>> = paused ? { annotations: [], problems: [] } : await readAnnotations(root)
+    if (paused) note += ' The person paused their marks, so none shaped this recall.'
     if (marks.problems.length) note += ` Marks: ${marks.problems.join('; ')}.`
     const candidate = ([key, score]: [string, number]): RecallCandidate => {
       const [source, at] = key.split(':') as [GraphSource, string]

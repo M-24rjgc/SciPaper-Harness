@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { createEmbedder, KnowledgeBase, MAX_CORPUS, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder, type GraphFile } from '../src/knowledge.ts'
+import { writeHonour } from '../src/knowledge-marks-state.ts'
 import { ANNOTATIONS_FILE, setAnnotation } from '../src/knowledge-annotations.ts'
 
 const roots: string[] = []
@@ -193,6 +194,20 @@ describe('recall with marks', () => {
     expect(damaged).not.toHaveProperty('annotations')
   })
 
+  it('applies no mark while the person has paused them, and again once they resume', async () => {
+    const { base } = await builtinBase()
+    const root = await temp()
+    await setAnnotation(root, { target: { kind: 'paper', graph: 'ai', id: 'p2' }, verdict: 'pin', by: 'user' })
+    const plain = await base.recall(root, 'sparse attention', 2, undefined, signal)
+    await writeHonour(root, false)
+    const paused = await base.recall(root, 'sparse attention', 2, undefined, signal)
+    expect(paused.note).toMatch(/paused their marks/)
+    expect(paused).not.toHaveProperty('annotations')
+    expect(paused.closestPapers[0]?.id).not.toBe('p2')
+    expect(paused.closestPapers.map(item => item.id)).not.toEqual(plain.closestPapers.map(item => item.id))
+    await writeHonour(root, true)
+    expect((await base.recall(root, 'sparse attention', 2, undefined, signal)).closestPapers[0]).toMatchObject({ id: 'p2', why: { kind: 'pinned' } })
+  })
   it('hands the parsed built-in graph to the domain map', async () => {
     const { base } = await builtinBase()
     expect((await base.builtinGraph()).papers).toHaveLength(4)
@@ -431,7 +446,7 @@ describe('the embedding endpoint', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":{"message":"model not found"}}', { status: 400 })))
     await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a', 'b', 'c'], signal)).rejects.toThrow(/HTTP 400: .*model not found/)
     await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a'], signal)).rejects.toThrow(/HTTP 400: .*model not found/)
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, text: () => Promise.reject(new Error('closed')) }) as unknown as Response))
+    vi.stubGlobal('fetch', vi.fn(async () => Object.assign(new Response(null, { status: 500 }), { text: () => Promise.reject(new Error('closed')) })))
     await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a'], signal)).rejects.toThrow(/^Embedding endpoint returned HTTP 500$/)
   })
 
