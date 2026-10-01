@@ -47,7 +47,7 @@ function harness(first: ResearchMemoryPage | null = memory) {
     if (request.action === 'memory-carry' && current !== null) current = { ...current, carry: { ...current.carry, [request.kind]: request.on } }
     return { message: 'ok', ...current === null ? {} : { memory: current } }
   })
-  const props = { t, run, startNew, project } as unknown as WorkbenchProps & { project: typeof project }
+  const props = { t, run, startNew, project } as WorkbenchProps & { project: typeof project }
   return { props, project, commands, startNew, run }
 }
 async function settle(): Promise<void> { await act(async () => { await Promise.resolve() }) }

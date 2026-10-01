@@ -208,9 +208,9 @@ describe('research tools find the project from the working directory', () => {
     const h = harness()
     expect(await h.call('research_project', { action: 'memory' })).toEqual({ message: 'did memory' })
     expect(h.executed.map(item => [item.request, item.actor, item.sessionId])).toEqual([[{ action: 'memory', projectId: h.project.id }, 'agent', 'agent-session']])
-    const tool = h.tools.get('research_project') as unknown as { description: string }
-    expect(tool.description).toMatch(/memory: what the user's other researches on this computer left/)
-    expect(tool.description).toMatch(/does not mark baselines/)
+    const description = Reflect.get(h.tools.get('research_project') ?? {}, 'description') as string
+    expect(description).toMatch(/memory: what the user's other researches on this computer left/)
+    expect(description).toMatch(/does not mark baselines/)
   })
 
   it('reports the goal a conversation of the research already holds, and says whose it is', async () => {

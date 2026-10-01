@@ -13,6 +13,7 @@ import type { ResearchKey } from './locales.ts'
 
 /** The box every node is drawn in; edges end at its border. */
 export const NODE_WIDTH = 132
+/** The height of the box every node is drawn in. */
 export const NODE_HEIGHT = 44
 /** Rings are ellipses, flatter than wide, because the panel is wider than tall. */
 const ASPECT = 0.78
@@ -173,7 +174,11 @@ export function relationsLayout(view: RelationNeighbourhoodView): RelationsLayou
   }
 }
 
-/** The relations a path walks, for lighting them in the picture. */
+/**
+ * The relations a path walks, for lighting them in the picture.
+ * @param path - the path, if one is chosen.
+ * @returns the ids of the relations on it.
+ */
 export function pathRelations(path: RelationPathView | undefined): ReadonlySet<string> {
   return new Set(path?.hops.map(hop => hop.relation))
 }
@@ -336,12 +341,20 @@ export function openPath(record: EvidenceRecord): string {
   return record.fullTextPath ?? record.path
 }
 
-/** The records a person can quote: literature and files; a run's results are not quotable. */
+/**
+ * The records a person can quote: literature and files; a run's results are not quotable.
+ * @param evidence - the research's evidence records.
+ * @returns those that can be quoted.
+ */
 export function quotable(evidence: readonly EvidenceRecord[]): EvidenceRecord[] {
   return evidence.filter(record => record.kind !== 'experiment')
 }
 
-/** Whether the research holds anything to quote. */
+/**
+ * Whether the research holds anything to quote.
+ * @param evidence - the research's evidence records.
+ * @returns true when at least one record can be quoted.
+ */
 export function hasSources(evidence: readonly EvidenceRecord[]): boolean {
   return quotable(evidence).length > 0
 }
@@ -445,18 +458,30 @@ export function gapTakeaway(page: RelationGapPage, t: Translate): string {
   return blank + uncovered === 0 ? t('relationsGapTakeawayNone') : t('relationsGapTakeaway', { blank, uncovered })
 }
 
-/** The states present in a matrix, in legend order. */
+/**
+ * The states present in a matrix, in legend order.
+ * @param page - the gap matrix.
+ * @returns each state that some cell has, once.
+ */
 export function statesIn(page: RelationGapPage): RelationGapState[] {
   const present = new Set(page.cells.flat().map(cell => cell.state))
   return GAP_STATES.filter(state => present.has(state))
 }
 
-/** Every node a view has seen, once each. */
+/**
+ * Every node a view has seen, once each.
+ * @param lists - lists of nodes from the pages read so far.
+ * @returns the nodes without repeats, the first of each id kept.
+ */
 export function knownNodes(...lists: readonly (readonly RelationNodeSummary[])[]): RelationNodeSummary[] {
   return [...new Map(lists.flat().map(node => [node.id, node] as const)).values()]
 }
 
-/** The names of nodes by id. */
+/**
+ * The names of nodes by id.
+ * @param nodes - the nodes.
+ * @returns a map from node id to name.
+ */
 export function nameIndex(nodes: readonly RelationNodeSummary[]): Map<string, string> {
   return new Map(nodes.map(node => [node.id, node.name] as const))
 }

@@ -106,7 +106,9 @@ export interface Viewport { width: number; height: number }
 /** World to screen: screen = world * scale + offset. */
 export interface Transform { scale: number; offsetX: number; offsetY: number }
 
+/** The whole map in view. */
 export const MIN_ZOOM = 1
+/** Closest zoom: the most a point of the map is magnified over the fitted scale. */
 export const MAX_ZOOM = 48
 /** The smallest extent fitted, so a map of one point still has a scale. */
 const MIN_SPAN = 0.05
