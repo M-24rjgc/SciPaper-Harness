@@ -121,7 +121,7 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 图谱是可选的，由知识图谱 bundle 的三个插件分担，各有独立开关：`research_knowledge` 背后的引擎、领域地图和证据图。领域地图注入引擎；证据图只读取项目记录。已关闭插件的命令会报错并写明插件名，`graph-status` 和快照里的 `knowledge.modules` 报告哪些已开启，关闭插件不会删除 `.research` 下的任何文件。
 
-证据图（`evidence-graph`）是项目记录的纯投影，由 `src/knowledge-evidence.ts` 计算，不存放在任何地方。它返回研究问题（简介，简介为空时用标题）、每条结论及其状态、写有该结论的文件和它的引用，以及这些结论引用的运行、文献和文件；一次运行不论有多少输出被引用，都只是一个节点。结论的状态只由记录中的字段推出。记录为 `contradicted` 的结论就是 `contradicted`。没有引用任何来源的结论，是假设时为 `proposed`，否则为 `missing`。引用的来源已不存在、被记录为过期、或版本与引用时不同，或者结论本身被记录为 `stale`，则为 `stale`。记录为 `proposed` 的结论保持 `proposed`，其余结论为 `supported`。没有引用任何来源、而又能由运行检验的结论（实证结论或假设），会连上进行中、或已结束但没有收集结果的运行，最多三个，因为记录并不把计划中的运行与某条结论关联起来；没有这样的运行时，它带一个“没有引用，也没有进行中的运行”的标记。领域地图的 `map-view` 和 `map-overlay` 在插件没有地图数据时回答 `built: false`。
+证据图（`evidence-graph`）是项目记录的纯投影，由 `src/knowledge-evidence.ts` 计算，不存放在任何地方。它返回研究问题（简介，简介为空时用标题）、每条结论及其状态、写有该结论的文件和它的引用，以及这些结论引用的运行、文献和文件；一次运行不论有多少输出被引用，都只是一个节点。结论的状态只由记录中的字段推出。记录为 `contradicted` 的结论就是 `contradicted`。没有引用任何来源的结论，是假设时为 `proposed`，否则为 `missing`。引用的来源已不存在、被记录为过期、或版本与引用时不同，或者结论本身被记录为 `stale`，则为 `stale`。记录为 `proposed` 的结论保持 `proposed`，其余结论为 `supported`。没有引用任何来源、而又能由运行检验的结论（实证结论或假设），会连上进行中、或已结束但没有收集结果的运行，最多三个，因为记录并不把计划中的运行与某条结论关联起来；没有这样的运行时，它带一个“没有引用，也没有进行中的运行”的标记。领域地图的 `map-view` 返回内置图谱中论文的位置及其区域和稀疏区域，`map-papers` 按下标返回论文详情，`map-overlay` 把研究的想法、导入的文献、最近召回的论文和标记放到地图上。读不到随附的布局时命令失败，下一次地图命令会重新读取。`mark`、`unmark` 和 `marks` 修改并列出召回所遵从的标记。
 
 ## 检查
 
@@ -362,26 +362,37 @@ The domain map of the research field, shared by all research modes in one profil
 
 ```ts cordis-catalog
 /**
- * Execute map work within both caller and plugin lifetimes.
+ * Execute map work within both caller and plugin lifetimes, with the graph engine.
  * @param signal - caller cancellation.
- * @param work - the operation; it receives a signal that fires on either cancellation.
+ * @param work - the operation; it receives the engine and a signal that fires on either cancellation.
  * @returns the operation's result.
  */
-run<T>(signal: AbortSignal, work: (signal: AbortSignal) => Promise<T>): Promise<T>
+run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) => Promise<T>): Promise<T>
 
 /**
- * Read the domain map of the field around a research.
+ * The domain map of the field, encoded once per loaded map.
  * @param signal - caller cancellation.
- * @returns the map, or the page that says it is not built.
+ * @returns the map page.
  */
 view(signal: AbortSignal): Promise<MapViewPage>
 
 /**
- * Read what a research places over the domain map: its idea, its library and what the agent recalled.
+ * Details of papers of the map, for a hover card.
+ * @param indices - paper indices in the built-in graph.
  * @param signal - caller cancellation.
- * @returns the overlay, or the page that says the map is not built.
+ * @returns their details, unknown indices left out.
  */
-overlay(signal: AbortSignal): Promise<MapOverlayPage>
+papers(indices: readonly number[], signal: AbortSignal): Promise<MapPaperView[]>
+
+/**
+ * What a research places over the map: its idea (the agent's latest recall query, else the brief), its
+ * imported literature, the papers its recent recalls returned, and its marks.
+ * @param project - the research record.
+ * @param embedder - semantic ranking for placing the brief, when configured.
+ * @param signal - caller cancellation.
+ * @returns the overlay.
+ */
+overlay(project: Pick<ResearchProject, 'root' | 'brief' | 'evidence'>, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapOverlayPage>
 ```
 
 Source: [`packages/research/workbench/src/knowledge-map-plugin.ts`](../../packages/research/workbench/src/knowledge-map-plugin.ts)

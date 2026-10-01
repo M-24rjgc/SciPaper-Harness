@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { createEmbedder, KnowledgeBase, MAX_CORPUS, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder, type GraphFile } from '../src/knowledge.ts'
+import { ANNOTATIONS_FILE, setAnnotation } from '../src/knowledge-annotations.ts'
 
 const roots: string[] = []
 const bases: KnowledgeBase[] = []
@@ -166,6 +167,35 @@ describe('recall', () => {
     expect((await base.recall(root, 'haptic', 3, undefined, signal)).patterns[0]?.name).toBe('Haptic feedback as conversation')
     await rm(join(root, PROJECT_GRAPH))
     expect((await base.recall(root, 'haptic', 3, undefined, signal)).patterns).toEqual([])
+  })
+})
+
+describe('recall with marks', () => {
+  it('pins, skips and explains by the project marks, reports a damaged marks file, and changes nothing without marks', async () => {
+    const { base } = await builtinBase()
+    const root = await temp()
+    const plain = await base.recall(root, 'sparse attention', 2, undefined, signal)
+    expect(plain).not.toHaveProperty('annotations')
+    expect(plain.closestPapers.every(item => !('why' in item))).toBe(true)
+    expect(plain.patterns.every(item => !('why' in item))).toBe(true)
+    await setAnnotation(root, { target: { kind: 'paper', graph: 'ai', id: 'p0' }, verdict: 'irrelevant', note: 'kernels only', by: 'user' })
+    await setAnnotation(root, { target: { kind: 'paper', graph: 'ai', id: 'p2' }, verdict: 'pin', by: 'user' })
+    const marked = await base.recall(root, 'sparse attention', 2, undefined, signal)
+    expect(marked.closestPapers[0]).toMatchObject({ id: 'p2', why: { kind: 'pinned' } })
+    expect(marked.closestPapers.some(item => item.id === 'p0')).toBe(false)
+    expect(marked.annotations?.skipped).toEqual([expect.objectContaining({ kind: 'paper', note: 'kernels only' })])
+    expect(marked.annotations?.applied).not.toBe('')
+    expect(marked.annotations?.summary).toMatchObject({ marks: 2, pinned: 1, skipped: 1 })
+    expect(marked.patterns.every(item => 'why' in item)).toBe(true)
+    await writeFile(join(root, ANNOTATIONS_FILE), '{not json')
+    const damaged = await base.recall(root, 'sparse attention', 2, undefined, signal)
+    expect(damaged.note).toMatch(/Marks: /)
+    expect(damaged).not.toHaveProperty('annotations')
+  })
+
+  it('hands the parsed built-in graph to the domain map', async () => {
+    const { base } = await builtinBase()
+    expect((await base.builtinGraph()).papers).toHaveLength(4)
   })
 })
 

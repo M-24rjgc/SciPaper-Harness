@@ -5,7 +5,9 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ResearchKnowledge from '../src/knowledge-plugin.ts'
-import ResearchKnowledgeMap from '../src/knowledge-map-plugin.ts'
+import ResearchKnowledgeMap, { MAX_LIBRARY } from '../src/knowledge-map-plugin.ts'
+import { appendRecall } from '../src/knowledge-recall-log.ts'
+import { PROJECT_GRAPH } from '../src/knowledge.ts'
 import ResearchKnowledgeEvidence from '../src/knowledge-evidence-plugin.ts'
 import { pathToFileURL } from 'node:url'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
@@ -642,7 +644,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(await skills()).toContain('research-knowledge')
     const started = Promise.withResolvers<boolean>()
     const inFlight = ctx!.researchKnowledge.run(signal, async (_engine, workSignal) => new Promise<void>((_resolve, reject) => {
-      workSignal.addEventListener('abort', () => { reject(workSignal.reason) }, { once: true })
+      workSignal.addEventListener('abort', () => { reject(new Error(String(workSignal.reason))) }, { once: true })
       started.resolve(true)
     }))
     const cancelled = expect(inFlight).rejects.toThrow(/disabled/)
@@ -684,24 +686,33 @@ describe('the research service records; it never drives the agent', () => {
     expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true } })
     expect(JSON.parse((await run('graph-status')).content ?? '{}')).toMatchObject({ modules: { map: true, evidence: true } })
     expect((await run('evidence-graph')).evidenceGraph).toMatchObject({ question: 'Does it scale?', claims: [], sources: [] })
-    expect(await run('map-view')).toMatchObject({ mapView: { built: false } })
-    expect(await run('map-overlay')).toMatchObject({ mapOverlay: { built: false } })
+    const view = (await run('map-view')).mapView
+    expect(view).toMatchObject({ built: true, graph: { name: 'ai', papers: 29240 } })
+    if (!view?.built) throw new Error('the map is built')
+    expect(Buffer.from(view.points, 'base64')).toHaveLength(29240 * 4)
+    expect(Buffer.from(view.regionOf, 'base64')).toHaveLength(29240)
+    expect(view.regions.length).toBeGreaterThan(10)
+    // Without a recall the brief stands for the idea; nothing is imported, recalled or marked yet.
+    expect((await run('map-overlay')).mapOverlay).toMatchObject({ built: true, idea: { text: 'Does it scale?', source: 'brief' }, library: [], recalled: [], marks: [] })
+    const papers = await service.execute({ action: 'map-papers', projectId: project.id, indices: [0, 99999] }, signal, 'user')
+    expect(papers.mapPapers).toEqual([expect.objectContaining({ index: 0, title: expect.any(String) as unknown })])
 
     await toggle('knowledge-evidence', true)
     expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: false } })
     await expect(run('evidence-graph')).rejects.toThrow(/Evidence graph plugin is disabled/)
-    expect((await run('map-view')).mapView).toEqual({ built: false })
+    expect((await run('map-view')).mapView).toMatchObject({ built: true })
     await toggle('knowledge-evidence', false)
 
     await toggle('knowledge-map', true)
     expect(await modules()).toEqual({ enabled: true, modules: { map: false, evidence: true } })
     for (const action of ['map-view', 'map-overlay'] as const) await expect(run(action)).rejects.toThrow(/Domain map plugin is disabled/)
+    await expect(service.execute({ action: 'map-papers', projectId: project.id, indices: [0] }, signal, 'user')).rejects.toThrow(/Domain map plugin is disabled/)
     expect((await run('evidence-graph')).evidenceGraph?.question).toBe('Does it scale?')
     await toggle('knowledge-map', false)
 
     // Map work in flight is cancelled with its plugin.
     const started = Promise.withResolvers<boolean>()
-    const inFlight = ctx!.researchKnowledgeMap.run(signal, async workSignal => new Promise<void>((_resolve, reject) => {
+    const inFlight = ctx!.researchKnowledgeMap.run(signal, async (_engine, workSignal) => new Promise<void>((_resolve, reject) => {
       workSignal.addEventListener('abort', () => { reject(new Error(String(workSignal.reason))) }, { once: true })
       started.resolve(true)
     }))
@@ -720,6 +731,93 @@ describe('the research service records; it never drives the agent', () => {
     await toggle('knowledge-provider', false)
     expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true } })
     expect(await readFile(marker, 'utf8')).toBe('retained research data')
+  })
+
+  it('places the agent\'s recall, the library and the person\'s marks over the domain map', async () => {
+    root = await temporaryRoot('research-map-overlay-')
+    const { service } = await boot(new MemoryMediaPool())
+    const project = await service.create({ title: 'Overlay', root: join(root, 'paper'), brief: '' })
+    const map = ctx!.researchKnowledgeMap
+    // Without a recall or a brief there is no idea to place.
+    expect(await map.overlay({ root: project.root, brief: '', evidence: [] }, undefined, signal)).toEqual({ built: true, library: [], recalled: [], marks: [] })
+    const recall = await service.execute({ action: 'recall', projectId: project.id, query: 'block sparse attention long context accuracy' }, signal, 'agent')
+    const hits = (JSON.parse(recall.content ?? '{}') as { closestPapers: { id: string; title: string }[] }).closestPapers
+    const first = hits[0]!
+    const overlay = await map.overlay({ root: project.root, brief: 'ignored once a recall exists', evidence: [] }, undefined, signal)
+    if (!overlay.built) throw new Error('the map is built')
+    expect(overlay.idea).toMatchObject({ text: 'block sparse attention long context accuracy', source: 'recall', placement: { confidence: expect.any(Number) as unknown } })
+    expect(overlay.recalled.length).toBeGreaterThan(0)
+    expect(overlay.recalled[0]?.query).toBe('block sparse attention long context accuracy')
+
+    // Marks are recorded with who made them, named, and shown on the map.
+    const marked = await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: first.id }, verdict: 'pin', note: 'closest' }, signal, 'user')
+    expect(marked.marks).toEqual([expect.objectContaining({ id: `ai:paper:${first.id}`, verdict: 'pin', by: 'user', note: 'closest', title: first.title, index: expect.any(Number) as unknown })])
+    expect((await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: first.id }, verdict: 'pin', note: 'closest' }, signal, 'user')).message).toMatch(/^Already marked/)
+    await expect(service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: 'no-such-paper' }, verdict: 'irrelevant' }, signal, 'agent'))
+      .rejects.toThrow(/No paper "no-such-paper" in the built-in graph/)
+    await expect(service.execute({ action: 'mark', projectId: project.id, target: { kind: 'pattern', graph: 'project', id: 'p' }, verdict: 'pin' }, signal, 'agent'))
+      .rejects.toThrow(/in the project graph/)
+    expect((await map.overlay({ root: project.root, brief: '', evidence: [] }, undefined, signal) as { marks: unknown[] }).marks).toHaveLength(1)
+    expect((await service.execute({ action: 'marks', projectId: project.id }, signal, 'agent')).message).toBe('1 mark(s)')
+    expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${first.id}` }, signal, 'user')).marks).toEqual([])
+    expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${first.id}` }, signal, 'user')).message).toMatch(/^No mark/)
+
+    // A reference the built-in graph holds sits on its paper; another is placed from its words; only literature is placed.
+    const literature = (id: string, title: string, text: string) => ({
+      id, title, kind: 'literature' as const, path: `.research/sources/${id}.json`, sha256: 'x', revision: 1, importedAt: '', coverage: 'abstract' as const,
+      verified: true, stale: false, chunks: text === '' ? [] : [{ text, locator: {} }],
+    })
+    await mkdir(join(root, 'fresh'), { recursive: true })
+    const library = await map.overlay({ root: join(root, 'fresh'), brief: '', evidence: [
+      literature('a', first.title, ''),
+      literature('b', 'Our own note', 'block sparse attention selects blocks by content to keep long context accuracy'),
+      { ...literature('c', 'Data table', 'numbers'), kind: 'file' },
+    ] as never }, undefined, signal)
+    if (!library.built) throw new Error('the map is built')
+    expect(library.library.map(item => item.evidenceId)).toEqual(['a', 'b'])
+    expect(library.library[0]?.placement).toMatchObject({ exact: true, confidence: 1 })
+    expect(library.library[1]?.placement?.exact).toBeUndefined()
+    expect(library.library[1]?.placement?.nearest.length).toBeGreaterThan(0)
+
+    // Words the map does not hold place nothing, and say why; past MAX_LIBRARY a reference is listed unplaced.
+    const words = join(root, 'words')
+    await mkdir(words, { recursive: true })
+    const unplaced = await map.overlay({ root: words, brief: '只用中文写的想法', evidence: [
+      literature('zh', '中文标题', '中文摘要'),
+      ...Array.from({ length: MAX_LIBRARY }, (_, at) => literature(`n${at}`, `Reference ${at}`, 'sparse attention')),
+    ] as never }, undefined, signal)
+    if (!unplaced.built) throw new Error('the map is built')
+    expect(unplaced.idea).toMatchObject({ source: 'brief', note: expect.stringMatching(/too few words/) as unknown })
+    expect(unplaced.idea).not.toHaveProperty('placement')
+    expect(unplaced.library[0]).not.toHaveProperty('placement')
+    expect(unplaced.library.at(-1)).not.toHaveProperty('placement')
+    expect(unplaced.library[1]?.placement).toBeDefined()
+    // A brief the map can place stands for the idea until the agent recalls.
+    const placed = await map.overlay({ root: words, brief: 'block sparse attention for long context', evidence: [] }, undefined, signal)
+    expect(placed).toMatchObject({ idea: { source: 'brief', placement: { confidence: expect.any(Number) as unknown } } })
+
+    // A recall that matched nothing leaves the idea unplaced; papers repeated across recalls, or gone from the graph, show once.
+    await appendRecall(words, 'zzqx', { papers: [], patterns: [] })
+    expect((await map.overlay({ root: words, brief: '', evidence: [] }, undefined, signal) as { idea: unknown }).idea).toEqual({ text: 'zzqx', source: 'recall' })
+    await appendRecall(words, 'twice', { papers: [{ index: 3, score: 2 }, { index: 3, score: 1 }, { index: 999999, score: 1 }], patterns: [{ index: 99999, score: 1 }] })
+    expect((await map.overlay({ root: words, brief: '', evidence: [] }, undefined, signal) as { recalled: unknown[] }).recalled).toHaveLength(1)
+
+    // Marks on the project's own graph are named from it.
+    await write(join(words, PROJECT_GRAPH), JSON.stringify({ version: 1, name: 'project', description: 'own', domains: ['d'],
+      patterns: [{ id: 'own0', name: 'Own pattern', domain: 0, subDomains: [], size: 1, coherence: null, tier: '', summary: '', details: '', ideas: [], exemplars: [0], works: [] }],
+      papers: [{ id: 'q0', title: 'Own paper', pattern: 0, domain: 0, idea: '', problem: '', solution: '', story: '', score: null, similar: [] }] }))
+    const words2 = await service.create({ title: 'Words', root: words, brief: '' })
+    await service.execute({ action: 'mark', projectId: words2.id, target: { kind: 'pattern', graph: 'project', id: 'own0' }, verdict: 'pin' }, signal, 'user')
+    expect((await map.overlay({ root: words, brief: '', evidence: [] }, undefined, signal) as { marks: { title?: string }[] }).marks[0]?.title).toBe('Own pattern')
+
+    // A damaged map asset fails the read and is loaded again on the next one.
+    const internals = map as unknown as { assetPath: string; map: unknown; encoded: unknown }
+    const asset = internals.assetPath
+    Object.defineProperty(map, 'assetPath', { value: join(root, 'missing.bin'), configurable: true })
+    internals.map = undefined; internals.encoded = undefined
+    await expect(map.view(signal)).rejects.toThrow(/ENOENT/)
+    Object.defineProperty(map, 'assetPath', { value: asset, configurable: true })
+    expect(await map.view(signal)).toMatchObject({ built: true })
   })
 
   it('composes without the sub-plugins: the snapshot reports them off and the project is untouched', async () => {

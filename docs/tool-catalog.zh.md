@@ -3066,7 +3066,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_knowledge`
 
-科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。graph-view {query?, source?, domain?, pattern?}：查看研究模式、论文及其已记录的关系。novelty {claim, references?, path?}：在任意研究模式下，将研究主张与参考文本 [{title,text,url?}] 及图谱中最接近的论文比较。Spark to Paper 项目也可使用 novelty {story?, path?} 读取 story.json 和 retrieved_papers.json，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。
+科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。graph-view {query?, source?, domain?, pattern?}：查看研究模式、论文及其已记录的关系。novelty {claim, references?, path?}：在任意研究模式下，将研究主张与参考文本 [{title,text,url?}] 及图谱中最接近的论文比较。Spark to Paper 项目也可使用 novelty {story?, path?} 读取 story.json 和 retrieved_papers.json，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。标记：用户（以及你）可以标记一篇论文或一个模式 {target: {kind, graph, id}, verdict: pin|irrelevant, note?}；recall 会遵从每一条标记：置顶的排在最前，标为无关的从结果中移除（annotations.skipped 说明原因），邻近的结果移动几位，每个结果都带有 `why`。请告诉用户哪些标记影响了这次召回（annotations.applied）。marks 列出所有标记；unmark {id} 删除一条。只在用户要求或有明确理由时才标记；用户的标记优先于你的标记。
 
 ```json
 {
@@ -3080,7 +3080,10 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
         "recall",
         "novelty",
         "build-graph",
-        "name-patterns"
+        "name-patterns",
+        "mark",
+        "unmark",
+        "marks"
       ]
     },
     "projectId": {
@@ -3161,6 +3164,49 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "names": {
       "type": "string",
       "description": "name-patterns: the cluster names file (default cluster_meta.json)"
+    },
+    "target": {
+      "type": "object",
+      "description": "mark: what to mark, as graph-view and recall name it",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "A paper or a pattern",
+          "enum": [
+            "paper",
+            "pattern"
+          ]
+        },
+        "graph": {
+          "type": "string",
+          "description": "ai is the built-in graph; project is the research's own",
+          "enum": [
+            "ai",
+            "project"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "description": "The paper's or pattern's id"
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "description": "mark: pin keeps it in recall; irrelevant takes it out",
+      "enum": [
+        "pin",
+        "irrelevant"
+      ]
+    },
+    "note": {
+      "type": "string",
+      "description": "mark: why, in a few words (at most 280 characters)"
+    },
+    "id": {
+      "type": "string",
+      "description": "unmark: the mark id, <graph>:<kind>:<id>"
     }
   },
   "required": [

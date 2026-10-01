@@ -896,16 +896,109 @@ export interface EvidenceGraphPage {
   summary: { claims: number } & Record<EvidenceClaimStatus, number>
 }
 
-// The two map pages are placeholders: the map plugin answers `built: false` until its map data is wired in.
-// Replace both together with the map plugin's view and overlay, and update the map view in the client with them.
-/** The domain map of the research field, as the map plugin serves it. */
-export interface MapViewPage {
-  built: false
+/** A labelled region of the domain map. */
+export interface MapRegionView {
+  index: number
+  /** One to three keywords joined by " / ", shown at (x, y). */
+  label: string
+  keywords: string[]
+  papers: number
+  /** The region's most common domain. */
+  domain: string
+  x: number
+  y: number
 }
 
-/** The research's idea, library and recall placed over the domain map. */
-export interface MapOverlayPage {
-  built: false
+/**
+ * An area that holds few papers in this map although the regions around it hold many. It is a fact about
+ * the 2D drawing of this corpus, recurring across layout runs, and never evidence that a topic is unexplored.
+ */
+export interface MapGapView {
+  index: number
+  x: number
+  y: number
+  /** Share of the map's area. */
+  area: number
+  /** Labels of the regions around it, largest share first. */
+  borders: string[]
+  /** Layout runs, out of `runs - 1` others, in which it recurs. */
+  recurs: number
+  runs: number
+  /** One sentence worded as a fact about the map. */
+  description: string
+}
+
+/**
+ * The domain map of the research field: one point per paper of the built-in graph, nearby points being
+ * similar papers. Coordinates are in [0, 1], x rightward and y downward; only nearby distances mean much.
+ */
+export type MapViewPage = { built: false } | {
+  built: true
+  graph: { name: string; papers: number; patterns: number }
+  /** Paper positions in graph order as base64 of little-endian uint16 pairs (x, y), each value / 65535. */
+  points: string
+  /** Region per paper in graph order as base64 of uint8, 255 where no region reaches. */
+  regionOf: string
+  regions: MapRegionView[]
+  gaps: MapGapView[]
+}
+
+/** Where a text lands on the map and how much the evidence agrees. */
+export interface MapPlacementView {
+  x: number
+  y: number
+  /** Share of the evidence within reach of the point: near 1 when it agrees, low when it splits. */
+  confidence: number
+  /** The region at the point. */
+  region?: string | undefined
+  /** Other concentrations of the evidence, largest share first. */
+  alternatives: { x: number; y: number; share: number }[]
+  /** The papers that put it there, heaviest first (at most five). */
+  nearest: { index: number; title: string }[]
+  /** Share of the corpus's papers whose surroundings are at most this crowded (0 sparse, 1 crowded). */
+  crowding: number
+  /** The text matched a paper of the map by title and sits exactly on it. */
+  exact?: boolean | undefined
+}
+
+/** One mark of the knowledge graph as the map and the panels show it. */
+export interface KnowledgeMarkView {
+  id: string
+  target: { kind: 'pattern' | 'paper'; graph: 'ai' | 'project'; id: string }
+  verdict: 'pin' | 'irrelevant'
+  note?: string | undefined
+  by: 'user' | 'agent'
+  at: string
+  /** The marked paper's or pattern's name, when it is still in its graph. */
+  title?: string | undefined
+  /** The marked paper's index in the built-in graph, for drawing it on the map. */
+  index?: number | undefined
+}
+
+/** What a research places over the domain map. */
+export type MapOverlayPage = { built: false } | {
+  built: true
+  /** The research's idea: the agent's latest recall query, else the brief; absent when there is neither. */
+  idea?: { text: string; source: 'recall' | 'brief'; placement?: MapPlacementView | undefined; note?: string | undefined } | undefined
+  /** The research's imported literature, each placed when the map can place it. */
+  library: { evidenceId: string; title: string; placement?: MapPlacementView | undefined }[]
+  /** Papers of the built-in graph the agent's recent recalls returned, most recent first. */
+  recalled: { index: number; title: string; query: string }[]
+  /** The research's marks on built-in papers and patterns. */
+  marks: KnowledgeMarkView[]
+}
+
+/** A paper of the domain map, for its hover card and detail. */
+export interface MapPaperView {
+  index: number
+  id: string
+  title: string
+  idea: string
+  story: string
+  url?: string | undefined
+  pattern?: string | undefined
+  region?: string | undefined
+  score: number | null
 }
 
 /** Command result or acknowledgement; `jobId` identifies asynchronous work whose result appears in a ResearchTask. */
@@ -924,6 +1017,8 @@ export interface ResearchResponse {
   evidenceGraph?: EvidenceGraphPage | undefined
   mapView?: MapViewPage | undefined
   mapOverlay?: MapOverlayPage | undefined
+  mapPapers?: MapPaperView[] | undefined
+  marks?: KnowledgeMarkView[] | undefined
   board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
@@ -1082,6 +1177,14 @@ export type ResearchCommand =
   | { action: 'map-view'; projectId: ProjectId }
   /** The research's idea, library and recall placed over the domain map; needs the domain map plugin. */
   | { action: 'map-overlay'; projectId: ProjectId }
+  /** Details of up to 64 papers of the domain map, by their index in the built-in graph; needs the domain map plugin. */
+  | { action: 'map-papers'; projectId: ProjectId; indices: number[] }
+  /** Mark a paper or pattern of a knowledge graph: `pin` keeps it in recall, `irrelevant` takes it out; replaces an earlier mark on it. */
+  | { action: 'mark'; projectId: ProjectId; target: { kind: 'pattern' | 'paper'; graph: 'ai' | 'project'; id: string }; verdict: 'pin' | 'irrelevant'; note?: string | undefined }
+  /** Remove a mark by its id (`<graph>:<kind>:<id>`); removing one that is gone is not an error. */
+  | { action: 'unmark'; projectId: ProjectId; id: string }
+  /** The research's marks with the names of what they mark. */
+  | { action: 'marks'; projectId: ProjectId }
   /**
    * The person's 新研究 (New research): the one untouched draft research, or a
    * new one at `<research home>/<yyyy-mm-dd>-<n>` (the next free `n`) with a

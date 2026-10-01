@@ -3054,7 +3054,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_knowledge`
 
-Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. graph-view {query?, source?, domain?, pattern?}: inspect patterns, papers and their recorded relationships. novelty {claim, references?, path?}: compares a research claim with references [{title,text,url?}] and the closest graph papers in any mode. Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.
+Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. graph-view {query?, source?, domain?, pattern?}: inspect patterns, papers and their recorded relationships. novelty {claim, references?, path?}: compares a research claim with references [{title,text,url?}] and the closest graph papers in any mode. Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which. Marks: the person (and you) can mark a paper or pattern {target: {kind, graph, id}, verdict: pin|irrelevant, note?}; recall honours every mark: pins come first, irrelevant targets leave the results (annotations.skipped says why), nearby results move a few places, and each result carries `why`. Tell the person which marks shaped a recall (annotations.applied). marks lists them; unmark {id} removes one. Mark only on the person's request or with a stated reason; the person's marks win over yours.
 
 ```json
 {
@@ -3068,7 +3068,10 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
         "recall",
         "novelty",
         "build-graph",
-        "name-patterns"
+        "name-patterns",
+        "mark",
+        "unmark",
+        "marks"
       ]
     },
     "projectId": {
@@ -3149,6 +3152,49 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
     "names": {
       "type": "string",
       "description": "name-patterns: the cluster names file (default cluster_meta.json)"
+    },
+    "target": {
+      "type": "object",
+      "description": "mark: what to mark, as graph-view and recall name it",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "A paper or a pattern",
+          "enum": [
+            "paper",
+            "pattern"
+          ]
+        },
+        "graph": {
+          "type": "string",
+          "description": "ai is the built-in graph; project is the research's own",
+          "enum": [
+            "ai",
+            "project"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "description": "The paper's or pattern's id"
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "description": "mark: pin keeps it in recall; irrelevant takes it out",
+      "enum": [
+        "pin",
+        "irrelevant"
+      ]
+    },
+    "note": {
+      "type": "string",
+      "description": "mark: why, in a few words (at most 280 characters)"
+    },
+    "id": {
+      "type": "string",
+      "description": "unmark: the mark id, <graph>:<kind>:<id>"
     }
   },
   "required": [

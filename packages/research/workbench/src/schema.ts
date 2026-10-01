@@ -2,6 +2,7 @@
 import { isAbsolute } from 'node:path'
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
+import { annotationTargetSchema, MAX_NOTE_LENGTH } from './knowledge-annotations.ts'
 import type { Autonomy, CheckId, ProjectId, ResearchProject, ResearchPreferences, ResearchTask } from './types.ts'
 
 const id = z.string().min(1)
@@ -444,6 +445,11 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ ...base, action: z.literal('evidence-graph') }),
   z.object({ ...base, action: z.literal('map-view') }),
   z.object({ ...base, action: z.literal('map-overlay') }),
+  z.object({ ...base, action: z.literal('map-papers'), indices: z.array(z.number().int().min(0)).min(1).max(64) }),
+  z.object({ ...base, action: z.literal('mark'), target: annotationTargetSchema, verdict: z.enum(['pin', 'irrelevant']),
+    note: z.string().max(MAX_NOTE_LENGTH).optional() }),
+  z.object({ ...base, action: z.literal('unmark'), id: id.max(600) }),
+  z.object({ ...base, action: z.literal('marks') }),
   z.object({ action: z.literal('start-new') }),
   z.object({ ...base, action: z.literal('relocate'), root: id, confirmNonEmpty: z.boolean().optional() }),
   z.object({ ...base, action: z.literal('discard-draft') }),

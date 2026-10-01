@@ -14,6 +14,10 @@ import { gunzipSync } from 'node:zlib'
 import { z } from 'zod'
 import { agglomerate, Bm25, cosine, fuse, kMeans, similarityMatrix, termVectors, tokens, type Vector } from './clustering.ts'
 import { atomicWrite, errorText, projectPath, readText } from './files.ts'
+import {
+  applyAnnotations, describeAnnotations, readAnnotations, type AnnotationSummary, type AnnotationWhy, type GraphSource,
+  type RecallCandidate, type SkippedItem,
+} from './knowledge-annotations.ts'
 import type { KnowledgeGraphNode, KnowledgeGraphPage, KnowledgeGraphQuery, KnowledgeReference } from './types.ts'
 
 const tierSchema = z.enum(['A', 'B', 'C', ''])
@@ -168,7 +172,13 @@ function index(file: GraphFile, source: LoadedGraph['source']): LoadedGraph {
   }
 }
 
-function paperUrl(graph: GraphFile, paper: GraphPaper): string | undefined {
+/**
+ * A paper's page: its own URL, else the graph's URL template filled with its id.
+ * @param graph - the graph the paper belongs to.
+ * @param paper - the paper.
+ * @returns the URL, or undefined when neither is recorded.
+ */
+export function paperUrl(graph: GraphFile, paper: GraphPaper): string | undefined {
   return paper.url ?? graph.paperUrl?.replace('{id}', encodeURIComponent(paper.id))
 }
 
@@ -190,6 +200,8 @@ export interface RecalledPattern {
   exemplars: { title: string; story: string; url?: string; score: number | null }[]
   /** Papers the query matched that use this pattern: why it was recalled. */
   matchedPapers: string[]
+  /** How the person's or the agent's marks moved it; present only when the project has marks. */
+  why?: AnnotationWhy
 }
 
 /** A paper close to the query or the story. */
@@ -202,6 +214,17 @@ export interface ClosePaper {
   pattern: string | null
   url?: string
   score: number | null
+  /** How the marks moved it; present only when the project has marks. */
+  why?: AnnotationWhy
+}
+
+/** What the project's marks changed in one recall. */
+export interface RecallAnnotations {
+  /** One sentence the agent can repeat: how many marks applied, and what they did. */
+  applied: string
+  /** Results a mark took out, with its reason. */
+  skipped: SkippedItem[]
+  summary: AnnotationSummary
 }
 
 /** Ranked patterns and nearby papers with the ranking method and any embedding-fallback explanation. */
@@ -210,6 +233,8 @@ export interface RecallResult {
   note: string
   patterns: RecalledPattern[]
   closestPapers: ClosePaper[]
+  /** Present only when the project has marks: what they changed. */
+  annotations?: RecallAnnotations
 }
 
 /** The built-in graph's rankings behind one recall, by index into that graph's papers and patterns. */
@@ -351,6 +376,26 @@ export class KnowledgeBase {
     clearTimeout(this.timer)
     this.builtin = undefined
     this.projects.clear()
+  }
+
+  /**
+   * The shipped graph, as parsed; the domain map reads paper titles and patterns from it.
+   * @returns the built-in graph file.
+   */
+  async builtinGraph(): Promise<GraphFile> {
+    this.touch()
+    return (await this.loadBuiltin()).file
+  }
+
+  /**
+   * One graph a project can mark: the built-in one, or the project's own.
+   * @param root - the project root.
+   * @param source - which graph.
+   * @returns the graph file, or undefined when the project has no graph of its own.
+   */
+  async graphOf(root: string, source: 'ai' | 'project'): Promise<GraphFile | undefined> {
+    this.touch()
+    return source === 'ai' ? (await this.loadBuiltin()).file : (await this.loadProject(root))?.file
   }
 
   private loadBuiltin(): Promise<LoadedGraph> {
@@ -554,11 +599,26 @@ export class KnowledgeBase {
     if (warnings.length) note += ` Unavailable graphs: ${warnings.join('; ')}.`
     const byName = new Map(graphs.map(graph => [graph.source, graph]))
     const ranked = [...fuse(rankings)].sort((a, b) => b[1] - a[1])
-    const fused = ranked.slice(0, topK)
-    const patterns = fused.map(([key, score]): RecalledPattern => {
-      const [source, at] = key.split(':') as [LoadedGraph['source'], string]
+    const rankedPapers = [...fuse(paperRankings)].sort((a, b) => b[1] - a[1])
+    const marks = await readAnnotations(root)
+    if (marks.problems.length) note += ` Marks: ${marks.problems.join('; ')}.`
+    const candidate = ([key, score]: [string, number]): RecallCandidate => {
+      const [source, at] = key.split(':') as [GraphSource, string]
+      return { graph: source, index: Number(at), score }
+    }
+    // Without marks the result is exactly what it was before marks existed.
+    const annotated = marks.annotations.length === 0 ? undefined : applyAnnotations({
+      graphs: Object.fromEntries(graphs.map(graph => [graph.source, graph.file])),
+      annotations: marks.annotations,
+      patterns: ranked.map(candidate),
+      papers: rankedPapers.map(candidate),
+      limits: { patterns: topK, papers: 8 },
+    })
+    const fused: (RecallCandidate & { why?: AnnotationWhy })[] = annotated?.patterns ?? ranked.slice(0, topK).map(candidate)
+    const patterns = fused.map(({ graph: source, index: at, score, why }): RecalledPattern => {
+      const key = `${source}:${at}`
       const { file } = byName.get(source) as LoadedGraph
-      const pattern = file.patterns[Number(at)] as GraphPattern
+      const pattern = file.patterns[at] as GraphPattern
       return {
         graph: file.name, id: pattern.id, name: pattern.name, tier: pattern.tier, domain: file.domains[pattern.domain] as string,
         subDomains: pattern.subDomains.slice(0, 8), size: pattern.size, coherence: pattern.coherence, score: Math.round(score * 1e5) / 1e5,
@@ -571,13 +631,17 @@ export class KnowledgeBase {
           return { title: paper.title, story: paper.story, ...url ? { url } : {}, score: paper.score }
         }),
         matchedPapers: (matched.get(key) ?? []).slice(0, 3),
+        ...why === undefined ? {} : { why },
       }
     })
-    const closestPapers = [...fuse(paperRankings)].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([key]) => {
-      const [source, at] = key.split(':') as [LoadedGraph['source'], string]
-      return closePaper(byName.get(source) as LoadedGraph, Number(at))
-    })
+    const closest: (RecallCandidate & { why?: AnnotationWhy })[] = annotated?.papers ?? rankedPapers.slice(0, 8).map(candidate)
+    const closestPapers = closest.map(({ graph: source, index, why }) => ({
+      ...closePaper(byName.get(source) as LoadedGraph, index), ...why === undefined ? {} : { why },
+    }))
     const result: RecallResult = { basis, note, patterns, closestPapers }
+    if (annotated) {
+      result.annotations = { applied: describeAnnotations(annotated.summary), skipped: annotated.skipped, summary: annotated.summary }
+    }
     if (builtinPapers) {
       recalledIndices.set(result, {
         papers: builtinPapers,

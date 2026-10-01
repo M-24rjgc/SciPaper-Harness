@@ -1995,22 +1995,28 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'The domain map of the research field, shared by all research modes in one profile.',
     methods: [
       {
-        signature: 'run<T>(signal: AbortSignal, work: (signal: AbortSignal) => Promise<T>): Promise<T>',
-        description: 'Execute map work within both caller and plugin lifetimes.',
-        parameters: [{ name: 'signal', description: 'caller cancellation.' }, { name: 'work', description: 'the operation; it receives a signal that fires on either cancellation.' }],
+        signature: 'run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) => Promise<T>): Promise<T>',
+        description: 'Execute map work within both caller and plugin lifetimes, with the graph engine.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }, { name: 'work', description: 'the operation; it receives the engine and a signal that fires on either cancellation.' }],
         returns: 'the operation\'s result.',
       },
       {
         signature: 'view(signal: AbortSignal): Promise<MapViewPage>',
-        description: 'Read the domain map of the field around a research.',
+        description: 'The domain map of the field, encoded once per loaded map.',
         parameters: [{ name: 'signal', description: 'caller cancellation.' }],
-        returns: 'the map, or the page that says it is not built.',
+        returns: 'the map page.',
       },
       {
-        signature: 'overlay(signal: AbortSignal): Promise<MapOverlayPage>',
-        description: 'Read what a research places over the domain map: its idea, its library and what the agent recalled.',
-        parameters: [{ name: 'signal', description: 'caller cancellation.' }],
-        returns: 'the overlay, or the page that says the map is not built.',
+        signature: 'papers(indices: readonly number[], signal: AbortSignal): Promise<MapPaperView[]>',
+        description: 'Details of papers of the map, for a hover card.',
+        parameters: [{ name: 'indices', description: 'paper indices in the built-in graph.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'their details, unknown indices left out.',
+      },
+      {
+        signature: 'overlay(project: Pick<ResearchProject, \'root\' | \'brief\' | \'evidence\'>, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapOverlayPage>',
+        description: 'What a research places over the map: its idea (the agent\'s latest recall query, else the brief), its imported literature, the papers its recent recalls returned, and its marks.',
+        parameters: [{ name: 'project', description: 'the research record.' }, { name: 'embedder', description: 'semantic ranking for placing the brief, when configured.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the overlay.',
       },
     ],
   },
@@ -4732,6 +4738,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AgentStatus = \'idle\' | \'running\';',
   },
   {
+    name: 'AnnotationLink',
+    declaration: 'export interface AnnotationLink {\n    mark: string;\n    title: string;\n    note?: string;\n    relation: \'similar\' | \'in-pattern\' | \'members\';\n    hops?: number;\n    papers?: number;\n}',
+  },
+  {
+    name: 'AnnotationSummary',
+    declaration: 'export interface AnnotationSummary {\n    marks: number;\n    applied: number;\n    orphaned: number;\n    orphanedIds: string[];\n    unavailable: number;\n    pinned: number;\n    pinsNotShown: number;\n    skipped: number;\n    demoted: number;\n    boosted: number;\n}',
+  },
+  {
+    name: 'AnnotationWhy',
+    declaration: 'export type AnnotationWhy = {\n    kind: \'pinned\';\n    mark: string;\n    by: \'user\' | \'agent\';\n    note?: string;\n    recalled: boolean;\n} | {\n    kind: \'demoted\' | \'boosted\';\n    shift: number;\n    penalty: number;\n    boost: number;\n    nearest: AnnotationLink;\n    counter?: AnnotationLink;\n    marks: number;\n} | {\n    kind: \'unchanged\';\n};',
+  },
+  {
     name: 'ApiKeyRecord',
     declaration: 'export interface ApiKeyRecord {\n    readonly kind: \'api-key\';\n    readonly key?: string;\n    readonly env?: Readonly<Record<string, string>>;\n}',
   },
@@ -5041,7 +5059,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ClosePaper',
-    declaration: 'export interface ClosePaper {\n    graph: string;\n    id: string;\n    title: string;\n    idea: string;\n    story: string;\n    pattern: string | null;\n    url?: string;\n    score: number | null;\n}',
+    declaration: 'export interface ClosePaper {\n    graph: string;\n    id: string;\n    title: string;\n    idea: string;\n    story: string;\n    pattern: string | null;\n    url?: string;\n    score: number | null;\n    why?: AnnotationWhy;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -5768,6 +5786,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GrantRecord {\n    readonly kind: \'grant\';\n    readonly payload: unknown;\n}',
   },
   {
+    name: 'GraphFile',
+    declaration: 'export type GraphFile = z.infer<typeof graphSchema>;',
+  },
+  {
+    name: 'GraphSource',
+    declaration: 'export type GraphSource = \'ai\' | \'project\';',
+  },
+  {
     name: 'HostConnectionFetch',
     declaration: 'export interface HostConnectionFetch {\n    register(route: ConnectionFetchRoute): () => Promise<void>;\n}',
   },
@@ -6013,7 +6039,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KnowledgeBase',
-    declaration: 'export class KnowledgeBase {\n    constructor(private readonly builtinPath: string, private readonly idleMs = IDLE_MS);\n    dispose(): void;\n    async view(root: string, request: KnowledgeGraphQuery): Promise<KnowledgeGraphPage>;\n    async status(root: string, embedding: string | undefined): Promise<Record<string, unknown>>;\n    async recall(root: string, query: string, topK: number, embedder: Embedder | undefined, signal: AbortSignal): Promise<RecallResult>;\n    async novelty(root: string, storyPath: string, reportPath: string, embedder: Embedder | undefined, signal: AbortSignal, limit: number, input?: {\n        claim: string;\n        references?: KnowledgeReference[] | undefined;\n    }): Promise<NoveltyReport>;\n    async build(root: string, papersPath: string, domain: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<BuildResult>;\n    async namePatterns(root: string, namesPath: string, limit: number, signal?: AbortSignal): Promise<NameResult>;\n}',
+    declaration: 'export class KnowledgeBase {\n    constructor(private readonly builtinPath: string, private readonly idleMs = IDLE_MS);\n    dispose(): void;\n    async builtinGraph(): Promise<GraphFile>;\n    async graphOf(root: string, source: \'ai\' | \'project\'): Promise<GraphFile | undefined>;\n    async view(root: string, request: KnowledgeGraphQuery): Promise<KnowledgeGraphPage>;\n    async status(root: string, embedding: string | undefined): Promise<Record<string, unknown>>;\n    async recall(root: string, query: string, topK: number, embedder: Embedder | undefined, signal: AbortSignal): Promise<RecallResult>;\n    async novelty(root: string, storyPath: string, reportPath: string, embedder: Embedder | undefined, signal: AbortSignal, limit: number, input?: {\n        claim: string;\n        references?: KnowledgeReference[] | undefined;\n    }): Promise<NoveltyReport>;\n    async build(root: string, papersPath: string, domain: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<BuildResult>;\n    async namePatterns(root: string, namesPath: string, limit: number, signal?: AbortSignal): Promise<NameResult>;\n}',
   },
   {
     name: 'KnowledgeGraphNode',
@@ -6026,6 +6052,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'KnowledgeGraphQuery',
     declaration: 'export interface KnowledgeGraphQuery {\n    source?: \'all\' | \'ai\' | \'project\' | undefined;\n    query?: string | undefined;\n    domain?: string | undefined;\n    pattern?: string | undefined;\n    offset?: number | undefined;\n    limit?: number | undefined;\n}',
+  },
+  {
+    name: 'KnowledgeMarkView',
+    declaration: 'export interface KnowledgeMarkView {\n    id: string;\n    target: {\n        kind: \'pattern\' | \'paper\';\n        graph: \'ai\' | \'project\';\n        id: string;\n    };\n    verdict: \'pin\' | \'irrelevant\';\n    note?: string | undefined;\n    by: \'user\' | \'agent\';\n    at: string;\n    title?: string | undefined;\n    index?: number | undefined;\n}',
   },
   {
     name: 'KnowledgeModules',
@@ -6180,12 +6210,28 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'MapGapView',
+    declaration: 'export interface MapGapView {\n    index: number;\n    x: number;\n    y: number;\n    area: number;\n    borders: string[];\n    recurs: number;\n    runs: number;\n    description: string;\n}',
+  },
+  {
     name: 'MapOverlayPage',
-    declaration: 'export interface MapOverlayPage {\n    built: false;\n}',
+    declaration: 'export type MapOverlayPage = {\n    built: false;\n} | {\n    built: true;\n    idea?: {\n        text: string;\n        source: \'recall\' | \'brief\';\n        placement?: MapPlacementView | undefined;\n        note?: string | undefined;\n    } | undefined;\n    library: {\n        evidenceId: string;\n        title: string;\n        placement?: MapPlacementView | undefined;\n    }[];\n    recalled: {\n        index: number;\n        title: string;\n        query: string;\n    }[];\n    marks: KnowledgeMarkView[];\n};',
+  },
+  {
+    name: 'MapPaperView',
+    declaration: 'export interface MapPaperView {\n    index: number;\n    id: string;\n    title: string;\n    idea: string;\n    story: string;\n    url?: string | undefined;\n    pattern?: string | undefined;\n    region?: string | undefined;\n    score: number | null;\n}',
+  },
+  {
+    name: 'MapPlacementView',
+    declaration: 'export interface MapPlacementView {\n    x: number;\n    y: number;\n    confidence: number;\n    region?: string | undefined;\n    alternatives: {\n        x: number;\n        y: number;\n        share: number;\n    }[];\n    nearest: {\n        index: number;\n        title: string;\n    }[];\n    crowding: number;\n    exact?: boolean | undefined;\n}',
+  },
+  {
+    name: 'MapRegionView',
+    declaration: 'export interface MapRegionView {\n    index: number;\n    label: string;\n    keywords: string[];\n    papers: number;\n    domain: string;\n    x: number;\n    y: number;\n}',
   },
   {
     name: 'MapViewPage',
-    declaration: 'export interface MapViewPage {\n    built: false;\n}',
+    declaration: 'export type MapViewPage = {\n    built: false;\n} | {\n    built: true;\n    graph: {\n        name: string;\n        papers: number;\n        patterns: number;\n    };\n    points: string;\n    regionOf: string;\n    regions: MapRegionView[];\n    gaps: MapGapView[];\n};',
   },
   {
     name: 'McpResourceProvider',
@@ -6704,12 +6750,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecallAnnotations',
+    declaration: 'export interface RecallAnnotations {\n    applied: string;\n    skipped: SkippedItem[];\n    summary: AnnotationSummary;\n}',
+  },
+  {
     name: 'RecalledPattern',
-    declaration: 'export interface RecalledPattern {\n    graph: string;\n    id: string;\n    name: string;\n    tier: string;\n    domain: string;\n    subDomains: string[];\n    size: number;\n    coherence: number | null;\n    score: number;\n    summary: string;\n    details: string;\n    ideas: string[];\n    worksWellIn: {\n        domain: string;\n        effectiveness: number;\n        confidence: number;\n    }[];\n    exemplars: {\n        title: string;\n        story: string;\n        url?: string;\n        score: number | null;\n    }[];\n    matchedPapers: string[];\n}',
+    declaration: 'export interface RecalledPattern {\n    graph: string;\n    id: string;\n    name: string;\n    tier: string;\n    domain: string;\n    subDomains: string[];\n    size: number;\n    coherence: number | null;\n    score: number;\n    summary: string;\n    details: string;\n    ideas: string[];\n    worksWellIn: {\n        domain: string;\n        effectiveness: number;\n        confidence: number;\n    }[];\n    exemplars: {\n        title: string;\n        story: string;\n        url?: string;\n        score: number | null;\n    }[];\n    matchedPapers: string[];\n    why?: AnnotationWhy;\n}',
   },
   {
     name: 'RecallResult',
-    declaration: 'export interface RecallResult {\n    basis: \'lexical\' | \'semantic+lexical\';\n    note: string;\n    patterns: RecalledPattern[];\n    closestPapers: ClosePaper[];\n}',
+    declaration: 'export interface RecallResult {\n    basis: \'lexical\' | \'semantic+lexical\';\n    note: string;\n    patterns: RecalledPattern[];\n    closestPapers: ClosePaper[];\n    annotations?: RecallAnnotations;\n}',
   },
   {
     name: 'RecurringScheduleRecord',
@@ -6821,7 +6871,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    mapPapers?: MapPaperView[] | undefined;\n    marks?: KnowledgeMarkView[] | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
   },
   {
     name: 'ResearchSnapshot',
@@ -7730,6 +7780,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillViewOptions',
     declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+  },
+  {
+    name: 'SkippedItem',
+    declaration: 'export interface SkippedItem {\n    kind: \'pattern\' | \'paper\';\n    graph: GraphSource;\n    index: number;\n    mark: string;\n    title: string;\n    note?: string;\n    by: \'user\' | \'agent\';\n    before: number;\n}',
   },
   {
     name: 'SourceLocator',

@@ -851,10 +851,11 @@ export const FOUNDATION_TYPE_NAMES: ReadonlySet<string> = new Set([
 /** Project types deliberately documented outside the subsystems catalog. */
 export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   KnowledgeBase: 'research graph retrieval and lifecycle are owned by packages/research/workbench/src/knowledge.ts and packages/bundle/research-knowledge-bundle/README.md',
+  Embedder: 'the embedding endpoint contract is owned by packages/research/workbench/src/knowledge.ts',
   ...Object.fromEntries([
     'ResearchSnapshot', 'ResearchTask', 'CreateProjectRequest', 'ResearchProject', 'ResearchPreferences',
     'ResearchResponse', 'ResearchCommand', 'ProjectId', 'ResearchModeEvent', 'ResearchStanding', 'ResearchGoal',
-    'EvidenceGraphPage', 'MapViewPage', 'MapOverlayPage',
+    'EvidenceGraphPage', 'MapViewPage', 'MapOverlayPage', 'MapPaperView',
   ].map(name => [name, 'research record contract is owned by packages/research/workbench/src/types.ts'])),
   ProductEvent: 'Desktop event fields are owned by packages/client/product-analytics/README.md and src/events.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',

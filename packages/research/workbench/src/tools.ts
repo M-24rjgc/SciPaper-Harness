@@ -199,7 +199,7 @@ const FAMILIES: Family[] = [
   {
     name: 'research_knowledge',
     title: 'Research knowledge graph',
-    actions: ['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns'],
+    actions: ['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns', 'mark', 'unmark', 'marks'],
     description: 'Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers '
       + 'machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. '
       + 'recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; '
@@ -208,7 +208,11 @@ const FAMILIES: Family[] = [
       + 'Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it '
       + 'writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, '
       + 'base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the '
-      + 'project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which.',
+      + 'project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which. '
+      + 'Marks: the person (and you) can mark a paper or pattern {target: {kind, graph, id}, verdict: pin|irrelevant, note?}; recall honours every '
+      + 'mark: pins come first, irrelevant targets leave the results (annotations.skipped says why), nearby results move a few places, and each '
+      + 'result carries `why`. Tell the person which marks shaped a recall (annotations.applied). marks lists them; unmark {id} removes one. '
+      + 'Mark only on the person\'s request or with a stated reason; the person\'s marks win over yours.',
     fields: {
       query: text('recall / graph-view: the idea as a search-friendly English query'),
       topK: { type: 'integer', description: 'recall: how many patterns (default 8, at most 20)' },
@@ -225,6 +229,14 @@ const FAMILIES: Family[] = [
       papers: text('build-graph: the extracted corpus, JSON lines'),
       domain: text('build-graph: the corpus domain label, e.g. hci'),
       names: text('name-patterns: the cluster names file (default cluster_meta.json)'),
+      target: { type: 'object', description: 'mark: what to mark, as graph-view and recall name it', additionalProperties: false, properties: {
+        kind: { type: 'string', enum: ['paper', 'pattern'], description: 'A paper or a pattern' },
+        graph: { type: 'string', enum: ['ai', 'project'], description: 'ai is the built-in graph; project is the research\'s own' },
+        id: text('The paper\'s or pattern\'s id'),
+      } },
+      verdict: { type: 'string', enum: ['pin', 'irrelevant'], description: 'mark: pin keeps it in recall; irrelevant takes it out' },
+      note: text('mark: why, in a few words (at most 280 characters)'),
+      id: text('unmark: the mark id, <graph>:<kind>:<id>'),
     },
   },
 ]

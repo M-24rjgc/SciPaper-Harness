@@ -33,7 +33,10 @@ import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
 import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
 import { FigureGallery } from './gallery.ts'
-import { createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
+import { builtinIndices, createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder, type KnowledgeBase } from './knowledge.ts'
+import { locateTarget, readAnnotations, removeAnnotation, setAnnotation } from './knowledge-annotations.ts'
+import { markViews } from './knowledge-map-view.ts'
+import { appendRecall } from './knowledge-recall-log.ts'
 import type {} from './knowledge-plugin.ts'
 import type {} from './knowledge-map-plugin.ts'
 import type {} from './knowledge-evidence-plugin.ts'
@@ -50,7 +53,8 @@ import {
   blankRecord, canonicalPath, DRAFT_TITLE, holdsFiles, nextDraftRoot, onlyScaffold, removeEmptyScaffold, resolveResearchHome, SCAFFOLD,
 } from './drafts.ts'
 import type {
-  ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, KnowledgeModules, LiteratureItem, ProjectId,
+  ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, KnowledgeMarkView, KnowledgeModules, LiteratureItem,
+  ProjectId,
   ResearchCommand, ResearchGoal, ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
   ResearchStanding, ResearchTask, VisualReview,
 } from './types.ts'
@@ -89,14 +93,18 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
   | 'board-get' | 'board-update' | 'board-refresh' | 'board-view'
-type KnowledgeAction = 'graph-status' | 'graph-view' | 'recall' | 'novelty' | 'build-graph' | 'name-patterns'
+type KnowledgeAction = 'graph-status' | 'graph-view' | 'recall' | 'novelty' | 'build-graph' | 'name-patterns' | 'mark' | 'unmark' | 'marks'
 type KnowledgeCommand = Extract<ResearchCommand, { action: KnowledgeAction }>
-const KNOWLEDGE_ACTIONS: ReadonlySet<string> = new Set<KnowledgeAction>(['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns'])
+const KNOWLEDGE_ACTIONS: ReadonlySet<string> = new Set<KnowledgeAction>([
+  'graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns', 'mark', 'unmark', 'marks',
+])
+/** Graph commands an example research answers: they read and record nothing in it. */
+const EXAMPLE_KNOWLEDGE_READS: ReadonlySet<string> = new Set<KnowledgeAction>(['graph-status', 'graph-view', 'marks'])
 function isKnowledgeCommand(request: ResearchCommand): request is KnowledgeCommand { return KNOWLEDGE_ACTIONS.has(request.action) }
 /** The commands of the optional knowledge sub-plugins; each one refuses by name while its plugin is off. */
-type ModuleAction = 'evidence-graph' | 'map-view' | 'map-overlay'
+type ModuleAction = 'evidence-graph' | 'map-view' | 'map-overlay' | 'map-papers'
 type ModuleCommand = Extract<ResearchCommand, { action: ModuleAction }>
-const MODULE_ACTIONS: ReadonlySet<string> = new Set<ModuleAction>(['evidence-graph', 'map-view', 'map-overlay'])
+const MODULE_ACTIONS: ReadonlySet<string> = new Set<ModuleAction>(['evidence-graph', 'map-view', 'map-overlay', 'map-papers'])
 function isModuleCommand(request: ResearchCommand): request is ModuleCommand { return MODULE_ACTIONS.has(request.action) }
 /** Why a command of a sub-plugin that is not mounted is refused. */
 const EVIDENCE_DISABLED = 'Evidence graph plugin is disabled. Enable Evidence graph in Plugins to read the question, conclusions and evidence of a research.'
@@ -794,12 +802,12 @@ export class ResearchWorkbench extends TypertRemoteService {
     // An example can be read and checked; nothing is recorded into it, whoever asks.
     const example = isExampleRoot(project.root)
     if (isKnowledgeCommand(request)) {
-      if (example && request.action !== 'graph-status' && request.action !== 'graph-view'
+      if (example && !EXAMPLE_KNOWLEDGE_READS.has(request.action)
         && !(request.action === 'recall' && request.path === undefined)) throw new Error(EXAMPLE_READ_ONLY)
       if (!this.knowledgeEnabled) throw new Error('Knowledge graph plugin is disabled. Continue with literature search, or enable Knowledge graph in Plugins.')
       return actor === 'user' && LONG_ACTIONS.has(request.action)
-        ? this.begin(request.action, project.id, signal => this.runKnowledge(request, signal))
-        : this.clipped(await this.runKnowledge(request, signal))
+        ? this.begin(request.action, project.id, signal => this.runKnowledge(request, signal, actor))
+        : this.clipped(await this.runKnowledge(request, signal, actor))
     }
     if (isModuleCommand(request)) return this.runModule(request, project, signal)
     switch (request.action) {
@@ -1327,7 +1335,7 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /** Execute every graph action through the optional provider, including direct desktop calls. */
-  private runKnowledge(request: KnowledgeCommand, signal: AbortSignal): Promise<ResearchResponse> {
+  private runKnowledge(request: KnowledgeCommand, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse> {
     const provider = this.ctx.get('researchKnowledge')
     if (!provider) throw new Error('Knowledge graph plugin is disabled. Continue with literature search, or enable Knowledge graph in Plugins.')
     const root = this.record(request.projectId).root
@@ -1343,6 +1351,9 @@ export class ResearchWorkbench extends TypertRemoteService {
         case 'recall': {
           const result = await knowledge.recall(root, request.query, request.topK ?? 8, await this.embedder(), signal)
           signal.throwIfAborted()
+          // The domain map shows the agent's recent recalls; an example records nothing.
+          const indices = builtinIndices(result)
+          if (indices !== undefined && !isExampleRoot(root)) await appendRecall(root, request.query, indices)
           if (request.path) await atomicWrite(await projectPath(root, request.path), `${JSON.stringify({ query: request.query, ...result }, null, 1)}\n`)
           return { message: `${result.patterns.length} pattern(s) recalled (${result.basis})${request.path ? `; saved to ${request.path}` : ''}`,
             content: JSON.stringify(result), ...(request.path ? { path: request.path } : {}) }
@@ -1363,8 +1374,38 @@ export class ResearchWorkbench extends TypertRemoteService {
           return { message: result.issues.length ? `Project graph written with ${result.issues.length} problem(s) to fix` : 'Project graph written and valid',
             path: PROJECT_GRAPH, content: JSON.stringify(result) }
         }
+        case 'mark': {
+          const graph = await knowledge.graphOf(root, request.target.graph)
+          if (graph === undefined || locateTarget(graph, request.target).length === 0) {
+            throw new Error(`No ${request.target.kind} "${request.target.id}" in the ${request.target.graph === 'ai' ? 'built-in' : 'project'} graph`)
+          }
+          const change = await setAnnotation(root, {
+            target: request.target, verdict: request.verdict, by: actor, ...request.note === undefined ? {} : { note: request.note },
+          })
+          const marks = await this.markList(knowledge, root)
+          return { message: `${change.changed ? 'Marked' : 'Already marked'} ${request.target.id} ${request.verdict}${change.problems.length ? `; ${change.problems.join('; ')}` : ''}`,
+            marks, content: JSON.stringify(marks) }
+        }
+        case 'unmark': {
+          const change = await removeAnnotation(root, request.id)
+          const marks = await this.markList(knowledge, root)
+          return { message: change.changed ? `Removed the mark ${request.id}` : `No mark ${request.id}`, marks, content: JSON.stringify(marks) }
+        }
+        case 'marks': {
+          const marks = await this.markList(knowledge, root)
+          return { message: `${marks.length} mark(s)`, marks, content: JSON.stringify(marks) }
+        }
       }
     })
+  }
+
+  /** The project's marks, named from the graphs that hold them. */
+  private async markList(knowledge: KnowledgeBase, root: string): Promise<KnowledgeMarkView[]> {
+    const { annotations } = await readAnnotations(root)
+    // A graph that cannot load leaves its marks unnamed rather than hiding them.
+    const ai = await knowledge.builtinGraph().catch(() => undefined)
+    const project = await knowledge.graphOf(root, 'project').catch(() => undefined)
+    return markViews(annotations, { ...ai === undefined ? {} : { ai }, ...project === undefined ? {} : { project } })
   }
 
   /** Execute a command of an optional knowledge sub-plugin; a plugin that is not mounted refuses by its name. */
@@ -1380,12 +1421,20 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'map-view': {
         const provider = this.ctx.get('researchKnowledgeMap')
         if (!provider) throw new Error(MAP_DISABLED)
-        return { message: 'The domain map is not built yet', mapView: await provider.view(signal) }
+        const mapView = await provider.view(signal)
+        return { message: mapView.built ? `Domain map of ${mapView.graph.papers} papers in ${mapView.regions.length} regions` : 'The domain map is not built', mapView }
       }
       case 'map-overlay': {
         const provider = this.ctx.get('researchKnowledgeMap')
         if (!provider) throw new Error(MAP_DISABLED)
-        return { message: 'The domain map is not built yet', mapOverlay: await provider.overlay(signal) }
+        const mapOverlay = await provider.overlay(project, await this.embedder(), signal)
+        return { message: mapOverlay.built ? `${mapOverlay.library.length} reference(s) and ${mapOverlay.recalled.length} recalled paper(s) over the map` : 'The domain map is not built', mapOverlay }
+      }
+      case 'map-papers': {
+        const provider = this.ctx.get('researchKnowledgeMap')
+        if (!provider) throw new Error(MAP_DISABLED)
+        const mapPapers = await provider.papers(request.indices, signal)
+        return { message: `${mapPapers.length} paper(s)`, mapPapers }
       }
     }
   }

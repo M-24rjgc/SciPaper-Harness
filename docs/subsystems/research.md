@@ -121,7 +121,7 @@ Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. W
 
 The graph is optional and split across three plugins of the knowledge bundle, each with its own switch: the engine behind `research_knowledge`, the domain map and the evidence graph. The domain map injects the engine; the evidence graph reads only the project record. A command of a plugin that is off fails with an error naming it, `graph-status` and the snapshot's `knowledge.modules` report which are on, and disabling a plugin deletes no file under `.research`.
 
-The evidence graph (`evidence-graph`) is a pure projection of the project record, computed by `src/knowledge-evidence.ts` and stored nowhere. It returns the research question (the brief, else the title), each claim with its status, the files that carry it and its citations, and the runs, literature and files the claims cite; a run is one node however many of its outputs are cited. A claim's status derives from recorded fields alone. A claim recorded `contradicted` is `contradicted`. A claim that cites nothing is `proposed` when it is a hypothesis and `missing` otherwise. A claim that cites a source that is gone, recorded stale or on another revision than the one cited, or that is recorded `stale`, is `stale`. A claim recorded `proposed` stays `proposed`, and every other claim is `supported`. A claim that cites nothing and that a run can test, an empirical claim or a hypothesis, is shown with the runs that are in progress or finished without collected results, at most three, because the record does not tie a planned run to a claim; without such a run it carries a marker that nothing is cited or under way. The domain map's `map-view` and `map-overlay` answer `built: false` while the plugin has no map data.
+The evidence graph (`evidence-graph`) is a pure projection of the project record, computed by `src/knowledge-evidence.ts` and stored nowhere. It returns the research question (the brief, else the title), each claim with its status, the files that carry it and its citations, and the runs, literature and files the claims cite; a run is one node however many of its outputs are cited. A claim's status derives from recorded fields alone. A claim recorded `contradicted` is `contradicted`. A claim that cites nothing is `proposed` when it is a hypothesis and `missing` otherwise. A claim that cites a source that is gone, recorded stale or on another revision than the one cited, or that is recorded `stale`, is `stale`. A claim recorded `proposed` stays `proposed`, and every other claim is `supported`. A claim that cites nothing and that a run can test, an empirical claim or a hypothesis, is shown with the runs that are in progress or finished without collected results, at most three, because the record does not tie a planned run to a claim; without such a run it carries a marker that nothing is cited or under way. The domain map's `map-view` returns the built-in graph's paper positions with their regions and sparse areas, `map-papers` details papers by index, and `map-overlay` places the research's idea, imported literature, recently recalled papers and marks on the map. A shipped layout that cannot be read fails the command, and the next map command reads it again. `mark`, `unmark` and `marks` edit and list the marks that recall honours.
 
 ## Checks
 
@@ -362,26 +362,37 @@ The domain map of the research field, shared by all research modes in one profil
 
 ```ts cordis-catalog
 /**
- * Execute map work within both caller and plugin lifetimes.
+ * Execute map work within both caller and plugin lifetimes, with the graph engine.
  * @param signal - caller cancellation.
- * @param work - the operation; it receives a signal that fires on either cancellation.
+ * @param work - the operation; it receives the engine and a signal that fires on either cancellation.
  * @returns the operation's result.
  */
-run<T>(signal: AbortSignal, work: (signal: AbortSignal) => Promise<T>): Promise<T>
+run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) => Promise<T>): Promise<T>
 
 /**
- * Read the domain map of the field around a research.
+ * The domain map of the field, encoded once per loaded map.
  * @param signal - caller cancellation.
- * @returns the map, or the page that says it is not built.
+ * @returns the map page.
  */
 view(signal: AbortSignal): Promise<MapViewPage>
 
 /**
- * Read what a research places over the domain map: its idea, its library and what the agent recalled.
+ * Details of papers of the map, for a hover card.
+ * @param indices - paper indices in the built-in graph.
  * @param signal - caller cancellation.
- * @returns the overlay, or the page that says the map is not built.
+ * @returns their details, unknown indices left out.
  */
-overlay(signal: AbortSignal): Promise<MapOverlayPage>
+papers(indices: readonly number[], signal: AbortSignal): Promise<MapPaperView[]>
+
+/**
+ * What a research places over the map: its idea (the agent's latest recall query, else the brief), its
+ * imported literature, the papers its recent recalls returned, and its marks.
+ * @param project - the research record.
+ * @param embedder - semantic ranking for placing the brief, when configured.
+ * @param signal - caller cancellation.
+ * @returns the overlay.
+ */
+overlay(project: Pick<ResearchProject, 'root' | 'brief' | 'evidence'>, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapOverlayPage>
 ```
 
 Source: [`packages/research/workbench/src/knowledge-map-plugin.ts`](../../packages/research/workbench/src/knowledge-map-plugin.ts)
