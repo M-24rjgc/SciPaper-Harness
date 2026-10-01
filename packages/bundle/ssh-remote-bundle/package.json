@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-ssh-remote-bundle",
   "description": "Optional SSH backend for configured non-desktop profiles; Desktop SSH workspaces use the sidebar entry",
-  "version": "0.2.0-alpha.7",
+  "version": "0.2.0-alpha.8",
   "icon": "./icon.svg",
   "repository": {
     "type": "git",
