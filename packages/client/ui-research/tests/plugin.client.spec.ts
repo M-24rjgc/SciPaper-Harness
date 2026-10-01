@@ -23,7 +23,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type {
-  CreateProjectRequest, EvidenceRecord, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
+  CreateProjectRequest, EvidenceRecord, ProjectId, ResearchCommand, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { ComposerBlockRegistry } from '@deepseek-ai/dsh-client-ui-conversation/src/client/input/blocks.ts'
@@ -1026,6 +1026,71 @@ describe('the face a research seat acts through', () => {
     expect(card.hooks.research).toBe(b.face.hooks.research)
     card.openProjectFile('C:\\research\\sparse', 'refs.bib')
     expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/session-a/C:/research/sparse/refs.bib')
+  })
+
+  it('keeps the marks the cards and views read in one store, which every command that changes a mark updates', async () => {
+    const b = await bench({ current: 'session-a' })
+    const card = (b.seat('tool.call.toolview', 'research_knowledge').inject as () => ResearchToolInjected)()
+    expect(card.hooks.marks).toBe(b.face.hooks.marks)
+    expect(b.face.hooks.marks.getSnapshot()).toEqual({})
+    const project = PROJECT.id
+    const moba = { id: 'ai:paper:moba', target: { kind: 'paper', graph: 'ai', id: 'moba' }, verdict: 'pin', by: 'user', at: '2026-10-02T00:00:00.000Z', title: 'MoBA' } as const
+    const minf = { ...moba, id: 'ai:paper:minf', target: { ...moba.target, id: 'minf' }, verdict: 'irrelevant', title: 'MInference' } as const
+
+    // A read answers with the marks and whether the agent follows them; a second read asked while one is in flight is dropped.
+    const slow = deferred<RemoteResult<ResearchResponse>>()
+    b.remote.command.mockReturnValueOnce(slow.promise)
+    card.readMarks(project)
+    card.readMarks(project)
+    expect(b.remote.command).toHaveBeenCalledTimes(1)
+    expect(b.remote.command.mock.calls[0]?.[0]).toEqual({ action: 'marks', projectId: project })
+    slow.settle(ok({ message: '1 mark(s)', marks: [moba], honour: false }))
+    await idle()
+    expect(b.face.hooks.marks.getSnapshot()).toEqual({ [project]: { marks: [moba], honour: false } })
+
+    // Marking and unmarking answer with the marks that stand; the switch answers with itself alone.
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'Marked', marks: [moba, minf] }))
+    await b.face.run({ action: 'mark', projectId: project, target: minf.target, verdict: 'irrelevant' })
+    expect(b.face.hooks.marks.getSnapshot()[project]).toEqual({ marks: [moba, minf], honour: false })
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'follows', honour: true }))
+    await b.face.run({ action: 'honour-marks', projectId: project, honour: true })
+    expect(b.face.hooks.marks.getSnapshot()[project]).toEqual({ marks: [moba, minf], honour: true })
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'Removed', marks: [moba] }))
+    await b.face.run({ action: 'unmark', projectId: project, id: minf.id })
+    expect(b.face.hooks.marks.getSnapshot()[project]).toEqual({ marks: [moba], honour: true })
+
+    // Any other command leaves them alone, and a research read for the first time starts with the marks following.
+    const before = b.face.hooks.marks.getSnapshot()
+    await b.face.run(CHECK)
+    expect(b.face.hooks.marks.getSnapshot()).toBe(before)
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'no marks' }))
+    await b.face.run({ action: 'marks', projectId: 'other' as ProjectId })
+    expect(b.face.hooks.marks.getSnapshot().other).toEqual({ marks: [], honour: true })
+
+    // A read that fails (the graph engine is off) shows nothing and may be asked again.
+    b.remote.command.mockResolvedValueOnce(bad('Knowledge graph plugin is disabled'))
+    card.readMarks('lost' as ProjectId)
+    await idle()
+    expect(b.face.hooks.marks.getSnapshot().lost).toBeUndefined()
+    b.remote.command.mockResolvedValueOnce(ok({ message: 'ok', marks: [], honour: true }))
+    card.readMarks('lost' as ProjectId)
+    await idle()
+    expect(b.face.hooks.marks.getSnapshot().lost).toEqual({ marks: [], honour: true })
+  })
+
+  it('opens the graph of a call or of one of its nodes beside the conversation', async () => {
+    const b = await bench({ current: 'session-a' })
+    const card = (b.seat('tool.call.toolview', 'research_knowledge').inject as () => ResearchToolInjected)()
+    card.openKnowledge({ call: 'call-1', node: 'ai:paper:moba' })
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: { call: 'call-1', node: 'ai:paper:moba' } })
+    expect(b.layout.setInitialRightbarWidth).toHaveBeenLastCalledWith(560)
+    card.openKnowledge()
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: {} })
+    // The plugin's other seats open it the same way.
+    b.face.openKnowledge({ query: 'sparse' })
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: { query: 'sparse' } })
+    b.face.openKnowledge()
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: {} })
   })
 
   it('reads a literature source\'s authors and year once per revision, and leaves them out when its record cannot be read', async () => {

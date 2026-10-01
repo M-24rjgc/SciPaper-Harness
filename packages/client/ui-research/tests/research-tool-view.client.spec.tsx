@@ -15,10 +15,11 @@ import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { CheckReport, ResearchProject, ResearchSnapshot } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { ResearchCheckCard, ResearchToolCard, type ResearchToolProps } from '../src/client/ResearchToolView.tsx'
-import type { ResearchView } from '../src/client/contract.ts'
+import type { KnowledgeMarksState, ResearchView } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 import { standingOf } from './fixtures/standing.ts'
+import { AROUND, knowledgeCall, markOn, MARKS_READ, RECALL } from './fixtures/trace.ts'
 
 afterEach(() => { cleanup() })
 
@@ -75,6 +76,8 @@ function report(over: Partial<CheckReport>): CheckReport {
 }
 
 interface Seat {
+  /** The marks last read for each research. */
+  marks?: KnowledgeMarksState
   /** The record the card reads; `null` before the first snapshot arrives. */
   snapshot?: ResearchSnapshot | null
   /** The conversation's working directory, as the tool layer passes it. */
@@ -84,28 +87,37 @@ interface Seat {
   dictionary?: Record<string, string>
 }
 
-function props(block: ResearchToolProps['block'], seat: Seat = {}): { props: ResearchToolProps; opened: [string, string][] } {
+function props(block: ResearchToolProps['block'], seat: Seat = {}): { props: ResearchToolProps; opened: [string, string][]; reads: string[]; graphs: unknown[] } {
   const opened: [string, string][] = []
+  const reads: string[] = []
+  const graphs: unknown[] = []
   const view: ResearchView = { snapshot: seat.snapshot === undefined ? SNAPSHOT : seat.snapshot, tasks: [] }
   const toolName = 'kind' in block ? block.call?.name ?? 'research_check' : block.name
   return {
-    opened,
+    opened, reads, graphs,
     props: {
       callId: block.callId, toolName, block, cwd: seat.cwd, sessionId: SESSION,
       openFile: () => {}, loadImage: () => Promise.resolve(''),
       t: lookup(seat.dictionary ?? zh),
       useToolCallArgumentsPartial: () => '',
       useResearch: (select: (value: ResearchView) => unknown) => select(view),
+      useMarks: (select: (value: KnowledgeMarksState) => unknown) => select(seat.marks ?? {}),
+      readMarks: (projectId: string) => { reads.push(projectId) },
+      openKnowledge: (params: unknown) => { graphs.push(params) },
       openProjectFile: (root: string, path: string) => {
         opened.push([root, path])
         if (seat.openFails === true) throw new Error('No conversation sidebar is mounted to show it')
       },
-    } as unknown as ResearchToolProps,
+    } as ResearchToolProps,
   }
 }
 
 /** The study's conversation is bound to it, so the record knows which research a card is in. */
 SNAPSHOT.projects[0]!.sessionId = SESSION
+/** The same record with the graph engine and every view of the knowledge bundle on. */
+const GRAPH_SNAPSHOT: ResearchSnapshot = {
+  ...SNAPSHOT, knowledge: { enabled: true, modules: { map: true, evidence: true, memory: true, relations: true } },
+}
 
 /** The visible text of a row, one part per element, the way a reader meets them. */
 function parts(element: Element | null): string[] {
@@ -124,6 +136,86 @@ describe('a research tool call', () => {
     const view = render(<ResearchToolCard {...face} />)
     fireEvent.click(view.getByRole('button', { name: zh.kgOpen }))
     expect(opened).toEqual([{ query: 'sparse attention', pattern: undefined }])
+  })
+
+  it('shows the nodes a knowledge call touched as chips read against the marks now, and opens the graph on the call or on a chip', () => {
+    const block = knowledgeCall({ action: 'recall', query: 'block sparse attention' }, RECALL)
+    const marks: KnowledgeMarksState = { [SNAPSHOT.projects[0]!.id]: { marks: [markOn('moba', 'pin', 'MoBA'), markOn('minf', 'irrelevant', 'MInference')], honour: true } }
+    const face = props(block, { snapshot: GRAPH_SNAPSHOT, marks })
+    const view = render(<ResearchToolCard {...face.props} />)
+    expect(parts(view.getByRole('button', { name: /知识图谱/ }))).toEqual(['知识图谱', '从你的想法出发，召回 1 个研究模式、2 篇论文，按你的 3 条标注'])
+    const chips = [...view.getByRole('group', { name: zh.toolTouched }).querySelectorAll('button')]
+    expect(chips.map(chip => [chip.textContent, chip.getAttribute('data-look')])).toEqual([
+      ['MoBA', 'pinned'], ['MInference', 'struck'], ['Adaptive sparse attention', 'plain'], ['FlexPrefill', 'plain'],
+    ])
+    expect(chips[0]!.getAttribute('aria-label')).toBe(zh.kfChipPinned.replace('{name}', 'MoBA'))
+    expect(chips[1]!.getAttribute('aria-label')).toBe(zh.kfChipIrrelevant.replace('{name}', 'MInference'))
+    expect(chips[2]!.getAttribute('title')).toBe('Adaptive sparse attention')
+    expect(face.reads).toEqual([SNAPSHOT.projects[0]!.id])
+    fireEvent.click(chips[1]!)
+    fireEvent.click(view.getByRole('button', { name: zh.toolGraphLink }))
+    expect(face.graphs).toEqual([{ call: block.callId, node: 'ai:paper:minf' }, { call: block.callId }])
+    expect(view.queryByRole('button', { name: zh.kgOpen })).toBeNull()
+  })
+
+  it('draws the chips plain while the marks are paused or unread, and counts the ones past the first eight', () => {
+    const block = knowledgeCall({ action: 'recall' }, RECALL)
+    const id = SNAPSHOT.projects[0]!.id
+    const paused = render(<ResearchToolCard {...props(block, { snapshot: GRAPH_SNAPSHOT, marks: { [id]: { marks: [markOn('minf', 'irrelevant', 'MInference')], honour: false } } }).props} />)
+    expect(paused.getByRole('button', { name: 'MInference' }).getAttribute('data-look')).toBe('plain')
+    cleanup()
+    const unread = render(<ResearchToolCard {...props(block, { snapshot: GRAPH_SNAPSHOT }).props} />)
+    expect(unread.getByRole('button', { name: 'MInference' }).getAttribute('data-look')).toBe('plain')
+    cleanup()
+    const nodes = Array.from({ length: 11 }, (_, at) => ({ id: `method:m${at}`, source: 'relations' as const, kind: 'method' as const, label: `M${at}`, ...at === 9 ? { use: 'centre' as const } : {} }))
+    const crowd = knowledgeCall({ action: 'relations-neighbourhood' }, { ...AROUND, nodes, edges: [] })
+    const many = render(<ResearchToolCard {...props(crowd, { snapshot: GRAPH_SNAPSHOT, dictionary: en }).props} />)
+    expect(many.getByRole('group', { name: en.toolTouched }).querySelectorAll('button')).toHaveLength(8)
+    expect(many.getByText('+3')).toBeTruthy()
+    // The centre of a neighbourhood comes before the rest.
+    expect(many.getByRole('group', { name: en.toolTouched }).querySelector('button')?.textContent).toBe('M9')
+  })
+
+  it('reads the marks only for a card that shows a node of the two graphs, and only while the graph engine is on', () => {
+    const relations = props(knowledgeCall({ action: 'relations-neighbourhood' }, AROUND), { snapshot: GRAPH_SNAPSHOT })
+    render(<ResearchToolCard {...relations.props} />)
+    expect(relations.reads).toEqual([])
+    cleanup()
+    const off = props(knowledgeCall({ action: 'recall' }, RECALL), { snapshot: { ...SNAPSHOT, knowledge: { enabled: false, modules: { map: true, evidence: false, memory: false, relations: false } } } })
+    render(<ResearchToolCard {...off.props} />)
+    expect(off.reads).toEqual([])
+    cleanup()
+    const lost = props(knowledgeCall({ action: 'recall' }, RECALL), { snapshot: { ...GRAPH_SNAPSHOT, projects: [] } })
+    render(<ResearchToolCard {...lost.props} />)
+    expect(lost.reads).toEqual([])
+  })
+
+  it('names a read of the marks and still offers the graph, but no chips', () => {
+    const face = props(knowledgeCall({ action: 'marks' }, MARKS_READ), { snapshot: GRAPH_SNAPSHOT })
+    const view = render(<ResearchToolCard {...face.props} />)
+    expect(parts(view.getByRole('button', { name: /知识图谱/ }))).toEqual(['知识图谱', '读取你的 3 条标注'])
+    expect(view.queryByRole('group', { name: zh.toolTouched })).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: zh.toolGraphLink }))
+    expect(face.graphs).toEqual([{ call: expect.stringMatching(/^kg-/) as string }])
+  })
+
+  it('keeps the catalog button for a traced call when neither the map nor the relations are on, and for a call without a trace', () => {
+    const traced = props(knowledgeCall({ action: 'recall', query: 'sparse' }, RECALL))
+    const view = render(<ResearchToolCard {...traced.props} />)
+    expect(view.queryByRole('group', { name: zh.toolTouched })).not.toBeNull()
+    fireEvent.click(view.getByRole('button', { name: zh.kgOpen }))
+    expect(traced.graphs).toEqual([{ query: 'sparse', pattern: undefined }])
+    cleanup()
+    cleanup()
+    const inspected = props(knowledgeCall({ action: 'graph-view', pattern: 'ai:pattern:p' }, null))
+    fireEvent.click(render(<ResearchToolCard {...inspected.props} />).getByRole('button', { name: zh.kgOpen }))
+    expect(inspected.graphs).toEqual([{ query: undefined, pattern: 'ai:pattern:p' }])
+    cleanup()
+    const status = props(knowledgeCall({ action: 'graph-status' }, null), { snapshot: GRAPH_SNAPSHOT })
+    const plain = render(<ResearchToolCard {...status.props} />)
+    expect(plain.queryByRole('group', { name: zh.toolTouched })).toBeNull()
+    fireEvent.click(plain.getByRole('button', { name: zh.kgOpen }))
+    expect(status.graphs).toEqual([{ query: undefined, pattern: undefined }])
   })
 
   it('updates a preparing call from the call-local argument hook', () => {

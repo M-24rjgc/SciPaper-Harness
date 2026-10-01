@@ -1,6 +1,7 @@
 /** Knowledge graph exploration and configuration over the shared research service. */
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
   KnowledgeGraphNode, KnowledgeGraphPage, KnowledgeGraphQuery, ProjectId, ResearchPreferences, ResearchProject, ResearchSnapshot,
 } from '@deepseek-ai/dsh-research-workbench/types'
@@ -10,6 +11,8 @@ import { sessionProject, useSessionProject } from './contract.ts'
 import type { ResearchTabProps } from './Tabs.tsx'
 import { ActionError, useAction } from './Action.tsx'
 import { EvidenceView } from './EvidenceGraph.tsx'
+import { FollowView } from './FollowView.tsx'
+import { knowledgeCallsOf, sameCalls } from './followValues.ts'
 import { MemoryView } from './MemoryView.tsx'
 import { RelationsView } from './RelationsView.tsx'
 import { MapView } from './KnowledgeMap.tsx'
@@ -22,11 +25,11 @@ import shell from './KnowledgeViews.module.css'
 type GraphProps = WorkbenchProps & { project: ResearchProject; initial?: KnowledgeGraphQuery | undefined }
 
 /** The views of the Knowledge tab; each one belongs to a plugin of the knowledge bundle. */
-export type KnowledgeViewId = 'map' | 'relations' | 'evidence' | 'memory' | 'catalog'
+export type KnowledgeViewId = 'follow' | 'map' | 'relations' | 'evidence' | 'memory' | 'catalog'
 
 /** The tab names of the views. */
 const VIEW_LABELS: Record<KnowledgeViewId, ResearchKey> = {
-  map: 'kgViewMap', relations: 'kgViewRelations', evidence: 'kgViewEvidence', memory: 'kgViewMemory', catalog: 'kgViewCatalog',
+  follow: 'kgViewFollow', map: 'kgViewMap', relations: 'kgViewRelations', evidence: 'kgViewEvidence', memory: 'kgViewMemory', catalog: 'kgViewCatalog',
 }
 
 /** At least one view, in the order the segmented control lists them. */
@@ -35,12 +38,16 @@ export type KnowledgeViewList = readonly [KnowledgeViewId, ...KnowledgeViewId[]]
 /**
  * The views the knowledge plugins of this profile offer, in the order the control lists them: a plugin that is off
  * contributes none. The catalog belongs to the graph engine, the map to the domain map, the evidence view to the evidence graph,
- * the memory view to the research memory, the relations view to the relation graph.
+ * the memory view to the research memory, the relations view to the relation graph. The 对话 view follows the
+ * conversation beside which the tab sits and draws the map's and the relations' nodes, so it is offered there only,
+ * and while either of those plugins is on.
  * @param knowledge - what the snapshot says about the knowledge plugins.
+ * @param beside - whether the tab sits beside a conversation.
  * @returns the views to offer, or undefined when no knowledge plugin is on.
  */
-export function knowledgeViews(knowledge: ResearchSnapshot['knowledge']): KnowledgeViewList | undefined {
+export function knowledgeViews(knowledge: ResearchSnapshot['knowledge'], beside = false): KnowledgeViewList | undefined {
   const [first, ...rest] = knowledge === undefined ? [] : [
+    ...beside && (knowledge.modules.map || knowledge.modules.relations) ? ['follow' as const] : [],
     ...knowledge.modules.map ? ['map' as const] : [],
     ...knowledge.modules.relations ? ['relations' as const] : [],
     ...knowledge.modules.evidence ? ['evidence' as const] : [],
@@ -174,17 +181,35 @@ function Explorer(props: GraphProps): ReactNode {
  * The views one research offers, behind a segmented control when there are several. The catalog is the explorer over
  * the graph engine; the others come from the sub-plugins that are on.
  */
-function KnowledgeViews(props: GraphProps & { views: KnowledgeViewList; ask?: ((sentence: string) => void) | undefined }): ReactNode {
-  const { project, views, t } = props
+/** What the tab beside a conversation gives the 对话 view. */
+interface FollowInput {
+  knowledge: NonNullable<ResearchSnapshot['knowledge']>
+  /** The knowledge calls of the turn to draw. */
+  calls: readonly ToolResultNode[]
+  /** The call a tool card opened the view from. */
+  call: string | undefined
+  /** The node of the picture to bring into focus. */
+  node: string | undefined
+  /** Follow the latest turn again; absent while the view already does. */
+  release: (() => void) | undefined
+}
+
+function KnowledgeViews(
+  props: GraphProps & { views: KnowledgeViewList; ask?: ((sentence: string) => void) | undefined; follow?: FollowInput | undefined },
+): ReactNode {
+  const { project, views, follow, t } = props
   const [chosen, setChosen] = useState<KnowledgeViewId | undefined>()
   // The map hands the catalog a region's keywords; the catalog then opens searching for them.
   const [catalogQuery, setCatalogQuery] = useState<string | undefined>()
   const openCatalog = views.includes('catalog') ? (query: string) => { setCatalogQuery(query); setChosen('catalog') } : undefined
-  // A tool card that opens the graph with a query or a pattern means the catalog, which is the only view that searches.
+  // A tool card that opens the graph with a query or a pattern means the catalog, which is the only view that searches;
+  // one that opens a call or a node means the 对话 view.
   const searching = props.initial?.query !== undefined || props.initial?.pattern !== undefined
-  // Otherwise the tab opens on the person's own research when the evidence graph is on, and on the first view offered if not.
-  const opening = views.includes('evidence') ? 'evidence' : views[0]
-  const active = [chosen, ...searching ? ['catalog' as const] : []].find(view => view !== undefined && views.includes(view)) ?? opening
+  const asked = follow?.call !== undefined || follow?.node !== undefined
+  // Otherwise the tab opens on the conversation's graph when the agent has used it, on the person's own research when the
+  // evidence graph is on, and on the first other view offered if not (the 对话 view is offered only beside the map or the relations).
+  const opening = follow !== undefined && follow.calls.length > 0 ? 'follow' : views.includes('evidence') ? 'evidence' : views.find(view => view !== 'follow') as KnowledgeViewId
+  const active = [chosen, ...searching ? ['catalog' as const] : asked ? ['follow' as const] : []].find(view => view !== undefined && views.includes(view)) ?? opening
   const tabbed = views.length > 1
   return <div className={shell.views} data-knowledge-views>
     {tabbed && <div className={shell.bar}>
@@ -192,6 +217,8 @@ function KnowledgeViews(props: GraphProps & { views: KnowledgeViewList; ask?: ((
         options={views.map(view => ({ value: view, label: t(VIEW_LABELS[view]) }))} />
     </div>}
     <div className={shell.panel} {...tabbed ? { role: 'tabpanel', id: `kg-views-${active}-panel`, 'aria-labelledby': `kg-views-${active}` } : {}}>
+      {active === 'follow' && follow !== undefined && <div className={shell.pad}><FollowView {...props} key={project.id} project={project}
+        calls={follow.calls} call={follow.call} node={follow.node} release={follow.release} knowledge={follow.knowledge} /></div>}
       {active === 'map' && <div className={shell.pad}><MapView {...props} key={project.id} project={project} ask={props.ask} openCatalog={openCatalog} /></div>}
       {active === 'relations' && <div className={shell.pad}><RelationsView {...props} key={project.id} project={project} /></div>}
       {active === 'evidence' && <div className={shell.pad}><EvidenceView {...props} key={project.id} project={project} /></div>}
@@ -317,9 +344,22 @@ export function KnowledgeTab(props: ResearchTabProps): ReactNode {
     pattern: typeof params === 'object' && 'pattern' in params && typeof params.pattern === 'string' ? params.pattern : undefined,
   }
   const draft = props.useInput(state => state.draft)
-  const views = knowledgeViews(snapshot?.knowledge)
-  if (views === undefined) return <div className={styles.tab}><p>{props.t('kgDisabled')}</p></div>
+  // The 对话 view draws the knowledge calls of the conversation beside the tab: those of the call a card opened it from, else the latest.
+  const asked = typeof params === 'object' && 'call' in params && typeof params.call === 'string' ? params.call : undefined
+  const [released, setReleased] = useState<number | undefined>()
+  const call = released === navigation.revision ? undefined : asked
+  const calls = props.useChat(chat => knowledgeCallsOf(chat, call), sameCalls)
+  const latest = props.useChat(chat => knowledgeCallsOf(chat, undefined), sameCalls)
+  const knowledge = snapshot?.knowledge
+  const views = knowledgeViews(knowledge, true)
+  if (knowledge === undefined || views === undefined) return <div className={styles.tab}><p>{props.t('kgDisabled')}</p></div>
   if (project === undefined) return <div className={styles.tab}><p>{props.t('railNoProject')}</p></div>
-  return <KnowledgeViews {...props} key={`${project.id}:${navigation.revision}`} project={project} initial={initial} views={views}
+  const follow: FollowInput = {
+    knowledge, calls, call,
+    node: typeof params === 'object' && 'node' in params && typeof params.node === 'string' ? params.node : undefined,
+    // The way back to the latest turn is offered only while the turn on show is an earlier one.
+    release: call === undefined || sameCalls(calls, latest) ? undefined : () => { setReleased(navigation.revision) },
+  }
+  return <KnowledgeViews {...props} key={`${project.id}:${navigation.revision}`} project={project} initial={initial} views={views} follow={follow}
     ask={(sentence) => { props.inputActions.setDraft(appendedDraft(draft, sentence)) }} />
 }

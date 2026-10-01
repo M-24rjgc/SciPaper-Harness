@@ -7,8 +7,8 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  BoardSnapshot, CreateProjectRequest, EvidenceRecord, GalleryPage, ModeSummary, ProjectId, ResearchCommand, ResearchPreferences,
-  ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
+  BoardSnapshot, CreateProjectRequest, EvidenceRecord, GalleryPage, KnowledgeMarkView, ModeSummary, ProjectId, ResearchCommand,
+  ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { PresetDefaults } from './presets.ts'
 
@@ -26,7 +26,20 @@ export interface ResearchSourcesParams {
 export interface ResearchKnowledgeParams {
   query?: string | undefined
   pattern?: string | undefined
+  /** The knowledge call whose turn the 对话 view shows; without it the view follows the latest turn that has one. */
+  call?: string | undefined
+  /** The node of that turn's graph to bring into focus. */
+  node?: string | undefined
 }
+
+/** The marks of one research as last read, and whether the agent follows them. */
+export interface KnowledgeMarksRead {
+  marks: readonly KnowledgeMarkView[]
+  honour: boolean
+}
+
+/** The marks read so far, by research id; the cards and the 对话 view read them, so a mark changed anywhere shows everywhere. */
+export type KnowledgeMarksState = Readonly<Record<string, KnowledgeMarksRead>>
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {
@@ -190,7 +203,11 @@ export interface ResearchInjected {
     canReveal: ObservableSnapshot<boolean>
     /** The research assistant's agent preset and a saved default replacing it, or null while the settings are not read. */
     presets: ObservableSnapshot<PresetDefaults | null>
+    /** The marks last read for each research; every command that changes a mark updates them. */
+    marks: ObservableSnapshot<KnowledgeMarksState>
   }
+  /** Read a research's marks again into {@link ResearchInjected.hooks}`.marks`; a failed read (the graph plugin is off) changes nothing. */
+  readMarks(projectId: ProjectId): void
   /** Create or adopt the project rooted at `request.root`; the record comes back so a caller can act on it. */
   create(request: CreateProjectRequest): Promise<ResearchProject>
   /**
@@ -281,7 +298,11 @@ export interface ResearchToolInjected {
     /** Main-view selection, independent of the Session catalog. */
     currentSession: ObservableSnapshot<SessionId | undefined>
     research: ObservableSnapshot<ResearchView>
+    /** The marks last read for each research. */
+    marks: ObservableSnapshot<KnowledgeMarksState>
   }
+  /** Read a research's marks again; the chips of a call show a node struck through while it is marked not relevant. */
+  readMarks(projectId: ProjectId): void
   /** Open a project file in the conversation's right sidebar; throws when no sidebar is mounted to show it. */
   openProjectFile(root: string, path: string): void
   /** Open the graph related to this tool call. */

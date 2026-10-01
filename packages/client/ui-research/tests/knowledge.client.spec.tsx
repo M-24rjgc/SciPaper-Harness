@@ -9,9 +9,12 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { KnowledgePluginPage, KnowledgeTab, knowledgeViews } from '../src/client/Knowledge.tsx'
+import type { KnowledgeMarksState } from '../src/client/contract.ts'
+import type { KnowledgeChat } from '../src/client/followValues.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
 import { page } from './fixtures/memory.ts'
+import { chatOf, knowledgeCall, PATHS, RECALL } from './fixtures/trace.ts'
 import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
@@ -33,7 +36,7 @@ const noRelations: RelationsPage = {
   problems: [], counts: { entities: 0, relations: 0, stale: 0, rejected: 0, citationLists: 0 }, match: 'none', hubs: [], candidates: [], rejected: [],
 }
 const none: KnowledgeModules = { map: false, evidence: false, memory: false, relations: false }
-function harness(enabled = true, example = false, modules: KnowledgeModules = none, params: object = { query: 'attention' }, draft = '') {
+function harness(enabled = true, example = false, modules: KnowledgeModules = none, params: object = { query: 'attention' }, draft = '', chat: KnowledgeChat = chatOf([])) {
   const setDraft = vi.fn()
   const project = newProject({ root: '/research/graph', title: 'Graph study', brief: '' }, 'workspace' as WorkspaceId)
   project.sessionId = 'session-graph'; project.example = example
@@ -47,6 +50,8 @@ function harness(enabled = true, example = false, modules: KnowledgeModules = no
     useResearch: (select: (value: object) => unknown) => select({ snapshot, tasks: [] }),
     useTabInfo: () => ({ tab: { navigation: { revision: 1, params } } }),
     useInput: (select: (value: object) => unknown) => select({ draft }), inputActions: { setDraft },
+    useChat: (select: (value: KnowledgeChat) => unknown) => select(chat),
+    useMarks: (select: (value: KnowledgeMarksState) => unknown) => select({}), readMarks: vi.fn(),
     refresh: async () => {}, configure, openKnowledge: vi.fn(),
     run: async (request: ResearchCommand): Promise<ResearchResponse> => {
       commandSchema.parse(request); commands.push(request)
@@ -124,36 +129,104 @@ it('offers a view for each knowledge plugin that is on, in the order of the tab,
   expect(knowledgeViews({ enabled: true, modules: everything })).toEqual(['map', 'relations', 'evidence', 'memory', 'catalog'])
 })
 
+it('adds the conversation view beside a conversation, while the map or the relations are on', () => {
+  expect(knowledgeViews({ enabled: true, modules: everything }, true)).toEqual(['follow', 'map', 'relations', 'evidence', 'memory', 'catalog'])
+  expect(knowledgeViews({ enabled: false, modules: { ...none, relations: true } }, true)).toEqual(['follow', 'relations'])
+  expect(knowledgeViews({ enabled: true, modules: { ...none, map: true } }, true)).toEqual(['follow', 'map', 'catalog'])
+  // It draws the nodes of those two plugins, so without both it has nothing to draw.
+  expect(knowledgeViews({ enabled: true, modules: { ...none, evidence: true, memory: true } }, true)).toEqual(['evidence', 'memory', 'catalog'])
+  expect(knowledgeViews({ enabled: true, modules: none }, true)).toEqual(['catalog'])
+  expect(knowledgeViews({ enabled: true, modules: everything }, false)).not.toContain('follow')
+})
+
 it('opens the tab on the research\'s own evidence and switches between the views of the plugins that are on', async () => {
   const h = harness(true, false, everything, {})
   const view = render(<KnowledgeTab {...h.props} />); await settle()
   const tabs = view.getAllByRole('tab')
-  expect(tabs.map(tab => tab.textContent)).toEqual([zh.kgViewMap, zh.kgViewRelations, zh.kgViewEvidence, zh.kgViewMemory, zh.kgViewCatalog])
+  expect(tabs.map(tab => tab.textContent)).toEqual([
+    zh.kgViewFollow, zh.kgViewMap, zh.kgViewRelations, zh.kgViewEvidence, zh.kgViewMemory, zh.kgViewCatalog,
+  ])
   expect(view.getByRole('tablist').getAttribute('aria-label')).toBe(zh.kgViews)
-  expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'true', 'false', 'false'])
+  expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false', 'true', 'false', 'false'])
   expect(h.commands).toEqual([{ action: 'evidence-graph', projectId: h.project.id }])
-  expect(view.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tabs[2]!.id)
+  expect(view.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tabs[3]!.id)
   expect(view.getByText(zh.egEmpty)).toBeTruthy()
 
   fireEvent.click(tabs[0]!); await settle()
-  expect(h.commands.at(-1)).toEqual({ action: 'map-view', projectId: h.project.id })
-  expect(view.getByText(zh.kmNotBuiltTitle)).toBeTruthy()
-  expect(view.getByText(zh.kmNotBuiltBody)).toBeTruthy()
+  expect(view.getByText(zh.kfEmptyTitle)).toBeTruthy()
   expect(view.queryByText(zh.egEmpty)).toBeNull()
 
   fireEvent.click(tabs[1]!); await settle()
+  expect(h.commands.at(-1)).toEqual({ action: 'map-view', projectId: h.project.id })
+  expect(view.getByText(zh.kmNotBuiltTitle)).toBeTruthy()
+  expect(view.getByText(zh.kmNotBuiltBody)).toBeTruthy()
+  expect(view.queryByText(zh.kfEmptyTitle)).toBeNull()
+
+  fireEvent.click(tabs[2]!); await settle()
   expect(h.commands.at(-1)).toEqual({ action: 'relations-graph', projectId: h.project.id, hops: 2 })
   expect(view.getByText(zh.relationsEmptyTitle)).toBeTruthy()
   expect(view.queryByText(zh.kmNotBuiltTitle)).toBeNull()
 
-  fireEvent.click(tabs[3]!); await settle()
+  fireEvent.click(tabs[4]!); await settle()
   expect(h.commands.at(-1)).toEqual({ action: 'memory', projectId: h.project.id })
   expect(view.getByText(zh.memHeadline)).toBeTruthy()
   expect(view.getByText(zh.memEmpty)).toBeTruthy()
 
-  fireEvent.click(tabs[4]!); await settle()
+  fireEvent.click(tabs[5]!); await settle()
   expect(h.commands.at(-1)).toMatchObject({ action: 'graph-view' })
   expect(view.getByRole('search')).toBeTruthy()
+})
+
+it('opens on the conversation\'s graph once the agent has used it, follows the latest turn, and pins the turn of a call a card opened it from', async () => {
+  const early = knowledgeCall({ action: 'recall' }, RECALL)
+  const late = knowledgeCall({ action: 'relations-paths', from: 'Fixed blocks', to: 'Full attention' }, PATHS)
+  const chat = chatOf([{ turn: 1, calls: [early] }, { turn: 2, calls: [late] }])
+  const latest = harness(true, false, everything, {}, '', chat)
+  const view = render(<KnowledgeTab {...latest.props} />); await settle()
+  expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false', 'false', 'false'])
+  expect(view.getByRole('button', { name: 'Fixed blocks' })).toBeTruthy()
+  expect(view.queryByRole('button', { name: 'MoBA' })).toBeNull()
+  expect(view.queryByText(zh.kfEarlier)).toBeNull()
+  view.unmount()
+
+  // A chip of the earlier call's card asks for that call and one of its nodes; the tab shows that turn until the person lets go.
+  const pinned = harness(true, false, everything, { call: early.callId, node: 'ai:paper:moba' }, '', chat)
+  const opened = render(<KnowledgeTab {...pinned.props} />); await settle()
+  expect(opened.getAllByRole('tab')[0]!.getAttribute('aria-selected')).toBe('true')
+  expect(opened.getByRole('button', { name: /^MoBA/ }).getAttribute('aria-pressed')).toBe('true')
+  expect(opened.getByRole('button', { name: /^MoBA/ }).getAttribute('data-touched')).toBe('true')
+  expect(opened.getByText(zh.kfEarlier)).toBeTruthy()
+  fireEvent.click(opened.getByRole('button', { name: zh.kfLatest })); await settle()
+  expect(opened.queryByText(zh.kfEarlier)).toBeNull()
+  expect(opened.getByRole('button', { name: 'Fixed blocks' })).toBeTruthy()
+  expect(opened.queryByRole('button', { name: /^MoBA/ })).toBeNull()
+  opened.unmount()
+
+  // A card of the latest turn has nothing to go back to: it is the turn the tab follows anyway.
+  const current = harness(true, false, everything, { call: late.callId }, '', chat)
+  const same = render(<KnowledgeTab {...current.props} />); await settle()
+  expect(same.getByRole('button', { name: 'Fixed blocks' }).getAttribute('data-touched')).toBe('true')
+  expect(same.queryByText(zh.kfEarlier)).toBeNull()
+})
+
+it('draws the next turn\'s graph as soon as its knowledge call lands, without the person doing anything', async () => {
+  const first = knowledgeCall({ action: 'recall' }, RECALL)
+  const h = harness(true, false, everything, {}, '', chatOf([{ turn: 1, calls: [first] }]))
+  const view = render(<KnowledgeTab {...h.props} />); await settle()
+  expect(view.getByRole('button', { name: 'MoBA' })).toBeTruthy()
+  expect(view.getByText(zh.kfCallsOne)).toBeTruthy()
+  const second = knowledgeCall({ action: 'relations-paths', from: 'Fixed blocks', to: 'Full attention' }, PATHS)
+  const next = harness(true, false, everything, {}, '', chatOf([{ turn: 1, calls: [first] }, { turn: 2, calls: [second] }]))
+  view.rerender(<KnowledgeTab {...h.props} useChat={next.props.useChat} />); await settle()
+  expect(view.queryByRole('button', { name: 'MoBA' })).toBeNull()
+  expect(view.getByRole('button', { name: 'Fixed blocks' })).toBeTruthy()
+})
+
+it('opens on the conversation view for a call or node alone, even before the agent has a graph call', async () => {
+  const h = harness(true, false, everything, { node: 'ai:paper:moba' })
+  const view = render(<KnowledgeTab {...h.props} />); await settle()
+  expect(view.getAllByRole('tab')[0]!.getAttribute('aria-selected')).toBe('true')
+  expect(view.getByText(zh.kfEmptyTitle)).toBeTruthy()
 })
 
 it('shows only the evidence view, without a switch, when the graph engine and the map are off', async () => {
@@ -168,15 +241,15 @@ it('shows only the evidence view, without a switch, when the graph engine and th
 it('opens on the map when it is the first view offered, and on the catalog when a tool result searched for something', async () => {
   const onlyMap = harness(true, false, { ...none, map: true }, {})
   const first = render(<KnowledgeTab {...onlyMap.props} />); await settle()
-  expect(first.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+  expect(first.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false'])
   expect(onlyMap.commands).toEqual([{ action: 'map-view', projectId: onlyMap.project.id }])
   first.unmount()
   const searched = harness(true, false, everything, { pattern: 'ai:pattern:p' })
   const second = render(<KnowledgeTab {...searched.props} />); await settle()
-  expect(second.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false', 'false', 'true'])
+  expect(second.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false', 'false', 'false', 'true'])
   expect(searched.commands).toEqual([{ action: 'graph-view', projectId: searched.project.id, source: 'all', pattern: 'ai:pattern:p', query: undefined }])
-  fireEvent.click(second.getAllByRole('tab')[2]!); await settle()
-  expect(second.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'true', 'false', 'false'])
+  fireEvent.click(second.getAllByRole('tab')[3]!); await settle()
+  expect(second.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false', 'true', 'false', 'false'])
 })
 
 it('says when no conversation research is open and when no knowledge plugin is on', () => {
@@ -214,7 +287,7 @@ it('hands the map\'s questions to the composer after what is already typed, and 
   fireEvent.click(view.getByRole('button', { name: zh.kmAskNovelty }))
   expect(h.setDraft).toHaveBeenCalledWith(`First line\n${zh.kmAskNoveltyDraft}`)
   fireEvent.click(view.getByRole('button', { name: zh.kmInCatalog })); await settle()
-  expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'true'])
+  expect(view.getAllByRole('tab').map(tab => tab.getAttribute('aria-selected'))).toEqual(['false', 'false', 'true'])
   expect(h.commands.at(-1)).toMatchObject({ action: 'graph-view', query: 'attention sparse' })
   expect((view.getByRole('searchbox') as HTMLInputElement).value).toBe('attention sparse')
 })
@@ -224,6 +297,8 @@ it('offers the map no way to the catalog while the graph engine is off', async (
   const run = h.props.run
   h.props.run = async request => request.action === 'map-view' ? { message: 'Map', mapView: { built: false } } : run(request)
   const view = render(<KnowledgeTab {...h.props} />); await settle()
-  expect(view.queryByRole('tablist')).toBeNull()
+  // Only the conversation view and the map: the catalog belongs to the graph engine.
+  expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual([zh.kgViewFollow, zh.kgViewMap])
   expect(view.getByText(zh.kmNotBuiltTitle)).toBeTruthy()
+  expect(view.queryByRole('button', { name: zh.kmInCatalog })).toBeNull()
 })

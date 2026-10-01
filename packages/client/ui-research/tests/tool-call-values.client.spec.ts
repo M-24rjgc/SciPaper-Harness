@@ -12,12 +12,13 @@ import { registerResearchTools } from '@deepseek-ai/dsh-research-workbench/src/t
 import type { CheckReport, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import {
-  actionPhrase, callArgs, callArgsRaw, callState, checkName, checkView, failureReason, familyName, phaseName, readable,
+  actionPhrase, callArgs, callArgsRaw, callState, checkName, checkView, failureReason, familyName, knowledgeTraceOf, phaseName, readable,
   RESEARCH_TOOLS, resultText, scopeName, type NameContext,
 } from '../src/client/toolCallValues.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 import { standingOf } from './fixtures/standing.ts'
+import { knowledgeCall, MARKS_READ, PATHS, RECALL } from './fixtures/trace.ts'
 
 /** A dictionary lookup that interpolates `{name}` the way the locale seat does. */
 function lookup(dictionary: Record<string, string>): NameContext['t'] {
@@ -242,6 +243,40 @@ describe('what one research call did', () => {
     // English reads the same way.
     expect(actionPhrase('research_evidence', { action: 'import', paths: ['a.csv', 'b.csv'] }, { ...NAMED, t: lookup(en) })).toBe('Import 2 files')
     expect(actionPhrase('research_artifact', { action: 'save-artifact', path: 'refs.bib' }, { ...NAMED, t: lookup(en) })).toBe('Save: refs.bib')
+  })
+})
+
+describe('what a knowledge call touched', () => {
+  it('reads the trace the host kept beside a settled call, and nothing from a running, untraced or malformed one', () => {
+    expect(knowledgeTraceOf(knowledgeCall({ action: 'recall' }, RECALL))).toEqual(RECALL)
+    expect(knowledgeTraceOf(knowledgeCall({ action: 'graph-status' }, null))).toBeUndefined()
+    expect(knowledgeTraceOf(knowledgeCall({ action: 'recall' }, { v: 3 }))).toBeUndefined()
+    expect(knowledgeTraceOf(running('research_knowledge', '{"action":"recall"}'))).toBeUndefined()
+  })
+
+  it('says how many marks a read listed, what a recall brought back and how many marks shaped it', () => {
+    expect(actionPhrase('research_knowledge', { action: 'marks' }, NAMED, MARKS_READ)).toBe('读取你的 3 条标注')
+    expect(actionPhrase('research_knowledge', { action: 'marks' }, NAMED)).toBe('查看标注')
+    expect(actionPhrase('research_knowledge', { action: 'recall', query: 'sparse' }, NAMED, RECALL)).toBe('从你的想法出发，召回 1 个研究模式、2 篇论文，按你的 3 条标注')
+    expect(actionPhrase('research_knowledge', { action: 'recall', query: 'sparse' }, NAMED, { ...RECALL, marks: { count: 0 } })).toBe('从你的想法出发，召回 1 个研究模式、2 篇论文')
+    expect(actionPhrase('research_knowledge', { action: 'recall', query: 'sparse' }, NAMED, { v: 1, action: 'recall', nodes: [], edges: [] })).toBe('从你的想法出发，召回 0 个研究模式、0 篇论文')
+    expect(actionPhrase('research_knowledge', { action: 'recall', query: 'sparse' }, NAMED)).toBe('召回相近模式：sparse')
+    expect(actionPhrase('research_knowledge', { action: 'recall', query: 'sparse' }, { ...NAMED, t: lookup(en) }, RECALL))
+      .toBe('From your idea, recalled: patterns 1, papers 2, following your marks (3)')
+  })
+
+  it('says how many paths a search followed between the two ends the call named, in either language', () => {
+    const args = { action: 'relations-paths', from: '固定分块', to: '全注意力' }
+    expect(actionPhrase('research_knowledge', args, NAMED, PATHS)).toBe('从 固定分块 出发，沿 2 条路径找 全注意力')
+    expect(actionPhrase('research_knowledge', args, NAMED, { ...PATHS, paths: 1 })).toBe('从 固定分块 出发，沿 1 条路径找 全注意力')
+    expect(actionPhrase('research_knowledge', args, NAMED, { ...PATHS, paths: 0 })).toBe('从 固定分块 出发，没有找到通向 全注意力 的路径')
+    expect(actionPhrase('research_knowledge', { action: 'relations-paths', from: 'A', to: 'B' }, { ...NAMED, t: lookup(en) }, PATHS)).toBe('From A, followed 2 paths to B')
+    expect(actionPhrase('research_knowledge', { action: 'relations-paths', from: 'A', to: 'B' }, { ...NAMED, t: lookup(en) }, { ...PATHS, paths: 1 })).toBe('From A, followed 1 path to B')
+    // Without a trace, or before the call names both ends, the phrase stays the general one.
+    expect(actionPhrase('research_knowledge', args, NAMED)).toBe('查找两者的联系')
+    expect(actionPhrase('research_knowledge', { action: 'relations-paths', from: 'A' }, NAMED, PATHS)).toBe('查找两者的联系')
+    expect(actionPhrase('research_knowledge', { action: 'relations-paths', to: 'B' }, NAMED, PATHS)).toBe('查找两者的联系')
+    expect(actionPhrase('research_knowledge', { action: 'relations-paths', from: 'A', to: 'B' }, NAMED, RECALL)).toBe('查找两者的联系')
   })
 })
 

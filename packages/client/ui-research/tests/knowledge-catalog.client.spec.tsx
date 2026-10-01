@@ -7,8 +7,10 @@ import type {
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { KnowledgePluginPage, KnowledgeTab } from '../src/client/Knowledge.tsx'
+import type { KnowledgeChat } from '../src/client/followValues.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
+import { chatOf } from './fixtures/trace.ts'
 import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
@@ -55,6 +57,8 @@ function harness(preferences: ResearchPreferences = {}, example = false) {
     useResearch: (select: (value: object) => unknown) => select({ snapshot, tasks: [] }),
     useTabInfo: () => ({ tab: { navigation: { revision: 1, params: {} } } }),
     useInput: (select: (value: object) => unknown) => select({ draft: '' }), inputActions: { setDraft: vi.fn() },
+    useChat: (select: (value: KnowledgeChat) => unknown) => select(chatOf([])),
+    useMarks: (select: (value: object) => unknown) => select({}), readMarks: vi.fn(),
     refresh: async () => {}, configure, openKnowledge,
     run: async (request: ResearchCommand): Promise<ResearchResponse> => {
       commands.push(request)

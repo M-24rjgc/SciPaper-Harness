@@ -15,14 +15,14 @@ import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { IWorkspaces } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { EvidenceRecord, ProjectId, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
+import type { EvidenceRecord, ProjectId, ResearchCommand, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import type {
-  EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
-  SessionDirectories, SourceReference,
+  EntryView, FolderPick, KnowledgeMarksState, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected,
+  ResearchTreeInjected, ResearchView, SessionDirectories, SourceReference,
 } from './contract.ts'
 import { localResearchFileSession, sessionDirectoriesOf, sessionProject, sshWorkspaceErrorOf } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
@@ -271,9 +271,29 @@ export function apply(ctx: Context): void {
     await reread()
     return project
   }
-  const run: ResearchInjected['run'] = async request => follow(unwrap(await ctx.remote.research.command(request, controller.signal)))
+  // The marks last read for each research, so that a mark changed anywhere reads the same in every card and view.
+  const marks = createSnapshotStore<KnowledgeMarksState>({})
+  const noteMarks = (request: ResearchCommand, response: ResearchResponse): void => {
+    if (request.action !== 'marks' && request.action !== 'mark' && request.action !== 'unmark' && request.action !== 'honour-marks') return
+    const before = marks.getSnapshot()[request.projectId]
+    const next = { marks: response.marks ?? before?.marks ?? [], honour: response.honour ?? before?.honour ?? true }
+    marks.set({ ...marks.getSnapshot(), [request.projectId]: next })
+  }
+  const run: ResearchInjected['run'] = async (request) => {
+    const response = await follow(unwrap(await ctx.remote.research.command(request, controller.signal)))
+    noteMarks(request, response)
+    return response
+  }
+  const readingMarks = new Set<ProjectId>()
+  const readMarks = (projectId: ProjectId): void => {
+    if (readingMarks.has(projectId)) return
+    readingMarks.add(projectId)
+    run({ action: 'marks', projectId }).catch((_error: unknown) => {
+      // The graph engine is off or the research is gone; there are no marks to show.
+    }).finally(() => { readingMarks.delete(projectId) })
+  }
   const injected = (): ResearchInjected => ({
-    hooks: { currentSession, research: state, focus, directories, canReveal, presets }, refresh,
+    hooks: { currentSession, research: state, focus, directories, canReveal, presets, marks }, refresh, readMarks,
     openFile: openProjectFile,
     openFiles: openResearchFiles,
     showProgress,
@@ -414,7 +434,7 @@ export function apply(ctx: Context): void {
   // A claim's sources open over the whole frame; the Sources tab puts one in focus.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-claim', order: 20, locale: 'research', inject: injected }, ResearchClaimSheet))
   // The research tools' calls read in the reader's language inside the conversation, a research check as its own card.
-  const toolInjected = (): ResearchToolInjected => ({ hooks: { currentSession, research: state }, openProjectFile,
+  const toolInjected = (): ResearchToolInjected => ({ hooks: { currentSession, research: state, marks }, readMarks, openProjectFile,
     openKnowledge: (params) => {
       ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
       ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })

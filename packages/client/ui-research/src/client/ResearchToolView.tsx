@@ -7,17 +7,20 @@
  * derive from the logged call and result (`toolCallValues.ts`); the research
  * record only names things and gives the project folder.
  */
-import { Fragment, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { DisclosureRow, IconCheckOutlineRegular, StateDot, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import { sessionProject, type ResearchToolInjected } from './contract.ts'
+import type { KnowledgeTrace, KnowledgeTraceNode } from '@deepseek-ai/dsh-research-workbench/types'
+import { sessionProject, type KnowledgeMarksRead, type ResearchToolInjected } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { ResearchHeroMark } from './Hero.tsx'
 import { counted, findingCounts, type Translate } from './format.ts'
+import { verdictOf } from './followValues.ts'
+import { clipped } from './mapValues.ts'
 import {
-  actionPhrase, callArgs, callArgsRaw, callState, checkName, checkView, failureReason, familyName, phaseName, readable, resultText,
-  scopeName, type CallState, type CheckView, type FindingGroup, type NameContext,
+  actionPhrase, callArgs, callArgsRaw, callState, checkName, checkView, failureReason, familyName, knowledgeTraceOf, phaseName, readable,
+  resultText, scopeName, type CallState, type CheckView, type FindingGroup, type NameContext,
 } from './toolCallValues.ts'
 import styles from './ResearchToolView.module.css'
 
@@ -80,10 +83,17 @@ export function ResearchToolCard(props: ResearchToolProps): ReactNode {
   const partial = props.useToolCallArgumentsPartial()
   const state = callState(block)
   const parsed = callArgs(block, partial)
-  const phrase = actionPhrase(toolName, parsed, names)
+  const trace = state === 'ok' ? knowledgeTraceOf(block) : undefined
+  const phrase = actionPhrase(toolName, parsed, names, trace)
   const args = callArgsRaw(block, partial)
   const result = resultText(block)
   const expandable = args !== '' || result !== ''
+  const project = names.project
+  const knowledge = props.useResearch(view => view.snapshot?.knowledge)
+  const read = props.useMarks(marks => project === undefined ? undefined : marks[project.id])
+  // The chips read whether a node is marked now, so the marks are read once the card shows a graph node.
+  const marked = knowledge?.enabled === true && trace !== undefined && trace.nodes.some(node => node.source !== 'relations')
+  useEffect(() => { if (marked && project !== undefined) props.readMarks(project.id) }, [marked, project?.id, block.callId])
   return <div className={styles.call} data-tool={toolName} data-state={state}>
     <DisclosureRow
       icon={<Leading state={state} />}
@@ -101,12 +111,48 @@ export function ResearchToolCard(props: ResearchToolProps): ReactNode {
     >
       <RawCall args={args} result={result} t={t} />
     </DisclosureRow>
-    {toolName === 'research_knowledge' && state === 'ok' && <button type="button"
-      className={styles.graphLink} onClick={() => { props.openKnowledge({
-        query: typeof parsed?.query === 'string' ? parsed.query : undefined,
-        pattern: typeof parsed?.pattern === 'string' ? parsed.pattern : undefined,
-      }) }}>{t('kgOpen')}</button>}
+    {toolName === 'research_knowledge' && state === 'ok' && <div className={styles.touched}>
+      {trace !== undefined && <TouchedChips trace={trace} marks={read} callId={block.callId} t={t} open={props.openKnowledge} />}
+      {trace !== undefined && (knowledge?.modules.map === true || knowledge?.modules.relations === true)
+        ? <button type="button" className={styles.graphLink} onClick={() => { props.openKnowledge({ call: block.callId }) }}>{t('toolGraphLink')}</button>
+        : <button type="button" className={styles.graphLink} onClick={() => { props.openKnowledge({
+          query: typeof parsed?.query === 'string' ? parsed.query : undefined,
+          pattern: typeof parsed?.pattern === 'string' ? parsed.pattern : undefined,
+        }) }}>{t('kgOpen')}</button>}
+    </div>}
     {state === 'error' && <Failure block={block} t={t} />}
+  </div>
+}
+
+/** Chips a card shows before the rest are counted. */
+const VISIBLE_CHIPS = 8
+/** Which nodes a card names first: what a mark decided, then the centre and the ends, then the rest. */
+const CHIP_ORDER = { pinned: 0, skipped: 1, centre: 2, end: 2, recalled: 3 } as const
+
+/**
+ * The nodes a knowledge call touched, as chips: a pinned one outlined, one the person marked not relevant struck
+ * through, each from the marks as they stand now. A chip opens the conversation's graph focused on its node.
+ */
+function TouchedChips(props: {
+  trace: KnowledgeTrace
+  marks: KnowledgeMarksRead | undefined
+  callId: string
+  t: Translate
+  open: ResearchToolProps['openKnowledge']
+}): ReactNode {
+  const { trace, marks, t } = props
+  const order = (node: KnowledgeTraceNode): number => node.use === undefined ? 4 : CHIP_ORDER[node.use]
+  const nodes = [...trace.nodes].sort((a, b) => order(a) - order(b))
+  if (nodes.length === 0) return null
+  return <div className={styles.chips} role="group" aria-label={t('toolTouched')}>
+    {nodes.slice(0, VISIBLE_CHIPS).map((node) => {
+      const verdict = marks?.honour === false ? undefined : verdictOf(marks?.marks ?? [], node.id)
+      const text = clipped(node.label, 26)
+      return <button key={node.id} type="button" className={styles.chip} data-look={verdict === 'pin' ? 'pinned' : verdict === 'irrelevant' ? 'struck' : 'plain'}
+        aria-label={verdict === 'pin' ? t('kfChipPinned', { name: text }) : verdict === 'irrelevant' ? t('kfChipIrrelevant', { name: text }) : text}
+        title={node.label} onClick={() => { props.open({ call: props.callId, node: node.id }) }}>{text}</button>
+    })}
+    {nodes.length > VISIBLE_CHIPS && <span className={styles.more}>{t('toolTouchedMore', { n: nodes.length - VISIBLE_CHIPS })}</span>}
   </div>
 }
 

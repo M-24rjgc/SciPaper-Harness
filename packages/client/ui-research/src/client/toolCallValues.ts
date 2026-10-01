@@ -10,9 +10,10 @@
  * @module @deepseek-ai/dsh-client-ui-research/toolCallValues
  */
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import type { LocalizedText, ModeSummary, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import type { KnowledgeTrace, LocalizedText, ModeSummary, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import { counted, modeName, packText, type Translate } from './format.ts'
 import type { ResearchKey } from './locales.ts'
+import { readTrace, recalledCounts } from './traceValues.ts'
 
 /** One running or settled tool call, as the conversation holds it. */
 export type ToolCallBlock = ToolCallViewProps['block']
@@ -136,8 +137,17 @@ function size(fields: Fields, names: readonly string[]): number {
   }, 0)
 }
 
-/** What one call of a tool did, from its arguments. */
-type Describe = (args: Fields, names: NameContext) => string
+/**
+ * What a settled knowledge call touched, as the host kept it beside the result.
+ * @param block - the call as the conversation holds it.
+ * @returns the trace; undefined while the call runs, for a call that touched nothing to draw, and for metadata that is no trace.
+ */
+export function knowledgeTraceOf(block: ToolCallBlock): KnowledgeTrace | undefined {
+  return 'kind' in block ? readTrace(block.meta) : undefined
+}
+
+/** What one call of a tool did, from its arguments and, for a knowledge call, what it touched. */
+type Describe = (args: Fields, names: NameContext, trace: KnowledgeTrace | undefined) => string
 
 /** An action's phrase, followed by what it acted on when the call says. */
 function detail(t: Translate, key: ResearchKey, value: string | undefined): string {
@@ -151,6 +161,26 @@ const aboutInner = (key: ResearchKey, name: string, inside: string): Describe =>
   (args, names) => detail(names.t, key, inner(args, name, inside))
 const count = (one: ResearchKey, many: ResearchKey, ...arrays: string[]): Describe =>
   (args, names) => counted(size(args, arrays), one, many, names.t)
+
+/** 读取你的 3 条标注: the marks a listing read, when the call's trace says how many. */
+const marksRead: Describe = (_args, names, trace) =>
+  trace?.marks === undefined ? names.t('toolKnowledgeMarks') : names.t('toolKnowledgeMarksRead', { n: trace.marks.count })
+
+/** What a recall brought back, and how many marks shaped it; before the trace, the query alone. */
+const recalled: Describe = (args, names, trace) => {
+  if (trace === undefined) return detail(names.t, 'toolKnowledgeRecall', field(args, 'query'))
+  const counts = recalledCounts(trace)
+  const marks = trace.marks?.count ?? 0
+  return `${names.t('toolKnowledgeRecalled', counts)}${marks === 0 ? '' : names.t('toolKnowledgeByMarks', { n: marks })}`
+}
+
+/** 沿 2 条路径找: the paths a search found between the two ends the call named. */
+const pathsFound: Describe = (args, names, trace) => {
+  const from = field(args, 'from'), to = field(args, 'to')
+  if (trace?.paths === undefined || from === undefined || to === undefined) return names.t('toolKnowledgeRelationsPaths')
+  if (trace.paths === 0) return names.t('toolKnowledgePathsNone', { from, to })
+  return names.t(trace.paths === 1 ? 'toolKnowledgePathsFoundOne' : 'toolKnowledgePathsFound', { from, to, n: trace.paths })
+}
 
 /** The mode and route a set-mode call chose, by the names their pack gives them. */
 function modeChoiceName(args: Fields, names: NameContext): string | undefined {
@@ -284,17 +314,17 @@ const FAMILIES: ReadonlyMap<string, Family> = new Map([
   ['research_knowledge', family('toolKnowledge', {
     'graph-status': plain('toolKnowledgeStatus'),
     'graph-view': plain('kgOpen'),
-    recall: about('toolKnowledgeRecall', 'query'),
+    recall: recalled,
     novelty: plain('toolKnowledgeNovelty'),
     'build-graph': plain('toolKnowledgeBuild'),
     'name-patterns': plain('toolKnowledgeName'),
     mark: plain('toolKnowledgeMark'),
     unmark: plain('toolKnowledgeUnmark'),
-    marks: plain('toolKnowledgeMarks'),
+    marks: marksRead,
     'relations-propose': plain('toolKnowledgeRelationsPropose'),
     'relations-reject': plain('toolKnowledgeRelationsReject'),
     'relations-neighbourhood': about('toolKnowledgeRelationsNeighbourhood', 'entity'),
-    'relations-paths': plain('toolKnowledgeRelationsPaths'),
+    'relations-paths': pathsFound,
     'relations-gaps': plain('toolKnowledgeRelationsGaps'),
     'relations-suggestions': plain('toolKnowledgeRelationsSuggestions'),
   })],
@@ -322,15 +352,16 @@ export function familyName(tool: string, t: Translate): string {
  * @param tool - the wire tool name.
  * @param args - the call's arguments.
  * @param names - what names things.
+ * @param trace - what a knowledge call touched, once it settled; its phrases then carry the counts.
  * @returns the phrase; `执行 <action>` for an action this build does not know;
  *   undefined while the arguments are incomplete or name no action.
  */
-export function actionPhrase(tool: string, args: Fields | undefined, names: NameContext): string | undefined {
+export function actionPhrase(tool: string, args: Fields | undefined, names: NameContext, trace?: KnowledgeTrace): string | undefined {
   const known = FAMILIES.get(tool)
   if (known === undefined || args === undefined) return undefined
   const action = field(args, 'action') ?? ''
   const describe = known.actions.get(action)
-  if (describe !== undefined) return describe(args, names)
+  if (describe !== undefined) return describe(args, names, trace)
   return action === '' ? undefined : names.t('toolUnknownAction', { action })
 }
 
