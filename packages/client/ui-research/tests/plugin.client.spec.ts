@@ -1269,6 +1269,10 @@ describe('the face the research tree acts through', () => {
     })
     await b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' })
     expect(b.workspaces.create).toHaveBeenLastCalledWith({ location: { kind: 'ssh', host: 'lab', path: '/srv/x' }, sshAuth: { kind: 'key' } })
+    await b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' }, 'SHA256:confirmed')
+    expect(b.workspaces.create).toHaveBeenLastCalledWith({
+      location: { kind: 'ssh', host: 'lab', path: '/srv/x' }, sshAuth: { kind: 'key' }, sshTrustedHostKey: 'SHA256:confirmed',
+    })
     const refusal = Object.assign(new Error('workspace create failed'), {
       rpcError: { code: 'workspace/ssh-failed', message: 'SSH authentication failed', details: { path: '/srv/x', reason: 'auth' } },
     })

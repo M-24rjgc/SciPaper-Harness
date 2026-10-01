@@ -22,6 +22,20 @@ describe('an SSH workspace the host refused', () => {
     }
   })
 
+  it('carries the key an unknown host presents, when it is well formed', () => {
+    const key = { type: 'ED25519', fingerprint: 'SHA256:abc' }
+    const error = sshWorkspaceErrorOf(Object.assign(new Error('x'), {
+      rpcError: { code: 'workspace/ssh-failed', message: 'm', details: { reason: 'host-key', hostKey: key } },
+    }))
+    expect(error?.hostKey).toEqual(key)
+    for (const hostKey of [undefined, { type: 'ED25519' }, { fingerprint: 'SHA256:abc' }, { type: 1, fingerprint: 2 }]) {
+      const plain = sshWorkspaceErrorOf(Object.assign(new Error('x'), {
+        rpcError: { code: 'workspace/ssh-failed', message: 'm', details: { reason: 'host-key', hostKey } },
+      }))
+      expect(plain?.hostKey).toBeUndefined()
+    }
+  })
+
   it('recognizes nothing else', () => {
     expect(sshWorkspaceErrorOf(refusal('workspace/invalid-path', 'auth'))).toBeUndefined()
     expect(sshWorkspaceErrorOf(refusal('workspace/ssh-failed', 'something new'))).toBeUndefined()

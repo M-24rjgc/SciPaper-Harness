@@ -23,11 +23,11 @@ In the research sidebar, click **＋** beside **研究** (Researches) and choose
 - **Absolute remote path**: the project directory on the remote machine.
 - **Login**: **Key or ssh config (default)** uses your ssh keys, agent and `~/.ssh/config` exactly as `ssh` does. **Password** logs in as the user you typed with the password you enter, so you need no key and no ssh configuration.
 
-The host must be trusted before the first connection, with either login. Run `ssh user@host` once in a terminal, check the fingerprint and answer `yes`; the dialog names this command if the host is still unknown.
+With either login, the first time you add a host this computer has not connected to, the dialog shows **Trust this host?** with the server's key type and SHA256 fingerprint. Compare the fingerprint with one your server administrator gives you, for example from `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the server. Click **Trust and continue** only if they match: the key is then saved in your `~/.ssh/known_hosts`, the same file `ssh` reads, and the connection goes on. **Do not trust** saves nothing. A host whose key differs from the one saved before is refused with no option to trust it. If the dialog shows no fingerprint, because the host is reached through a proxy, run `ssh user@host` once in a terminal and answer `yes`.
 
 A password is checked against the host first and saved only if the host accepts it. It is saved on this computer, in your user profile, in the same credential file as your API keys; it is not encrypted, so anyone who can read your profile can read it. Removing the last workspace on a host deletes its saved password, and adding the workspace again with **Key or ssh config** forgets it too. Remote experiments in researches on that workspace log in with the same password.
 
-When the host cannot be used, the dialog says why: the login was refused, the host could not be reached, the host key is unknown or has changed, or the OpenSSH on your computer is older than 8.4, which password login needs.
+When the host cannot be used, the dialog says why: the login was refused, the host could not be reached, the host key has changed, or the OpenSSH on your computer is older than 8.4, which password login needs.
 
 ## Run a task
 

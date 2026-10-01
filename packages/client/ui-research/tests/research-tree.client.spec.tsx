@@ -627,6 +627,102 @@ describe('the row menus', () => {
     expect(tree.face.openWorkspace).not.toHaveBeenCalled()
   })
 
+  describe('the first connection to an unknown host', () => {
+    const KEY = { type: 'ED25519', fingerprint: 'SHA256:zCYWjkRQRY+WeviSPL50T/cy+RxRuyZ6L09VwGtUuEM' }
+    const unknownHost = () => new SshWorkspaceError('host-key', 'SSH host key is not trusted yet', KEY)
+
+    it('shows the key and its fingerprint, and records nothing until the person trusts it', async () => {
+      const tree = mount()
+      tree.face.createSshWorkspace.mockRejectedValueOnce(unknownHost())
+      const dialog = openSshDialog(tree, { host: 'alice@192.0.2.10', port: '2222', path: '/home/research' })
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      const offer = within(dialog).getByRole('group', { name: zh.treeSshTrustTitle })
+      expect(within(offer).getByText(zh.treeSshTrustBody.replace('{host}', 'alice@192.0.2.10:2222').replace('{type}', 'ED25519'))).toBeTruthy()
+      expect(within(offer).getByText(KEY.fingerprint)).toBeTruthy()
+      expect(within(offer).getByText(zh.treeSshTrustAdvice)).toBeTruthy()
+      expect(within(dialog).queryByRole('alert')).toBeNull()
+      expect(tree.face.createSshWorkspace).toHaveBeenCalledTimes(1)
+      expect(tree.face.createSshWorkspace).toHaveBeenLastCalledWith('alice@192.0.2.10:2222', '/home/research', { kind: 'key' })
+    })
+
+    it('asks the host to trust exactly the fingerprint it showed, then opens the workspace', async () => {
+      const tree = mount()
+      tree.face.createSshWorkspace.mockRejectedValueOnce(unknownHost())
+      const dialog = openSshDialog(tree, { host: 'alice@lab', path: '/home/research', password: 'pw' })
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshTrust }))
+      await settle()
+      expect(tree.face.createSshWorkspace).toHaveBeenCalledTimes(2)
+      expect(tree.face.createSshWorkspace).toHaveBeenLastCalledWith(
+        'alice@lab', '/home/research', { kind: 'password', password: 'pw' }, KEY.fingerprint,
+      )
+      expect(tree.face.openWorkspace).toHaveBeenCalledWith('w-ssh')
+      expect(tree.queryByRole('dialog')).toBeNull()
+    })
+
+    it('goes back to the form without trusting when the person declines or changes the host', async () => {
+      const tree = mount()
+      tree.face.createSshWorkspace.mockRejectedValue(unknownHost())
+      const dialog = openSshDialog(tree, { host: 'alice@lab', path: '/home/research' })
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshTrustDecline }))
+      expect(within(dialog).queryByRole('group', { name: zh.treeSshTrustTitle })).toBeNull()
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      expect(within(dialog).getByRole('group', { name: zh.treeSshTrustTitle })).toBeTruthy()
+      fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshHost }), { target: { value: 'alice@other' } })
+      expect(within(dialog).queryByRole('group', { name: zh.treeSshTrustTitle })).toBeNull()
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      expect(within(dialog).getByRole('group', { name: zh.treeSshTrustTitle })).toBeTruthy()
+      fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPort }), { target: { value: '2200' } })
+      expect(within(dialog).queryByRole('group', { name: zh.treeSshTrustTitle })).toBeNull()
+      expect(tree.face.createSshWorkspace.mock.calls.every(call => call[3] === undefined)).toBe(true)
+    })
+
+    it('does not offer a key twice, and words what goes wrong after the person trusted it', async () => {
+      const tree = mount()
+      tree.face.createSshWorkspace.mockRejectedValueOnce(unknownHost()).mockRejectedValueOnce(unknownHost())
+      const dialog = openSshDialog(tree, { host: 'alice@lab', path: '/home/research' })
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshTrust }))
+      await settle()
+      expect(within(dialog).queryByRole('group', { name: zh.treeSshTrustTitle })).toBeNull()
+      expect(within(dialog).getByRole('alert').textContent).toBe(zh.treeSshFailHostKey.replace('{command}', 'ssh alice@lab'))
+    })
+
+    it('shows a host key that changed as a refusal and offers no way to trust it', async () => {
+      const tree = mount()
+      tree.face.createSshWorkspace.mockRejectedValueOnce(new SshWorkspaceError('host-key-changed', 'changed', KEY))
+      const dialog = openSshDialog(tree, { host: 'alice@lab', path: '/home/research' })
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      expect(within(dialog).getByRole('alert').textContent).toBe(zh.treeSshFailHostKeyChanged)
+      expect(within(dialog).queryByRole('button', { name: zh.treeSshTrust })).toBeNull()
+      expect(within(dialog).queryByRole('group', { name: zh.treeSshTrustTitle })).toBeNull()
+    })
+
+    it('keeps the buttons off while the trusted connection is being made', async () => {
+      const tree = mount()
+      tree.face.createSshWorkspace.mockRejectedValueOnce(unknownHost())
+      const dialog = openSshDialog(tree, { host: 'alice@lab', path: '/home/research' })
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+      await settle()
+      let release: () => void = () => {}
+      tree.face.createSshWorkspace.mockReturnValueOnce(new Promise<WorkspaceId>((resolve) => { release = () => { resolve('w-ssh' as WorkspaceId) } }))
+      fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshTrust }))
+      await settle()
+      expect(within(dialog).queryByRole('group', { name: zh.treeSshTrustTitle })).toBeNull()
+      release()
+      await settle()
+      expect(tree.queryByRole('dialog')).toBeNull()
+    })
+  })
+
   it('closes on Cancel, but not while the host is still being asked', async () => {
     const tree = mount()
     let release: () => void = () => {}

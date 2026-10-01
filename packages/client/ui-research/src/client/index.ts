@@ -370,9 +370,11 @@ export function apply(ctx: Context): void {
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
     startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
-    createSshWorkspace: async (host, path, auth) => {
+    createSshWorkspace: async (host, path, auth, trustedHostKey) => {
       try {
-        return (await workspaces.create({ location: { kind: 'ssh', host, path }, sshAuth: auth })).workspaceId
+        return (await workspaces.create({
+          location: { kind: 'ssh', host, path }, sshAuth: auth, ...trustedHostKey === undefined ? {} : { sshTrustedHostKey: trustedHostKey },
+        })).workspaceId
       } catch (error) {
         throw sshWorkspaceErrorOf(error) ?? error
       }

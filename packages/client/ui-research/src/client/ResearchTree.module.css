@@ -497,6 +497,41 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The first-connection question: the unknown host's key, with the choice to trust it. */
+.trust {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.trustTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.fingerprint {
+  display: block;
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+  color: var(--dsw-alias-label-primary);
+}
+
+.trustActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* Host and port share one line inside the narrow dialog body; the host takes the room the port leaves. */
 .hostRow {
   display: flex;

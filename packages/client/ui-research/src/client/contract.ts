@@ -301,6 +301,14 @@ export type SshWorkspaceFailure = 'auth' | 'unreachable' | 'host-key' | 'host-ke
 
 const SSH_WORKSPACE_FAILURES: readonly SshWorkspaceFailure[] = ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported']
 
+/** The key of an unknown SSH host, as a person compares it with the one the server's administrator knows. */
+export interface SshHostKey {
+  /** Key type, such as `ED25519`. */
+  readonly type: string
+  /** `SHA256:` fingerprint of the key. */
+  readonly fingerprint: string
+}
+
 /** The host's refusal to register an SSH workspace, carrying its cause so the dialog can word it in the reader's language. */
 export class SshWorkspaceError extends Error {
   override readonly name = 'SshWorkspaceError'
@@ -308,8 +316,9 @@ export class SshWorkspaceError extends Error {
   /**
    * @param reason - the host's classification.
    * @param message - the host's own English text, free of any password.
+   * @param hostKey - for `host-key`, the key the unknown host presents, when the host could read it safely.
    */
-  constructor(readonly reason: SshWorkspaceFailure, message: string) { super(message) }
+  constructor(readonly reason: SshWorkspaceFailure, message: string, readonly hostKey?: SshHostKey) { super(message) }
 }
 
 /**
@@ -318,10 +327,17 @@ export class SshWorkspaceError extends Error {
  * @returns the classified error, or undefined for any other failure.
  */
 export function sshWorkspaceErrorOf(error: unknown): SshWorkspaceError | undefined {
-  const failure = (error as { rpcError?: { code?: unknown; message?: unknown; details?: { reason?: unknown } } } | null)?.rpcError
+  const failure = (error as {
+    rpcError?: { code?: unknown; message?: unknown; details?: { reason?: unknown; hostKey?: Partial<SshHostKey> } }
+  } | null)?.rpcError
   if (failure?.code !== 'workspace/ssh-failed') return undefined
   const reason = SSH_WORKSPACE_FAILURES.find(candidate => candidate === failure.details?.reason)
-  return reason === undefined ? undefined : new SshWorkspaceError(reason, String(failure.message))
+  if (reason === undefined) return undefined
+  const key = failure.details?.hostKey
+  const hostKey = typeof key?.type === 'string' && typeof key.fingerprint === 'string'
+    ? { type: key.type, fingerprint: key.fingerprint }
+    : undefined
+  return new SshWorkspaceError(reason, String(failure.message), hostKey)
 }
 
 /**
@@ -350,9 +366,11 @@ export interface ResearchTreeInjected {
    * @param host - SSH alias or `user@host`, with `:port` when a port is chosen.
    * @param path - absolute remote directory.
    * @param auth - key and ssh configuration, or a password the host verifies and saves.
+   * @param trustedHostKey - the fingerprint of an unknown host's key that the person confirmed; the Host records
+   * that key only while it still matches.
    * @throws {SshWorkspaceError} when the host refuses the connection for a cause the dialog words itself.
    */
-  createSshWorkspace(host: string, path: string, auth: SshAuthChoice): Promise<WorkspaceId>
+  createSshWorkspace(host: string, path: string, auth: SshAuthChoice, trustedHostKey?: string): Promise<WorkspaceId>
   /** Send one research command, as {@link ResearchInjected.run} does. */
   run(request: ResearchCommand): Promise<ResearchResponse>
   /** Create or adopt the research rooted at `request.root`, as {@link ResearchInjected.create} does. */

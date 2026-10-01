@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import { SshWorkspaceError, type ResearchTreeInjected, type SshAuthChoice, type SshWorkspaceFailure } from './contract.ts'
+import { SshWorkspaceError, type ResearchTreeInjected, type SshAuthChoice, type SshHostKey, type SshWorkspaceFailure } from './contract.ts'
 import type { createResearchTreeStore } from './treeStore.ts'
 import {
   deriveTree, flattenTree, searchTree, treeKey, type SearchConversation, type SearchPlace, type TreeConversation, type TreeFolder,
@@ -620,7 +620,7 @@ function sshFailureNotice(reason: SshWorkspaceFailure, auth: SshAuthChoice['kind
  */
 function SshWorkspaceDialog(props: {
   t: Translate
-  create(host: string, path: string, auth: SshAuthChoice): Promise<unknown>
+  create(host: string, path: string, auth: SshAuthChoice, trustedHostKey?: string): Promise<unknown>
   onClose(): void
 }): ReactNode {
   const { t } = props
@@ -632,8 +632,10 @@ function SshWorkspaceDialog(props: {
   const [path, setPath] = useState('')
   const [password, setPassword] = useState('')
   const [notice, setNotice] = useState<SshNotice | null>(null)
-  const submit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
+  /** The unknown host's key awaiting the person's answer, with the host it was offered for. */
+  const [offer, setOffer] = useState<{ readonly key: SshHostKey; readonly host: string } | null>(null)
+  /** Send the entry; with `trusted`, the Host first records the key whose fingerprint the person confirmed. */
+  const attempt = (trusted?: string): void => {
     const chosenHost = host.trim()
     const chosenPort = port.trim()
     const chosenPath = path.trim()
@@ -649,16 +651,27 @@ function SshWorkspaceDialog(props: {
       return
     }
     setNotice(null)
+    setOffer(null)
+    const target = chosenPort === '' ? chosenHost : `${chosenHost}:${chosenPort}`
     saving.start(async () => {
       try {
-        await props.create(chosenPort === '' ? chosenHost : `${chosenHost}:${chosenPort}`, chosenPath, auth === 'password' ? { kind: 'password', password } : { kind: 'key' })
+        await props.create(target, chosenPath, auth === 'password' ? { kind: 'password', password } : { kind: 'key' }, trusted)
       } catch (error) {
         if (!(error instanceof SshWorkspaceError)) throw error
+        // A key already confirmed once is not offered again; the person gets the plain refusal.
+        if (error.reason === 'host-key' && error.hostKey !== undefined && trusted === undefined) {
+          setOffer({ key: error.hostKey, host: target })
+          return
+        }
         setNotice(sshFailureNotice(error.reason, auth, `ssh ${chosenPort === '' ? '' : `-p ${chosenPort} `}${chosenHost}`))
         return
       }
       props.onClose()
     })
+  }
+  const submit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    attempt()
   }
   const close = (): void => { if (!saving.pending) props.onClose() }
   return <Modal open onClose={close} closeLabel={t('close')} title={t('treeSshTitle')} footer={<>
@@ -678,12 +691,12 @@ function SshWorkspaceDialog(props: {
         <label className={cx(styles.field, styles.hostField)}>
           <span>{t('treeSshHost')}</span>
           <input className={styles.input} autoFocus required spellCheck={false} value={host} disabled={saving.pending}
-            placeholder={t('treeSshHostPlaceholder')} onChange={(event) => { setHost(event.target.value) }} />
+            placeholder={t('treeSshHostPlaceholder')} onChange={(event) => { setHost(event.target.value); setOffer(null) }} />
         </label>
         <label className={cx(styles.field, styles.portField)}>
           <span>{t('treeSshPort')}</span>
           <input className={styles.input} inputMode="numeric" spellCheck={false} value={port} disabled={saving.pending}
-            placeholder={t('treeSshPortPlaceholder')} onChange={(event) => { setPort(event.target.value) }} />
+            placeholder={t('treeSshPortPlaceholder')} onChange={(event) => { setPort(event.target.value); setOffer(null) }} />
         </label>
       </div>
       <label className={styles.field}>
@@ -697,6 +710,16 @@ function SshWorkspaceDialog(props: {
           disabled={saving.pending} onChange={(event) => { setPassword(event.target.value) }} />
       </label>}
       <p className={styles.hint}>{t(auth === 'password' ? 'treeSshHintPassword' : 'treeSshHintKey')}</p>
+      {offer !== null && <div className={styles.trust} role="group" aria-label={t('treeSshTrustTitle')}>
+        <p className={styles.trustTitle}>{t('treeSshTrustTitle')}</p>
+        <p className={styles.hint}>{t('treeSshTrustBody', { host: offer.host, type: offer.key.type })}</p>
+        <code className={styles.fingerprint}>{offer.key.fingerprint}</code>
+        <p className={styles.hint}>{t('treeSshTrustAdvice')}</p>
+        <div className={styles.trustActions}>
+          <Button variant="outline" disabled={saving.pending} onClick={() => { setOffer(null) }}>{t('treeSshTrustDecline')}</Button>
+          <Button variant="primary" disabled={saving.pending} onClick={() => { attempt(offer.key.fingerprint) }}>{t('treeSshTrust')}</Button>
+        </div>
+      </div>}
       {notice !== null && <p className={styles.hint} role="alert">{'command' in notice ? t(notice.key, { command: notice.command }) : t(notice.key)}</p>}
       <ActionError t={t} error={saving.error} />
     </form>
@@ -857,8 +880,10 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
           openResearch={openResearch} openConversation={openConversation}
         />)}
     </div>
-    {sshOpen && <SshWorkspaceDialog t={t} create={async (host, path, auth) => {
-      const workspaceId = await props.createSshWorkspace(host, path, auth)
+    {sshOpen && <SshWorkspaceDialog t={t} create={async (host, path, auth, trustedHostKey) => {
+      const workspaceId = trustedHostKey === undefined
+        ? await props.createSshWorkspace(host, path, auth)
+        : await props.createSshWorkspace(host, path, auth, trustedHostKey)
       await props.openWorkspace(workspaceId)
     }} onClose={() => { setSshOpen(false) }} />}
     {dialog?.kind === 'rename-research' && <NameDialog
