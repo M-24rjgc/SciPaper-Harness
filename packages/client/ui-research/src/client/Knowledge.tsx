@@ -10,7 +10,11 @@ import { sessionProject, useSessionProject } from './contract.ts'
 import type { ResearchTabProps } from './Tabs.tsx'
 import { ActionError, useAction } from './Action.tsx'
 import { EvidenceView } from './EvidenceGraph.tsx'
+import { MemoryView } from './MemoryView.tsx'
+import { RelationsView } from './RelationsView.tsx'
 import { MapView } from './KnowledgeMap.tsx'
+import { safeLink } from './mapValues.ts'
+import { appendedDraft } from './format.ts'
 import type { ResearchKey } from './locales.ts'
 import styles from './Knowledge.module.css'
 import shell from './KnowledgeViews.module.css'
@@ -18,33 +22,32 @@ import shell from './KnowledgeViews.module.css'
 type GraphProps = WorkbenchProps & { project: ResearchProject; initial?: KnowledgeGraphQuery | undefined }
 
 /** The views of the Knowledge tab; each one belongs to a plugin of the knowledge bundle. */
-export type KnowledgeViewId = 'map' | 'evidence' | 'catalog'
+export type KnowledgeViewId = 'map' | 'relations' | 'evidence' | 'memory' | 'catalog'
 
 /** The tab names of the views. */
-const VIEW_LABELS: Record<KnowledgeViewId, ResearchKey> = { map: 'kgViewMap', evidence: 'kgViewEvidence', catalog: 'kgViewCatalog' }
+const VIEW_LABELS: Record<KnowledgeViewId, ResearchKey> = {
+  map: 'kgViewMap', relations: 'kgViewRelations', evidence: 'kgViewEvidence', memory: 'kgViewMemory', catalog: 'kgViewCatalog',
+}
 
 /** At least one view, in the order the segmented control lists them. */
 export type KnowledgeViewList = readonly [KnowledgeViewId, ...KnowledgeViewId[]]
 
 /**
  * The views the knowledge plugins of this profile offer, in the order the control lists them: a plugin that is off
- * contributes none. The catalog belongs to the graph engine, the map to the domain map, the evidence view to the evidence graph.
+ * contributes none. The catalog belongs to the graph engine, the map to the domain map, the evidence view to the evidence graph,
+ * the memory view to the research memory, the relations view to the relation graph.
  * @param knowledge - what the snapshot says about the knowledge plugins.
  * @returns the views to offer, or undefined when no knowledge plugin is on.
  */
 export function knowledgeViews(knowledge: ResearchSnapshot['knowledge']): KnowledgeViewList | undefined {
   const [first, ...rest] = knowledge === undefined ? [] : [
     ...knowledge.modules.map ? ['map' as const] : [],
+    ...knowledge.modules.relations ? ['relations' as const] : [],
     ...knowledge.modules.evidence ? ['evidence' as const] : [],
+    ...knowledge.modules.memory ? ['memory' as const] : [],
     ...knowledge.enabled ? ['catalog' as const] : [],
   ]
   return first === undefined ? undefined : [first, ...rest]
-}
-
-/** A source URL may open a paper, never execute a graph record's URL as code. */
-function paperLink(url: string | undefined): string | undefined {
-  if (!url) return undefined
-  try { const parsed = new URL(url); return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : undefined } catch { return undefined }
 }
 
 /** Three semantic columns keep every displayed relation inspectable without an unstable force simulation. */
@@ -115,7 +118,7 @@ function Explorer(props: GraphProps): ReactNode {
   }
   useEffect(() => { load({ source: 'all', ...props.initial }); return () => { latest.current++ } }, [project.id])
   const submit = (event: FormEvent): void => { event.preventDefault(); load({ ...filters, query, pattern: undefined, offset: 0 }) }
-  const link = paperLink(selected?.url)
+  const link = safeLink(selected?.url)
   /* v8 ignore next -- every load sets a source, so the default only types the optional field */
   const source = filters.source ?? 'all'
   const patterns = page?.nodes.filter(node => node.kind === 'pattern') ?? []
@@ -171,9 +174,12 @@ function Explorer(props: GraphProps): ReactNode {
  * The views one research offers, behind a segmented control when there are several. The catalog is the explorer over
  * the graph engine; the others come from the sub-plugins that are on.
  */
-function KnowledgeViews(props: GraphProps & { views: KnowledgeViewList }): ReactNode {
+function KnowledgeViews(props: GraphProps & { views: KnowledgeViewList; ask?: ((sentence: string) => void) | undefined }): ReactNode {
   const { project, views, t } = props
   const [chosen, setChosen] = useState<KnowledgeViewId | undefined>()
+  // The map hands the catalog a region's keywords; the catalog then opens searching for them.
+  const [catalogQuery, setCatalogQuery] = useState<string | undefined>()
+  const openCatalog = views.includes('catalog') ? (query: string) => { setCatalogQuery(query); setChosen('catalog') } : undefined
   // A tool card that opens the graph with a query or a pattern means the catalog, which is the only view that searches.
   const searching = props.initial?.query !== undefined || props.initial?.pattern !== undefined
   // Otherwise the tab opens on the person's own research when the evidence graph is on, and on the first view offered if not.
@@ -186,9 +192,12 @@ function KnowledgeViews(props: GraphProps & { views: KnowledgeViewList }): React
         options={views.map(view => ({ value: view, label: t(VIEW_LABELS[view]) }))} />
     </div>}
     <div className={shell.panel} {...tabbed ? { role: 'tabpanel', id: `kg-views-${active}-panel`, 'aria-labelledby': `kg-views-${active}` } : {}}>
-      {active === 'map' && <div className={shell.pad}><MapView {...props} key={project.id} project={project} /></div>}
+      {active === 'map' && <div className={shell.pad}><MapView {...props} key={project.id} project={project} ask={props.ask} openCatalog={openCatalog} /></div>}
+      {active === 'relations' && <div className={shell.pad}><RelationsView {...props} key={project.id} project={project} /></div>}
       {active === 'evidence' && <div className={shell.pad}><EvidenceView {...props} key={project.id} project={project} /></div>}
-      {active === 'catalog' && <div className={styles.tab}><Explorer {...props} key={project.id} project={project} /></div>}
+      {active === 'memory' && <div className={shell.pad}><MemoryView {...props} key={project.id} project={project} /></div>}
+      {active === 'catalog' && <div className={styles.tab}><Explorer {...props} key={`${project.id}:${catalogQuery ?? ''}`} project={project}
+        initial={catalogQuery === undefined ? props.initial : { query: catalogQuery }} /></div>}
     </div>
   </div>
 }
@@ -307,8 +316,10 @@ export function KnowledgeTab(props: ResearchTabProps): ReactNode {
     query: typeof params === 'object' && 'query' in params && typeof params.query === 'string' ? params.query : undefined,
     pattern: typeof params === 'object' && 'pattern' in params && typeof params.pattern === 'string' ? params.pattern : undefined,
   }
+  const draft = props.useInput(state => state.draft)
   const views = knowledgeViews(snapshot?.knowledge)
   if (views === undefined) return <div className={styles.tab}><p>{props.t('kgDisabled')}</p></div>
   if (project === undefined) return <div className={styles.tab}><p>{props.t('railNoProject')}</p></div>
-  return <KnowledgeViews {...props} key={`${project.id}:${navigation.revision}`} project={project} initial={initial} views={views} />
+  return <KnowledgeViews {...props} key={`${project.id}:${navigation.revision}`} project={project} initial={initial} views={views}
+    ask={(sentence) => { props.inputActions.setDraft(appendedDraft(draft, sentence)) }} />
 }
