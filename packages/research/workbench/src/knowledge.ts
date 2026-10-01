@@ -212,6 +212,29 @@ export interface RecallResult {
   closestPapers: ClosePaper[]
 }
 
+/** The built-in graph's rankings behind one recall, by index into that graph's papers and patterns. */
+export interface RecallIndices {
+  /** The papers the query matched (BM25, at most 30), best first. */
+  papers: { index: number; score: number }[]
+  /** Every pattern in recall's fused order, with its fused score. */
+  patterns: { index: number; score: number }[]
+}
+
+/**
+ * Indices behind each recall result. They stay beside the result so that the result's JSON, which the
+ * model reads, and its declared type keep their fields.
+ */
+const recalledIndices = new WeakMap<RecallResult, RecallIndices>()
+
+/**
+ * The built-in graph's indices behind a recall result, for placing the query on the domain map.
+ * @param result - a result that `KnowledgeBase.recall` returned, not a copy of one.
+ * @returns the indices, or undefined when the built-in graph was unavailable to that recall.
+ */
+export function builtinIndices(result: RecallResult): RecallIndices | undefined {
+  return recalledIndices.get(result)
+}
+
 /** Story fields the novelty check compares, in upstream order. */
 const STORY_FIELDS = ['title', 'abstract', 'problem_framing', 'gap_pattern', 'solution', 'method_skeleton', 'experiments_plan'] as const
 
@@ -488,10 +511,12 @@ export class KnowledgeBase {
     const rankings: string[][] = []
     const paperRankings: string[][] = []
     const matched = new Map<string, string[]>()
+    let builtinPapers: RecallIndices['papers'] | undefined
     for (const graph of graphs) {
       const key = (pattern: number) => `${graph.source}:${pattern}`
       rankings.push(graph.patterns.rank(words, 60).map(hit => key(hit.index)))
       const papers = graph.papers.rank(words, 30)
+      if (graph.source === 'ai') builtinPapers = papers
       paperRankings.push(papers.map(hit => `${graph.source}:${hit.index}`))
       // Graph route: the patterns of the papers the query matched, and of their nearest papers.
       const via = new Map<string, number>()
@@ -528,7 +553,8 @@ export class KnowledgeBase {
     }
     if (warnings.length) note += ` Unavailable graphs: ${warnings.join('; ')}.`
     const byName = new Map(graphs.map(graph => [graph.source, graph]))
-    const fused = [...fuse(rankings)].sort((a, b) => b[1] - a[1]).slice(0, topK)
+    const ranked = [...fuse(rankings)].sort((a, b) => b[1] - a[1])
+    const fused = ranked.slice(0, topK)
     const patterns = fused.map(([key, score]): RecalledPattern => {
       const [source, at] = key.split(':') as [LoadedGraph['source'], string]
       const { file } = byName.get(source) as LoadedGraph
@@ -551,7 +577,14 @@ export class KnowledgeBase {
       const [source, at] = key.split(':') as [LoadedGraph['source'], string]
       return closePaper(byName.get(source) as LoadedGraph, Number(at))
     })
-    return { basis, note, patterns, closestPapers }
+    const result: RecallResult = { basis, note, patterns, closestPapers }
+    if (builtinPapers) {
+      recalledIndices.set(result, {
+        papers: builtinPapers,
+        patterns: ranked.flatMap(([key, score]) => key.startsWith('ai:') ? [{ index: Number(key.slice(3)), score }] : []),
+      })
+    }
+    return result
   }
 
   /**
