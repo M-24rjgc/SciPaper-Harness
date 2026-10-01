@@ -4,9 +4,32 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  localResearchFileSession, pathInProject, sessionDirectoriesOf, sessionProject, useModes, type ResearchView, type WorkbenchProps,
+  localResearchFileSession, pathInProject, sessionDirectoriesOf, sessionProject, SshWorkspaceError, sshWorkspaceErrorOf, useModes,
+  type ResearchView, type WorkbenchProps,
 } from '../src/client/contract.ts'
 import { MODES } from './fixtures/modes.ts'
+
+describe('an SSH workspace the host refused', () => {
+  const refusal = (code: string, reason: unknown) => Object.assign(new Error('workspace create failed'), {
+    rpcError: { code, message: 'The host says no', details: { path: '/srv', reason } },
+  })
+
+  it('carries the host classification and its English text', () => {
+    for (const reason of ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported'] as const) {
+      const error = sshWorkspaceErrorOf(refusal('workspace/ssh-failed', reason))
+      expect(error).toBeInstanceOf(SshWorkspaceError)
+      expect(error).toMatchObject({ name: 'SshWorkspaceError', reason, message: 'The host says no' })
+    }
+  })
+
+  it('recognizes nothing else', () => {
+    expect(sshWorkspaceErrorOf(refusal('workspace/invalid-path', 'auth'))).toBeUndefined()
+    expect(sshWorkspaceErrorOf(refusal('workspace/ssh-failed', 'something new'))).toBeUndefined()
+    expect(sshWorkspaceErrorOf(new Error('plain'))).toBeUndefined()
+    expect(sshWorkspaceErrorOf(null)).toBeUndefined()
+    expect(sshWorkspaceErrorOf(Object.assign(new Error('x'), { rpcError: { code: 'workspace/ssh-failed', message: 'm' } }))).toBeUndefined()
+  })
+})
 
 describe('matching a session to its project', () => {
   it('prefers the bound project, then the innermost folder containing the session', () => {

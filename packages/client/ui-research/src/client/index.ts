@@ -24,7 +24,7 @@ import type {
   EntryView, FolderPick, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
   SessionDirectories, SourceReference,
 } from './contract.ts'
-import { localResearchFileSession, sessionDirectoriesOf, sessionProject } from './contract.ts'
+import { localResearchFileSession, sessionDirectoriesOf, sessionProject, sshWorkspaceErrorOf } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
 import { projectFileAddress, researchFileUrl } from './format.ts'
 import { DEFAULT_PRESET_FIELD, PRESET_SETTINGS_NAMESPACE, presetDefaults, type PresetDefaults } from './presets.ts'
@@ -370,7 +370,13 @@ export function apply(ctx: Context): void {
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
     startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
-    createSshWorkspace: async (host, path) => (await workspaces.create({ location: { kind: 'ssh', host, path } })).workspaceId,
+    createSshWorkspace: async (host, path, auth) => {
+      try {
+        return (await workspaces.create({ location: { kind: 'ssh', host, path }, sshAuth: auth })).workspaceId
+      } catch (error) {
+        throw sshWorkspaceErrorOf(error) ?? error
+      }
+    },
     run,
     create,
     renameConversation: async (sessionId, title) => {

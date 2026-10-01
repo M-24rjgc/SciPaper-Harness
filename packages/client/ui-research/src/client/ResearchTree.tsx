@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { ResearchTreeInjected } from './contract.ts'
+import { SshWorkspaceError, type ResearchTreeInjected, type SshAuthChoice, type SshWorkspaceFailure } from './contract.ts'
 import type { createResearchTreeStore } from './treeStore.ts'
 import {
   deriveTree, flattenTree, searchTree, treeKey, type SearchConversation, type SearchPlace, type TreeConversation, type TreeFolder,
@@ -579,29 +579,84 @@ function NameDialog(props: {
   </Modal>
 }
 
-/** Register a remote directory using an OpenSSH host alias and POSIX path. */
+/** A host spelling the Host accepts for one SSH workspace: an alias or `user@host`, with the port in its own field. */
+const SSH_HOST_SPELLING = /^[A-Za-z0-9][A-Za-z0-9_.@-]*$/u
+
+/** The entries the dialog rejects before it asks the Host. */
+type SshRejection = 'treeSshInvalid' | 'treeSshHostInvalid' | 'treeSshPortInvalid' | 'treeSshPasswordMissing'
+
+/** The dialog's one line of feedback: a rejected entry or the cause the Host reported. */
+type SshNotice =
+  | {
+    readonly key: SshRejection | 'treeSshFailAuthKey' | 'treeSshFailAuthPassword' | 'treeSshFailUnreachable'
+      | 'treeSshFailHostKeyChanged' | 'treeSshFailUnsupported'
+  }
+  | { readonly key: 'treeSshFailHostKey'; readonly command: string }
+
+/** The dictionary line for each cause the Host can report that needs no more than its own words. */
+const SSH_FAILURE_KEYS = {
+  unreachable: 'treeSshFailUnreachable',
+  'host-key-changed': 'treeSshFailHostKeyChanged',
+  unsupported: 'treeSshFailUnsupported',
+} as const
+
+/**
+ * Word the cause the Host reported.
+ * @param reason - the Host's classification.
+ * @param auth - the login the person chose, which decides what a refused login asks them to check.
+ * @param command - the terminal command that trusts the host for the first time.
+ * @returns the notice to show.
+ */
+function sshFailureNotice(reason: SshWorkspaceFailure, auth: SshAuthChoice['kind'], command: string): SshNotice {
+  if (reason === 'auth') return { key: auth === 'password' ? 'treeSshFailAuthPassword' : 'treeSshFailAuthKey' }
+  if (reason === 'host-key') return { key: 'treeSshFailHostKey', command }
+  return { key: SSH_FAILURE_KEYS[reason] }
+}
+
+/**
+ * Register a remote directory over SSH. The login is either the person's OpenSSH setup (keys, agent, ssh
+ * config; the default) or a password, which the Host verifies before it saves it. The password is held
+ * in this form until it is sent and is never shown again.
+ */
 function SshWorkspaceDialog(props: {
   t: Translate
-  create(host: string, path: string): Promise<unknown>
+  create(host: string, path: string, auth: SshAuthChoice): Promise<unknown>
   onClose(): void
 }): ReactNode {
   const { t } = props
   const saving = useAction()
   const formId = useId()
+  const [auth, setAuth] = useState<SshAuthChoice['kind']>('key')
   const [host, setHost] = useState('')
+  const [port, setPort] = useState('')
   const [path, setPath] = useState('')
-  const [invalid, setInvalid] = useState(false)
+  const [password, setPassword] = useState('')
+  const [notice, setNotice] = useState<SshNotice | null>(null)
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const chosenHost = host.trim()
+    const chosenPort = port.trim()
     const chosenPath = path.trim()
-    if (chosenHost === '' || !chosenPath.startsWith('/')) {
-      setInvalid(true)
+    const rejected = ((): SshRejection | undefined => {
+      if (chosenHost === '' || !chosenPath.startsWith('/')) return 'treeSshInvalid'
+      if (!SSH_HOST_SPELLING.test(chosenHost)) return 'treeSshHostInvalid'
+      if (chosenPort !== '' && !(/^[0-9]{1,5}$/u.test(chosenPort) && Number(chosenPort) >= 1 && Number(chosenPort) <= 65_535)) return 'treeSshPortInvalid'
+      if (auth === 'password' && password === '') return 'treeSshPasswordMissing'
+      return undefined
+    })()
+    if (rejected !== undefined) {
+      setNotice({ key: rejected })
       return
     }
-    setInvalid(false)
+    setNotice(null)
     saving.start(async () => {
-      await props.create(chosenHost, chosenPath)
+      try {
+        await props.create(chosenPort === '' ? chosenHost : `${chosenHost}:${chosenPort}`, chosenPath, auth === 'password' ? { kind: 'password', password } : { kind: 'key' })
+      } catch (error) {
+        if (!(error instanceof SshWorkspaceError)) throw error
+        setNotice(sshFailureNotice(error.reason, auth, `ssh ${chosenPort === '' ? '' : `-p ${chosenPort} `}${chosenHost}`))
+        return
+      }
       props.onClose()
     })
   }
@@ -612,16 +667,37 @@ function SshWorkspaceDialog(props: {
   </>}>
     <form id={formId} className={styles.form} onSubmit={submit}>
       <label className={styles.field}>
-        <span>{t('treeSshHost')}</span>
-        <input className={styles.input} autoFocus required spellCheck={false} value={host} disabled={saving.pending}
-          placeholder={t('treeSshHostPlaceholder')} onChange={(event) => { setHost(event.target.value) }} />
+        <span>{t('treeSshAuth')}</span>
+        <select className={styles.input} value={auth} disabled={saving.pending}
+          onChange={(event) => { setAuth(event.target.value === 'password' ? 'password' : 'key') }}>
+          <option value="key">{t('treeSshAuthKey')}</option>
+          <option value="password">{t('treeSshAuthPassword')}</option>
+        </select>
       </label>
+      <div className={styles.hostRow}>
+        <label className={cx(styles.field, styles.hostField)}>
+          <span>{t('treeSshHost')}</span>
+          <input className={styles.input} autoFocus required spellCheck={false} value={host} disabled={saving.pending}
+            placeholder={t('treeSshHostPlaceholder')} onChange={(event) => { setHost(event.target.value) }} />
+        </label>
+        <label className={cx(styles.field, styles.portField)}>
+          <span>{t('treeSshPort')}</span>
+          <input className={styles.input} inputMode="numeric" spellCheck={false} value={port} disabled={saving.pending}
+            placeholder={t('treeSshPortPlaceholder')} onChange={(event) => { setPort(event.target.value) }} />
+        </label>
+      </div>
       <label className={styles.field}>
         <span>{t('treeSshPath')}</span>
         <input className={styles.input} required spellCheck={false} value={path} disabled={saving.pending}
           placeholder={t('treeSshPathPlaceholder')} onChange={(event) => { setPath(event.target.value) }} />
       </label>
-      {invalid && <p className={styles.hint} role="alert">{t('treeSshInvalid')}</p>}
+      {auth === 'password' && <label className={styles.field}>
+        <span>{t('treeSshPassword')}</span>
+        <input className={styles.input} type="password" autoComplete="off" maxLength={1024} spellCheck={false} value={password}
+          disabled={saving.pending} onChange={(event) => { setPassword(event.target.value) }} />
+      </label>}
+      <p className={styles.hint}>{t(auth === 'password' ? 'treeSshHintPassword' : 'treeSshHintKey')}</p>
+      {notice !== null && <p className={styles.hint} role="alert">{'command' in notice ? t(notice.key, { command: notice.command }) : t(notice.key)}</p>}
       <ActionError t={t} error={saving.error} />
     </form>
   </Modal>
@@ -781,8 +857,8 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
           openResearch={openResearch} openConversation={openConversation}
         />)}
     </div>
-    {sshOpen && <SshWorkspaceDialog t={t} create={async (host, path) => {
-      const workspaceId = await props.createSshWorkspace(host, path)
+    {sshOpen && <SshWorkspaceDialog t={t} create={async (host, path, auth) => {
+      const workspaceId = await props.createSshWorkspace(host, path, auth)
       await props.openWorkspace(workspaceId)
     }} onClose={() => { setSshOpen(false) }} />}
     {dialog?.kind === 'rename-research' && <NameDialog

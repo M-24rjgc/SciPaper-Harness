@@ -497,6 +497,23 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* Host and port share one line inside the narrow dialog body; the host takes the room the port leaves. */
+.hostRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.hostField {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.portField {
+  flex: 0 0 96px;
+  min-width: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .arrow {
     transition: none;

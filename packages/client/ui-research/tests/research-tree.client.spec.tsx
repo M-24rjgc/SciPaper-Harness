@@ -25,7 +25,7 @@ import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts
 import type { CreateProjectRequest, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import { ResearchTree, searchable, type ResearchTreeProps } from '../src/client/ResearchTree.tsx'
 import { createResearchTreeStore } from '../src/client/treeStore.ts'
-import type { ResearchView } from '../src/client/contract.ts'
+import { SshWorkspaceError, type ResearchView, type SshAuthChoice } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 import { standingOf } from './fixtures/standing.ts'
@@ -141,7 +141,7 @@ function faceOf() {
     openSession: vi.fn(),
     openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()),
     startSession: vi.fn(),
-    createSshWorkspace: vi.fn(async () => 'w-ssh' as WorkspaceId),
+    createSshWorkspace: vi.fn(async (_host: string, _path: string, _auth: SshAuthChoice) => 'w-ssh' as WorkspaceId),
     run: vi.fn((command: ResearchCommand): Promise<ResearchResponse> => {
       commands.push(command)
       expect(commandSchema.parse(command)).toBeTruthy()
@@ -520,8 +520,141 @@ describe('the row menus', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPath }), { target: { value: '/home/research' } })
     fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
     await settle()
-    expect(tree.face.createSshWorkspace).toHaveBeenCalledWith('lab', '/home/research')
+    expect(tree.face.createSshWorkspace).toHaveBeenCalledWith('lab', '/home/research', { kind: 'key' })
     expect(tree.face.openWorkspace).toHaveBeenCalledWith('w-ssh')
+    expect(tree.queryByRole('dialog')).toBeNull()
+  })
+
+  /** Open the dialog and fill what the person typed; `fields` leaves the rest empty. */
+  function openSshDialog(tree: ReturnType<typeof mount>, fields: { host?: string; port?: string; path?: string; password?: string } = {}) {
+    fireEvent.click(tree.getByRole('button', { name: zh.treeSshAdd }))
+    const dialog = tree.getByRole('dialog', { name: zh.treeSshTitle })
+    if (fields.password !== undefined) fireEvent.change(within(dialog).getByRole('combobox', { name: zh.treeSshAuth }), { target: { value: 'password' } })
+    if (fields.host !== undefined) fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshHost }), { target: { value: fields.host } })
+    if (fields.port !== undefined) fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPort }), { target: { value: fields.port } })
+    if (fields.path !== undefined) fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPath }), { target: { value: fields.path } })
+    if (fields.password !== undefined) {
+      fireEvent.change(within(dialog).getByLabelText(zh.treeSshPassword), { target: { value: fields.password } })
+    }
+    return dialog
+  }
+
+  it('offers key login by default and shows a password field only for the password login', () => {
+    const tree = mount()
+    const dialog = openSshDialog(tree)
+    const login = within(dialog).getByRole<HTMLSelectElement>('combobox', { name: zh.treeSshAuth })
+    expect(login.value).toBe('key')
+    expect(within(dialog).getAllByRole('option').map(option => option.textContent)).toEqual([zh.treeSshAuthKey, zh.treeSshAuthPassword])
+    expect(within(dialog).queryByLabelText(zh.treeSshPassword)).toBeNull()
+    expect(within(dialog).getByText(zh.treeSshHintKey)).toBeTruthy()
+    fireEvent.change(login, { target: { value: 'password' } })
+    const password = within(dialog).getByLabelText<HTMLInputElement>(zh.treeSshPassword)
+    expect(password.type).toBe('password')
+    expect(password.autocomplete).toBe('off')
+    expect(within(dialog).getByText(zh.treeSshHintPassword)).toBeTruthy()
+    expect(within(dialog).queryByText(zh.treeSshHintKey)).toBeNull()
+    fireEvent.change(login, { target: { value: 'key' } })
+    expect(within(dialog).queryByLabelText(zh.treeSshPassword)).toBeNull()
+  })
+
+  it('sends user@host with its port and the typed password, and never shows the password again', async () => {
+    const tree = mount()
+    const dialog = openSshDialog(tree, { host: ' alice@192.0.2.10 ', port: ' 2222 ', path: ' /home/research ', password: ' pa ss ' })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(tree.face.createSshWorkspace).toHaveBeenCalledWith(
+      'alice@192.0.2.10:2222', '/home/research', { kind: 'password', password: ' pa ss ' },
+    )
+    expect(tree.queryByRole('dialog')).toBeNull()
+    expect(document.body.textContent).not.toContain('pa ss')
+  })
+
+  it('leaves the port off when none is typed', async () => {
+    const tree = mount()
+    const dialog = openSshDialog(tree, { host: 'alice@lab', path: '/home/research', password: 'pw' })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(tree.face.createSshWorkspace).toHaveBeenCalledWith('alice@lab', '/home/research', { kind: 'password', password: 'pw' })
+  })
+
+  it.each([
+    ['a blank host', { host: '   ', path: '/p' }, zh.treeSshInvalid],
+    ['a relative path', { host: 'lab', path: 'p' }, zh.treeSshInvalid],
+    ['a port inside the host', { host: 'lab:22', path: '/p' }, zh.treeSshHostInvalid],
+    ['an option-like host', { host: '-oProxyCommand=x', path: '/p' }, zh.treeSshHostInvalid],
+    ['a port that is not a number', { host: 'lab', port: '22a', path: '/p' }, zh.treeSshPortInvalid],
+    ['port zero', { host: 'lab', port: '0', path: '/p' }, zh.treeSshPortInvalid],
+    ['a port above 65535', { host: 'lab', port: '65536', path: '/p' }, zh.treeSshPortInvalid],
+    ['a password login without a password', { host: 'lab', path: '/p', password: '' }, zh.treeSshPasswordMissing],
+  ])('rejects %s before asking the host', async (_name, fields, message) => {
+    const tree = mount()
+    const dialog = openSshDialog(tree, fields)
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(within(dialog).getByRole('alert').textContent).toBe(message)
+    expect(tree.face.createSshWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('accepts the highest port, and clears a rejection once the entry is valid', async () => {
+    const tree = mount()
+    const dialog = openSshDialog(tree, { host: 'lab', port: '70000', path: '/p' })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    expect(within(dialog).getByRole('alert').textContent).toBe(zh.treeSshPortInvalid)
+    fireEvent.change(within(dialog).getByRole('textbox', { name: zh.treeSshPort }), { target: { value: '65535' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(tree.face.createSshWorkspace).toHaveBeenCalledWith('lab:65535', '/p', { kind: 'key' })
+    expect(tree.queryByRole('dialog')).toBeNull()
+  })
+
+  it.each([
+    ['auth', { host: 'alice@lab', path: '/p' }, zh.treeSshFailAuthKey],
+    ['auth', { host: 'alice@lab', path: '/p', password: 'pw' }, zh.treeSshFailAuthPassword],
+    ['unreachable', { host: 'alice@lab', path: '/p', password: 'pw' }, zh.treeSshFailUnreachable],
+    ['host-key', { host: 'alice@lab', port: '2222', path: '/p', password: 'pw' }, zh.treeSshFailHostKey.replace('{command}', 'ssh -p 2222 alice@lab')],
+    ['host-key', { host: 'alice@lab', path: '/p' }, zh.treeSshFailHostKey.replace('{command}', 'ssh alice@lab')],
+    ['host-key-changed', { host: 'alice@lab', path: '/p' }, zh.treeSshFailHostKeyChanged],
+    ['unsupported', { host: 'alice@lab', path: '/p', password: 'pw' }, zh.treeSshFailUnsupported],
+  ] as const)('words an SSH %s failure in the reader’s language and keeps the form', async (reason, fields, message) => {
+    const tree = mount()
+    tree.face.createSshWorkspace.mockRejectedValueOnce(new SshWorkspaceError(reason, 'The host says: Permission denied (publickey).'))
+    const dialog = openSshDialog(tree, fields)
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(within(dialog).getByRole('alert').textContent).toBe(message)
+    expect(tree.getByRole('dialog', { name: zh.treeSshTitle })).toBeTruthy()
+    expect(within(dialog).getByRole<HTMLInputElement>('textbox', { name: zh.treeSshHost }).value).toBe('alice@lab')
+    expect(tree.face.openWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('closes on Cancel, but not while the host is still being asked', async () => {
+    const tree = mount()
+    let release: () => void = () => {}
+    tree.face.createSshWorkspace.mockReturnValueOnce(new Promise<WorkspaceId>((resolve) => { release = () => { resolve('w-ssh' as WorkspaceId) } }))
+    const dialog = openSshDialog(tree, { host: 'lab', path: '/p' })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await settle()
+    expect(tree.queryByRole('dialog', { name: zh.treeSshTitle })).not.toBeNull()
+    expect(within(dialog).getByRole<HTMLInputElement>('textbox', { name: zh.treeSshHost }).disabled).toBe(true)
+    release()
+    await settle()
+    expect(tree.queryByRole('dialog')).toBeNull()
+    fireEvent.click(tree.getByRole('button', { name: zh.treeSshAdd }))
+    fireEvent.click(within(tree.getByRole('dialog', { name: zh.treeSshTitle })).getByRole('button', { name: zh.cancel }))
+    expect(tree.queryByRole('dialog')).toBeNull()
+  })
+
+  it('clears an earlier refusal when the entry is sent again', async () => {
+    const tree = mount()
+    tree.face.createSshWorkspace.mockRejectedValueOnce(new SshWorkspaceError('unreachable', 'down'))
+    const dialog = openSshDialog(tree, { host: 'lab', path: '/p' })
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
+    expect(within(dialog).getByRole('alert').textContent).toBe(zh.treeSshFailUnreachable)
+    fireEvent.click(within(dialog).getByRole('button', { name: zh.treeSshAdd }))
+    await settle()
     expect(tree.queryByRole('dialog')).toBeNull()
   })
 

@@ -273,7 +273,11 @@ async function bench(services: BenchServices = {}) {
     })),
     pinnedSessionIds: [], archivedSessionIds: (services.archived ?? []) as SessionId[], state: 'idle', phase: 'ready', error: null,
   })
-  const workspaces = { list: workspaceList, delete: vi.fn((_workspaceId: string) => Promise.resolve()) }
+  const workspaces = {
+    list: workspaceList,
+    delete: vi.fn((_workspaceId: string) => Promise.resolve()),
+    create: vi.fn((_input: unknown) => Promise.resolve({ workspaceId: 'w-ssh' })),
+  }
   const policies: UiWorkspaceEntryPolicy[] = []
   const uiWorkspace = {
     openSession: vi.fn((id: string) => { select(id) }),
@@ -1255,6 +1259,25 @@ describe('the face the research tree acts through', () => {
     await b.tree.removeFolder('w-gone' as WorkspaceId)
     expect(b.uiWorkspace.archiveSession).not.toHaveBeenCalled()
     expect(b.workspaces.delete).toHaveBeenLastCalledWith('w-gone')
+  })
+
+  it('registers an SSH workspace with the chosen login, and tells the dialog why the host refused', async () => {
+    const b = await treeBench()
+    expect(await b.tree.createSshWorkspace('alice@lab:2222', '/srv/x', { kind: 'password', password: 'pw' })).toBe('w-ssh')
+    expect(b.workspaces.create).toHaveBeenCalledWith({
+      location: { kind: 'ssh', host: 'alice@lab:2222', path: '/srv/x' }, sshAuth: { kind: 'password', password: 'pw' },
+    })
+    await b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' })
+    expect(b.workspaces.create).toHaveBeenLastCalledWith({ location: { kind: 'ssh', host: 'lab', path: '/srv/x' }, sshAuth: { kind: 'key' } })
+    const refusal = Object.assign(new Error('workspace create failed'), {
+      rpcError: { code: 'workspace/ssh-failed', message: 'SSH authentication failed', details: { path: '/srv/x', reason: 'auth' } },
+    })
+    b.workspaces.create.mockRejectedValueOnce(refusal)
+    await expect(b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' }))
+      .rejects.toMatchObject({ name: 'SshWorkspaceError', reason: 'auth', message: 'SSH authentication failed' })
+    const other = new Error('workspace create failed: workspace/invalid-path')
+    b.workspaces.create.mockRejectedValueOnce(other)
+    await expect(b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' })).rejects.toBe(other)
   })
 
   it('shows a folder in the file manager, and passes the host\'s refusal on', async () => {

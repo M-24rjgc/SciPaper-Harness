@@ -291,6 +291,39 @@ export interface SessionSeatProps {
   sessionId: string
 }
 
+/** How a person chose to log in to the SSH host of a new workspace. */
+export type SshAuthChoice =
+  | { readonly kind: 'key' }
+  | { readonly kind: 'password'; readonly password: string }
+
+/** Why an SSH host could not be used, as the host classifies it. */
+export type SshWorkspaceFailure = 'auth' | 'unreachable' | 'host-key' | 'host-key-changed' | 'unsupported'
+
+const SSH_WORKSPACE_FAILURES: readonly SshWorkspaceFailure[] = ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported']
+
+/** The host's refusal to register an SSH workspace, carrying its cause so the dialog can word it in the reader's language. */
+export class SshWorkspaceError extends Error {
+  override readonly name = 'SshWorkspaceError'
+
+  /**
+   * @param reason - the host's classification.
+   * @param message - the host's own English text, free of any password.
+   */
+  constructor(readonly reason: SshWorkspaceFailure, message: string) { super(message) }
+}
+
+/**
+ * Recognize a Workspace create failure that names an SSH cause.
+ * @param error - whatever the workspace service threw.
+ * @returns the classified error, or undefined for any other failure.
+ */
+export function sshWorkspaceErrorOf(error: unknown): SshWorkspaceError | undefined {
+  const failure = (error as { rpcError?: { code?: unknown; message?: unknown; details?: { reason?: unknown } } } | null)?.rpcError
+  if (failure?.code !== 'workspace/ssh-failed') return undefined
+  const reason = SSH_WORKSPACE_FAILURES.find(candidate => candidate === failure.details?.reason)
+  return reason === undefined ? undefined : new SshWorkspaceError(reason, String(failure.message))
+}
+
 /**
  * What the sidebar's research tree acts through: the record, the host's
  * file-manager answer, the shell's navigation and session actions, and the
@@ -312,8 +345,14 @@ export interface ResearchTreeInjected {
   openWorkspace(workspaceId: WorkspaceId): Promise<void>
   /** ＋ 新对话 (New conversation): the folder's blank conversation, reused or created, opened (`uiWorkspace.startSession`). */
   startSession(workspaceId: WorkspaceId): void
-  /** Register a remote directory as a workspace and return its identity. */
-  createSshWorkspace(host: string, path: string): Promise<WorkspaceId>
+  /**
+   * Register a remote directory as a workspace and return its identity.
+   * @param host - SSH alias or `user@host`, with `:port` when a port is chosen.
+   * @param path - absolute remote directory.
+   * @param auth - key and ssh configuration, or a password the host verifies and saves.
+   * @throws {SshWorkspaceError} when the host refuses the connection for a cause the dialog words itself.
+   */
+  createSshWorkspace(host: string, path: string, auth: SshAuthChoice): Promise<WorkspaceId>
   /** Send one research command, as {@link ResearchInjected.run} does. */
   run(request: ResearchCommand): Promise<ResearchResponse>
   /** Create or adopt the research rooted at `request.root`, as {@link ResearchInjected.create} does. */
