@@ -219,8 +219,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // SSH launches a private helper and shares wire definitions and TLS setup
   // between that helper and the connection owner.
   '@deepseek-ai/dsh-ssh': [
-    'lib/helper.js', 'lib/protocol.js', 'lib/schemas.js',
-    'lib/protocol-*.js', 'lib/schemas-*.js', 'lib/stream-security-*.js',
+    'lib/helper.js', 'lib/protocol.js', 'lib/schemas.js', 'lib/auth.js', 'lib/host-key.js',
+    'lib/protocol-*.js', 'lib/schemas-*.js', 'lib/auth-*.js', 'lib/stream-security-*.js',
   ],
   // Ordinary native containment ships a path-loaded runner and its shared
   // runner chunk beside the existing node-pty permission repair.

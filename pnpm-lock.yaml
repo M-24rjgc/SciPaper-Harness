@@ -14901,6 +14901,9 @@ importers:
       '@deepseek-ai/dsh-spill':
         specifier: workspace:*
         version: link:../../packages/spill/spill
+      '@deepseek-ai/dsh-ssh':
+        specifier: workspace:*
+        version: link:../../packages/ssh/ssh
       '@deepseek-ai/dsh-storage':
         specifier: workspace:*
         version: link:../../packages/storage/storage

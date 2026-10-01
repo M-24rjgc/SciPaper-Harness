@@ -73,10 +73,10 @@
   },
   "files": [
     "locale/knowledge-evidence-plugin/*.json",
-    "locale/knowledge-relations-plugin/*.json",
-    "locale/knowledge-memory-plugin/*.json",
     "locale/knowledge-map-plugin/*.json",
+    "locale/knowledge-memory-plugin/*.json",
     "locale/knowledge-plugin/*.json",
+    "locale/knowledge-relations-plugin/*.json",
     "lib/index.js",
     "runtime/**/*",
     "lib/types/**/*.js",

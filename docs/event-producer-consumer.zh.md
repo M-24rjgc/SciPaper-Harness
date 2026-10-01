@@ -100,7 +100,6 @@
 <!-- BEGIN GENERATED event-producer-consumer:undeclared -->
 | Event string | Dispatchers | Listeners |
 | --- | --- | --- |
-| `connection/reset` | `gateway` (`emit`) | `ui-settings` |
 | `internal/config` | [`config-editor`](../packages/boot/config-editor) (`waterfall`) | [`llm-pi-ai`](../packages/llm/llm-pi-ai) |
 | `internal/dispatch` | - | `agent-team`, [`commands`](../packages/interaction/commands), [`compaction`](../packages/compaction/compaction), [`fs`](../packages/fs/fs), [`goal`](../packages/goal/goal), [`goal-round-driver`](../packages/goal/goal-round-driver), [`hook-protocol`](../packages/hooks/hook-protocol), [`llm-retry`](../packages/llm/llm-retry), [`permission-presets`](../packages/interaction/permission-presets), [`plan-mode`](../packages/plan/plan-mode), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`schedule`](../packages/schedule/schedule), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`session-log-deepseek`](../packages/session/session-log-deepseek), [`session-title`](../packages/session/session-title), [`subagent`](../packages/subagent/subagent), [`terminal-bash`](../packages/terminal/terminal-bash), [`time-context`](../packages/context/time-context), [`tool-todo`](../packages/todo/tool-todo), [`tool-workflow`](../packages/workflow/tool-workflow), [`tools`](../packages/core/tools), `ui-renderer`, [`user-approval`](../packages/interaction/user-approval), [`webhook`](../packages/webhook/webhook), [`workflow`](../packages/workflow/workflow) |
 | `internal/plugin` | - | [`computer-use-cua-driver-native`](../packages/computer-use/computer-use-cua-driver-native), `inspector`, `loader`, [`lsp-stdio`](../packages/lsp/lsp-stdio), [`mcp-client`](../packages/mcp/mcp-client), `modules` |
@@ -108,13 +107,7 @@
 | `internal/status` | - | [`agent`](../packages/core/agent), `inspector`, [`web`](../packages/web/web) |
 | `internal/update` | - | [`app-boot`](../packages/boot/app-boot) |
 | `loader/volatile-update` | - | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), `product-analytics`, `speech-to-text` |
-| `locale/change` | `locale` (`emit`) | `locale` |
-| `slash/input-begin-command` | - | `ui-conversation` |
-| `slash/input-consume-token` | - | `ui-conversation` |
-| `slash/input-insert-reference` | - | `ui-conversation` |
-| `slash/input-insert-text` | - | `ui-conversation` |
 | `slots/changed` | `ui-renderer` (`emit`) | - |
-| `theme/change` | `ui-theme` (`emit`) | `ui-layout`, `ui-theme` |
 <!-- END GENERATED event-producer-consumer:undeclared -->
 
 Maintenance mode: generated: Cordis event declarations and producer/listener edges are resolved from the repository TypeScript Program.
