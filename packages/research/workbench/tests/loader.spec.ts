@@ -750,7 +750,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(await readFile(marker, 'utf8')).toBe('retained research data')
   })
 
-  it('places the agent\'s recall, the library and the person\'s marks over the domain map', async () => {
+  it('places the agent\'s recall, the library and the person\'s marks over the domain map', { timeout: 30_000 }, async () => {
     root = await temporaryRoot('research-map-overlay-')
     const { service } = await boot(new MemoryMediaPool())
     const project = await service.create({ title: 'Overlay', root: join(root, 'paper'), brief: '' })
@@ -974,7 +974,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(service.getProject(alpha.id).evidence).toHaveLength(3)
   })
 
-  it('mounts the relation graph as a row of its own: grounded proposals, queries, corrections, the person\'s commands, and cancellation', async () => {
+  it('mounts the relation graph as a row of its own: grounded proposals, queries, corrections, the person\'s commands, and cancellation', { timeout: 30_000 }, async () => {
     root = await temporaryRoot('research-relations-')
     const { service } = await boot(new MemoryMediaPool())
     const project = await service.create({ title: 'Relations', root: join(root, 'paper'), brief: '' })

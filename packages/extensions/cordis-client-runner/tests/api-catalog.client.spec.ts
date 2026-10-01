@@ -13,7 +13,7 @@ describe('Client Cordis inspect catalog', () => {
       ])
     expect(SERVICE_API.find(service => service.key === 'workspaces')?.methods.map(method => method.signature))
       .toEqual([
-        'create(input: { path: string }): Promise<WorkspaceView>',
+        'create(input: WorkspaceCreateRequest): Promise<WorkspaceView>',
         'rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView>',
         'delete(workspaceId: WorkspaceId): Promise<void>',
         'archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>',
@@ -23,7 +23,7 @@ describe('Client Cordis inspect catalog', () => {
     expect(SERVICE_API.find(service => service.key === 'uiWorkspace')?.methods.map(method => method.signature))
       .toEqual([
         'openSession(target: SessionTarget): void',
-        'openWorkspace(workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void): Promise<void>',
+        'openWorkspace( workspaceId: WorkspaceId, beforeOpen?: (sessionId: SessionId) => void, canReuse?: (sessionId: SessionId) => boolean, ): Promise<void>',
         'forkSession(sessionId: SessionId, onCreated?: (childId: SessionId) => void): Promise<SessionId>',
         'connectWorkspace(workspaceId: WorkspaceId): Promise<SessionId>',
         'startSession(workspaceId?: WorkspaceId): void',
