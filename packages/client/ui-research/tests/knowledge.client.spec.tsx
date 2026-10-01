@@ -12,7 +12,7 @@ import { KnowledgePluginPage, KnowledgeTab, knowledgeViews } from '../src/client
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
 import { page } from './fixtures/memory.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
 const t = translate(zh)
@@ -182,7 +182,7 @@ it('opens on the map when it is the first view offered, and on the catalog when 
 it('says when no conversation research is open and when no knowledge plugin is on', () => {
   const noResearch = harness(true, false, everything)
   const props = { ...noResearch.props, useCurrentSession: (select: (value: string | undefined) => unknown) => select(undefined) }
-  const view = render(<KnowledgeTab {...props} sessionId="elsewhere" />)
+  const view = render(<KnowledgeTab {...props as typeof noResearch.props} sessionId={'elsewhere' as typeof noResearch.props.sessionId} />)
   expect(view.getByText(zh.railNoProject)).toBeTruthy()
   view.unmount()
   expect(render(<KnowledgeTab {...harness(false).props} />).getByText(zh.kgDisabled)).toBeTruthy()
@@ -203,10 +203,10 @@ it('hands the map\'s questions to the composer after what is already typed, and 
     regions: [{ index: 0, label: 'attention / sparse', keywords: ['attention', 'sparse'], papers: 1, domain: 'ML', x: 0.5, y: 0.5 }], gaps: [],
   }
   const overlay: MapOverlayPage = {
-    built: true, library: [], recalled: [], marks: [],
+    built: true, library: [], recalled: [], marks: [], honour: true,
     idea: { text: 'an idea', source: 'recall', placement: { x: 0.5, y: 0.5, confidence: 1, region: 'attention / sparse', alternatives: [], nearest: [], crowding: 0.5 } },
   }
-  const h = harness(true, false, { map: true, evidence: false }, {}, 'First line')
+  const h = harness(true, false, { ...none, map: true }, {}, 'First line')
   const run = h.props.run
   h.props.run = async request => request.action === 'map-view' ? { message: 'Map', mapView: built }
     : request.action === 'map-overlay' ? { message: 'Overlay', mapOverlay: overlay } : run(request)
@@ -220,7 +220,7 @@ it('hands the map\'s questions to the composer after what is already typed, and 
 })
 
 it('offers the map no way to the catalog while the graph engine is off', async () => {
-  const h = harness(false, false, { map: true, evidence: false }, {})
+  const h = harness(false, false, { ...none, map: true }, {})
   const run = h.props.run
   h.props.run = async request => request.action === 'map-view' ? { message: 'Map', mapView: { built: false } } : run(request)
   const view = render(<KnowledgeTab {...h.props} />); await settle()

@@ -6,7 +6,7 @@ import {
 } from '../src/client/memoryValues.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { environment, experiment, everyKind as on, list, page, paper, research, venue } from './fixtures/memory.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 const t = translate(en)
 

@@ -8,7 +8,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { EvidenceView } from '../src/client/EvidenceGraph.tsx'
 import type { WorkbenchProps } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
 const t = translate(en)
@@ -63,7 +63,7 @@ function harness(page: EvidenceGraphPage | null = graph) {
     commands.push(request)
     return { message: 'ok', ...page === null ? {} : { evidenceGraph: page } }
   })
-  const props = { t, run, openFile, focusClaim, project } as WorkbenchProps & { project: typeof project }
+  const props: WorkbenchProps & { project: typeof project } = { t, run, openFile, focusClaim, project } as never
   return { props, project, commands, openFile, focusClaim, run }
 }
 async function settle(): Promise<void> { await act(async () => { await Promise.resolve() }) }

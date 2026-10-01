@@ -10,7 +10,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { MapView, type MapViewProps } from '../src/client/KnowledgeMap.tsx'
 import { decodeMap, fitScale, transformOf, wholeMap, type BuiltMap } from '../src/client/mapValues.ts'
 import { zh } from '../src/client/locales.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -106,7 +106,8 @@ function harness(options: {
   const commands: ResearchCommand[] = []
   const marks: KnowledgeMarkView[] = []
   const snapshot: ResearchSnapshot = {
-    projects: [project], modes: [], components: [], knowledge: { enabled: true, modules: { map: true, evidence: false } },
+    projects: [project], modes: [], components: [],
+    knowledge: { enabled: true, modules: { map: true, evidence: false, memory: false, relations: false } },
     preferences: options.embedding === true ? { embedding: { baseUrl: 'https://embed.example/v1', model: 'm' } } : {},
   }
   const run = async (request: ResearchCommand): Promise<ResearchResponse> => {
@@ -134,12 +135,12 @@ function harness(options: {
       default: throw new Error(`unexpected ${request.action}`)
     }
   }
-  const props = {
+  const props: MapViewProps = {
     t, project: { ...project, example: options.example === true }, run,
     useResearch: (select: (value: object) => unknown) => select({ snapshot, tasks: [] }),
     ...options.ask === true ? { ask: vi.fn() } : {},
     ...options.catalog === true ? { openCatalog: vi.fn() } : {},
-  } as MapViewProps
+  } as never
   return { props, commands, marks }
 }
 async function settle(): Promise<void> { await act(async () => { for (let at = 0; at < 4; at++) await Promise.resolve() }) }

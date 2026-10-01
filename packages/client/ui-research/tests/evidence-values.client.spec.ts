@@ -5,7 +5,7 @@ import {
   invalidationLines, nextStepKey, sourceIndex, sourceKindText, sourceLabel, sourceMeta, statusText, supportOf, whereText,
 } from '../src/client/evidenceValues.ts'
 import { en, zh } from '../src/client/locales.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 const t = translate(en)
 

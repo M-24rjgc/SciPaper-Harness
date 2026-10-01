@@ -9,7 +9,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { KnowledgePluginPage, KnowledgeTab } from '../src/client/Knowledge.tsx'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
 const t = translate(zh)
@@ -36,7 +36,7 @@ const rich: KnowledgeGraphPage = {
   domains: ['ML', 'Physics'], warnings: ['Project graph is unreadable'], total: 20, offset: 8, hasMore: true,
 }
 
-const modules = { map: false, evidence: false }
+const modules = { map: false, evidence: false, memory: false, relations: false }
 /** A record in which the research is the one on screen, and one other research. */
 function harness(preferences: ResearchPreferences = {}, example = false) {
   const project = newProject({ root: '/research/graph', title: 'Graph study', brief: '' }, 'workspace' as WorkspaceId)
@@ -170,7 +170,7 @@ it('chooses the research whose graph to open, opens it beside the conversation, 
   view.unmount()
   expect(render(<KnowledgePluginPage {...h.props} view="summary" />).getByText(zh.kgShared)).toBeTruthy()
   cleanup()
-  const unread = (select: (value: object) => unknown): unknown => select({ snapshot: null, tasks: [] })
+  const unread = ((select: (value: object) => unknown): unknown => select({ snapshot: null, tasks: [] })) as never
   const waiting = render(<KnowledgePluginPage {...h.props} useResearch={unread} />)
   expect(waiting.getByRole('status').textContent).toBe(zh.kgLoading)
   cleanup()
@@ -220,7 +220,7 @@ it('offers no research to open when the record holds none and no conversation is
       snapshot: { projects: [], preferences: {}, modes: [], components: [], knowledge: { enabled: true, modules } }, tasks: [],
     }),
   }
-  const view = render(<KnowledgePluginPage {...props} />)
+  const view = render(<KnowledgePluginPage {...props as typeof h.props} />)
   expect((view.getByLabelText(zh.kgResearch) as HTMLSelectElement).value).toBe('')
   expect((view.getByRole('button', { name: zh.kgOpen }) as HTMLButtonElement).disabled).toBe(true)
   expect(view.queryByRole('button', { name: zh.kgBesideChat })).toBeNull()

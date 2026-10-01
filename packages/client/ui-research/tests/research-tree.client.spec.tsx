@@ -141,7 +141,7 @@ function faceOf() {
     openSession: vi.fn(),
     openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()),
     startSession: vi.fn(),
-    createSshWorkspace: vi.fn(async (_host: string, _path: string, _auth: SshAuthChoice) => 'w-ssh' as WorkspaceId),
+    createSshWorkspace: vi.fn(async (_host: string, _path: string, _auth: SshAuthChoice, _trustedHostKey?: string) => 'w-ssh' as WorkspaceId),
     run: vi.fn((command: ResearchCommand): Promise<ResearchResponse> => {
       commands.push(command)
       expect(commandSchema.parse(command)).toBeTruthy()

@@ -6,7 +6,7 @@ import { RelationsView } from '../src/client/RelationsView.tsx'
 import { zh } from '../src/client/locales.ts'
 import {
   anyId, EDGES, NODES, edge, harness, longformerPage, node, record, relationsPage, t, type Handlers,
-} from './fixtures/relations.ts'
+} from './fixtures/relations.tsx'
 
 afterEach(cleanup)
 async function settle(): Promise<void> { await act(async () => { for (let at = 0; at < 8; at++) await Promise.resolve() }) }

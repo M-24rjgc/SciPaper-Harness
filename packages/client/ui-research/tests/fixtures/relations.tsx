@@ -12,7 +12,7 @@ import type {
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WorkbenchProps } from '../../src/client/contract.ts'
 import { zh } from '../../src/client/locales.ts'
-import { translate } from './translate.ts'
+import { translate } from './translate.tsx'
 
 /** Matches any project id in a request the view sent. */
 export const anyId: unknown = expect.any(String)
@@ -255,8 +255,8 @@ export function harness(handlers: Partial<Handlers> = {}, options: { example?: b
       default: throw new Error(`unexpected ${request.action}`)
     }
   }
-  const props = {
+  const props: Harness['props'] = {
     t, project, run, openFile, useResearch: (select: (value: object) => unknown) => select({ snapshot, tasks: [] }),
-  } as Harness['props']
+  } as never
   return { props, commands, openFile }
 }

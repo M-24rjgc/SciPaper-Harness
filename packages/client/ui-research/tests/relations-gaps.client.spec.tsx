@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import type { ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import { RelationsView } from '../src/client/RelationsView.tsx'
 import { en, zh, type ResearchKey } from '../src/client/locales.ts'
-import { anyId, cell, gapsPage, harness, type Handlers } from './fixtures/relations.ts'
+import { anyId, cell, gapsPage, harness, type Handlers } from './fixtures/relations.tsx'
 
 afterEach(cleanup)
 async function settle(): Promise<void> { await act(async () => { for (let at = 0; at < 8; at++) await Promise.resolve() }) }

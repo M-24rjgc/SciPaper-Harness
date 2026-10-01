@@ -1,12 +1,12 @@
 import { expect, it } from 'vitest'
-import type { RelationNeighbourhoodView, RelationOutcomeView } from '@deepseek-ai/dsh-research-workbench/types'
+import type { RelationNeighbourhoodView, RelationOutcomeView, RelationProposalOutcomeView } from '@deepseek-ai/dsh-research-workbench/types'
 import { zh } from '../src/client/locales.ts'
 import {
   GAP_STATES, NODE_HEIGHT, NODE_WIDTH, authorName, coverageText, endRef, entityName, gapCounts, gapSentence, gapShort, gapTakeaway,
   groundMeta, hasSources, hopSentence, knownNodes, nameIndex, openPath, outcomeNotes, pathLine, pathRelations, percent, quotable,
   relationName, relationSentence, relationsLayout, sourceCounts, sourceName, statesIn,
 } from '../src/client/relationsValues.ts'
-import { EDGES, NODES, cell, edge, gapsPage, ground, node, pathsPage, record, relationsPage, t } from './fixtures/relations.ts'
+import { EDGES, NODES, cell, edge, gapsPage, ground, node, pathsPage, record, relationsPage, t } from './fixtures/relations.tsx'
 
 const hood = (): RelationNeighbourhoodView => ({ center: 'block', nodes: NODES, edges: EDGES, omitted: { nodes: 0, edges: 0 } })
 const distance = (a: { x: number; y: number }, b: { x: number; y: number }): number => Math.hypot(a.x - b.x, a.y - b.y)
@@ -218,7 +218,9 @@ it('words each gap state about the project\'s own literature and never about the
 })
 
 it('says what recording a proposal did, and nothing for an outcome that is not a proposal\'s', () => {
-  const added = { status: 'added', relation: 'r', ground: 'g', created: ['x'], locatorCorrected: true, warnings: ['The quotation is short.'], restored: true } as const
+  const added: Exclude<RelationProposalOutcomeView, { status: 'refused' }> = {
+    status: 'added', relation: 'r', ground: 'g', created: ['x'], locatorCorrected: true, warnings: ['The quotation is short.'], restored: true,
+  }
   expect(outcomeNotes(added, t)).toEqual([
     zh.relationsAdded, zh.relationsLocatorFixed, zh.relationsWasRejected, '新建的实体：1 个', 'The quotation is short.',
   ])

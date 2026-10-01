@@ -375,6 +375,6 @@ describe('reference lists', () => {
   })
 
   it('has a default configuration of 30 days and a pause of 120 milliseconds', () => {
-    expect(ResearchKnowledgeRelations.Config({})).toMatchObject({ citationMaxAgeDays: 30, pauseMs: 120 })
+    expect((ResearchKnowledgeRelations.Config as (input: object) => object)({})).toMatchObject({ citationMaxAgeDays: 30, pauseMs: 120 })
   })
 })

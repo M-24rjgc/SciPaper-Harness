@@ -9,7 +9,7 @@ import { MemoryView } from '../src/client/MemoryView.tsx'
 import type { WorkbenchProps } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { environment, experiment, list, page, paper, research, venue } from './fixtures/memory.ts'
-import { translate } from './fixtures/translate.ts'
+import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
 const t = translate(en)
@@ -47,7 +47,7 @@ function harness(first: ResearchMemoryPage | null = memory) {
     if (request.action === 'memory-carry' && current !== null) current = { ...current, carry: { ...current.carry, [request.kind]: request.on } }
     return { message: 'ok', ...current === null ? {} : { memory: current } }
   })
-  const props = { t, run, startNew, project } as WorkbenchProps & { project: typeof project }
+  const props: WorkbenchProps & { project: typeof project } = { t, run, startNew, project } as never
   return { props, project, commands, startNew, run }
 }
 async function settle(): Promise<void> { await act(async () => { await Promise.resolve() }) }

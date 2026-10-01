@@ -171,6 +171,7 @@ describe('tool-call timeout returns TOOL_TIMEOUT (deadline wins over a slow fetc
       timeoutMs: 50,
       maxRedirects: 5,
       userAgent: 'integration-test',
+      allowFakeIpDns: true,
     })
     const err = await direct.fetch({ url: slowBase }).then(
       () => undefined,
