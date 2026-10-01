@@ -1,0 +1,40 @@
+# Bilingual-pair consistency record for 2026-10-01-knowledge-graph-relations.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-01-knowledge-graph-relations.md
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers:
+  en: 9c01176c1408ea94
+  zh: 20a1babd7efdcb7d
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/problem:
+  en: 6747df55b202bf88
+  zh: 924611fdaecc8086
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/proposal:
+  en: 22d7738ef38a1983
+  zh: 76167532af7684f3
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/the-grounding-rule:
+  en: 4dbe5baea59f1996
+  zh: 90f3d52d000ff21b
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/citations:
+  en: 12388b583a6b6c52
+  zh: 2b9fb4489ad7ffa1
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/queries:
+  en: b47825fe9ec5e3c9
+  zh: 7270cafd63ab54eb
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/wording-of-the-gap-matrix:
+  en: e536e91cd50da704
+  zh: b0d4d1fbb632dca8
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/evaluation-on-the-demo-projects:
+  en: 220b960be6ac6a3e
+  zh: abc8b10d2b1c36e8
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/alternatives-considered:
+  en: 1e7212384baa74cd
+  zh: 24bffbfdeae6fec8
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/open-questions:
+  en: 4d84fa8e0c96b4b0
+  zh: 393d75cb7141ef07
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/acceptance-criteria:
+  en: bb7c7750cf59523f
+  zh: 6e4e5e62ff0f33c7
+/agent-note-a-grounded-relation-graph-of-methods-tasks-datasets-metrics-and-papers/risks:
+  en: b748e9cb0c15edbb
+  zh: 5b8a49f5cf3939d6

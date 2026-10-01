@@ -1,0 +1,863 @@
+{
+ "project": {
+  "title": "Sparse attention scaling study",
+  "brief": "块稀疏注意力能否在 1/4 FLOPs 下保住长上下文准确率",
+  "evidence": [
+   {
+    "id": "5b050d83-82c6-4e8e-889e-5dadcca0cd4a",
+    "title": "longformer.md",
+    "kind": "file",
+    "path": ".research/sources/5b050d83-82c6-4e8e-889e-5dadcca0cd4a/1.md",
+    "sha256": "65e57e5f3b888b0e3b0a96633fbd6d378b168758f5871258d71fc727601df50a",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:48.049Z",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "# 读书笔记：Longformer（Beltagy 等，2020）\n\n- 注意力模式：滑动窗口的局部注意力，加上少量按任务指定的全局注意力。\n- 复杂度随序列长度线性增长，可以直接替换标准自注意力。\n- 评测：长文档问答、共指消解、文档分类，文档长度大约在 4K token 这一档。\n- 我的疑问：窗口固定时，32K 以上的远距离依赖只能靠全局 token 传递，论文没有测到这个长度。\n",
+      "locator": {
+       "line": 1
+      }
+     }
+    ]
+   },
+   {
+    "id": "33848ec6-1c91-4aee-9292-5f8c49ad7fa6",
+    "title": "bigbird.md",
+    "kind": "file",
+    "path": ".research/sources/33848ec6-1c91-4aee-9292-5f8c49ad7fa6/1.md",
+    "sha256": "28881a5eaa663193ae2be82e58217baecff0a09864b5acf89187138532699a86",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:48.054Z",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "# 读书笔记：BigBird（Zaheer 等，2020）\n\n- 稀疏模式：随机注意力 + 窗口注意力 + 全局 token 三者组合。\n- 理论部分证明这种稀疏注意力保留了全注意力的表达能力（通用逼近、图灵完备）。\n- 实验序列长度到 4096，问答和长文摘要上优于只能看短上下文的模型。\n- 块的划分是固定的，不按内容选块。\n",
+      "locator": {
+       "line": 1
+      }
+     }
+    ]
+   },
+   {
+    "id": "30ea6427-6465-4866-ab79-b233135c2c93",
+    "title": "ruler.md",
+    "kind": "file",
+    "path": ".research/sources/30ea6427-6465-4866-ab79-b233135c2c93/1.md",
+    "sha256": "edaa8b4fbb8dc2106623db87eb990dd4565b5598bdb5400b0e124cbdc1542438",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:48.059Z",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "# 读书笔记：RULER（Hsieh 等，2024）\n\n- 合成评测，四类任务：检索、多跳追踪、聚合、问答；上下文长度可以从 4K 调到 128K。\n- 结论：很多声称支持长上下文的模型，有效上下文远短于标称长度。\n- 我自己的判断：聚合类任务要把分散在全文的信息汇总起来，最可能暴露稀疏注意力的短板。\n- 对本项目：32K 和 64K 两档都要测，聚合类任务单独报告。\n",
+      "locator": {
+       "line": 1
+      }
+     }
+    ]
+   },
+   {
+    "id": "8fcc0bb0-eeab-464e-860a-426b2b96c9fd",
+    "title": "pilot-8k.csv",
+    "kind": "file",
+    "path": ".research/sources/8fcc0bb0-eeab-464e-860a-426b2b96c9fd/1.csv",
+    "sha256": "f229632a141cc7e89ddfb64eef398dbb8d49ee07eaaf4809512c71d391628703",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:49.230Z",
+    "coverage": "data",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "[\"method\", \"context\", \"accuracy\", \"relative_flops\"]",
+      "locator": {
+       "line": 1
+      }
+     },
+     {
+      "text": "[\"full\", \"8192\", \"0.842\", \"1.00\"]",
+      "locator": {
+       "line": 2
+      }
+     },
+     {
+      "text": "[\"fixed-block-4x\", \"8192\", \"0.836\", \"0.26\"]",
+      "locator": {
+       "line": 3
+      }
+     },
+     {
+      "text": "[\"dynamic-block-4x\", \"8192\", \"0.841\", \"0.27\"]",
+      "locator": {
+       "line": 4
+      }
+     }
+    ]
+   },
+   {
+    "id": "8f41e85c-d571-4e26-9be8-aebe07fd2966",
+    "title": "Longformer: The Long-Document Transformer",
+    "kind": "literature",
+    "path": ".research/sources/8f41e85c-d571-4e26-9be8-aebe07fd2966/reference.json",
+    "sha256": "774ffa8ad1b7b497378d3165909452010232799f28f68a2b505ab5857d75d34b",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:54.255Z",
+    "sourceUrl": "https://doi.org/10.48550/arxiv.2004.05150",
+    "doi": "10.48550/arxiv.2004.05150",
+    "fullTextPath": ".research/sources/8f41e85c-d571-4e26-9be8-aebe07fd2966/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "abstract"
+      },
+      "text": "The quadratic complexity of standard attention (O(N²)) remains the dominant bottleneck for training and deploying large language models on long sequences. We introduce Murmurative Attention, a novel attention mechanism that replaces pairwise token-token interactions with token-to-slot interactions over a fixed-size learnable memory pool of M slots"
+     },
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "To address this limitation,\nwe introduce the Longformer with an attention\nmechanism that scales linearly with sequence\nlength, making it easy to process documents of\nthousands of tokens or longer.\nLongformer’s\nattention mechanism is a drop-in replacement\nfor the standard self-attention and combines\na local windowed attention with a task moti-\nvated global attention.\nFollowing prior work\non long-sequence transformers, we evaluate\nLongformer on character-level language mod-\neling and achieve state-of-the-art results on\ntext8 and enwik8.\nOur pretrained Longformer consistently out-\nperforms RoBERTa on long document tasks\nand sets new state-of-the-art results on Wiki-\nHop and TriviaQA.\nWe ﬁnally introduce the\nLongformer-Encoder-Decoder (LED), a Long-\nformer variant for supporting long document\ngenerative sequence-to-sequence tasks, and\ndemonstrate its effectiveness on the arXiv sum-\nmarization dataset."
+     },
+     {
+      "locator": {
+       "page": 2
+      },
+      "text": "After pretraining, we apply it to\ndownstream language tasks through ﬁnetuning and\ndemonstrate that Longformer consistently outper-\nforms RoBERTa on a wide range of document-level\nnatural language tasks including text classiﬁcation,\nQA, and coreference resolution, achieving state-of-\nthe-art results on two of these datasets."
+     },
+     {
+      "locator": {
+       "page": 3
+      },
+      "text": "BigBird (Zaheer et al., 2020) is an exten-\nsion over ETC with evaluation on additional tasks,\nincluding summarization."
+     }
+    ]
+   },
+   {
+    "id": "58177e3f-13c1-4855-9f52-653d2ba56393",
+    "title": "Big Bird: Transformers for Longer Sequences",
+    "kind": "literature",
+    "path": ".research/sources/58177e3f-13c1-4855-9f52-653d2ba56393/reference.json",
+    "sha256": "f6d867b6120d59359379ffe4f734bbde843c8fc7485581d8263e27908f2d5142",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:57.808Z",
+    "sourceUrl": "https://doi.org/10.48550/arxiv.2007.14062",
+    "doi": "10.48550/arxiv.2007.14062",
+    "fullTextPath": ".research/sources/58177e3f-13c1-4855-9f52-653d2ba56393/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "abstract"
+      },
+      "text": "To remedy this, we propose, BigBird, a sparse attention mechanism that reduces this quadratic dependency to linear."
+     },
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "To remedy this, we propose, BIGBIRD , a sparse\nattention mechanism that reduces this quadratic dependency to linear.\nAs\na consequence of the capability to handle longer context, BIGBIRD drastically\nimproves performance on various NLP tasks such as question answering and\nsummarization."
+     },
+     {
+      "locator": {
+       "page": 7
+      },
+      "text": "both BIGBIRD and Longformer perform better than limited length RoBERTa, withBIGBIRD -ETC\nperforming the best."
+     },
+     {
+      "locator": {
+       "page": 8
+      },
+      "text": "One can clearly see the importance of using longer context as both Longformer and BIGBIRD\noutperform models with smaller contexts."
+     }
+    ]
+   },
+   {
+    "id": "bde31200-fb67-4bea-9cf0-ccbeaae4bacc",
+    "title": "RULER: What's the Real Context Size of Your Long-Context Language Models?",
+    "kind": "literature",
+    "path": ".research/sources/bde31200-fb67-4bea-9cf0-ccbeaae4bacc/reference.json",
+    "sha256": "4d67cf9cc3ef0615d1be0da544b8d9ff795505e8c8a8b069508b963b8efb1daf",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:00.987Z",
+    "sourceUrl": "https://doi.org/10.48550/arxiv.2404.06654",
+    "doi": "10.48550/arxiv.2404.06654",
+    "fullTextPath": ".research/sources/bde31200-fb67-4bea-9cf0-ccbeaae4bacc/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "The needle-in-a-haystack (NIAH) test, which examines the ability to re-\ntrieve a piece of information (the “needle”) from long distractor texts (the\n“haystack”), has been widely adopted to evaluate long-context language\nmodels (LMs).\nTo provide a more\ncomprehensive evaluation of long-context LMs, we create a new synthetic\nbenchmark RULER with flexible configurations for customized sequence\nlength and task complexity."
+     },
+     {
+      "locator": {
+       "page": 6
+      },
+      "text": "For each\ntask, we evaluate each model with 500 examples generated for each length from the series\n(4K, 8K, 16K, 32K, 64K, 128K), while complying with each model’s necessary chat template."
+     }
+    ]
+   },
+   {
+    "id": "75f11c8e-7e18-4b35-8635-255906294d79",
+    "title": "LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding",
+    "kind": "literature",
+    "path": ".research/sources/75f11c8e-7e18-4b35-8635-255906294d79/reference.json",
+    "sha256": "a47b04c958a158f055d759fd6e54483fc0fb8482d671a02940da8d83552c351c",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:02.265Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2024.acl-long.172",
+    "doi": "10.18653/v1/2024.acl-long.172",
+    "coverage": "metadata",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding"
+     }
+    ]
+   },
+   {
+    "id": "dfdeb724-ff72-451b-bb34-2e221107db1b",
+    "title": "FlashAttention-3: Fast and Accurate Attention with Asynchrony and Low-precision",
+    "kind": "literature",
+    "path": ".research/sources/dfdeb724-ff72-451b-bb34-2e221107db1b/reference.json",
+    "sha256": "d9c25a05f1c11f7c47d861a5d862313d81e4292f7c562cce46ebd0ba714df9eb",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:05.227Z",
+    "sourceUrl": "https://doi.org/10.48550/arxiv.2407.08608",
+    "doi": "10.48550/arxiv.2407.08608",
+    "fullTextPath": ".research/sources/dfdeb724-ff72-451b-bb34-2e221107db1b/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 2
+      },
+      "text": "To this end, we proposeFlashAttention-3, which contributes and synthesizes three new ideas to further\nimprove performance on newer GPU architectures\nWe also validate that FP16FlashAttention-3 yields the same\nnumerical error asFlashAttention-2 and is better than the standard attention implementation as intermediate\nresults (e.g., softmax rescaling) are kept in FP32."
+     },
+     {
+      "locator": {
+       "page": 12
+      },
+      "text": "We are\nable to speed up attention by 1.5-2.0×times compared toFlashAttention-2, and reduce FP8 numerical error\nby 2.6×compared to standard per-tensor quantization.\nThis partly explains why FP8FlashAttention-3 does not perform as well for small sequence length and causal masking\ncompared to the FP8 cuDNN kernels."
+     }
+    ]
+   },
+   {
+    "id": "56a7990b-5bf9-428c-9e65-86b5c3032764",
+    "title": "MInference 1.0: Accelerating Pre-filling for Long-Context LLMs via Dynamic Sparse Attention",
+    "kind": "literature",
+    "path": ".research/sources/56a7990b-5bf9-428c-9e65-86b5c3032764/reference.json",
+    "sha256": "7bf40897403344a63f012b2d516710555fa38d8e80430bb44f6f3a37fea7cf87",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:05.964Z",
+    "sourceUrl": "https://doi.org/10.52202/079017-1663",
+    "doi": "10.52202/079017-1663",
+    "coverage": "metadata",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "MInference 1.0: Accelerating Pre-filling for Long-Context LLMs via Dynamic Sparse Attention"
+     }
+    ]
+   },
+   {
+    "id": "c6ea09bf-d829-45dc-84c9-6df5a6e5491b",
+    "title": "MoBA: Mixture of Block Attention for Long-Context LLMs",
+    "kind": "literature",
+    "path": ".research/sources/c6ea09bf-d829-45dc-84c9-6df5a6e5491b/reference.json",
+    "sha256": "1f838093e2e67115f938b48e4d3ccc6cd0a7c2c6e1f2b6850efe0d898bdd1cf8",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:09.517Z",
+    "sourceUrl": "https://doi.org/10.52202/085713-0602",
+    "doi": "10.52202/085713-0602",
+    "fullTextPath": ".research/sources/c6ea09bf-d829-45dc-84c9-6df5a6e5491b/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "We intro-\nduce Mixture of Block Attention (MoBA), an innovative approach that applies the principles of\nMixture of Experts (MoE) to the attention mechanism."
+     },
+     {
+      "locator": {
+       "page": 2
+      },
+      "text": "Alternatively, a range of dynamic\nsparse attention mechanisms, exemplified by Quest (Tang et al. 2024), Minference\nThus, we introduce Mixture of Block Attention (MoBA), a novel architecture that builds upon the innovative principles\nof Mixture of Experts (MoE) (Shazeer et al. 2017) and applies them to the attention mechanism of the Transformer\nmodel.\nMoBA addresses the computational inefficiency of traditional attention mechanisms by\npartitioning the context into blocks and employing a gating mechanism to selectively route query tokens to the most\nrelevant blocks. This block sparse attention significantly reduces the computational costs, paving the way for more\nefficient processing of long sequences."
+     },
+     {
+      "locator": {
+       "page": 6
+      },
+      "text": "To assess the effectiveness of MoBA, we perform scaling law experiments by comparing\nthe validation loss of language models trained using either full attention or MoBA."
+     },
+     {
+      "locator": {
+       "page": 7
+      },
+      "text": "As shown in Figure 3b, although MoBA\nexhibits a marginally higher last block LM loss compared to full attention in all five experiments, the loss gap is\nprogressively narrowing."
+     },
+     {
+      "locator": {
+       "page": 9
+      },
+      "text": "It\nis particularly noteworthy that in the longest benchmark, RULER, where MoBA operates at a sparsity level of up to\n1 − 4096×12\n128K = 62.5%, Llama-8B-1M-MoBA nearly matches the performance of Llama-8B-1M-Full, with a score of\n0.7818 compared to 0.7849.\nFor context lengths of up to 1M tokens, we evaluate the model using the traditional Needle\nin the Haystack benchmark."
+     }
+    ]
+   },
+   {
+    "id": "59da3bba-9e83-4baa-92cd-50ffffb7f333",
+    "title": "Native Sparse Attention: Hardware-Aligned and Natively Trainable Sparse Attention",
+    "kind": "literature",
+    "path": ".research/sources/59da3bba-9e83-4baa-92cd-50ffffb7f333/reference.json",
+    "sha256": "46529e5ad7687b360ee3d55328c8931108ff5e1ded1c1c80e0b48436b39d4ac5",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:15.963Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2025.acl-long.1126",
+    "doi": "10.18653/v1/2025.acl-long.1126",
+    "fullTextPath": ".research/sources/59da3bba-9e83-4baa-92cd-50ffffb7f333/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "We present NSA,\na Natively trainable Sparse Attention mecha-\nnism that integrates algorithmic innovations\nwith hardware-aligned optimizations to achieve\nefficient long-context modeling.\nLeft: Despite\nbeing sparse, NSA surpasses Full Attention baseline\non average across general benchmarks, long-context\ntasks, and reasoning evaluation."
+     },
+     {
+      "locator": {
+       "page": 2
+      },
+      "text": "We evaluate NSA through comprehensive ex-\nperiments on real-world language corpora."
+     },
+     {
+      "locator": {
+       "page": 7
+      },
+      "text": "We also evaluate NSA on LongBench (Bai et al.,\n2023) against state-of-the-art sparse attention meth\nAs shown in Table 2, NSA\nachieves the highest average score 0.469, outper-\nforming all baselines (+0.032 over Full Attention\nand +0.046 over Exact-Top)."
+     }
+    ]
+   },
+   {
+    "id": "23159a97-aeab-47a5-aebf-2373ba788f8b",
+    "title": "ruler-32k-full · seed 42",
+    "kind": "experiment",
+    "path": ".research/runs/ff870bcb-d2ff-4868-91cd-c865d004f98d/metrics.json",
+    "sha256": "97e9950282ee3c2a36d77fddf16a5e0b0365c6ab995f8f290bbc6aa7bd9961bb",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:26.898Z",
+    "coverage": "data",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "0.821",
+      "locator": {
+       "key": "accuracy"
+      }
+     },
+     {
+      "text": "6.18",
+      "locator": {
+       "key": "perplexity"
+      }
+     },
+     {
+      "text": "1",
+      "locator": {
+       "key": "relative_flops"
+      }
+     },
+     {
+      "text": "61.5",
+      "locator": {
+       "key": "peak_memory_gb"
+      }
+     }
+    ]
+   },
+   {
+    "id": "9ecbdb61-9cb7-4ab9-917e-46dd3e0cdf01",
+    "title": "ruler-32k-fixed · seed 42",
+    "kind": "experiment",
+    "path": ".research/runs/1a358b2d-a423-4acb-96f0-7fe40a4e9035/metrics.json",
+    "sha256": "07e0f2baa190d85adf6cdff4de1d83d11f9215c0b0c3cfc3225068b70b46bf05",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:27.040Z",
+    "coverage": "data",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "0.811",
+      "locator": {
+       "key": "accuracy"
+      }
+     },
+     {
+      "text": "6.29",
+      "locator": {
+       "key": "perplexity"
+      }
+     },
+     {
+      "text": "0.25",
+      "locator": {
+       "key": "relative_flops"
+      }
+     },
+     {
+      "text": "37.9",
+      "locator": {
+       "key": "peak_memory_gb"
+      }
+     }
+    ]
+   },
+   {
+    "id": "c69abce0-4a8c-4ef9-ad51-bb8e3fd6f230",
+    "title": "ruler-32k-dynamic · seed 42",
+    "kind": "experiment",
+    "path": ".research/runs/a5f17845-e9ef-420d-978d-c37474736327/metrics.json",
+    "sha256": "a1a5077d2b09875a6e997fd72ea8f6299b27fdbbd5084a8439c5b986d82a85e3",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:27.192Z",
+    "coverage": "data",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "0.814",
+      "locator": {
+       "key": "accuracy"
+      }
+     },
+     {
+      "text": "6.32",
+      "locator": {
+       "key": "perplexity"
+      }
+     },
+     {
+      "text": "0.26",
+      "locator": {
+       "key": "relative_flops"
+      }
+     },
+     {
+      "text": "38.2",
+      "locator": {
+       "key": "peak_memory_gb"
+      }
+     }
+    ]
+   },
+   {
+    "id": "6dd4e587-f206-4b90-9598-9a7b4b608d72",
+    "title": "ruler-32k-dynamic · seed 97",
+    "kind": "experiment",
+    "path": ".research/runs/408f9905-f149-4c0b-9d62-1d417b4f57a2/metrics.json",
+    "sha256": "f390fd22025d477e01111e8c2dbdd7d549e040b13fd9a5faa742fd3b63c5e8b6",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:27.334Z",
+    "coverage": "data",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "0.806",
+      "locator": {
+       "key": "accuracy"
+      }
+     },
+     {
+      "text": "6.41",
+      "locator": {
+       "key": "perplexity"
+      }
+     },
+     {
+      "text": "0.26",
+      "locator": {
+       "key": "relative_flops"
+      }
+     },
+     {
+      "text": "38.4",
+      "locator": {
+       "key": "peak_memory_gb"
+      }
+     }
+    ]
+   },
+   {
+    "id": "f70881d0-6c40-4a0f-a911-3bbbb3784f9b",
+    "title": "results.csv",
+    "kind": "file",
+    "path": ".research/sources/f70881d0-6c40-4a0f-a911-3bbbb3784f9b/1.csv",
+    "sha256": "82a535b52fc80c76810b9825ac3564d519a9e4fc7ac511ee4349c87c2a767563",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:24:29.327Z",
+    "coverage": "data",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "[\"method\", \"context\", \"seed\", \"accuracy\", \"relative_flops\", \"peak_memory_gb\"]",
+      "locator": {
+       "line": 1
+      }
+     },
+     {
+      "text": "[\"full\", \"32768\", \"42\", \"0.821\", \"1\", \"61.5\"]",
+      "locator": {
+       "line": 2
+      }
+     },
+     {
+      "text": "[\"fixed\", \"32768\", \"42\", \"0.811\", \"0.25\", \"37.9\"]",
+      "locator": {
+       "line": 3
+      }
+     },
+     {
+      "text": "[\"dynamic\", \"32768\", \"42\", \"0.814\", \"0.26\", \"38.2\"]",
+      "locator": {
+       "line": 4
+      }
+     },
+     {
+      "text": "[\"dynamic\", \"32768\", \"97\", \"0.806\", \"0.26\", \"38.4\"]",
+      "locator": {
+       "line": 5
+      }
+     }
+    ]
+   }
+  ],
+  "experiments": [
+   {
+    "id": "ff870bcb-d2ff-4868-91cd-c865d004f98d",
+    "spec": {
+     "environmentId": "759965de-66fa-4217-9d6a-d444d92cb25d",
+     "name": "ruler-32k-full",
+     "argv": [
+      "{python}",
+      "code/train_eval.py",
+      "--variant",
+      "full",
+      "--context",
+      "32768",
+      "--seed",
+      "42"
+     ],
+     "cwd": ".",
+     "seed": 42,
+     "maxSeconds": 600,
+     "gpuIds": [],
+     "dataEvidenceIds": [],
+     "codeArtifactIds": [
+      "df1fb286-1e5f-4296-95d5-cc325757cb84"
+     ],
+     "metricsPath": "metrics.json"
+    },
+    "status": "completed",
+    "createdAt": "2026-09-23T20:24:21.207Z",
+    "updatedAt": "2026-09-23T20:24:26.894Z",
+    "directory": ".research/runs/ff870bcb-d2ff-4868-91cd-c865d004f98d",
+    "inputRevision": 1,
+    "environmentFingerprint": "7a0eee9d4fc71a8fe475da7d76ce0c6e2a6fd90b95a70c6b31e6264594f20e16",
+    "metrics": {
+     "accuracy": 0.821,
+     "perplexity": 6.18,
+     "relative_flops": 1,
+     "peak_memory_gb": 61.5
+    },
+    "exitCode": 0,
+    "message": "",
+    "snapshotPath": ".research/runs/ff870bcb-d2ff-4868-91cd-c865d004f98d/snapshot",
+    "collected": true,
+    "startedAt": "2026-09-23T20:24:21.813Z",
+    "finishedAt": "2026-09-23T20:24:23.348Z",
+    "observeFailures": 0
+   },
+   {
+    "id": "1a358b2d-a423-4acb-96f0-7fe40a4e9035",
+    "spec": {
+     "environmentId": "759965de-66fa-4217-9d6a-d444d92cb25d",
+     "name": "ruler-32k-fixed",
+     "argv": [
+      "{python}",
+      "code/train_eval.py",
+      "--variant",
+      "fixed",
+      "--context",
+      "32768",
+      "--seed",
+      "42"
+     ],
+     "cwd": ".",
+     "seed": 42,
+     "maxSeconds": 600,
+     "gpuIds": [],
+     "dataEvidenceIds": [],
+     "codeArtifactIds": [
+      "df1fb286-1e5f-4296-95d5-cc325757cb84"
+     ],
+     "metricsPath": "metrics.json"
+    },
+    "status": "completed",
+    "createdAt": "2026-09-23T20:24:21.884Z",
+    "updatedAt": "2026-09-23T20:24:27.036Z",
+    "directory": ".research/runs/1a358b2d-a423-4acb-96f0-7fe40a4e9035",
+    "inputRevision": 1,
+    "environmentFingerprint": "7a0eee9d4fc71a8fe475da7d76ce0c6e2a6fd90b95a70c6b31e6264594f20e16",
+    "metrics": {
+     "accuracy": 0.811,
+     "perplexity": 6.29,
+     "relative_flops": 0.25,
+     "peak_memory_gb": 37.9
+    },
+    "exitCode": 0,
+    "message": "",
+    "snapshotPath": ".research/runs/1a358b2d-a423-4acb-96f0-7fe40a4e9035/snapshot",
+    "collected": true,
+    "startedAt": "2026-09-23T20:24:22.538Z",
+    "finishedAt": "2026-09-23T20:24:24.073Z",
+    "observeFailures": 0
+   },
+   {
+    "id": "a5f17845-e9ef-420d-978d-c37474736327",
+    "spec": {
+     "environmentId": "759965de-66fa-4217-9d6a-d444d92cb25d",
+     "name": "ruler-32k-dynamic",
+     "argv": [
+      "{python}",
+      "code/train_eval.py",
+      "--variant",
+      "dynamic",
+      "--context",
+      "32768",
+      "--seed",
+      "42"
+     ],
+     "cwd": ".",
+     "seed": 42,
+     "maxSeconds": 600,
+     "gpuIds": [],
+     "dataEvidenceIds": [],
+     "codeArtifactIds": [
+      "df1fb286-1e5f-4296-95d5-cc325757cb84"
+     ],
+     "metricsPath": "metrics.json"
+    },
+    "status": "completed",
+    "createdAt": "2026-09-23T20:24:22.593Z",
+    "updatedAt": "2026-09-23T20:24:27.189Z",
+    "directory": ".research/runs/a5f17845-e9ef-420d-978d-c37474736327",
+    "inputRevision": 1,
+    "environmentFingerprint": "7a0eee9d4fc71a8fe475da7d76ce0c6e2a6fd90b95a70c6b31e6264594f20e16",
+    "metrics": {
+     "accuracy": 0.814,
+     "perplexity": 6.32,
+     "relative_flops": 0.26,
+     "peak_memory_gb": 38.2
+    },
+    "exitCode": 0,
+    "message": "",
+    "snapshotPath": ".research/runs/a5f17845-e9ef-420d-978d-c37474736327/snapshot",
+    "collected": true,
+    "startedAt": "2026-09-23T20:24:23.226Z",
+    "finishedAt": "2026-09-23T20:24:24.759Z",
+    "observeFailures": 0
+   },
+   {
+    "id": "408f9905-f149-4c0b-9d62-1d417b4f57a2",
+    "spec": {
+     "environmentId": "759965de-66fa-4217-9d6a-d444d92cb25d",
+     "name": "ruler-32k-dynamic",
+     "argv": [
+      "{python}",
+      "code/train_eval.py",
+      "--variant",
+      "dynamic",
+      "--context",
+      "32768",
+      "--seed",
+      "97"
+     ],
+     "cwd": ".",
+     "seed": 97,
+     "maxSeconds": 600,
+     "gpuIds": [],
+     "dataEvidenceIds": [],
+     "codeArtifactIds": [
+      "df1fb286-1e5f-4296-95d5-cc325757cb84"
+     ],
+     "metricsPath": "metrics.json"
+    },
+    "status": "completed",
+    "createdAt": "2026-09-23T20:24:23.292Z",
+    "updatedAt": "2026-09-23T20:24:27.331Z",
+    "directory": ".research/runs/408f9905-f149-4c0b-9d62-1d417b4f57a2",
+    "inputRevision": 1,
+    "environmentFingerprint": "7a0eee9d4fc71a8fe475da7d76ce0c6e2a6fd90b95a70c6b31e6264594f20e16",
+    "metrics": {
+     "accuracy": 0.806,
+     "perplexity": 6.41,
+     "relative_flops": 0.26,
+     "peak_memory_gb": 38.4
+    },
+    "exitCode": 0,
+    "message": "",
+    "snapshotPath": ".research/runs/408f9905-f149-4c0b-9d62-1d417b4f57a2/snapshot",
+    "collected": true,
+    "startedAt": "2026-09-23T20:24:23.916Z",
+    "finishedAt": "2026-09-23T20:24:25.443Z",
+    "observeFailures": 0
+   },
+   {
+    "id": "c008449c-2e94-4bc0-955c-587ae789d4f6",
+    "spec": {
+     "environmentId": "dbb18f0c-5979-47f3-b04b-e458e8884a0f",
+     "name": "ruler-32k-dynamic",
+     "argv": [
+      "{python}",
+      "code/train_eval.py",
+      "--variant",
+      "dynamic",
+      "--context",
+      "32768",
+      "--seed",
+      "13"
+     ],
+     "cwd": ".",
+     "seed": 13,
+     "maxSeconds": 600,
+     "gpuIds": [],
+     "dataEvidenceIds": [],
+     "codeArtifactIds": [
+      "df1fb286-1e5f-4296-95d5-cc325757cb84"
+     ],
+     "metricsPath": "metrics.json"
+    },
+    "status": "interrupted",
+    "createdAt": "2026-09-23T20:24:23.985Z",
+    "updatedAt": "2026-09-24T14:34:25.481Z",
+    "directory": ".research/runs/c008449c-2e94-4bc0-955c-587ae789d4f6",
+    "inputRevision": 1,
+    "environmentFingerprint": "lab-a100",
+    "metrics": {},
+    "message": "Dismissed by the user; no longer observed",
+    "snapshotPath": ".research/runs/c008449c-2e94-4bc0-955c-587ae789d4f6/snapshot",
+    "collected": false,
+    "observeFailures": 2
+   }
+  ]
+ },
+ "citations": [
+  {
+   "evidenceId": "75f11c8e-7e18-4b35-8635-255906294d79",
+   "provider": "openalex",
+   "work": "W4402671766",
+   "doi": "10.18653/v1/2024.acl-long.172",
+   "references": [],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "59da3bba-9e83-4baa-92cd-50ffffb7f333",
+   "provider": "openalex",
+   "work": "W4412944812",
+   "doi": "10.18653/v1/2025.acl-long.1126",
+   "references": [],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "56a7990b-5bf9-428c-9e65-86b5c3032764",
+   "provider": "openalex",
+   "work": "W4415797534",
+   "doi": "10.52202/079017-1663",
+   "references": [],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "c6ea09bf-d829-45dc-84c9-6df5a6e5491b",
+   "provider": "openalex",
+   "work": "W4407764033",
+   "doi": "10.52202/085713-0602",
+   "references": [],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "8f41e85c-d571-4e26-9be8-aebe07fd2966",
+   "provider": "openalex",
+   "work": "W3015468748",
+   "doi": "10.48550/arxiv.2004.05150",
+   "references": [
+    "W3045733172",
+    "W1566289585",
+    "W2113459411",
+    "W2130942839"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "58177e3f-13c1-4855-9f52-653d2ba56393",
+   "provider": "openalex",
+   "work": "W3045733172",
+   "doi": "10.48550/arxiv.2007.14062",
+   "references": [
+    "W3015468748",
+    "W100656083",
+    "W1267754874",
+    "W1544827683"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "dfdeb724-ff72-451b-bb34-2e221107db1b",
+   "provider": "openalex",
+   "work": "W4400611982",
+   "doi": "10.48550/arxiv.2407.08608",
+   "references": [],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "bde31200-fb67-4bea-9cf0-ccbeaae4bacc",
+   "provider": "openalex",
+   "work": "W4394778349",
+   "doi": "10.48550/arxiv.2404.06654",
+   "references": [],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  }
+ ]
+}

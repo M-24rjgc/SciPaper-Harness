@@ -1,0 +1,1320 @@
+{
+ "project": {
+  "title": "长文摘要一致性评测",
+  "brief": "三个摘要系统在长文上的一致性评测，结果和笔记都已经有了，要写成能投 AAAI 的完整论文",
+  "evidence": [
+   {
+    "id": "73e04eb9-68d9-41d0-9eda-94886335633e",
+    "title": "notes.md",
+    "kind": "file",
+    "path": ".research/sources/73e04eb9-68d9-41d0-9eda-94886335633e/1.md",
+    "sha256": "3ffa7d53485e10f07cd3f520cd600e9aa6d60934478375ceb4b57ee369fd7222",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:20:26.425Z",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "text": "# 评测笔记\n\n- 语料：200 篇长文（新闻特稿和机构报告），每个系统每篇生成一段摘要。\n- 三个系统：lead-3（抽取式基线）、bart-large（抽象式）、bart-large-rl（加了一致性奖励的强化学习微调）。\n- 长度分档：按摘要模型的分词器计 token，短（3k 以下）70 篇、中（3k 到 6k）70 篇、长（6k 以上）60 篇。\n- 人工标注：每篇摘要由两名标注者判断是否与原文一致，分歧由第三人裁决；表里是裁决后被判为一致的比例。正式标注前先用语料外的一小批摘要做了校准。\n- 自动指标：SummaC（基于 NLI，卷积版，默认设置）和 QAFactEval（基于问答，官方配置），都读全文，不截断。\n- 观察：两个自动指标给出的系统排序与人工一致，每个长度档都一致；但分数和人工一致率不在同一个尺度上，不能直接比大小。\n- 摘要级别用 AUC 看指标能不能区分一致和不一致的摘要：SummaC 在长文档上掉得明显，QAFactEval 比较稳。长档只有 60 篇，这个差别要谨慎说。\n",
+      "locator": {
+       "line": 1
+      }
+     }
+    ]
+   },
+   {
+    "id": "2e0053ea-f34a-4e1f-a58e-ad3cc83b03fc",
+    "kind": "literature",
+    "title": "SummaC: Re-Visiting NLI-based Models for Inconsistency Detection in Summarization",
+    "path": ".research/sources/2e0053ea-f34a-4e1f-a58e-ad3cc83b03fc/reference.json",
+    "sha256": "05899bc40fda4152a5b83cc96d69bbe5419bcdb6f25755558fd58510f2e7e014",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:20:41.438Z",
+    "sourceUrl": "https://doi.org/10.1162/tacl_a_00453",
+    "doi": "10.1162/tacl_a_00453",
+    "coverage": "abstract",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "abstract"
+      },
+      "text": "We provide a highly effective and light-weight method called SummaCConv that enables NLI models to be successfully used for this task by segmenting documents into sentence units and aggregating scores between pairs of sentences. We furthermore introduce a new benchmark called SummaC (Summary Consistency) which consists of six large inconsistency detection datasets. On this dataset, SummaCConv obtains state-of-the-art results with a balanced accuracy of 74.4%, a 5% improvement compared with prior work."
+     }
+    ]
+   },
+   {
+    "id": "3eb20dfd-e5b9-4a5d-9c5f-5f27dd516a3e",
+    "kind": "literature",
+    "title": "QAFactEval: Improved QA-Based Factual Consistency Evaluation for Summarization",
+    "path": ".research/sources/3eb20dfd-e5b9-4a5d-9c5f-5f27dd516a3e/reference.json",
+    "sha256": "16cacacb8b6a645d96538e980e2208f1f4ce1f86d03cc3d715f0468d94e8dcaf",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:20:46.876Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2022.naacl-main.187",
+    "doi": "10.18653/v1/2022.naacl-main.187",
+    "fullTextPath": ".research/sources/3eb20dfd-e5b9-4a5d-9c5f-5f27dd516a3e/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "Building\non those insights, we propose an optimized\nmetric, which we call QAFACT EVAL, that\nleads to a 14% average improvement over pre-\nvious QA-based metrics on the SummaC fac-\ntual consistency benchmark, and also outper-\nforms the best-performing entailment-based\nmetric."
+     },
+     {
+      "locator": {
+       "page": 2
+      },
+      "text": "Based on our insights,\nwe propose an optimized metric, which we call\nQAFACT EVAL , that outperforms the entailment-\nbased metrics of Laban et al. (2021)."
+     },
+     {
+      "locator": {
+       "page": 3
+      },
+      "text": "FactCC Kryscinski et al. (2020) is a RoBERTa-\nbase model trained on FactCC synthetic data to\ncompute a document-level score, and thus the\nscores need not be aggregated over input sentences."
+     }
+    ]
+   },
+   {
+    "id": "7c43c309-79b2-4553-bcb4-583100e0a7e3",
+    "kind": "literature",
+    "title": "Evaluating the Factual Consistency of Abstractive Text Summarization",
+    "path": ".research/sources/7c43c309-79b2-4553-bcb4-583100e0a7e3/reference.json",
+    "sha256": "2266bd11dbb442698d1ecbf3000058550af7327e647c009e20f2f6fa32a2ea0c",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:20:52.426Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2020.emnlp-main.750",
+    "doi": "10.18653/v1/2020.emnlp-main.750",
+    "fullTextPath": ".research/sources/7c43c309-79b2-4553-bcb4-583100e0a7e3/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 5
+      },
+      "text": "W e refer to this model as the factual consis-\ntency checking model ( FactCC)."
+     },
+     {
+      "locator": {
+       "page": 6
+      },
+      "text": "Both FactCC and FactCCX\nmodels substantially outperform classiﬁers trained\non the MNLI and FEVER datasets when evalu-\nated on the CNN/DailyMail test set."
+     }
+    ]
+   },
+   {
+    "id": "05e989d6-9255-4350-a8d1-eee2f1cf82cb",
+    "kind": "literature",
+    "title": "Asking and Answering Questions to Evaluate the Factual Consistency of Summaries",
+    "path": ".research/sources/05e989d6-9255-4350-a8d1-eee2f1cf82cb/reference.json",
+    "sha256": "d75f612c18d114d4af74e2e6a23e1a3e89ed3100bccd5434b143f3b7134c8c29",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:20:59.194Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2020.acl-main.450",
+    "doi": "10.18653/v1/2020.acl-main.450",
+    "fullTextPath": ".research/sources/05e989d6-9255-4350-a8d1-eee2f1cf82cb/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "We propose QAGS,1 an automatic evaluation\nprotocol that is designed to identify factual in-\nconsistencies in a generated summary.\nQAGS has substantially higher\ncorrelations with these judgments than other\nautomatic evaluation metrics."
+     }
+    ]
+   },
+   {
+    "id": "e17138df-d4f9-44e4-9de4-86e06a06217d",
+    "kind": "literature",
+    "title": "FEQA: A Question Answering Evaluation Framework for Faithfulness Assessment in Abstractive Summarization",
+    "path": ".research/sources/e17138df-d4f9-44e4-9de4-86e06a06217d/reference.json",
+    "sha256": "bf005c788aa89618c93209811a92735b584d2c54ff6d57c0fc7376e10d99c472",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:05.347Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2020.acl-main.454",
+    "doi": "10.18653/v1/2020.acl-main.454",
+    "fullTextPath": ".research/sources/e17138df-d4f9-44e4-9de4-86e06a06217d/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "FEQA: A Question Answering Evaluation Framework for Faithfulness Assessment in Abstractive Summarization"
+     }
+    ]
+   },
+   {
+    "id": "941df74a-cef6-4ae0-90cc-cf6d9b52489f",
+    "kind": "literature",
+    "title": "On Faithfulness and Factuality in Abstractive Summarization",
+    "path": ".research/sources/941df74a-cef6-4ae0-90cc-cf6d9b52489f/reference.json",
+    "sha256": "8932dc8903c47a5376629c4c712159daddbdec498118e307d14cf086c3f9d2f9",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:11.627Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2020.acl-main.173",
+    "doi": "10.18653/v1/2020.acl-main.173",
+    "fullTextPath": ".research/sources/941df74a-cef6-4ae0-90cc-cf6d9b52489f/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "On Faithfulness and Factuality in Abstractive Summarization"
+     }
+    ]
+   },
+   {
+    "id": "76dcb23b-d4cd-4fd4-8a15-30e9f7586ce7",
+    "kind": "literature",
+    "title": "SummEval: Re-evaluating Summarization Evaluation",
+    "path": ".research/sources/76dcb23b-d4cd-4fd4-8a15-30e9f7586ce7/reference.json",
+    "sha256": "1ef90e608e50e2db2d93135a631aa92a7f3f8fc9736718aadcbcac5d67359d47",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:13.322Z",
+    "sourceUrl": "https://doi.org/10.1162/tacl_a_00373",
+    "doi": "10.1162/tacl_a_00373",
+    "coverage": "abstract",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "SummEval: Re-evaluating Summarization Evaluation"
+     }
+    ]
+   },
+   {
+    "id": "a926b22f-7dba-4df7-9603-83cc32180e0c",
+    "kind": "literature",
+    "title": "Understanding Factuality in Abstractive Summarization with FRANK: A Benchmark for Factuality Metrics",
+    "path": ".research/sources/a926b22f-7dba-4df7-9603-83cc32180e0c/reference.json",
+    "sha256": "3a233fc8241c4e68ba3a6ba8f6d1af048cdacc86546ddd4403119c0caa15289b",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:18.904Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2021.naacl-main.383",
+    "doi": "10.18653/v1/2021.naacl-main.383",
+    "fullTextPath": ".research/sources/a926b22f-7dba-4df7-9603-83cc32180e0c/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Understanding Factuality in Abstractive Summarization with FRANK: A Benchmark for Factuality Metrics"
+     }
+    ]
+   },
+   {
+    "id": "76a29c86-21c5-414f-b355-b3ab81d3e252",
+    "kind": "literature",
+    "title": "Annotating and Modeling Fine-grained Factuality in Summarization",
+    "path": ".research/sources/76a29c86-21c5-414f-b355-b3ab81d3e252/reference.json",
+    "sha256": "6448c9a2abef4ee484145617f8e158a35c270d9eea22b46ebdf2607db44fee20",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:24.978Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2021.naacl-main.114",
+    "doi": "10.18653/v1/2021.naacl-main.114",
+    "fullTextPath": ".research/sources/76a29c86-21c5-414f-b355-b3ab81d3e252/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Annotating and Modeling Fine-grained Factuality in Summarization"
+     }
+    ]
+   },
+   {
+    "id": "a155cd38-7260-49ff-9329-4c9d3466d8c0",
+    "kind": "literature",
+    "title": "TRUE: Re-evaluating Factual Consistency Evaluation",
+    "path": ".research/sources/a155cd38-7260-49ff-9329-4c9d3466d8c0/reference.json",
+    "sha256": "08078bf47225468d766cdcbed1f327ef3734dcacbb75cb0ee79f339858a446f8",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:30.840Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2022.naacl-main.287",
+    "doi": "10.18653/v1/2022.naacl-main.287",
+    "fullTextPath": ".research/sources/a155cd38-7260-49ff-9329-4c9d3466d8c0/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "TRUE: Re-evaluating Factual Consistency Evaluation"
+     }
+    ]
+   },
+   {
+    "id": "8abc86ac-5068-4ff7-a615-356d1885341c",
+    "kind": "literature",
+    "title": "AlignScore: Evaluating Factual Consistency with A Unified Alignment Function",
+    "path": ".research/sources/8abc86ac-5068-4ff7-a615-356d1885341c/reference.json",
+    "sha256": "827064f8941a7312467877e3ab714e35ea3a2cf02ff0d361c05064c28d1a0fbe",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:36.501Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.acl-long.634",
+    "doi": "10.18653/v1/2023.acl-long.634",
+    "fullTextPath": ".research/sources/8abc86ac-5068-4ff7-a615-356d1885341c/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "AlignScore: Evaluating Factual Consistency with A Unified Alignment Function"
+     },
+     {
+      "locator": {
+       "page": 1
+      },
+      "text": "In\nthis paper, we propose ALIGN SCORE , a new\nholistic metric that applies to a variety of fac-\ntual inconsistency scenarios as above."
+     },
+     {
+      "locator": {
+       "page": 2
+      },
+      "text": "We evaluate\nALIGN SCORE on the latest large-scale evaluation\nbenchmarks, including SummaC (Laban et al.,\n2022), TRUE (Honovich et al., 2022b), and other\ntestbeds, which contain a total of 22 challenging\nevaluation datasets."
+     },
+     {
+      "locator": {
+       "page": 6
+      },
+      "text": "We include\nthe latest QAFactEval (Fabbri et al., 2022), QuestE-\nval (Scialom et al., 2021), and FEQA (Durmus\net al., 2020) as our baselines."
+     },
+     {
+      "locator": {
+       "page": 7
+      },
+      "text": "For sentence-level baseline, we use\nSummaC-ZeroShot and SummaC-Conv introduced\nin the SummaC Benchmark (Laban et al., 2022)\nand FactCC (Kryscinski et al., 2020) which is\ntrained on synthetic data."
+     }
+    ]
+   },
+   {
+    "id": "50f83ed2-c5b5-48ad-b4b1-7f3cc96a9503",
+    "kind": "literature",
+    "title": "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension",
+    "path": ".research/sources/50f83ed2-c5b5-48ad-b4b1-7f3cc96a9503/reference.json",
+    "sha256": "65c57619c04a6cbb5e3382899d766bb8055c4ff5cb6d01588ec19f979d63e846",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:42.601Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2020.acl-main.703",
+    "doi": "10.18653/v1/2020.acl-main.703",
+    "fullTextPath": ".research/sources/50f83ed2-c5b5-48ad-b4b1-7f3cc96a9503/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension"
+     }
+    ]
+   },
+   {
+    "id": "5e49b258-ad20-4e6a-ac38-47e55b382fa5",
+    "kind": "literature",
+    "title": "BOOKSUM: A Collection of Datasets for Long-form Narrative Summarization",
+    "path": ".research/sources/5e49b258-ad20-4e6a-ac38-47e55b382fa5/reference.json",
+    "sha256": "6e828ac39d86d11b599e9723206fcb4e96c606f4931939c75fb7759bbc96d576",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:49.158Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2022.findings-emnlp.488",
+    "doi": "10.18653/v1/2022.findings-emnlp.488",
+    "fullTextPath": ".research/sources/5e49b258-ad20-4e6a-ac38-47e55b382fa5/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "BOOKSUM: A Collection of Datasets for Long-form Narrative Summarization"
+     }
+    ]
+   },
+   {
+    "id": "827defb3-93bf-4c68-ac26-52d77e6fa0d6",
+    "kind": "literature",
+    "title": "Efficient Attentions for Long Document Summarization",
+    "path": ".research/sources/827defb3-93bf-4c68-ac26-52d77e6fa0d6/reference.json",
+    "sha256": "7ed11130e8ce4343d3bde2090b9f2b72e8855d0f97493bbc11ce6cd454e1ef79",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:21:55.225Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2021.naacl-main.112",
+    "doi": "10.18653/v1/2021.naacl-main.112",
+    "fullTextPath": ".research/sources/827defb3-93bf-4c68-ac26-52d77e6fa0d6/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Efficient Attentions for Long Document Summarization"
+     }
+    ]
+   },
+   {
+    "id": "8c48b482-952c-4841-b79f-f5be10f2b548",
+    "kind": "literature",
+    "title": "A Discourse-Aware Attention Model for Abstractive Summarization of Long Documents",
+    "path": ".research/sources/8c48b482-952c-4841-b79f-f5be10f2b548/reference.json",
+    "sha256": "dee6414f11d461158b9722cf020e50c56fb79f798c72a29aa2c655f3e169f977",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:01.201Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/n18-2097",
+    "doi": "10.18653/v1/n18-2097",
+    "fullTextPath": ".research/sources/8c48b482-952c-4841-b79f-f5be10f2b548/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "A Discourse-Aware Attention Model for Abstractive Summarization of Long Documents"
+     }
+    ]
+   },
+   {
+    "id": "31d46f56-0ca6-485f-97c4-e668e4395be7",
+    "kind": "literature",
+    "title": "LongEval: Guidelines for Human Evaluation of Faithfulness in Long-form Summarization",
+    "path": ".research/sources/31d46f56-0ca6-485f-97c4-e668e4395be7/reference.json",
+    "sha256": "d96f7284e34f64ed1e0472541417902b98f338a13c03bef3a71f0be6456aca8a",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:07.396Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.eacl-main.121",
+    "doi": "10.18653/v1/2023.eacl-main.121",
+    "fullTextPath": ".research/sources/31d46f56-0ca6-485f-97c4-e668e4395be7/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "LongEval: Guidelines for Human Evaluation of Faithfulness in Long-form Summarization"
+     }
+    ]
+   },
+   {
+    "id": "6b47d138-381d-470b-a43d-adda9499dfb0",
+    "kind": "literature",
+    "title": "FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation",
+    "path": ".research/sources/6b47d138-381d-470b-a43d-adda9499dfb0/reference.json",
+    "sha256": "7c51956a6f225696d6af79d5cf6e4fc86947283af5c327f3e9eed822085037c5",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:14.154Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.emnlp-main.741",
+    "doi": "10.18653/v1/2023.emnlp-main.741",
+    "fullTextPath": ".research/sources/6b47d138-381d-470b-a43d-adda9499dfb0/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation"
+     }
+    ]
+   },
+   {
+    "id": "f4d4f192-16f2-4e6d-a5b9-c5ba0598a71e",
+    "kind": "literature",
+    "title": "G-Eval: NLG Evaluation using Gpt-4 with Better Human Alignment",
+    "path": ".research/sources/f4d4f192-16f2-4e6d-a5b9-c5ba0598a71e/reference.json",
+    "sha256": "1ba5efc12f0f9ca4887c570d764a882a56fdb02c458ec25dc1314ec6efae9ddf",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:19.722Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.emnlp-main.153",
+    "doi": "10.18653/v1/2023.emnlp-main.153",
+    "fullTextPath": ".research/sources/f4d4f192-16f2-4e6d-a5b9-c5ba0598a71e/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "G-Eval: NLG Evaluation using Gpt-4 with Better Human Alignment"
+     }
+    ]
+   },
+   {
+    "id": "16004d44-a92e-4784-be79-b6050374decc",
+    "kind": "literature",
+    "title": "SummEdits: Measuring LLM Ability at Factual Reasoning Through The Lens of Summarization",
+    "path": ".research/sources/16004d44-a92e-4784-be79-b6050374decc/reference.json",
+    "sha256": "338a98cdcc2fab67ea852ca2666c58c9e747b0922748c860738176eb82ef48f4",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:25.309Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.emnlp-main.600",
+    "doi": "10.18653/v1/2023.emnlp-main.600",
+    "fullTextPath": ".research/sources/16004d44-a92e-4784-be79-b6050374decc/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "SummEdits: Measuring LLM Ability at Factual Reasoning Through The Lens of Summarization"
+     }
+    ]
+   },
+   {
+    "id": "a659a265-7cb7-4af1-a6b6-eae391dba87d",
+    "kind": "literature",
+    "title": "A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference",
+    "path": ".research/sources/a659a265-7cb7-4af1-a6b6-eae391dba87d/reference.json",
+    "sha256": "c416ccb4085910f38a519df6ed1e1e22e930241c4a85c417d1e65ada5e54a5bf",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:30.917Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/n18-1101",
+    "doi": "10.18653/v1/n18-1101",
+    "fullTextPath": ".research/sources/a659a265-7cb7-4af1-a6b6-eae391dba87d/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference"
+     }
+    ]
+   },
+   {
+    "id": "d7ddf6af-d589-48eb-9e10-7edc108e359a",
+    "kind": "literature",
+    "title": "CLIFF: Contrastive Learning for Improving Faithfulness and Factuality in Abstractive Summarization",
+    "path": ".research/sources/d7ddf6af-d589-48eb-9e10-7edc108e359a/reference.json",
+    "sha256": "2b5d20eb5cb687d5d7b0fbfbf2212a40493816a90c4ecf64b5eba32696be2253",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:36.707Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2021.emnlp-main.532",
+    "doi": "10.18653/v1/2021.emnlp-main.532",
+    "fullTextPath": ".research/sources/d7ddf6af-d589-48eb-9e10-7edc108e359a/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "CLIFF: Contrastive Learning for Improving Faithfulness and Factuality in Abstractive Summarization"
+     }
+    ]
+   },
+   {
+    "id": "8df725c1-d6ae-4722-bd50-55bd65729569",
+    "kind": "literature",
+    "title": "Entity-level Factual Consistency of Abstractive Text Summarization",
+    "path": ".research/sources/8df725c1-d6ae-4722-bd50-55bd65729569/reference.json",
+    "sha256": "11560c673035d06f9acd549263ad7c0a51dc452ce0c195bde1ebae52094c3851",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:41.713Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2021.eacl-main.235",
+    "doi": "10.18653/v1/2021.eacl-main.235",
+    "fullTextPath": ".research/sources/8df725c1-d6ae-4722-bd50-55bd65729569/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Entity-level Factual Consistency of Abstractive Text Summarization"
+     }
+    ]
+   },
+   {
+    "id": "9b297dab-ba7c-4882-a30a-05b0eeef895b",
+    "kind": "literature",
+    "title": "Revisiting the Gold Standard: Grounding Summarization Evaluation with Robust Human Evaluation",
+    "path": ".research/sources/9b297dab-ba7c-4882-a30a-05b0eeef895b/reference.json",
+    "sha256": "e2b20389298b396409d698851c6aabf7cad09bccb6954cf18e110274557c1db8",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:47.924Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.acl-long.228",
+    "doi": "10.18653/v1/2023.acl-long.228",
+    "fullTextPath": ".research/sources/9b297dab-ba7c-4882-a30a-05b0eeef895b/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Revisiting the Gold Standard: Grounding Summarization Evaluation with Robust Human Evaluation"
+     }
+    ]
+   },
+   {
+    "id": "d6830423-36d9-412d-85b2-518d103dc4a1",
+    "kind": "literature",
+    "title": "Countering the Effects of Lead Bias in News Summarization via Multi-Stage Training and Auxiliary Losses",
+    "path": ".research/sources/d6830423-36d9-412d-85b2-518d103dc4a1/reference.json",
+    "sha256": "b622d00b8201d8ff460943c4cd0ed247eb99e6a7e16ca4f9e33dc2aa52210ccf",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:53.747Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/d19-1620",
+    "doi": "10.18653/v1/d19-1620",
+    "fullTextPath": ".research/sources/d6830423-36d9-412d-85b2-518d103dc4a1/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Countering the Effects of Lead Bias in News Summarization via Multi-Stage Training and Auxiliary Losses"
+     }
+    ]
+   },
+   {
+    "id": "b31c87cd-8147-4bcc-985e-591fdb2f5447",
+    "kind": "literature",
+    "title": "Neural Text Summarization: A Critical Evaluation",
+    "path": ".research/sources/b31c87cd-8147-4bcc-985e-591fdb2f5447/reference.json",
+    "sha256": "d5aafff75a1f3cbc0bdfee6ca4dacf877ff1cd149e50c26ba7ee25b9680f0e78",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:22:59.889Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/d19-1051",
+    "doi": "10.18653/v1/d19-1051",
+    "fullTextPath": ".research/sources/b31c87cd-8147-4bcc-985e-591fdb2f5447/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Neural Text Summarization: A Critical Evaluation"
+     }
+    ]
+   },
+   {
+    "id": "562c1f2d-96b4-436c-95fc-c1032f12f0e3",
+    "kind": "literature",
+    "title": "Assessing The Factual Accuracy of Generated Text",
+    "path": ".research/sources/562c1f2d-96b4-436c-95fc-c1032f12f0e3/reference.json",
+    "sha256": "f1c6d6cfb18d5fffaa696adccb1febe83c81e20fad5a8760ee75f53f27198bd3",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:02.930Z",
+    "sourceUrl": "https://doi.org/10.1145/3292500.3330955",
+    "doi": "10.1145/3292500.3330955",
+    "coverage": "metadata",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Assessing The Factual Accuracy of Generated Text"
+     }
+    ]
+   },
+   {
+    "id": "34f1cee9-a92e-4a3c-9336-87eba3e2ca3d",
+    "kind": "literature",
+    "title": "Understanding Factual Errors in Summarization: Errors, Summarizers, Datasets, Error Detectors",
+    "path": ".research/sources/34f1cee9-a92e-4a3c-9336-87eba3e2ca3d/reference.json",
+    "sha256": "e1240f2a3d239c88abe5ecfd3c394d45d9b852515c76a728e94867fb7180468f",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:08.005Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.acl-long.650",
+    "doi": "10.18653/v1/2023.acl-long.650",
+    "fullTextPath": ".research/sources/34f1cee9-a92e-4a3c-9336-87eba3e2ca3d/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Understanding Factual Errors in Summarization: Errors, Summarizers, Datasets, Error Detectors"
+     }
+    ]
+   },
+   {
+    "id": "abff18db-700c-4b76-bb57-d3fe5932f23e",
+    "kind": "literature",
+    "title": "Fast and Accurate Factual Inconsistency Detection Over Long Documents",
+    "path": ".research/sources/abff18db-700c-4b76-bb57-d3fe5932f23e/reference.json",
+    "sha256": "a4b8697a1c66525cb378925e2a05ec163126bb634b7dcbb9539d10135f3e7f9f",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:14.002Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.emnlp-main.105",
+    "doi": "10.18653/v1/2023.emnlp-main.105",
+    "fullTextPath": ".research/sources/abff18db-700c-4b76-bb57-d3fe5932f23e/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Fast and Accurate Factual Inconsistency Detection Over Long Documents"
+     }
+    ]
+   },
+   {
+    "id": "461ead6b-8d23-4b7b-b753-73d39b8ddb55",
+    "kind": "literature",
+    "title": "Extractive is not Faithful: An Investigation of Broad Unfaithfulness Problems in Extractive Summarization",
+    "path": ".research/sources/461ead6b-8d23-4b7b-b753-73d39b8ddb55/reference.json",
+    "sha256": "3a1792b5914ab282a7c42c39d21c4a0a22aaef02fbaf8ab8385e57ed73b6ba70",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:21.294Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.acl-long.120",
+    "doi": "10.18653/v1/2023.acl-long.120",
+    "fullTextPath": ".research/sources/461ead6b-8d23-4b7b-b753-73d39b8ddb55/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Extractive is not Faithful: An Investigation of Broad Unfaithfulness Problems in Extractive Summarization"
+     }
+    ]
+   },
+   {
+    "id": "034eb7d3-2b17-49ec-a358-2b571d972292",
+    "kind": "literature",
+    "title": "QuestEval: Summarization Asks for Fact-based Evaluation",
+    "path": ".research/sources/034eb7d3-2b17-49ec-a358-2b571d972292/reference.json",
+    "sha256": "c739a290e7bb86a48225d162106d8621da45641b4ca5422ebaddf83d5ea4689d",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:22.984Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2021.emnlp-main.529",
+    "doi": "10.18653/v1/2021.emnlp-main.529",
+    "coverage": "metadata",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "QuestEval: Summarization Asks for Fact-based Evaluation"
+     }
+    ]
+   },
+   {
+    "id": "f9c47522-ee9d-4c88-a9b6-56224dd4c97b",
+    "kind": "literature",
+    "title": "Factually Consistent Summarization via Reinforcement Learning with Textual Entailment Feedback",
+    "path": ".research/sources/f9c47522-ee9d-4c88-a9b6-56224dd4c97b/reference.json",
+    "sha256": "9c7f7d0c1d716e011433cd4e23a8e0406003ca23d73b4f1480f74c4a344966f8",
+    "revision": 1,
+    "importedAt": "2026-09-23T20:23:28.829Z",
+    "sourceUrl": "https://doi.org/10.18653/v1/2023.acl-long.344",
+    "doi": "10.18653/v1/2023.acl-long.344",
+    "fullTextPath": ".research/sources/f9c47522-ee9d-4c88-a9b6-56224dd4c97b/fulltext.pdf",
+    "coverage": "full-text",
+    "verified": true,
+    "stale": false,
+    "chunks": [
+     {
+      "locator": {
+       "key": "title"
+      },
+      "text": "Factually Consistent Summarization via Reinforcement Learning with Textual Entailment Feedback"
+     }
+    ]
+   }
+  ],
+  "experiments": []
+ },
+ "citations": [
+  {
+   "evidenceId": "50f83ed2-c5b5-48ad-b4b1-7f3cc96a9503",
+   "provider": "openalex",
+   "work": "W2982399380",
+   "doi": "10.18653/v1/2020.acl-main.703",
+   "references": [
+    "W2607892599",
+    "W131533222",
+    "W1544827683",
+    "W1599016936"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "a659a265-7cb7-4af1-a6b6-eae391dba87d",
+   "provider": "openalex",
+   "work": "W2607892599",
+   "doi": "10.18653/v1/n18-1101",
+   "references": [
+    "W327273178",
+    "W1632114991",
+    "W1711163617"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "941df74a-cef6-4ae0-90cc-cf6d9b52489f",
+   "provider": "openalex",
+   "work": "W3021338988",
+   "doi": "10.18653/v1/2020.acl-main.173",
+   "references": [
+    "W2607892599",
+    "W2947681066",
+    "W2969286400",
+    "W2981456979",
+    "W3034188538",
+    "W1493490255",
+    "W1501617060",
+    "W1544827683"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "f4d4f192-16f2-4e6d-a5b9-c5ba0598a71e",
+   "provider": "openalex",
+   "work": "W4389519254",
+   "doi": "10.18653/v1/2023.emnlp-main.153",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3034188538",
+    "W3045321166",
+    "W658020064",
+    "W1544827683",
+    "W1552182777"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "7c43c309-79b2-4553-bcb4-583100e0a7e3",
+   "provider": "openalex",
+   "work": "W2981456979",
+   "doi": "10.18653/v1/2020.emnlp-main.750",
+   "references": [
+    "W2607892599",
+    "W2798240283",
+    "W2947681066",
+    "W2969286400",
+    "W1843891098",
+    "W2081265723",
+    "W2130942839"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "8c48b482-952c-4841-b79f-f5be10f2b548",
+   "provider": "openalex",
+   "work": "W2798240283",
+   "doi": "10.18653/v1/n18-2097",
+   "references": [
+    "W1544827683",
+    "W1843891098",
+    "W1902237438"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "76dcb23b-d4cd-4fd4-8a15-30e9f7586ce7",
+   "provider": "openalex",
+   "work": "W3045321166",
+   "doi": "10.1162/tacl_a_00373",
+   "references": [
+    "W2969286400",
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3022685184",
+    "W3034188538",
+    "W136732505",
+    "W658020064",
+    "W1544827683"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "b31c87cd-8147-4bcc-985e-591fdb2f5447",
+   "provider": "openalex",
+   "work": "W2969286400",
+   "doi": "10.18653/v1/d19-1051",
+   "references": [
+    "W2798240283",
+    "W1489525520",
+    "W1544827683",
+    "W1646152356"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "6b47d138-381d-470b-a43d-adda9499dfb0",
+   "provider": "openalex",
+   "work": "W4389519598",
+   "doi": "10.18653/v1/2023.emnlp-main.741",
+   "references": [
+    "W2981456979",
+    "W3034188538",
+    "W4226118367",
+    "W4385571140",
+    "W4386576859",
+    "W2102065370",
+    "W2887356313",
+    "W2948810786"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "05e989d6-9255-4350-a8d1-eee2f1cf82cb",
+   "provider": "openalex",
+   "work": "W3034188538",
+   "doi": "10.18653/v1/2020.acl-main.450",
+   "references": [
+    "W2607892599",
+    "W2947681066",
+    "W2969286400",
+    "W2981456979",
+    "W2982399380",
+    "W1544827683",
+    "W2065553296",
+    "W2096645496"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "2e0053ea-f34a-4e1f-a58e-ad3cc83b03fc",
+   "provider": "openalex",
+   "work": "W3213990450",
+   "doi": "10.1162/tacl_a_00453",
+   "references": [
+    "W2607892599",
+    "W2947681066",
+    "W2981456979",
+    "W3021338988",
+    "W3022685184",
+    "W3045321166",
+    "W3157230343",
+    "W3211912523",
+    "W1840435438",
+    "W1975879668",
+    "W2101807845"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "a926b22f-7dba-4df7-9603-83cc32180e0c",
+   "provider": "openalex",
+   "work": "W3157230343",
+   "doi": "10.18653/v1/2021.naacl-main.383",
+   "references": [
+    "W2947681066",
+    "W2969286400",
+    "W2981456979",
+    "W3021338988",
+    "W3034188538",
+    "W1493490255",
+    "W1544827683",
+    "W1843891098"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "034eb7d3-2b17-49ec-a358-2b571d972292",
+   "provider": "openalex",
+   "work": "W3211912523",
+   "doi": "10.18653/v1/2021.emnlp-main.529",
+   "references": [
+    "W2969286400",
+    "W2981456979",
+    "W3021338988",
+    "W3034188538",
+    "W1956340063",
+    "W2026191715",
+    "W2101105183"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "562c1f2d-96b4-436c-95fc-c1032f12f0e3",
+   "provider": "openalex",
+   "work": "W2947681066",
+   "doi": "10.1145/3292500.3330955",
+   "references": [
+    "W174427690",
+    "W848102080",
+    "W1493490255"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "827defb3-93bf-4c68-ac26-52d77e6fa0d6",
+   "provider": "openalex",
+   "work": "W3170490008",
+   "doi": "10.18653/v1/2021.naacl-main.112",
+   "references": [
+    "W2798240283",
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W1517524280",
+    "W2034562813",
+    "W2147830435"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "d7ddf6af-d589-48eb-9e10-7edc108e359a",
+   "provider": "openalex",
+   "work": "W3199926081",
+   "doi": "10.18653/v1/2021.emnlp-main.532",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3152781945",
+    "W3153193605",
+    "W3157230343",
+    "W3211912523",
+    "W1544827683",
+    "W2033922434",
+    "W2153579005"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "8df725c1-d6ae-4722-bd50-55bd65729569",
+   "provider": "openalex",
+   "work": "W3153193605",
+   "doi": "10.18653/v1/2021.eacl-main.235",
+   "references": [
+    "W2969286400",
+    "W2981456979",
+    "W2982399380",
+    "W2626778328",
+    "W2768957049",
+    "W2799064010"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "3eb20dfd-e5b9-4a5d-9c5f-5f27dd516a3e",
+   "provider": "openalex",
+   "work": "W4226118367",
+   "doi": "10.18653/v1/2022.naacl-main.187",
+   "references": [
+    "W2607892599",
+    "W2969286400",
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3157230343",
+    "W3211912523",
+    "W1522301498",
+    "W1544827683",
+    "W2124181495"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "e17138df-d4f9-44e4-9de4-86e06a06217d",
+   "provider": "openalex",
+   "work": "W3022685184",
+   "doi": "10.18653/v1/2020.acl-main.454",
+   "references": [
+    "W6600686112"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "76a29c86-21c5-414f-b355-b3ab81d3e252",
+   "provider": "openalex",
+   "work": "W3152781945",
+   "doi": "10.18653/v1/2021.naacl-main.114",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W1544827683",
+    "W1959120443",
+    "W2065354331"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "5e49b258-ad20-4e6a-ac38-47e55b382fa5",
+   "provider": "openalex",
+   "work": "W3163073193",
+   "doi": "10.18653/v1/2022.findings-emnlp.488",
+   "references": [
+    "W2798240283",
+    "W2969286400",
+    "W2982399380",
+    "W3045321166",
+    "W1517524280",
+    "W2068115726",
+    "W2073512134"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "8abc86ac-5068-4ff7-a615-356d1885341c",
+   "provider": "openalex",
+   "work": "W4385572448",
+   "doi": "10.18653/v1/2023.acl-long.634",
+   "references": [
+    "W2607892599",
+    "W2969286400",
+    "W2981456979",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3157230343",
+    "W3211912523",
+    "W3213990450",
+    "W4226118367",
+    "W4287855110",
+    "W1840435438",
+    "W2101105183",
+    "W2101807845"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "a155cd38-7260-49ff-9329-4c9d3466d8c0",
+   "provider": "openalex",
+   "work": "W4287855110",
+   "doi": "10.18653/v1/2022.naacl-main.287",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3157230343",
+    "W3211912523",
+    "W4226118367",
+    "W1544827683",
+    "W1840435438",
+    "W2066018628"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "9b297dab-ba7c-4882-a30a-05b0eeef895b",
+   "provider": "openalex",
+   "work": "W4385571140",
+   "doi": "10.18653/v1/2023.acl-long.228",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3199926081",
+    "W4226118367",
+    "W4385572316",
+    "W4389519254",
+    "W136732505",
+    "W658020064",
+    "W1956340063"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "34f1cee9-a92e-4a3c-9336-87eba3e2ca3d",
+   "provider": "openalex",
+   "work": "W4385572316",
+   "doi": "10.18653/v1/2023.acl-long.650",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3152781945",
+    "W3153193605",
+    "W3157230343",
+    "W3199926081",
+    "W3211912523",
+    "W3213990450",
+    "W1544827683",
+    "W2101105183",
+    "W2154652894"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "d6830423-36d9-412d-85b2-518d103dc4a1",
+   "provider": "openalex",
+   "work": "W2970600560",
+   "doi": "10.18653/v1/d19-1620",
+   "references": [
+    "W759515131",
+    "W1501617060",
+    "W1544827683"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "16004d44-a92e-4784-be79-b6050374decc",
+   "provider": "openalex",
+   "work": "W4389520387",
+   "doi": "10.18653/v1/2023.emnlp-main.600",
+   "references": [
+    "W2969286400",
+    "W2981456979",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3157230343",
+    "W3199926081",
+    "W3211912523",
+    "W4226118367",
+    "W4385572316",
+    "W2918408501",
+    "W2951211142",
+    "W2989743967"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "31d46f56-0ca6-485f-97c4-e668e4395be7",
+   "provider": "openalex",
+   "work": "W4386576859",
+   "doi": "10.18653/v1/2023.eacl-main.121",
+   "references": [
+    "W2798240283",
+    "W2969286400",
+    "W2981456979",
+    "W2982399380",
+    "W3034188538",
+    "W3045321166",
+    "W3163073193",
+    "W3170490008",
+    "W3213990450",
+    "W4226118367",
+    "W4385571140",
+    "W112197792",
+    "W1975879668",
+    "W2029553347"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "f9c47522-ee9d-4c88-a9b6-56224dd4c97b",
+   "provider": "openalex",
+   "work": "W4385569870",
+   "doi": "10.18653/v1/2023.acl-long.344",
+   "references": [
+    "W2981456979",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3157230343",
+    "W3199926081",
+    "W3211912523",
+    "W3213990450",
+    "W4287855110",
+    "W195596278",
+    "W1191599655",
+    "W1840435438"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "461ead6b-8d23-4b7b-b753-73d39b8ddb55",
+   "provider": "openalex",
+   "work": "W4385571950",
+   "doi": "10.18653/v1/2023.acl-long.120",
+   "references": [
+    "W2981456979",
+    "W2982399380",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3152781945",
+    "W3157230343",
+    "W3199926081",
+    "W3211912523",
+    "W1525595230",
+    "W1526882625",
+    "W1544827683"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  },
+  {
+   "evidenceId": "abff18db-700c-4b76-bb57-d3fe5932f23e",
+   "provider": "openalex",
+   "work": "W4389524320",
+   "doi": "10.18653/v1/2023.emnlp-main.105",
+   "references": [
+    "W2607892599",
+    "W2981456979",
+    "W3021338988",
+    "W3034188538",
+    "W3045321166",
+    "W3157230343",
+    "W3211912523",
+    "W4226118367",
+    "W4386576859",
+    "W2130158090",
+    "W2154652894",
+    "W2626967530"
+   ],
+   "fetchedAt": "2026-10-01T09:00:00.000Z"
+  }
+ ]
+}
