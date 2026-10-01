@@ -31,7 +31,7 @@ Client 入口提供 `ClientWorkspaceModel` 和 `createWorkspaceStateStream()`。
 
 `workspace.create({ location: { kind: 'ssh', host, path }, sshAuth })` 通过 `remoteWorkspacePresets` 服务登记远端目录，本包按名称访问该服务。`host` 是 OpenSSH 别名或 `用户@主机[:端口]`；Workspace 记录、Session 头部和每个响应都只携带这种写法，绝不携带密钥。可选的 `sshAuth` 为该主机选择登录方式：`{ kind: 'key' }` 使用 OpenSSH 密钥、认证代理和配置，并清除此前保存的密码；`{ kind: 'password', password }` 先向主机验证，主机接受之后才保存到凭据库。不带 `sshAuth` 的请求保留该主机已保存的登录方式。本地位置带 `sshAuth` 会以 `gateway/bad-request` 拒绝。
 
-主机拒绝时以 `workspace/ssh-failed` 失败，其 details 给出 `path` 与 `reason`（`auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`），由 Client 用读者的语言表述；消息为英文且不含密码。其他设置失败仍为 `workspace/invalid-path`。删除使用某主机的最后一个 Workspace 时，也会删除该主机已保存的密码。
+主机拒绝时以 `workspace/ssh-failed` 失败，其 details 给出 `path` 与 `reason`（`auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`），由 Client 用读者的语言表述；消息为英文且不含密码。对于未知的主机密钥，details 在 Host 能安全读取到该密钥时还会携带 `hostKey`，即密钥的 `type` 和 `fingerprint`；已变更的密钥绝不携带。可选的 `sshTrustedHostKey` 是人确认过的指纹：只有主机仍然出示该密钥、且没有记录不同的密钥时，Host 才把它记录到 `known_hosts`，然后在严格的主机密钥检查下继续添加。本地位置与 `sshAuth` 一样会拒绝它。其他设置失败仍为 `workspace/invalid-path`。删除使用某主机的最后一个 Workspace 时，也会删除该主机已保存的密码。
 
 <a id="first-use-workspace"></a>
 ### 首次使用工作区

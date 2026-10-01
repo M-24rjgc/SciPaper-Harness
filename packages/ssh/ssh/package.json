@@ -35,6 +35,10 @@
     "./auth": {
       "types": "./lib/types/auth.d.ts",
       "default": "./lib/auth.js"
+    },
+    "./host-key": {
+      "types": "./lib/types/host-key.d.ts",
+      "default": "./lib/host-key.js"
     }
   },
   "files": [
@@ -43,6 +47,7 @@
     "lib/protocol.js",
     "lib/schemas.js",
     "lib/auth.js",
+    "lib/host-key.js",
     "lib/protocol-*.js",
     "lib/schemas-*.js",
     "lib/auth-*.js",

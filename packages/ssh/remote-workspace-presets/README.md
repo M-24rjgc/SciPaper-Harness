@@ -30,6 +30,8 @@ The host is an existing OpenSSH alias, or `user@host` with an optional `:port`. 
 
 `inspect` also takes an `auth` choice for a workspace that is being added. `{ kind: 'password', password }` verifies that password against the host before anything else and saves it only after the host accepted it, under the host's record in the credential store (see [Password login](../ssh/README.md#password-login)); a wrong password changes nothing and the verification is repeated on the next request. `{ kind: 'key' }` verifies with OpenSSH keys, agent and configuration, and forgets a password saved earlier for the host. A request without `auth`, such as every session resume, uses whatever the host has saved. `forget(host)` deletes the saved password. A refusal rejects with an `SshFailure` whose `kind` is `auth`, `unreachable`, `host-key`, `host-key-changed` or `unsupported`; its message never contains the password.
 
+When the failure is an unknown host key of a workspace being added, the `SshFailure` also carries the key's `type` and SHA-256 `fingerprint`, read with [`scanHostKey`](../ssh/README.md#trusting-a-new-host) without recording anything. A caller that shows it to a person and gets a confirmation calls `inspect` again with `trustHostKey: <that fingerprint>`; the service then records the key in `known_hosts` through `trustHostKey`, which refuses a host that has a different key recorded, and verifies the workspace with strict host-key checking as before. Nothing is written to `known_hosts` without that call.
+
 -----
 
 <a id="understand-the-implementation"></a>

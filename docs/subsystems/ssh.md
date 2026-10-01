@@ -18,7 +18,7 @@ Deployment authentication, installed artifact verification and per-stream TLS au
 
 ## Login methods
 
-A host logs in with OpenSSH keys, agent or configuration, or with a password saved for it. Both run through the system `ssh` client with strict host-key checking. A password reaches `ssh` only through `SSH_ASKPASS` and the environment of that one child, never through an argument; every code path that starts `ssh` shares one plan for this, including the experiment runner's remote calls. The credential store keeps the password with the same protection as other credentials. [Password login](../../packages/ssh/ssh/README.md#password-login) states the mechanism, and the [decision record](../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.md) the alternatives.
+A host logs in with OpenSSH keys, agent or configuration, or with a password saved for it. Both run through the system `ssh` client with strict host-key checking. A password reaches `ssh` only through `SSH_ASKPASS` and the environment of that one child, never through an argument; every code path that starts `ssh` shares one plan for this, including the experiment runner's remote calls. The credential store keeps the password with the same protection as other credentials. A host key that is not yet in `known_hosts` is shown to the person as a fingerprint and recorded only after they confirm it; a changed key is always refused. [Password login](../../packages/ssh/ssh/README.md#password-login) states the mechanism, and the [decision record](../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.md) the alternatives.
 
 ## Process lifetime and cancellation
 
@@ -129,9 +129,13 @@ async ensure(request: RemoteWorkspaceRequest): Promise<string>
 
 /** Resolve the canonical remote path and mounted preset for a Session header.
  * A request with an authentication choice is always verified again, and a password is saved only after it worked.
- * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.
+ * A request with a confirmed fingerprint first records that host key in `known_hosts`, unless the host has a
+ * different key recorded.
+ * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate
+ * and which unknown-host fingerprint the person confirmed.
  * @returns preset identity and verified canonical directory.
- * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.
+ * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key; for an
+ * unknown host key of a workspace being added, the failure carries the key's type and fingerprint.
  */
 async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset>
 

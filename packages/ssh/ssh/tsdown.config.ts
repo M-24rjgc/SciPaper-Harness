@@ -2,7 +2,7 @@ import { defineConfig } from 'tsdown'
 import ts from 'typescript'
 
 export default defineConfig([{
-  entry: { index: 'lib/types/index.js', protocol: 'lib/types/protocol.js', schemas: 'lib/types/schemas.js', auth: 'lib/types/auth.js' },
+  entry: { index: 'lib/types/index.js', protocol: 'lib/types/protocol.js', schemas: 'lib/types/schemas.js', auth: 'lib/types/auth.js', 'host-key': 'lib/types/host-key.js' },
   outDir: 'lib', format: ['esm'], platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false,
 }, {
   // The remote host receives this single file over SSH; it cannot resolve the

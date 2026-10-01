@@ -22,7 +22,9 @@ Status: implemented
 
 **存储。** 密码是 `credentials` 的一条 `api-key` 类记录，地址为 `ssh/host-<主机的 sha-256，32 位十六进制>`：与其他凭据同一个文件、同样的保护，即操作系统用户自己的文件权限。在 Windows 上这是用户配置目录的访问控制列表，不是加密，该用户的进程可以读取。哈希后的键让文件不会列出人用过的主机。Workspace 记录、Session 头部、事件、响应或错误中都不含密码。Remote 请求只携带它一次，从对话框到 `remoteWorkspacePresets.inspect`，后者先验证，主机接受之后才保存，所以输错的密码不会覆盖一个能用的密码。之后选择密钥登录再添加会忘掉它，删除某主机的最后一个工作区也会忘掉它。
 
-**失败。** `classifySshFailure` 读取 ssh 自己的措辞，且区分大小写，所以远端的 `EACCES: permission denied` 不会被当成登录失败，结果为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`。`SshFailure` 带着该类别，以及去掉密码后的最后一行诊断作为消息。工作区控制器把它映射为 `workspace/ssh-failed`，原因放在 details 中，对话框用读者的语言表述每种原因。未知的主机密钥仍然是失败：消息告诉人运行一次 `ssh` 并回答 yes。
+**失败。** `classifySshFailure` 读取 ssh 自己的措辞，且区分大小写，所以远端的 `EACCES: permission denied` 不会被当成登录失败，结果为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`。`SshFailure` 带着该类别，以及去掉密码后的最后一行诊断作为消息。工作区控制器把它映射为 `workspace/ssh-failed`，原因放在 details 中，对话框用读者的语言表述每种原因。未知的主机密钥对连接来说仍然是失败，已变更的密钥则是硬性拒绝。
+
+**主机密钥确认。** 未知密钥通过显式的一步来解决，而不是放宽检查。添加工作区以 `host-key` 失败时，`scanHostKey` 先用 `ssh -G` 查出连接使用的名称、端口和 `known_hosts` 文件，用 `ssh-keyscan` 读取密钥（先 ed25519，再 ECDSA，最后 RSA），并在本地计算 SHA-256 指纹。失败把密钥类型和指纹带给对话框，对话框询问"信任这台主机吗？"。只有人点击"信任"才会发送 `sshTrustedHostKey`；`trustHostKey` 随后再扫描一次，要求指纹相同，运行一次无需登录的严格探测（已记录了不同密钥的主机会以 `host-key-changed` 被拒绝），再把 `[主机]:端口 类型 密钥` 追加到 ssh 读取的第一个 `known_hosts` 文件。每个真实连接仍保持 `StrictHostKeyChecking=yes`，验证的就是所记录的密钥。已变更的密钥没有密钥信息，也没有按钮。位于 `ProxyJump` 或 `ProxyCommand` 之后的主机无法直接扫描，因此不给出提议，对话框退回到提示 `ssh` 命令。对已变更密钥的拒绝由 `trustHostKey` 自身执行，而不是靠对话框隐藏按钮。
 
 ## 考虑过的替代方案
 
@@ -34,7 +36,11 @@ Status: implemented
 
 **给 `WorkspaceLocation` 增加 `user`、`port` 和 `authKind` 字段。** 读起来更清晰，但该位置被持久化在工作区记录、只接受两个键的 Session 头部校验器、SQLite 目录以及 v4 到 v5 的格式迁移中。为一个展示层面的需求做相邻格式迁移不值得。字符串编码不改动其中任何一个。代价是侧栏标签会显示成 `用户@主机:2222:/路径`。
 
-**用 `StrictHostKeyChecking=accept-new` 信任未知主机密钥。** 它会信任首次连接看到的任何密钥，人没有看过指纹。更好的设计是对话框中增加一步，显示指纹并把密钥追加到 `known_hosts`，但尚未实现；它需要第二次携带人所确认指纹的 Remote 往返。
+**用 `StrictHostKeyChecking=accept-new` 信任未知主机密钥。** 它会信任首次连接看到的任何密钥，人没有看过指纹，还会放宽真实连接的检查。
+
+**无终端地驱动 `StrictHostKeyChecking=ask`。** 它的提示由带确认提示标记的 askpass 回答，没有地方向人展示指纹，还把决定绑在随后要携带凭据的那个连接上。单独用 `ssh-keyscan` 读取密钥，让决定发生在发送任何凭据之前，而连接本身保持严格。
+
+**在对话框层用 `ssh-keygen -F`/`ssh-keyscan >> known_hosts` 添加密钥。** 写入的决定必须在写入发生的地方执行，所以 `trustHostKey` 自己重新读取密钥、比对已确认的指纹，并探测是否已记录了不同的密钥。
 
 **操作系统钥匙串。** Windows 凭据管理器或 DPAPI 需要原生插件和新的凭据提供方。[credentials-local README](../../../../packages/credentials/credentials-local/README.zh.md#known-limitations-and-deferred-work)已经把该提供方延后，而且无论哪种方式，Agent 的工具进程都以同一个用户运行。
 
@@ -44,10 +50,10 @@ Status: implemented
 
 ## 后果
 
-人可以添加 `用户@主机` 加密码，而所有密钥、认证代理和 ssh 配置的流程保持不变。密码暴露给同一用户的进程，途径是凭据文件和正在运行的 ssh 子进程的环境；它没有加密，对话框、用户指南和各包 README 都如实说明。Windows 上每条流要多花约 0.3 秒和一次 PowerShell 启动。删除某主机的最后一个工作区会删除它的密码，所以该工作区下已归档的会话需要先重新添加工作区才能恢复。首次出现的主机密钥仍需要手动 `ssh` 一次；对话框会告诉人该运行哪条命令。
+人可以添加 `用户@主机` 加密码，而所有密钥、认证代理和 ssh 配置的流程保持不变。密码暴露给同一用户的进程，途径是凭据文件和正在运行的 ssh 子进程的环境；它没有加密，对话框、用户指南和各包 README 都如实说明。Windows 上每条流要多花约 0.3 秒和一次 PowerShell 启动。删除某主机的最后一个工作区会删除它的密码，所以该工作区下已归档的会话需要先重新添加工作区才能恢复。首次出现的主机密钥在对话框中确认；指纹的可信度取决于用来比对的渠道，所以对话框和指南都告诉人要拿它与服务器管理员提供的指纹对照。位于代理之后时没有提议，仍需手动 `ssh` 一次。
 
 [POSIX SSH 决策](2026-09-11-posix-ssh-runtime.zh.md)仍然拥有传输；本笔记增加登录方式，并不取代它。
 
 ## 验证
 
-单元测试断言：在辅助进程启动、每条 Windows 流、设置命令和实验运行器中，密码不在任何参数向量、错误文本或返回输出里，已分类的失败也绝不含有它。测试在宿主平台上真实运行所生成的 askpass 程序，密码为 `pässwörd测试 &%^"'x!`。一次手动运行用真实的方案和真实的 OpenSSH_for_Windows_8.6p1 连接本地仅支持密码的测试服务器：正确密码约 0.3 秒成功，错误密码约 0.5 秒后以 `auth` 失败，未知与已变更的主机密钥分别以 `host-key` 和 `host-key-changed` 失败，被拒绝的端口以 `unreachable` 失败。尚未对原生 `sshd`、Linux 或 macOS 客户端、完整组合的产品配置做过测试。
+单元测试断言：在辅助进程启动、每条 Windows 流、设置命令和实验运行器中，密码不在任何参数向量、错误文本或返回输出里，已分类的失败也绝不含有它。测试在宿主平台上真实运行所生成的 askpass 程序，密码为 `pässwörd测试 &%^"'x!`。一次手动运行用真实的方案和真实的 OpenSSH_for_Windows_8.6p1 连接本地仅支持密码的测试服务器：正确密码约 0.3 秒成功，错误密码约 0.5 秒后以 `auth` 失败，未知与已变更的主机密钥分别以 `host-key` 和 `host-key-changed` 失败，被拒绝的端口以 `unreachable` 失败。随后用同一台服务器，以真实的 `ssh-keyscan` 和 `ssh` 检查了主机密钥确认：扫描得到的指纹与 `ssh-keygen -lf` 对该服务器密钥的结果一致，扫描不改动 `known_hosts`，错误的指纹被拒绝且不写入任何内容，确认过的指纹被记录为 `[127.0.0.1]:2222 ssh-ed25519 …`，随后严格连接成功，第二次确认不会新增一行，对主机已记录了不同密钥的 `known_hosts`，`trustHostKey` 会拒绝且不写入。对话框也在真实浏览器中操作过。尚未对原生 `sshd`、Linux 或 macOS 客户端、完整组合的产品配置做过测试。

@@ -42,7 +42,7 @@ const windowsUnsupportedTests = process.platform === 'win32'
       // and POSIX-multiplexing fixtures still need a POSIX host. The fs-ssh
       // provider suite is platform-neutral and checks POSIX remote URI encoding.
       'packages/ssh/{sandbox-ssh,subprocess-ssh}/tests/**/*.spec.ts',
-      'packages/ssh/ssh/tests/!(windows-client|windows-stream-bridge|windows-stream-tls|auth).spec.ts',
+      'packages/ssh/ssh/tests/!(windows-client|windows-stream-bridge|windows-stream-tls|auth|host-key).spec.ts',
       'packages/subprocess/subprocess/tests/**/*.spec.ts',
       'packages/subprocess/subprocess-local/tests/local.spec.ts',
       'packages/subprocess/subprocess-local/tests/process-inspector.spec.ts',

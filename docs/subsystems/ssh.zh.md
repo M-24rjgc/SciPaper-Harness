@@ -18,7 +18,7 @@
 
 ## 登录方式
 
-主机用 OpenSSH 密钥、认证代理或配置登录，也可以用为它保存的密码登录。两种方式都通过系统的 `ssh` 客户端运行，并严格检查主机密钥。密码只通过 `SSH_ASKPASS` 和那一个子进程的环境交给 `ssh`，绝不通过命令行参数；所有启动 `ssh` 的代码路径共用同一个方案，包括实验运行器的远程调用。凭据库对密码的保护与其他凭据相同。[密码登录](../../packages/ssh/ssh/README.zh.md#password-login)说明其机制，[决策记录](../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.zh.md)说明替代方案。
+主机用 OpenSSH 密钥、认证代理或配置登录，也可以用为它保存的密码登录。两种方式都通过系统的 `ssh` 客户端运行，并严格检查主机密钥。密码只通过 `SSH_ASKPASS` 和那一个子进程的环境交给 `ssh`，绝不通过命令行参数；所有启动 `ssh` 的代码路径共用同一个方案，包括实验运行器的远程调用。凭据库对密码的保护与其他凭据相同。尚未写入 `known_hosts` 的主机密钥会以指纹形式展示给人，只有人确认之后才会记录；已变更的密钥一律拒绝。[密码登录](../../packages/ssh/ssh/README.zh.md#password-login)说明其机制，[决策记录](../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.zh.md)说明替代方案。
 
 ## 进程生命周期与取消
 
@@ -129,9 +129,13 @@ async ensure(request: RemoteWorkspaceRequest): Promise<string>
 
 /** Resolve the canonical remote path and mounted preset for a Session header.
  * A request with an authentication choice is always verified again, and a password is saved only after it worked.
- * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.
+ * A request with a confirmed fingerprint first records that host key in `known_hosts`, unless the host has a
+ * different key recorded.
+ * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate
+ * and which unknown-host fingerprint the person confirmed.
  * @returns preset identity and verified canonical directory.
- * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.
+ * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key; for an
+ * unknown host key of a workspace being added, the failure carries the key's type and fingerprint.
  */
 async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset>
 

@@ -77,6 +77,7 @@
       "@deepseek-ai/dsh-client-ui-sidebar-terminal": ["./packages/client/ui-sidebar-terminal/src/index.ts"],
       "@deepseek-ai/dsh-client-ui-sidebar-terminal/client": ["./packages/client/ui-sidebar-terminal/src/client/index.ts"],
       "@deepseek-ai/dsh-ssh/auth": ["./packages/ssh/ssh/src/auth.ts"],
+      "@deepseek-ai/dsh-ssh/host-key": ["./packages/ssh/ssh/src/host-key.ts"],
       "@deepseek-ai/dsh-ssh/protocol": ["./packages/ssh/ssh/src/protocol.ts"],
       "@deepseek-ai/dsh-ssh/schemas": ["./packages/ssh/ssh/src/schemas.ts"],
       "@deepseek-ai/dsh-subprocess-local/output": ["./packages/subprocess/subprocess-local/src/output.ts"],

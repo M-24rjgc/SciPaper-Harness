@@ -2489,7 +2489,7 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-remote-workspace-presets`
 
 - `inject`: `agentPresets`
-- `source`: [`packages/ssh/remote-workspace-presets/src/index.ts:35`](../packages/ssh/remote-workspace-presets/src/index.ts)
+- `source`: [`packages/ssh/remote-workspace-presets/src/index.ts:41`](../packages/ssh/remote-workspace-presets/src/index.ts)
 
 ```ts config-catalog
 /** Product composition may explicitly include research tools when a shared ledger service is mounted. */

@@ -50,11 +50,17 @@ For PTC, configure both bootstrap fields and pass the verified `ctx.ssh.nodeExec
 
 A host that has a saved password logs in with it instead of keys. The password is a credential record that [`credentials`](../../credentials/credentials/README.md) keeps under `ssh/host-<hash of the host>`; `ctx.credentials` must be composed for a password to be read. Saved passwords are written by [`remote-workspace-presets`](../remote-workspace-presets/README.md) after the host accepted them.
 
-Every ssh child of such a host receives `SSH_ASKPASS` and `SSH_ASKPASS_REQUIRE=force`. The askpass program is a script in a private temporary directory; it prints the password from the child's environment variable `DSH_SSH_ASKPASS_SECRET`, so the password is in no argument, file, log or error text, and diagnostics drop every occurrence of it. The child runs without `BatchMode`, with one password attempt, public keys off, and only password and keyboard-interactive methods, so a wrong password fails at once. Strict host-key checking stays on: an unknown or changed host key fails and never prompts.
+Every ssh child of such a host receives `SSH_ASKPASS` and `SSH_ASKPASS_REQUIRE=force`. The askpass program is a script in a private temporary directory; it prints the password from the child's environment variable `DSH_SSH_ASKPASS_SECRET`, so the password is in no argument, file, log or error text, and diagnostics drop every occurrence of it. The child runs without `BatchMode`, with one password attempt, public keys off, and only password and keyboard-interactive methods, so a wrong password fails at once. Strict host-key checking stays on for both logins: an unknown or changed host key fails and never prompts. [Trusting a new host](#trusting-a-new-host) is a separate, explicit step.
 
 This needs OpenSSH 8.4 or newer, which introduced `SSH_ASKPASS_REQUIRE`; older or unrecognized clients fail with kind `unsupported` before any connection. On Windows the program is `askpass.cmd` running `askpass.ps1` in Windows PowerShell, which writes the password as UTF-8 without passing it through `cmd.exe`. The Windows OpenSSH client cannot start a program from a path with non-ASCII characters, so the directory is created under the temporary directory, `ProgramData` or `Users\Public`, whichever is first and ASCII. Windows opens one authenticated connection per stream, so each stream logs in again.
 
 The package entry `@deepseek-ai/dsh-ssh/auth` exports the pieces every ssh caller shares: `parseSshHost` and `sshDestinationArguments` for `user@host:port`, `planSshAuth`, the `SshPasswordStore`, and `SshFailure` with `classifySshFailure`, which reduce ssh diagnostics to `auth`, `unreachable`, `host-key`, `host-key-changed` or `unsupported`.
+
+### Trusting a new host
+
+A host whose key is not in `known_hosts` fails as `host-key`. `@deepseek-ai/dsh-ssh/host-key` lets a person confirm that key instead of running `ssh` by hand. `scanHostKey(host)` asks `ssh -G` which name, port and `known_hosts` file the connection uses, reads the key with `ssh-keyscan` (ed25519 first, then ECDSA, then RSA) and returns its type and SHA-256 fingerprint, which is computed locally. It authenticates nothing and writes nothing, and returns nothing for a host behind `ProxyJump` or `ProxyCommand`, whose key cannot be scanned directly.
+
+`trustHostKey(host, fingerprint)` is the only writer, and a caller reaches it only with a fingerprint a person confirmed. It scans again and refuses with `host-key-changed` when the key no longer matches. It also runs a strict probe that needs no login, so a host that already has a different key recorded is refused as `host-key-changed` and never trusted; a changed key is always a hard refusal. Otherwise it appends `[host]:port type key`, or the bare name for port 22, to the first `known_hosts` file ssh reads. Every real connection after that still runs with `StrictHostKeyChecking=yes`, so the recorded key is what it verifies. Both functions work the same for key and password hosts.
 
 -----
 
@@ -106,7 +112,7 @@ This provider contributes no request-prefix content. Its consumers own model-vis
 - Web workspace UI paths still assume host filesystem access; use headless or a custom composition whose consumers honor provider paths.
 - TLS stream keys do not protect against remote OS process-memory inspection or debugging. File-effect policy retains the selected sandbox backend’s limits.
 - A saved password is protected as the credential file is: by the operating-system user's own file permissions, which on Windows are the user profile's access control list. Processes of that user, including Agent tool processes, can read the file and the environment of a running ssh child. An operating-system keychain is not used.
-- Password login adds no host-key enrollment. A host key that is not yet in `known_hosts` fails; trusting it takes one interactive `ssh` to the host.
+- Host-key confirmation reads the key with `ssh-keyscan`, so it is unavailable behind a proxy; the connection then fails as `host-key` without a key and the person must run `ssh` once. A fingerprint is only as trustworthy as the channel it is compared over; the person must compare it with one the server's administrator provides.
 
 <a id="dev-note"></a>
 ### Dev Note

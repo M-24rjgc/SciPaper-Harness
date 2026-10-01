@@ -9,7 +9,8 @@ import type { CredentialKey, CredentialRecord } from '@deepseek-ai/dsh-credentia
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   askpassProgram, classifySshFailure, disposeAskpass, parseSshHost, planSshAuth, sshDestinationArguments, SshFailure, sshFailureFrom,
-  sshFailureOf, sshPasswordKey, SshPasswordStore, sshPasswordStoreOf, SSH_HOST_PATTERN, validateSshPassword, type PasswordRecords,
+  sshFailureOf, sshHostKeyOf, sshPasswordKey, SshPasswordStore, sshPasswordStoreOf, SSH_HOST_PATTERN, validateSshPassword,
+  type PasswordRecords,
 } from '../src/auth.ts'
 
 const client = vi.hoisted(() => ({ banner: '', error: undefined as (Error & { code?: string }) | undefined }))
@@ -115,6 +116,27 @@ describe('ssh failure classification', () => {
     expect(sshFailureOf(Object.assign(new Error('x'), { name: 'SshFailure', kind: 'odd' }))).toBeUndefined()
     expect(sshFailureOf(new Error('x'))).toBeUndefined()
     expect(sshFailureOf('SshFailure')).toBeUndefined()
+  })
+})
+
+describe('the host key an unknown host presents', () => {
+  const fingerprint = 'SHA256:zCYWjkRQRY+WeviSPL50T/cy+RxRuyZ6L09VwGtUuEM'
+
+  it('rides on a host-key failure and is read back from any copy of the module', () => {
+    const failure = new SshFailure('host-key', undefined, { type: 'ED25519', fingerprint })
+    expect(failure.message).toBe('SSH host key is not trusted yet')
+    expect(sshHostKeyOf(failure)).toEqual({ type: 'ED25519', fingerprint })
+    const foreign = Object.assign(new Error('x'), { name: 'SshFailure', kind: 'host-key', hostKey: { type: 'RSA', fingerprint } })
+    expect(sshHostKeyOf(foreign)).toEqual({ type: 'RSA', fingerprint })
+  })
+
+  it('reads nothing from a failure without a well-formed key, or from anything else', () => {
+    expect(sshHostKeyOf(new SshFailure('host-key'))).toBeUndefined()
+    expect(sshHostKeyOf(new SshFailure('host-key', undefined, { type: 'ED25519', fingerprint: 'SHA256:short' }))).toBeUndefined()
+    expect(sshHostKeyOf(Object.assign(new SshFailure('host-key'), { hostKey: { type: 1, fingerprint } }))).toBeUndefined()
+    expect(sshHostKeyOf(Object.assign(new SshFailure('host-key'), { hostKey: { type: 'ED25519', fingerprint: 5 } }))).toBeUndefined()
+    expect(sshHostKeyOf(Object.assign(new Error('x'), { hostKey: { type: 'ED25519', fingerprint } }))).toBeUndefined()
+    expect(sshHostKeyOf('x')).toBeUndefined()
   })
 })
 

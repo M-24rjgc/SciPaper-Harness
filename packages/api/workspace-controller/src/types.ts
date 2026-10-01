@@ -40,7 +40,12 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
      * The SSH host refused the connection: `reason` says whether login failed, the host could not be
      * reached, its host key is unknown or changed, or this computer cannot send a password.
      */
-    'workspace/ssh-failed': { readonly path: string; readonly reason: WorkspaceSshFailure }
+    'workspace/ssh-failed': {
+      readonly path: string
+      readonly reason: WorkspaceSshFailure
+      /** For `host-key`: the key the unknown host presents, for the person to confirm before it is trusted. */
+      readonly hostKey?: WorkspaceSshHostKey
+    }
     /** Another Workspace already uses the requested name. */
     'workspace/name-conflict': { readonly name: string }
     /**
@@ -81,13 +86,26 @@ export type WorkspaceSshAuth =
   | { readonly kind: 'key' }
   | { readonly kind: 'password'; readonly password: string }
 
+/** The key of an unknown SSH host as a person compares it: type and `SHA256:` fingerprint. */
+export interface WorkspaceSshHostKey {
+  readonly type: string
+  readonly fingerprint: string
+}
+
 /**
  * Directory requested for Workspace registration; legacy path means local. An SSH location may choose how to
- * authenticate; without a choice the host keeps its saved authentication.
+ * authenticate; without a choice the host keeps its saved authentication. `sshTrustedHostKey` is the
+ * fingerprint of an unknown host's key that the person confirmed: the Host records that key in `known_hosts`
+ * only when it still matches, and never when the host has a different key recorded.
  */
 export type WorkspaceCreateRequest =
-  | { readonly path: string; readonly location?: never; readonly sshAuth?: never }
-  | { readonly location: WorkspaceLocation; readonly path?: never; readonly sshAuth?: WorkspaceSshAuth }
+  | { readonly path: string; readonly location?: never; readonly sshAuth?: never; readonly sshTrustedHostKey?: never }
+  | {
+    readonly location: WorkspaceLocation
+    readonly path?: never
+    readonly sshAuth?: WorkspaceSshAuth
+    readonly sshTrustedHostKey?: string
+  }
 
 /** Created or previously registered Workspace. */
 export interface WorkspaceCreateValue {

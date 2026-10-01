@@ -144,11 +144,38 @@ describe('WorkspaceController commands', () => {
       .rejects.toMatchObject({ code: 'workspace/invalid-path' })
   })
 
-  it('refuses a login choice for a local directory', async () => {
+  it('refuses a login choice or a trusted host key for a local directory', async () => {
     const { controller, root } = await harness()
     const path = stageDir(root, 'local')
     await expect(controller.create({ location: { kind: 'local', path }, sshAuth: { kind: 'key' } } as never))
       .rejects.toMatchObject({ code: 'gateway/bad-request' })
+    await expect(controller.create({ location: { kind: 'local', path }, sshTrustedHostKey: 'SHA256:x' } as never))
+      .rejects.toMatchObject({ code: 'gateway/bad-request' })
+  })
+
+  it('hands the fingerprint the person confirmed to the SSH backend, and only that', async () => {
+    const { controller, remoteInspect } = await harness()
+    await controller.create({
+      location: { kind: 'ssh', host: 'alice@lab:2222', path: '/srv/x' }, sshAuth: { kind: 'key' }, sshTrustedHostKey: 'SHA256:confirmed',
+    })
+    expect(remoteInspect).toHaveBeenCalledWith({
+      host: 'alice@lab:2222', path: '/srv/x', auth: { kind: 'key' }, trustHostKey: 'SHA256:confirmed',
+    })
+  })
+
+  it('passes on the key an unknown host presents so the person can confirm it, and never for another reason', async () => {
+    const { controller, remoteInspect } = await harness()
+    const key = { type: 'ED25519', fingerprint: 'SHA256:zCYWjkRQRY+WeviSPL50T/cy+RxRuyZ6L09VwGtUuEM' }
+    const refusal = (kind: string, hostKey?: unknown): Error => Object.assign(new Error('refused'), { name: 'SshFailure', kind, hostKey })
+    remoteInspect.mockRejectedValueOnce(refusal('host-key', key))
+    await expect(controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/x' }, sshAuth: { kind: 'key' } }))
+      .rejects.toMatchObject({ code: 'workspace/ssh-failed', details: { path: '/srv/x', reason: 'host-key', hostKey: key } })
+    for (const [kind, hostKey] of [['host-key', undefined], ['host-key', { type: 1 }], ['host-key', { type: 'ED25519', fingerprint: 5 }], ['host-key-changed', key]] as const) {
+      remoteInspect.mockRejectedValueOnce(refusal(kind, hostKey))
+      const failure = await controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/x' } }).catch((error: unknown) => error)
+      expect(failure).toMatchObject({ code: 'workspace/ssh-failed', details: { reason: kind } })
+      expect((failure as RemoteError<'workspace/ssh-failed'>).details).not.toHaveProperty('hostKey')
+    }
   })
 
   it('forgets the saved password with the last Workspace of its host', async () => {

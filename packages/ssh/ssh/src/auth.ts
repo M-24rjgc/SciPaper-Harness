@@ -69,6 +69,14 @@ const FAILURE_MESSAGES: Readonly<Record<SshFailureKind, string>> = {
   unsupported: 'SSH password login is not available on this computer',
 }
 
+/** The key an unknown host presents, as a person can compare it with the one the server's administrator knows. */
+export interface HostKeyOffer {
+  /** Short key type as `ssh-keygen -l` prints it, such as `ED25519`. */
+  readonly type: string
+  /** `SHA256:` followed by the unpadded base64 digest of the key. */
+  readonly fingerprint: string
+}
+
 /** A classified ssh failure whose message never contains a password. */
 export class SshFailure extends Error {
   override readonly name = 'SshFailure'
@@ -76,10 +84,23 @@ export class SshFailure extends Error {
   /**
    * @param kind - the classified cause.
    * @param detail - last diagnostic line of ssh, already free of the password.
+   * @param hostKey - for `host-key`, the key the host presents, when it could be read safely.
    */
-  constructor(readonly kind: SshFailureKind, detail?: string) {
+  constructor(readonly kind: SshFailureKind, detail?: string, readonly hostKey?: HostKeyOffer) {
     super(detail === undefined || detail === '' ? FAILURE_MESSAGES[kind] : `${FAILURE_MESSAGES[kind]}: ${detail}`)
   }
+}
+
+/**
+ * Read the host key an {@link SshFailure} carries, from any copy of this module.
+ * @param error - any caught value.
+ * @returns the offered key, or undefined when the error carries none or a malformed one.
+ */
+export function sshHostKeyOf(error: unknown): HostKeyOffer | undefined {
+  if (sshFailureOf(error) === undefined) return undefined
+  const key = (error as { hostKey?: Partial<HostKeyOffer> }).hostKey
+  if (typeof key?.type !== 'string' || typeof key.fingerprint !== 'string' || !/^SHA256:[A-Za-z0-9+/]{43}$/u.test(key.fingerprint)) return undefined
+  return { type: key.type, fingerprint: key.fingerprint }
 }
 
 /**

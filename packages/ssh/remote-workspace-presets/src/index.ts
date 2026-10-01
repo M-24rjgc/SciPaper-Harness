@@ -4,7 +4,8 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
 import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import { sshPasswordStoreOf, validateSshPassword, type SshPasswordStore } from '@deepseek-ai/dsh-ssh/auth'
+import { sshFailureOf, SshFailure, sshPasswordStoreOf, validateSshPassword, type SshPasswordStore } from '@deepseek-ai/dsh-ssh/auth'
+import { scanHostKey, trustHostKey } from '@deepseek-ai/dsh-ssh/host-key'
 import { provisionRemoteWorkspace, validateRemoteWorkspace, type RemoteWorkspaceAuth, type RemoteWorkspaceRequest, type RemoteWorkspaceRuntime } from './provision.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -29,6 +30,11 @@ export type RemoteWorkspaceAuthChoice =
 export interface RemoteWorkspaceInspection extends RemoteWorkspaceRequest {
   /** Absent for a workspace that already exists, which uses the host's saved authentication. */
   readonly auth?: RemoteWorkspaceAuthChoice
+  /**
+   * The `SHA256:` fingerprint of an unknown host's key that the person confirmed. The key is recorded in
+   * `known_hosts` only when it still matches; the connection itself stays strict.
+   */
+  readonly trustHostKey?: string
 }
 
 /** Product composition may explicitly include research tools when a shared ledger service is mounted. */
@@ -39,6 +45,19 @@ export interface Config {
 
 function presetId(host: string, canonicalPath: string): string {
   return `ssh-${createHash('sha256').update(host).update('\0').update(canonicalPath).digest('hex').slice(0, 24)}`
+}
+
+/**
+ * Attach the key an unknown host presents to a `host-key` failure, so the person can confirm its fingerprint.
+ * Nothing is recorded here.
+ * @param error - what adding the workspace threw.
+ * @param host - the host spelling that was tried.
+ * @returns a `host-key` failure carrying the key when it could be read safely, otherwise the error unchanged.
+ */
+async function withHostKey(error: unknown, host: string): Promise<unknown> {
+  if (sshFailureOf(error) !== 'host-key') return error
+  const offered = await scanHostKey(host)
+  return offered === undefined ? error : new SshFailure('host-key', undefined, { type: offered.type, fingerprint: offered.fingerprint })
 }
 
 const RESEARCH_MODULES = [
@@ -131,17 +150,25 @@ export class RemoteWorkspacePresets extends Service {
 
   /** Resolve the canonical remote path and mounted preset for a Session header.
    * A request with an authentication choice is always verified again, and a password is saved only after it worked.
-   * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.
+   * A request with a confirmed fingerprint first records that host key in `known_hosts`, unless the host has a
+   * different key recorded.
+   * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate
+   * and which unknown-host fingerprint the person confirmed.
    * @returns preset identity and verified canonical directory.
-   * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.
+   * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key; for an
+   * unknown host key of a workspace being added, the failure carries the key's type and fingerprint.
    */
   async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset> {
     if (this.closed) throw new Error('Remote workspace preset service is closed')
     validateRemoteWorkspace(request)
     if (request.auth?.kind === 'password') validateSshPassword(request.auth.password)
     const key = `${request.host}\0${request.path}`
-    // The coordinates alone travel on: nothing below needs the choice object that holds the password.
-    if (request.auth !== undefined) return this.choose(key, { host: request.host, path: request.path }, request.auth)
+    if (request.trustHostKey !== undefined) await trustHostKey(request.host, request.trustHostKey)
+    if (request.auth !== undefined) {
+      // The coordinates alone travel on: nothing below needs the choice object that holds the password.
+      try { return await this.choose(key, { host: request.host, path: request.path }, request.auth) }
+      catch (error) { throw await withHostKey(error, request.host) }
+    }
     const existing = this.pending.get(key)
     if (existing !== undefined) return existing
     const passwords = sshPasswordStoreOf(this.ctx)

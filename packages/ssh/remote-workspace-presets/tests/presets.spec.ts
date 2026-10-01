@@ -4,6 +4,7 @@ import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import type { CredentialKey, CredentialRecord } from '@deepseek-ai/dsh-credentials'
 import { SshFailure, SshPasswordStore, type PasswordRecords } from '@deepseek-ai/dsh-ssh/auth'
 import RemoteWorkspacePresets from '../src/index.ts'
+import { scanHostKey, trustHostKey } from '@deepseek-ai/dsh-ssh/host-key'
 import { provisionRemoteWorkspace } from '../src/provision.ts'
 
 vi.mock('../src/provision.ts', async original => ({
@@ -15,7 +16,13 @@ vi.mock('../src/provision.ts', async original => ({
   })),
 }))
 
+vi.mock('@deepseek-ai/dsh-ssh/host-key', () => ({
+  scanHostKey: vi.fn(async () => undefined),
+  trustHostKey: vi.fn(async () => {}),
+}))
+
 const SECRET = 'pässwörd测试 &%^"\'x!'
+const FINGERPRINT = 'SHA256:zCYWjkRQRY+WeviSPL50T/cy+RxRuyZ6L09VwGtUuEM'
 
 /** In-memory credential records standing in for the credential provider. */
 function records(): PasswordRecords {
@@ -31,7 +38,11 @@ function records(): PasswordRecords {
   }
 }
 
-beforeEach(() => { vi.mocked(provisionRemoteWorkspace).mockClear() })
+beforeEach(() => {
+  vi.mocked(provisionRemoteWorkspace).mockClear()
+  vi.mocked(scanHostKey).mockReset().mockResolvedValue(undefined)
+  vi.mocked(trustHostKey).mockReset().mockResolvedValue(undefined)
+})
 
 async function setup(broken?: string, researchTools = true, credentials?: PasswordRecords) {
   const ctx = new Context()
@@ -194,6 +205,50 @@ describe('remote workspace login choice', () => {
       .rejects.toThrow('SSH password must be')
     expect(provisionRemoteWorkspace).not.toHaveBeenCalled()
     await withStore.fiber.dispose()
+    await fiber.dispose()
+  })
+
+  it('shows the key of an unknown host to the person adding a workspace, and records nothing itself', async () => {
+    const { ctx, fiber } = await setup(undefined, false, records())
+    vi.mocked(provisionRemoteWorkspace).mockRejectedValueOnce(new SshFailure('host-key', 'Host key verification failed.'))
+    vi.mocked(scanHostKey).mockResolvedValueOnce({ type: 'ED25519', fingerprint: FINGERPRINT, entry: 'lab ssh-ed25519 AAAA', knownHosts: '/k' })
+    const failure = await ctx.remoteWorkspacePresets.inspect({ ...request, auth: { kind: 'key' } }).catch((error: unknown) => error)
+    expect(failure).toMatchObject({ name: 'SshFailure', kind: 'host-key', hostKey: { type: 'ED25519', fingerprint: FINGERPRINT } })
+    expect(scanHostKey).toHaveBeenCalledWith(request.host)
+    expect(trustHostKey).not.toHaveBeenCalled()
+    await fiber.dispose()
+  })
+
+  it('keeps a plain host-key failure when the key cannot be read, and reads no key for other failures or resumes', async () => {
+    const { ctx, fiber } = await setup(undefined, false, records())
+    const unknown = new SshFailure('host-key', 'Host key verification failed.')
+    vi.mocked(provisionRemoteWorkspace).mockRejectedValueOnce(unknown)
+    await expect(ctx.remoteWorkspacePresets.inspect({ ...request, auth: { kind: 'key' } })).rejects.toBe(unknown)
+    expect(scanHostKey).toHaveBeenCalledTimes(1)
+    const refused = new SshFailure('auth')
+    vi.mocked(provisionRemoteWorkspace).mockRejectedValueOnce(refused)
+    await expect(ctx.remoteWorkspacePresets.inspect({ ...request, auth: { kind: 'key' } })).rejects.toBe(refused)
+    vi.mocked(provisionRemoteWorkspace).mockRejectedValueOnce(unknown)
+    await expect(ctx.remoteWorkspacePresets.ensure(request)).rejects.toBe(unknown)
+    expect(scanHostKey).toHaveBeenCalledTimes(1)
+    await fiber.dispose()
+  })
+
+  it('records a confirmed key before the strict verification and goes on to add the workspace', async () => {
+    const { ctx, fiber } = await setup(undefined, false, records())
+    await ctx.remoteWorkspacePresets.inspect({ ...request, auth: { kind: 'key' }, trustHostKey: FINGERPRINT })
+    expect(trustHostKey).toHaveBeenCalledWith(request.host, FINGERPRINT)
+    const trusted = vi.mocked(trustHostKey).mock.invocationCallOrder[0] as number
+    expect(trusted).toBeLessThan(vi.mocked(provisionRemoteWorkspace).mock.invocationCallOrder[0] as number)
+    await fiber.dispose()
+  })
+
+  it('stops, without any SSH command, when the host key cannot be trusted', async () => {
+    const { ctx, fiber } = await setup(undefined, false, records())
+    const changed = new SshFailure('host-key-changed')
+    vi.mocked(trustHostKey).mockRejectedValueOnce(changed)
+    await expect(ctx.remoteWorkspacePresets.inspect({ ...request, auth: { kind: 'key' }, trustHostKey: FINGERPRINT })).rejects.toBe(changed)
+    expect(provisionRemoteWorkspace).not.toHaveBeenCalled()
     await fiber.dispose()
   })
 

@@ -51,11 +51,18 @@ kind: "package-reference"
 
 已保存密码的主机用密码登录，不再使用密钥。密码是 [`credentials`](../../credentials/credentials/README.zh.md) 在 `ssh/host-<主机的哈希>` 下保存的凭据记录；必须组合 `ctx.credentials` 才能读取密码。已保存的密码由 [`remote-workspace-presets`](../remote-workspace-presets/README.zh.md) 在主机接受之后写入。
 
-这类主机的每个 ssh 子进程都会收到 `SSH_ASKPASS` 和 `SSH_ASKPASS_REQUIRE=force`。askpass 程序是私有临时目录中的一个脚本，它从该子进程的环境变量 `DSH_SSH_ASKPASS_SECRET` 打印密码，因此密码不会出现在任何参数、文件、日志或错误文本中，诊断信息也会去掉它的每一处出现。子进程不启用 `BatchMode`，只尝试一次密码，关闭公钥，只用密码与 keyboard-interactive 两种方式，所以密码错误会立即失败。严格的主机密钥检查保持开启：未知或已变更的主机密钥会失败，不会弹出确认提示。
+这类主机的每个 ssh 子进程都会收到 `SSH_ASKPASS` 和 `SSH_ASKPASS_REQUIRE=force`。askpass 程序是私有临时目录中的一个脚本，它从该子进程的环境变量 `DSH_SSH_ASKPASS_SECRET` 打印密码，因此密码不会出现在任何参数、文件、日志或错误文本中，诊断信息也会去掉它的每一处出现。子进程不启用 `BatchMode`，只尝试一次密码，关闭公钥，只用密码与 keyboard-interactive 两种方式，所以密码错误会立即失败。两种登录方式都保持严格的主机密钥检查：未知或已变更的主机密钥会失败，不会弹出确认提示。[信任新主机](#trusting-a-new-host)是单独的、显式的一步。
 
 这需要 OpenSSH 8.4 或更新版本（`SSH_ASKPASS_REQUIRE` 自该版本引入）；更旧或无法识别的客户端会在建立任何连接之前以 `unsupported` 类别失败。在 Windows 上，该程序是 `askpass.cmd`，由它运行 Windows PowerShell 中的 `askpass.ps1`，以 UTF-8 写出密码，密码不经过 `cmd.exe`。Windows OpenSSH 客户端无法启动路径含非 ASCII 字符的程序，所以目录按顺序建在临时目录、`ProgramData` 或 `Users\Public` 之下，取第一个纯 ASCII 的位置。Windows 为每条流各建立一个已认证连接，所以每条流都会重新登录。
 
 包入口 `@deepseek-ai/dsh-ssh/auth` 导出所有 ssh 调用方共用的部分：解析 `用户@主机:端口` 的 `parseSshHost` 和 `sshDestinationArguments`，`planSshAuth`，`SshPasswordStore`，以及 `SshFailure` 与 `classifySshFailure`，后者把 ssh 诊断归为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`。
+
+<a id="trusting-a-new-host"></a>
+### 信任新主机
+
+主机密钥不在 `known_hosts` 中的主机会以 `host-key` 失败。`@deepseek-ai/dsh-ssh/host-key` 让人可以确认该密钥，而不必手动运行 `ssh`。`scanHostKey(host)` 先用 `ssh -G` 查出连接实际使用的名称、端口和 `known_hosts` 文件，再用 `ssh-keyscan` 读取密钥（优先 ed25519，其次 ECDSA，最后 RSA），返回密钥类型和 SHA-256 指纹，指纹在本地计算。它不做任何认证，也不写入任何内容；对位于 `ProxyJump` 或 `ProxyCommand` 之后的主机，由于无法直接扫描其密钥，它什么也不返回。
+
+`trustHostKey(host, fingerprint)` 是唯一的写入方，调用方只有拿到人确认过的指纹才能到达它。它会再扫描一次，密钥不再匹配时以 `host-key-changed` 拒绝。它还会运行一次无需登录的严格探测，所以已经记录了不同密钥的主机会被以 `host-key-changed` 拒绝，绝不会被信任；密钥变更永远是硬性拒绝。否则，它把 `[主机]:端口 类型 密钥`（端口 22 则只写主机名）追加到 ssh 读取的第一个 `known_hosts` 文件。此后每个真实连接仍以 `StrictHostKeyChecking=yes` 运行，因此验证的就是所记录的密钥。这两个函数对密钥主机和密码主机的行为相同。
 
 -----
 
@@ -107,7 +114,7 @@ OpenSSH 主连接承载私有管理 RPC。每条程序流使用独立转发的 U
 - Web 工作区界面的路径仍假定可访问主机文件系统；请使用 headless 或所有消费方都遵守提供方路径语义的自定义组合。
 - TLS 流密钥不防御远端操作系统级进程内存检查或调试。文件效果策略保留所选沙箱后端的限制。
 - 已保存的密码与凭据文件受同样的保护：只有操作系统用户自己的文件权限，在 Windows 上就是用户配置目录的访问控制列表。该用户的进程，包括 Agent 的工具进程，都能读取该文件以及正在运行的 ssh 子进程的环境。不使用操作系统钥匙串。
-- 密码登录不提供主机密钥登记。尚未写入 `known_hosts` 的主机密钥会导致失败；信任它需要对该主机手动运行一次 `ssh`。
+- 主机密钥确认通过 `ssh-keyscan` 读取密钥，所以在代理之后不可用；此时连接以不带密钥的 `host-key` 失败，人必须手动运行一次 `ssh`。指纹只有与可信渠道比对才有意义；人必须拿它与服务器管理员提供的指纹对照。
 
 <a id="dev-note"></a>
 ### 开发备注

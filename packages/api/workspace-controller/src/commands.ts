@@ -26,6 +26,7 @@ import type {
   WorkspacePinValue,
   WorkspaceRenameRequest,
   WorkspaceSshFailure,
+  WorkspaceSshHostKey,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
@@ -40,9 +41,21 @@ function sshFailureOf(error: unknown): WorkspaceSshFailure | undefined {
   return SSH_FAILURES.find(candidate => candidate === kind)
 }
 
+/** The key an SSH failure carries, read without importing the SSH package. */
+function hostKeyOf(error: unknown): WorkspaceSshHostKey | undefined {
+  const key = (error as { hostKey?: Partial<WorkspaceSshHostKey> }).hostKey
+  if (typeof key?.type !== 'string' || typeof key.fingerprint !== 'string') return undefined
+  return { type: key.type, fingerprint: key.fingerprint }
+}
+
 /** The SSH workspace service, reached by name so this package keeps no dependency on the SSH packages. */
 interface RemoteWorkspaces {
-  inspect(input: { host: string; path: string; auth?: WorkspaceCreateRequest['sshAuth'] }): Promise<{ canonicalPath: string }>
+  inspect(input: {
+    host: string
+    path: string
+    auth?: WorkspaceCreateRequest['sshAuth']
+    trustHostKey?: string
+  }): Promise<{ canonicalPath: string }>
   forget(host: string): Promise<void>
 }
 
@@ -69,15 +82,18 @@ export class WorkspaceCommands {
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
     return this.enqueue(async () => {
       let location = requestedLocation(request)
-      if (location.kind !== 'ssh' && request.sshAuth !== undefined) {
-        throw new RemoteError('gateway/bad-request', 'Only an SSH Workspace takes an authentication choice', {})
+      if (location.kind !== 'ssh' && (request.sshAuth !== undefined || request.sshTrustedHostKey !== undefined)) {
+        throw new RemoteError('gateway/bad-request', 'Only an SSH Workspace takes an authentication or host-key choice', {})
       }
       try {
         if (location.kind === 'ssh') {
           const remote = this.remoteWorkspaces()
           if (remote === undefined) throw new Error('SSH workspace backend is unavailable')
           const verified = await remote.inspect({
-            host: location.host, path: location.path, ...request.sshAuth === undefined ? {} : { auth: request.sshAuth },
+            host: location.host,
+            path: location.path,
+            ...request.sshAuth === undefined ? {} : { auth: request.sshAuth },
+            ...request.sshTrustedHostKey === undefined ? {} : { trustHostKey: request.sshTrustedHostKey },
           })
           location = { ...location, path: verified.canonicalPath }
         }
@@ -91,7 +107,11 @@ export class WorkspaceCommands {
         if (remoteErrorOf(error) !== undefined) throw error
         const failure = sshFailureOf(error)
         if (failure !== undefined) {
-          throw new RemoteError('workspace/ssh-failed', errorMessage(error), { path: location.path, reason: failure }, { cause: error })
+          const hostKey = failure === 'host-key' ? hostKeyOf(error) : undefined
+          throw new RemoteError(
+            'workspace/ssh-failed', errorMessage(error),
+            { path: location.path, reason: failure, ...hostKey === undefined ? {} : { hostKey } }, { cause: error },
+          )
         }
         throw new RemoteError(
           'workspace/invalid-path',
