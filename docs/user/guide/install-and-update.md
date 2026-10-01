@@ -26,6 +26,12 @@ Releases are previews on the `alpha` channel: a new one may change how projects 
 
 Updating or uninstalling the application leaves all of this in place.
 
+## Reporting a problem
+
+Open the conversation's **Trajectory** tab. Its toolbar shows the conversation's **Log ID**, for example `c2d58e92`, so a screenshot of the tab already names the log it shows. Press the copy button beside the ID to put the full ID (`session-` followed by a long identifier) on the clipboard, or press **Export log** to save the whole conversation as a ZIP whose name contains the full ID; the desktop app asks where to save it. Send the ID, or the ZIP, with your description. The **…** menu at the top right of the conversation offers **Copy log ID** and **Download session log** as well, in the Chat tab too.
+
+The ZIP holds the conversation log as plain text (`session.v<N>.jsonl`), the logs of its sub-agents, and attachments, so it can contain file contents, paths and tool output from your project; read it before you share it. Nothing is uploaded unless you send it. A developer finds the log on your computer from the ID alone: the folder under `~/.research-workbench/sessions/<project folder>/` that is named by the full ID, or that starts with `session-` and the short ID, holds `session.v<N>.jsonl.zstd`.
+
 <a id="build-from-source"></a>
 
 ## Build from source

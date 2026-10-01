@@ -13,9 +13,13 @@ export const TELEMETRY_ROWS: readonly string[] = [
   'ui-settings-session-log',
 ]
 
-/** Official capabilities intentionally enabled in the research edition. */
+/**
+ * Official capabilities intentionally enabled in the research edition.
+ * `session-log-download` gives the Trajectory toolbar and the Session Header menu the log ID and the log export.
+ */
 export const USER_SURFACE_ROWS: readonly string[] = [
   'open-in-app', 'ui-open-in-app', 'ui-sidebar-terminal', 'ui-trajectory',
+  'session-log-download',
   'time-context', 'schedule', 'ui-schedule',
   'browser-use', 'browser-use-playwright',
   'lsp', 'lsp-stdio',
@@ -23,7 +27,7 @@ export const USER_SURFACE_ROWS: readonly string[] = [
 
 /** Developer controls the research edition keeps out of its product surface. */
 export const DEVELOPER_ROWS: readonly string[] = [
-  'session-log-download', 'ui-cordis', 'ui-agent-preset',
+  'ui-cordis', 'ui-agent-preset',
 ]
 
 /**

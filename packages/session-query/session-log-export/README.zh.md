@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-session-log-export` 让 Web 界面可以下载会话的完整历史：Session Header 更多操作按钮下的 `下载 Session 日志` 菜单项与 `/export` 斜杠命令都会把会话树——会话本身、其子会话与附件——作为 ZIP 交给浏览器下载。本包拥有 Host 归档流、经过认证的 Fetch 路由以及浏览器控件和反馈。下载目标位置由浏览器选择。设置与用法在前，随后说明实现细节。
+`dsh-session-log-export` 让 Web 界面可以标明并下载会话的完整历史。Session Header 更多操作按钮下的 `下载 Session 日志` 菜单项、Trajectory 工具栏里的 `导出日志` 按钮与 `/export` 斜杠命令都会把会话树（会话本身、其子会话与附件）作为 ZIP 交给浏览器下载。菜单和工具栏还显示日志 ID 并提供复制操作。本包拥有 Host 归档流、经过认证的 Fetch 路由以及浏览器控件和反馈。下载目标位置由浏览器选择。设置与用法在前，随后说明实现细节。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-当 Web bundle 需要让用户导出会话日志时使用本包。它需要 Connection、命令注册表、Session 查询与持久化以及附件服务。挂载插件，然后在 Session Header 的更多操作菜单中选择 `下载 Session 日志` 或输入 `/export`；浏览器会下载 `dsh-session-<id>.zip`。
+当 Web bundle 需要让用户导出会话日志时使用本包。它需要 Connection、命令注册表、Session 查询与持久化以及附件服务。挂载插件，然后在 Session Header 的更多操作菜单中选择 `下载 Session 日志`、点击 Trajectory 工具栏中的 `导出日志`，或输入 `/export`；浏览器会下载 `dsh-session-<id>.zip`。
 
 挂载 `ui-message-feedback` 时，同一菜单还提供“反馈”，打开已有的 Session 反馈弹窗。打开或关闭该弹窗不会导出 Session 或提交反馈。反馈入口随反馈插件的可用状态显示；导出功能保持独立可用。
 
@@ -40,7 +40,7 @@ kind: "package-reference"
   name: '@deepseek-ai/dsh-session-log-export'
 ```
 
-Web bundle 将本包与 Connection、`dsh-commands`、`dsh-client-ui-commands` 和 `dsh-client-ui-conversation` 一起挂载。
+Web bundle 将本包与 Connection、`dsh-commands`、`dsh-client-ui-commands` 和 `dsh-client-ui-conversation` 一起挂载。Trajectory 工具栏控件只在 `dsh-client-ui-trajectory` 已挂载时出现；Header 菜单与 `/export` 不依赖它。
 
 ### 配置
 
@@ -61,6 +61,12 @@ Web bundle 将本包与 Connection、`dsh-commands`、`dsh-client-ui-commands` �
 
 附件收集读取内置 Session 事件声明的内容字段与已完成的 assistant 流块，包括扁平的 V4 tool 角色消息。未知事件载荷与无关字段在导出日志中保持不变，但不会触发附件读取。
 
+### 日志 ID
+
+会话的日志 ID 就是它的 Session id，形如 `session-<UUID>`。Trajectory 工具栏显示简写，即 UUID 的前八个字符，完整 id 在其工具提示中；Header 菜单显示同一简写。`复制日志 ID` 把完整 id 写入剪贴板，并用横幅确认，或报告剪贴板拒绝了写入。工具栏宽度低于 560 px 时，标签和按钮文字收起，图标保留。
+
+JSONL 后端把会话存放在 `<sessions root>/<project key>/<Session id>/session.v<N>.jsonl[.zstd]`。项目键由工作目录得出：分隔符变为 `-`，不安全字符被转义，因此无法还原；仅凭日志 ID，即可用 `<sessions root>/*/session-<short id>*` 定位会话。较新版本打开过的会话会在较旧 generation 旁边新增一个更高的 `session.v<N>` 文件，旧文件保留。导出写出当前 generation 的明文 `session.v<N>.jsonl`，其第一行是带有完整 id 与工作目录的会话头；不另写清单文件。
+
 ### 失败
 
 当 ZIP 流式传输开始前的预检失败时——例如 Host 端点不可达或配置错误——弹窗显示准备阶段错误。浏览器接受 GET 后发生的子会话或附件读取失败由浏览器下载管理器报告，不通过弹窗报告。
@@ -79,7 +85,7 @@ Web bundle 将本包与 Connection、`dsh-commands`、`dsh-client-ui-commands` �
 
 本包分为两部分。Host 半包（[`src/index.ts`](src/index.ts)）注册 `/export` 命令，并向 Connection 贡献精确的 `GET`/`HEAD /api/session.export` Fetch 路由；[`src/archive.ts`](src/archive.ts) 构建有界 ZIP 流。浏览器半包（[`src/client/index.ts`](src/client/index.ts)）提供共享下载控制器和 UI，并观察 `command/executed`，因此只有提交命令的浏览器会启动下载。
 
-Header 的更多操作入口使用公共紧凑 Button，点击区域为 28px 正方形，与右侧栏展开控件共用圆角和 hover 底色。
+Header 的更多操作入口使用公共紧凑 Button，点击区域为 28px 正方形，与右侧栏展开控件共用圆角和 hover 底色。工具栏控件通过 `ctx.slots.inject` 注册到 Trajectory 视图的 `conversation.trajectory.toolbar` 位置并复用同一个控制器；共享弹窗仍属于 Header 贡献，只要 Trajectory 视图已挂载，它就一定在。
 
 ### 下载流程
 

@@ -8,9 +8,12 @@
   "files": [
     "src/client/Dialog.tsx",
     "src/client/HeaderAction.tsx",
+    "src/client/ToolbarControl.tsx",
     "src/client/controller.ts",
     "src/client/index.ts",
     "src/client/locales.ts",
+    "src/client/log-id.ts",
+    "src/client/use-log-id-copy.tsx",
     "src/routes.ts",
     "src/css-modules.d.ts"
   ],
@@ -25,6 +28,7 @@
     { "path": "../../client/ui-renderer" },
     { "path": "../../client/ui-session" },
     { "path": "../../client/ui-slots" },
+    { "path": "../../client/ui-trajectory" },
     { "path": "../../core/session" }
   ]
 }

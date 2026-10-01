@@ -44,8 +44,6 @@
 - id: ui-brand-official
   disabled: true
 
-- id: session-log-download
-  disabled: true
 - id: ui-conversation
   config:
     showTrajectoryWithoutDeveloperTools: true

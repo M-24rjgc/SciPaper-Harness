@@ -150,7 +150,8 @@ root
 │     │     │     ├─ tool.call.images
 │     │     │     └─ tool.view.cordis
 │     │     ├─ conversation.message.images
-│     │     └─ conversation.trajectory.images
+│     │     ├─ conversation.trajectory.images
+│     │     └─ conversation.trajectory.toolbar
 │     ├─ conversation.header
 │     │  ├─ conversation.header.leading
 │     │  └─ conversation.session.header

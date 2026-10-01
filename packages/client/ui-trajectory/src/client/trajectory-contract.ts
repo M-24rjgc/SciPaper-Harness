@@ -96,5 +96,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * images are omitted.
      */
     'conversation.trajectory.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
+    /**
+     * Compact controls at the trailing end of the Trajectory toolbar, before
+     * the ledger search, in ascending order. An occupant acts on the Session
+     * whose Trajectory is shown.
+     */
+    'conversation.trajectory.toolbar': { kind: 'list'; scope: 'session' }
   }
 }

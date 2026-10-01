@@ -9,20 +9,20 @@
   en: eea87f5da57ff494
   zh: db388203522b840f
 /deepseek-ai-dsh-session-log-export/summary:
-  en: 26be400b3e9f7bb7
-  zh: b6e78f1f417a0e4e
+  en: c58c56d0f8784b9b
+  zh: 01721f516f04b96a
 /deepseek-ai-dsh-session-log-export/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-session-log-export/use-this-package:
-  en: 1135b03eb3423c74
-  zh: 2fd2a18d503df70c
+  en: dcd1bbfe8cc49c1b
+  zh: f8dba9a5315a1600
 /deepseek-ai-dsh-session-log-export/use-this-package/when-to-choose-it:
   en: 2b9dbec4877d332e
   zh: dcf6638938eedb01
 /deepseek-ai-dsh-session-log-export/use-this-package/composition:
-  en: 2fef1fe4411cc5da
-  zh: cff5dbcc4901402b
+  en: 4c32cd40ae40aa34
+  zh: 43ad43582a42fac3
 /deepseek-ai-dsh-session-log-export/use-this-package/configuration:
   en: 377a0d8860c46f63
   zh: 9eb7698f813b2fa3
@@ -32,6 +32,9 @@
 /deepseek-ai-dsh-session-log-export/use-this-package/what-to-expect:
   en: 44be1f1d1903d12a
   zh: c8f1eb5b92b71a30
+/deepseek-ai-dsh-session-log-export/use-this-package/the-log-id:
+  en: 3b51d5c8b0f536da
+  zh: 6d26fa4b70311d4d
 /deepseek-ai-dsh-session-log-export/use-this-package/failures:
   en: 3fc8985946d67024
   zh: 5bb40a4b531d68f4
@@ -39,8 +42,8 @@
   en: 7cb82a6851405f95
   zh: b8c525170d19dc6c
 /deepseek-ai-dsh-session-log-export/understand-the-implementation/design-split:
-  en: d135d90a02c6d829
-  zh: 587d7ff2d17b056b
+  en: 71e7b0aa559b9b04
+  zh: 2dee03df8edfd474
 /deepseek-ai-dsh-session-log-export/understand-the-implementation/download-flow:
   en: 028ea3bff05250ba
   zh: 63250c4d3369ebbd

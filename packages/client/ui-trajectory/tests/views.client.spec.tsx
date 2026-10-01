@@ -9,7 +9,7 @@
  */
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createElement, type ComponentProps, type FC, type ReactNode } from 'react'
 import { bindSnapshotSelector, SlotTestRuntime, stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -321,8 +321,12 @@ function isConvViewOwner(owner: object): owner is ConvViewOwner {
     && 'completeViewRequest' in owner && typeof owner.completeViewRequest === 'function'
 }
 
-/** Mount the strict Session header/body over the ring ledger with outlet-faithful render shares. */
-function mount(fixture: Awaited<ReturnType<typeof bench>>) {
+/**
+ * Mount the strict Session header/body over the ring ledger with outlet-faithful render shares.
+ * @param fixture - the real-stack bench.
+ * @param toolbarSeat - what occupants of the Trajectory toolbar seat render; the images seat stays empty.
+ */
+function mount(fixture: Awaited<ReturnType<typeof bench>>, toolbarSeat: ReactNode = null) {
   const { slots, trajectoryStore, conversationStore } = fixture
   const session = fixture.reference.binding.session
   const useSession = bindSnapshotSelector<SessionSnapshot>(session)
@@ -390,10 +394,14 @@ function mount(fixture: Awaited<ReturnType<typeof bench>>) {
       })()
       : injected
     const viewProps: ConvViewProps = { ...owner, ...standardProps }
+    const childSlots = {
+      renderSlot: (seat: string): ReactNode => seat === 'conversation.trajectory.toolbar' ? toolbarSeat : null,
+    }
     return (
       <View
         {...viewProps}
         {...injectedProps}
+        {...childSlots}
         key={key}
       />
     )
@@ -530,6 +538,45 @@ describe('tab switching in ConversationRoot', () => {
     expect(b.loadOlder).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('tab', { name: 'Chat' }))
     expect(b.loadOlder).not.toHaveBeenCalled()
+  })
+
+  it('shows what occupies the toolbar seat in the toolbar, before the search box', async () => {
+    const b = await bench()
+    mount(b, <span data-testid="toolbar-occupant">日志 ID 8f261bbc</span>)
+    fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
+
+    const toolbar = screen.getByRole('toolbar', { name: '轨迹工具栏' })
+    const occupant = screen.getByTestId('toolbar-occupant')
+    const search = screen.getByRole('searchbox', { name: '搜索轨迹' })
+    expect(toolbar.contains(occupant)).toBe(true)
+    expect(occupant.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('leaves the toolbar as it was when nothing occupies the seat', async () => {
+    const b = await bench()
+    mount(b)
+    fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
+
+    const toolbar = screen.getByRole('toolbar', { name: '轨迹工具栏' })
+    expect(within(toolbar).getAllByRole('button').map(button => button.getAttribute('aria-label')))
+      .toEqual(['使用实际时长', '收起所有轮次', '收起所有调用'])
+    expect(within(toolbar).getByRole('searchbox', { name: '搜索轨迹' })).toBeTruthy()
+  })
+
+  it('declares the toolbar seat for other plugins while the view is mounted', async () => {
+    const b = await bench()
+    const dispose = b.slots.register(
+      { name: 'conversation.trajectory.toolbar', id: 'probe' } as never,
+      (() => null) as never,
+    )
+    expect(b.slots.entries('conversation.trajectory.toolbar').map(entry => entry.options.id)).toEqual(['probe'])
+    dispose()
+
+    await b.feature.dispose()
+    expect(() => b.slots.register(
+      { name: 'conversation.trajectory.toolbar', id: 'late' } as never,
+      (() => null) as never,
+    )).toThrow()
   })
 
   it('labels the trajectory tab in the active locale', async () => {

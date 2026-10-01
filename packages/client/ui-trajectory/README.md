@@ -43,6 +43,10 @@ Historical replies retain TTFT, generation duration, and throughput when their r
 
 A fixed Overview above the ledger projects real record start/duration timing from left to right; Assistant spans divide recorded TTFT from decoding, and a 500 ms hover reveals exact clock and duration details. Dragging an interval focuses the ledger on every record active at any point in that inclusive range; wheel gestures zoom the time domain; a right-button click clears the selected interval, and a right-button drag pans an already zoomed viewport. The initial view and streaming updates stay at the tail; scrolling upward suspends following so new records do not interrupt inspection of earlier rows.
 
+### The toolbar
+
+The toolbar above the overview switches the timeline between recorded durations and equal-width operations, folds every turn or every assistant's tool calls, and searches the ledger. Other plugins add compact controls before the search box through the list slot `conversation.trajectory.toolbar`, which acts on the Session whose Trajectory is shown. `dsh-session-log-export` uses it for the Session's log ID, a copy action, and the log export.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -56,6 +60,8 @@ The view is a pure projection: Trajectory-owned Definitions assemble business re
 Native and nested PTC Tool results retain their raw structured error details. Failed records show the error code in the ledger and the error name and code in the inspector.
 
 Tool records begin at durable tool/call events and use complete arguments. Chat's transient preparing stage does not create Trajectory tool rows or alter historical tool timing.
+
+The toolbar root is an anonymous inline-size container, so occupants of `conversation.trajectory.toolbar` can shed text with an unnamed `@container` rule. Layout containment makes that box the containing block of fixed-position descendants, so an occupant renders tooltips through a portal.
 
 A complete appended prompt without a loaded request header appears as a standalone system row; only its known text is available, with no inferred request options or tool catalog. Prepending its request history replaces that standalone presentation without duplicating the prompt. In-history system prompt changes compare against the most recent request state, including earlier prompt updates without a new request header. Each request retains the prompt and change that applied at its own position. Surface replacements, including compaction, restore the last nonempty surviving system prompt even without a new system event; an unloaded prompt remains unavailable until its page arrives.
 

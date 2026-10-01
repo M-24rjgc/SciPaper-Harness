@@ -2,7 +2,7 @@
  * The Web composition (the `web` profile, and the Desktop Host over the same
  * bundles) exports no telemetry, reaches DeepSeek services only for the model
  * requests and web searches a person configures, and keeps developer controls
- * separate from the user-facing terminal, trajectory, and native file opening.
+ * separate from the user-facing terminal, trajectory, log export, and native file opening.
  */
 
 import { fileURLToPath } from 'node:url'
@@ -35,6 +35,11 @@ describe('the Web composition of the research edition', () => {
 
   it.each(USER_SURFACE_ROWS)('keeps the official %s capability enabled', (id) => {
     expect(row(id).disabled).not.toBe(true)
+  })
+
+  it('exports a Session log from the Trajectory toolbar and the Session Header menu', () => {
+    expect(row('session-log-download').name).toBe('@deepseek-ai/dsh-session-log-export')
+    expect(row('ui-trajectory').disabled).not.toBe(true)
   })
 
   it('starts a visible, session-owned browser with a persistent profile', () => {

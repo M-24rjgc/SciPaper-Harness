@@ -8,10 +8,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type {} from '@deepseek-ai/dsh-client-ui-message-feedback/client'
+import type {} from '@deepseek-ai/dsh-client-ui-trajectory/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SessionLogDownloadController } from './controller.ts'
 import { SessionLogDownloadHeaderAction, type SessionLogDownloadHeaderInjected } from './HeaderAction.tsx'
 import { en, NS, zh, type SessionLogDownloadKey } from './locales.ts'
+import { SessionLogToolbarControl, type SessionLogToolbarInjected } from './ToolbarControl.tsx'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -30,7 +32,8 @@ export type { SessionLogDownloadEntry, SessionLogDownloadState } from './control
 export const inject = ['slots', 'locale']
 
 /**
- * Provide the download controller and mount its modal into the Session Header.
+ * Provide the download controller, mount its modal into the Session Header, and
+ * offer the log ID with the export in the Trajectory toolbar when that view is mounted.
  * @param ctx - browser context carrying slots and locale services.
  */
 export function apply(ctx: ClientContext): void {
@@ -60,6 +63,15 @@ export function apply(ctx: ClientContext): void {
       openFeedback: (sessionId: SessionId) => { ctx.get('feedbackUi')?.openSession(sessionId) },
     }),
   }, SessionLogDownloadHeaderAction))
+  ctx.slots.inject('conversation.trajectory.toolbar', () => ctx.slots.register({
+    name: 'conversation.trajectory.toolbar',
+    id: 'session-log-download',
+    locale: NS,
+    inject: (): SessionLogToolbarInjected => ({
+      hooks: { sessionLogDownload: controller.store },
+      request: (sessionId: SessionId) => controller.download(sessionId),
+    }),
+  }, SessionLogToolbarControl))
 }
 
 export type { SessionLogDownloadDialogInjected, SessionLogDownloadDialogProps } from './Dialog.tsx'

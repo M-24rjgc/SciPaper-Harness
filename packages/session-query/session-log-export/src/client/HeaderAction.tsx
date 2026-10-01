@@ -3,9 +3,14 @@ import type { ReactNode } from 'react'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { Button, IconDownloadOutlineRegular, IconEllipsisOutlineRegular, IconPaperPlaneOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button, IconCopyOutlineRegular, IconDownloadOutlineRegular, IconEllipsisOutlineRegular,
+  IconPaperPlaneOutlineRegular, Menu,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import { SessionLogDownloadDialog, type SessionLogDownloadDialogProps } from './Dialog.tsx'
 import type { SessionLogDownloadDialogInjected } from './Dialog.tsx'
+import { shortLogId } from './log-id.ts'
+import { useLogIdCopy } from './use-log-id-copy.tsx'
 import css from './HeaderAction.module.css'
 
 /** Session download controls with observable feedback availability and a Session feedback action. */
@@ -22,7 +27,7 @@ export interface SessionLogDownloadHeaderInjected extends SessionLogDownloadDial
 export type SessionLogDownloadHeaderProps = SessionLogDownloadDialogProps & InjectFace<SessionLogDownloadHeaderInjected>
 
 /**
- * Render the Session Header menu with download and optional feedback actions.
+ * Render the Session Header menu with the log ID, a copy action, download, and optional feedback actions.
  * @param props - Session runtime, download controller, and localized copy.
  * @returns the persistent Header action and Session-scoped dialog.
  */
@@ -32,6 +37,7 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadHeaderPr
   const entry = useSessionLogDownload(state => state.bySession[String(sessionId)])
   const busy = entry?.status === 'downloading'
   const [open, setOpen] = useState(false)
+  const { copy, banner } = useLogIdCopy(String(sessionId), t)
 
   return (
     <>
@@ -41,12 +47,15 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadHeaderPr
         dense
         onClose={() => { setOpen(false) }}
         items={[
+          { type: 'label', id: 'log-id', text: t('menu.logId', { id: shortLogId(String(sessionId)) }) },
+          { id: 'copy-id', label: t('log.copy'), icon: <IconCopyOutlineRegular /> },
           { id: 'download', label: t('menu.download'), icon: <IconDownloadOutlineRegular />, disabled: busy },
           ...feedbackAvailable ? [{ id: 'feedback', label: t('menu.feedback'), icon: <IconPaperPlaneOutlineRegular /> }] : [],
         ]}
         onSelect={(id) => {
           setOpen(false)
           if (id === 'feedback') openFeedback(sessionId)
+          else if (id === 'copy-id') copy()
           else void request(sessionId)
         }}
         anchor={(
@@ -64,6 +73,7 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadHeaderPr
         )}
       />
       <SessionLogDownloadDialog {...props} />
+      {banner}
     </>
   )
 }

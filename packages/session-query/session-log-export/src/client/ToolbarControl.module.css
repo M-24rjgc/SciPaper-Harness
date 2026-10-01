@@ -1,0 +1,77 @@
+/* Sized and colored like the Trajectory toolbar's own controls: 20px rows, 12px type. */
+.root {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.label {
+  padding-right: 2px;
+  white-space: nowrap;
+}
+
+.id {
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-bg-layer-2);
+  font-family: var(--ds-font-family-code);
+  white-space: nowrap;
+  user-select: text;
+}
+
+.id:focus-visible,
+.control:focus-visible,
+.iconControl:focus-visible {
+  outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
+.control,
+.iconControl {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.control {
+  padding: 0 5px;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.iconControl {
+  width: 20px;
+  padding: 0;
+}
+
+.control:hover:not(:disabled),
+.iconControl:hover {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.control:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: not-allowed;
+}
+
+/* The ID and the two icons stay when the toolbar (the enclosing inline-size container) runs short of
+   width; the search box would otherwise be squeezed past its minimum. The buttons keep their accessible names. */
+@container (max-width: 560px) {
+  .label,
+  .exportText {
+    display: none;
+  }
+}

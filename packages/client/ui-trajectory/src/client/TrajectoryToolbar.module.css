@@ -1,4 +1,8 @@
 .root {
+  /* Anonymous inline-size container: occupants of the trailing seat shed their
+     text at width breakpoints. Their tooltips portal to the body, because
+     layout containment makes this box the containing block of fixed descendants. */
+  container-type: inline-size;
   position: sticky;
   top: 0;
   z-index: 4;
@@ -165,13 +169,21 @@
   font: 14px/14px var(--ds-font-family-code);
 }
 
+.trailing {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  margin-left: auto;
+  gap: 8px;
+}
+
 .search {
   display: flex;
   flex: 0 1 164px;
   align-items: center;
   min-width: 84px;
   height: 22px;
-  margin-left: auto;
   padding: 0 6px;
   gap: 4px;
   border: 0.5px solid var(--dsw-alias-border-l4);

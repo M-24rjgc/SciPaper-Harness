@@ -7,6 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { SessionLogDownloadHeaderAction } from '../src/client/HeaderAction.tsx'
 import { apply, inject } from '../src/client/index.ts'
 import type { SessionLogDownloadHeaderInjected } from '../src/client/HeaderAction.tsx'
+import { SessionLogToolbarControl, type SessionLogToolbarInjected } from '../src/client/ToolbarControl.tsx'
 
 const SID = 'session-export-apply' as SessionId
 
@@ -18,6 +19,7 @@ function declare(slots: SlotRegistry): () => void {
     children: {
       'conversation.session.header.actions': { kind: 'list', scope: 'session' },
       'conversation.session.header.utilities': { kind: 'list', scope: 'session' },
+      'conversation.trajectory.toolbar': { kind: 'list', scope: 'session' },
     },
   } as never, () => null)
 }
@@ -92,6 +94,35 @@ describe('session-log-download browser plugin', () => {
 
     await first.fiber.dispose()
     await second.fiber.dispose()
+  })
+
+  it('offers the log ID to the Trajectory toolbar over the same controller, until disposal', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 500 })))
+    const b = await bench()
+    const [entry] = b.slots.entries('conversation.trajectory.toolbar')
+    expect(b.slots.entries('conversation.trajectory.toolbar')).toHaveLength(1)
+    expect(entry?.component).toBe(SessionLogToolbarControl)
+    expect(entry?.options).toMatchObject({ id: 'session-log-download' })
+    const injected = (entry?.inject as (() => SessionLogToolbarInjected) | undefined)?.()
+    if (injected === undefined) throw new Error('the toolbar contribution has no injected face')
+    expect(injected.hooks.sessionLogDownload).toBe(b.ctx.sessionLogDownload.store)
+
+    await injected.request(SID)
+    expect(b.ctx.sessionLogDownload.store.getSnapshot().bySession[SID]).toMatchObject({ open: true, status: 'error' })
+
+    await b.fiber.dispose()
+    expect(b.slots.entries('conversation.trajectory.toolbar')).toHaveLength(0)
+  })
+
+  it('re-registers the toolbar contribution after the Trajectory view returns', async () => {
+    const b = await bench()
+    b.declaration()
+    expect(b.slots.entries('conversation.trajectory.toolbar')).toHaveLength(0)
+    const redeclare = declare(b.slots)
+    await Promise.resolve()
+    expect(b.slots.entries('conversation.trajectory.toolbar')[0]?.component).toBe(SessionLogToolbarControl)
+    redeclare()
+    await b.fiber.dispose()
   })
 
   it('re-registers after the declaring Header slot collapses and returns', async () => {

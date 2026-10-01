@@ -90,6 +90,22 @@ describe('Session export Header action', () => {
     expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
   })
 
+  it('copies the full log ID from the menu without starting a download', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    try {
+      const b = bench()
+      fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
+      fireEvent.click(b.view.getByRole('menuitem', { name: 'Copy log ID' }))
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(SID)
+      expect(b.request).not.toHaveBeenCalled()
+      expect(b.view.queryByRole('menu')).toBeNull()
+      expect((await b.view.findByRole('alert')).textContent).toBe('Log ID copied')
+    } finally {
+      Reflect.deleteProperty(navigator, 'clipboard')
+    }
+  })
+
   it('closes the menu on Escape without downloading', () => {
     const b = bench()
     fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))

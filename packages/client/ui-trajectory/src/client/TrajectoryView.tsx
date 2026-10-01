@@ -133,7 +133,7 @@ export function TrajectoryView({
   useSession, useTrajectory, useDuration, loadOlder, loadImage, setActualDuration,
   viewRequest, completeViewRequest, renderSlot, t, jsonStringWrapping,
 }: ConvViewProps
-  & PropsRenderSlots<'conversation.trajectory.images'>
+  & PropsRenderSlots<'conversation.trajectory.images' | 'conversation.trajectory.toolbar'>
   & InjectFace<TrajectoryViewInjected>
   & PropsLocale<'trajectory'>) {
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(EMPTY_TURN_IDS)
@@ -527,7 +527,9 @@ export function TrajectoryView({
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
         t={t}
-      />
+      >
+        {renderSlot('conversation.trajectory.toolbar', {})}
+      </TrajectoryToolbar>
       <TrajectoryTimeline
         t={t}
         turns={timelineTurns}

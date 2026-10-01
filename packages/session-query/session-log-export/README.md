@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-log-export` lets the Web interface download a session's full history: a `Download session log` menu item under the Session Header's more-actions button and an `/export` slash command both hand the session tree — the session, its sub-sessions, and attachments — to the browser as a ZIP download. The package owns the Host archive stream, its authenticated Fetch route, and the browser controls and feedback. The browser chooses the download destination. Setup and usage come first; implementation details follow.
+`dsh-session-log-export` lets the Web interface name and download a session's full history. A `Download session log` menu item under the Session Header's more-actions button, an `Export log` button in the Trajectory toolbar, and an `/export` slash command each hand the session tree (the session, its sub-sessions, and attachments) to the browser as a ZIP download. The menu and toolbar also show the log ID with a copy action. The package owns the Host archive stream, its authenticated Fetch route, and the browser controls and feedback. The browser chooses the download destination. Setup and usage come first; implementation details follow.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Use this package when the Web bundle should let users export a session log. It requires Connection, the command registry, Session query and persistence, and attachments. Mount the plugin, then choose `Download session log` from the Session Header's more-actions menu or type `/export`; the browser downloads `dsh-session-<id>.zip`.
+Use this package when the Web bundle should let users export a session log. It requires Connection, the command registry, Session query and persistence, and attachments. Mount the plugin, then choose `Download session log` from the Session Header's more-actions menu, press `Export log` in the Trajectory toolbar, or type `/export`; the browser downloads `dsh-session-<id>.zip`.
 
 When `ui-message-feedback` is mounted, the same menu also offers `Feedback`, which opens its existing Session feedback dialog. Opening or dismissing that form does not export the Session or submit feedback. The feedback row follows the feedback plugin's availability; export remains available independently.
 
@@ -40,7 +40,7 @@ Choose it for a Web deployment that needs user-facing session export with a visi
   name: '@deepseek-ai/dsh-session-log-export'
 ```
 
-The Web bundle mounts the package with Connection, `dsh-commands`, `dsh-client-ui-commands`, and `dsh-client-ui-conversation`.
+The Web bundle mounts the package with Connection, `dsh-commands`, `dsh-client-ui-commands`, and `dsh-client-ui-conversation`. The Trajectory toolbar control appears only while `dsh-client-ui-trajectory` is mounted; the Header menu and `/export` do not need it.
 
 ### Configuration
 
@@ -61,6 +61,12 @@ The dialog reports three phases: preparing, download started, or failed. Closing
 
 Attachment collection reads declared content fields of built-in Session events and completed assistant stream blocks, including flat V4 tool-role messages. Unknown event payloads and unrelated fields remain unchanged in the exported log but do not cause attachment reads.
 
+### The log ID
+
+A Session's log ID is its Session id, `session-<UUID>`. The Trajectory toolbar shows the short form, the first eight characters of the UUID, with the full id in its tooltip; the Header menu shows the same short form. `Copy log ID` writes the full id to the clipboard and confirms it in a banner, or reports that the clipboard refused it. Below a toolbar width of 560 px the label and the button text yield and the icons stay.
+
+The JSONL backend keeps a Session at `<sessions root>/<project key>/<Session id>/session.v<N>.jsonl[.zstd]`. The project key is the working directory with separators turned into `-` and unsafe characters escaped, so it cannot be reversed; the log ID alone locates a Session with the pattern `<sessions root>/*/session-<short id>*`. A Session opened by a newer build gains a newer `session.v<N>` file beside the older generations, which stay. The export writes the plain `session.v<N>.jsonl` of the current generation, whose first line is the Session header with the full id and working directory; no separate manifest is written.
+
 ### Failures
 
 The dialog shows a preparation error when the preflight fails before ZIP streaming starts — for example an unreachable or misconfigured host endpoint. A descendant or attachment read failure after the browser accepts the GET is reported by the browser download manager, not by the dialog.
@@ -79,7 +85,7 @@ This section explains how the package wires the export control and points at the
 
 The package has two halves. The Host half ([`src/index.ts`](src/index.ts)) registers the `/export` command and contributes the exact `GET`/`HEAD /api/session.export` Fetch route to Connection; [`src/archive.ts`](src/archive.ts) builds the bounded ZIP stream. The browser half ([`src/client/index.ts`](src/client/index.ts)) provides the shared download controller and UI, and observes `command/executed` so only the submitting browser starts a download.
 
-The Header’s More action uses the shared compact Button, with a 28px square target and the same radius and hover fill as the right-sidebar expand control.
+The Header’s More action uses the shared compact Button, with a 28px square target and the same radius and hover fill as the right-sidebar expand control. The toolbar control registers into the Trajectory view's `conversation.trajectory.toolbar` seat through `ctx.slots.inject` and reuses the controller; the shared dialog stays with the Header contribution, which is mounted whenever the Trajectory view is.
 
 ### Download flow
 

@@ -84,6 +84,7 @@ export function apply(ctx: Context): void {
     label: () => t('view.trajectory'),
     children: {
       'conversation.trajectory.images': { kind: 'single', scope: 'session' },
+      'conversation.trajectory.toolbar': { kind: 'list', scope: 'session' },
     },
     inject: (sessionId: SessionId): TrajectoryViewInjected => {
       const session = ctx.sessions.binding(sessionId)?.session
