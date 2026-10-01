@@ -26,7 +26,9 @@ This service verifies a POSIX workspace through an existing OpenSSH alias, insta
 
 Mount the service beside `agentPresets` and the SSH, filesystem, subprocess, sandbox, Bash, search and LSP plugin packages. Call `inspect({ host, path })` to obtain `{ presetId, canonicalPath }`, or `ensure({ host, path })` when only the preset ID is needed. Both methods fail if SSH login, remote Node.js, workspace access, helper or LSP installation, or preset activation fails. The optional `researchTools: true` setting adds ten research tool families when the Host also mounts a shared research workbench service.
 
-The host is an existing OpenSSH alias. SSH runs noninteractively with strict host-key checking and no agent forwarding. The remote host needs Node.js 22 or newer. The service does not provision SSH credentials or relax the host-key policy.
+The host is an existing OpenSSH alias, or `user@host` with an optional `:port`. SSH runs noninteractively with strict host-key checking and no agent forwarding. The remote host needs Node.js 22 or newer. The service does not provision SSH credentials or relax the host-key policy.
+
+`inspect` also takes an `auth` choice for a workspace that is being added. `{ kind: 'password', password }` verifies that password against the host before anything else and saves it only after the host accepted it, under the host's record in the credential store (see [Password login](../ssh/README.md#password-login)); a wrong password changes nothing and the verification is repeated on the next request. `{ kind: 'key' }` verifies with OpenSSH keys, agent and configuration, and forgets a password saved earlier for the host. A request without `auth`, such as every session resume, uses whatever the host has saved. `forget(host)` deletes the saved password. A refusal rejects with an `SshFailure` whose `kind` is `auth`, `unreachable`, `host-key`, `host-key-changed` or `unsupported`; its message never contains the password.
 
 -----
 
@@ -62,6 +64,7 @@ The selected preset keeps a stable tool-schema prefix across requests while its 
 
 - Research tools require a ready SSH environment mapping the remote execution root to one local research project; they do not create remote research records.
 - Only POSIX SSH hosts are supported. SSH alias authentication, host-key enrollment and Node.js installation are administered outside this service.
+- Saving a password needs a composed `ctx.credentials`; without it a password choice is refused before any SSH command runs. The password stays in the credential store until `forget` or key login replaces it.
 - Search depends on a remote `rg` executable. TypeScript/JavaScript LSP is installed from the bundled runtime during workspace setup.
 
 <a id="dev-note"></a>

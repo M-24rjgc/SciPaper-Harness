@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-ssh` 将 Windows、Linux 或 macOS 上的 Harness 主机连接到 POSIX SSH 主机上已安装的辅助程序。部署方持有的 OpenSSH 主机别名提供认证与主机身份；配套的文件系统、子进程和沙箱提供方共享该连接。连接在就绪前验证已安装产物的摘要；辅助程序在连接关闭或租期到期时负责远端清理。
+`dsh-ssh` 将 Windows、Linux 或 macOS 上的 Harness 主机连接到 POSIX SSH 主机上已安装的辅助程序。部署方持有的 OpenSSH 主机别名，或带有已保存密码的 `用户@主机[:端口]` 目标，提供认证与主机身份；配套的文件系统、子进程和沙箱提供方共享该连接。连接在就绪前验证已安装产物的摘要；辅助程序在连接关闭或租期到期时负责远端清理。
 
 ## 目录
 
@@ -29,13 +29,13 @@ kind: "package-reference"
 
 ### 部署前提
 
-远端需要运行 Linux 或 macOS。Linux 和 macOS 客户端通过连接复用与 Unix 套接字转发建立程序流；Windows 客户端为程序流使用独立的 SSH exec 通道。启动前配置主机别名、凭据与已知主机记录：本服务启用 `BatchMode`、要求严格检查主机密钥、禁用认证代理转发，且不提供交互认证流程。
+远端需要运行 Linux 或 macOS。Linux 和 macOS 客户端通过连接复用与 Unix 套接字转发建立程序流；Windows 客户端为程序流使用独立的 SSH exec 通道。启动前配置主机别名或目标、凭据与已知主机记录：本服务要求严格检查主机密钥并禁用认证代理转发。密钥、认证代理和 ssh 配置的认证在 `BatchMode` 下运行，没有交互流程；已保存的密码是唯一的另一种登录方式（见[密码登录](#password-login)）。
 
 将已构建的辅助程序安装在远端，或使用 [`remote-workspace-presets`](../remote-workspace-presets/README.zh.md) 把单文件辅助程序安装到远端主目录下的私有位置。Node、辅助程序和可选引导程序必须位于工作区和可写临时目录之外，也必须位于后端会替换的临时目录树之外，例如 bwrap 的私有 `/tmp`；工作区仍可位于 `/tmp` 下。摘要校验在辅助程序启动后发现非预期的已安装产物；它不能保证可写部署文件的执行安全，也不能认证恶意 SSH 主机。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `host` | 必填 | 已有的 OpenSSH 主机别名 |
+| `host` | 必填 | 已有的 OpenSSH 主机别名，或带可选 `:端口` 的 `用户@主机` |
 | `node`、`helper`、`workspace` | 必填 | 远端 Node 可执行文件、辅助程序打包入口和默认工作区的绝对路径 |
 | `helperHash` | 必填 | 已安装辅助程序入口的小写 SHA-256 |
 | `bootstrapPath`、`bootstrapHash` | 省略 | 成对提供的远端 PTC 入口及其小写 SHA-256 |
@@ -45,6 +45,17 @@ kind: "package-reference"
 | `leaseMs` | `30000` | 辅助进程心跳租期，范围为 3000 至 600000 毫秒 |
 
 使用 PTC 时，配置两个引导字段，并将验证后的 `ctx.ssh.nodeExecutable` 与 `ctx.ssh.bootstrapPath` 传给 [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.zh.md)。仅使用文件系统和 Bash 时可以省略这对字段。未配置 PTC 部署时，`bootstrapPath` getter 会拒绝访问。
+
+<a id="password-login"></a>
+### 密码登录
+
+已保存密码的主机用密码登录，不再使用密钥。密码是 [`credentials`](../../credentials/credentials/README.zh.md) 在 `ssh/host-<主机的哈希>` 下保存的凭据记录；必须组合 `ctx.credentials` 才能读取密码。已保存的密码由 [`remote-workspace-presets`](../remote-workspace-presets/README.zh.md) 在主机接受之后写入。
+
+这类主机的每个 ssh 子进程都会收到 `SSH_ASKPASS` 和 `SSH_ASKPASS_REQUIRE=force`。askpass 程序是私有临时目录中的一个脚本，它从该子进程的环境变量 `DSH_SSH_ASKPASS_SECRET` 打印密码，因此密码不会出现在任何参数、文件、日志或错误文本中，诊断信息也会去掉它的每一处出现。子进程不启用 `BatchMode`，只尝试一次密码，关闭公钥，只用密码与 keyboard-interactive 两种方式，所以密码错误会立即失败。严格的主机密钥检查保持开启：未知或已变更的主机密钥会失败，不会弹出确认提示。
+
+这需要 OpenSSH 8.4 或更新版本（`SSH_ASKPASS_REQUIRE` 自该版本引入）；更旧或无法识别的客户端会在建立任何连接之前以 `unsupported` 类别失败。在 Windows 上，该程序是 `askpass.cmd`，由它运行 Windows PowerShell 中的 `askpass.ps1`，以 UTF-8 写出密码，密码不经过 `cmd.exe`。Windows OpenSSH 客户端无法启动路径含非 ASCII 字符的程序，所以目录按顺序建在临时目录、`ProgramData` 或 `Users\Public` 之下，取第一个纯 ASCII 的位置。Windows 为每条流各建立一个已认证连接，所以每条流都会重新登录。
+
+包入口 `@deepseek-ai/dsh-ssh/auth` 导出所有 ssh 调用方共用的部分：解析 `用户@主机:端口` 的 `parseSshHost` 和 `sshDestinationArguments`，`planSshAuth`，`SshPasswordStore`，以及 `SshFailure` 与 `classifySshFailure`，后者把 ssh 诊断归为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`。
 
 -----
 
@@ -75,6 +86,7 @@ OpenSSH 主连接承载私有管理 RPC。每条程序流使用独立转发的 U
 
 - [SSH 子系统](../../../docs/subsystems/ssh.zh.md) — 执行坐标、传输语义及生命周期归属。
 - [POSIX SSH 决策](../../../.agents/notes/implemented/architecture/2026-09-11-posix-ssh-runtime.zh.md) — 理由、替代方案及必要验证。
+- [SSH 密码登录决策](../../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.zh.md) — askpass 传输、存储、主机密钥策略及被否决的替代方案。
 
 -----
 
@@ -94,6 +106,8 @@ OpenSSH 主连接承载私有管理 RPC。每条程序流使用独立转发的 U
 - 底层连接不负责安装辅助程序、重连或重放操作；`remote-workspace-presets` 负责安装辅助程序和注册预设。
 - Web 工作区界面的路径仍假定可访问主机文件系统；请使用 headless 或所有消费方都遵守提供方路径语义的自定义组合。
 - TLS 流密钥不防御远端操作系统级进程内存检查或调试。文件效果策略保留所选沙箱后端的限制。
+- 已保存的密码与凭据文件受同样的保护：只有操作系统用户自己的文件权限，在 Windows 上就是用户配置目录的访问控制列表。该用户的进程，包括 Agent 的工具进程，都能读取该文件以及正在运行的 ssh 子进程的环境。不使用操作系统钥匙串。
+- 密码登录不提供主机密钥登记。尚未写入 `known_hosts` 的主机密钥会导致失败；信任它需要对该主机手动运行一次 `ssh`。
 
 <a id="dev-note"></a>
 ### 开发备注

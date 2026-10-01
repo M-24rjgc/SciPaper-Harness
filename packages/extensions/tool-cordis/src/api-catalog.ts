@@ -1834,10 +1834,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the mounted preset identity.',
       },
       {
-        signature: 'async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset>',
-        description: 'Resolve the canonical remote path and mounted preset for a Session header.',
-        parameters: [{ name: 'request', description: 'configured OpenSSH alias and absolute POSIX workspace.' }],
+        signature: 'async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset>',
+        description: 'Resolve the canonical remote path and mounted preset for a Session header. A request with an authentication choice is always verified again, and a password is saved only after it worked.',
+        parameters: [{ name: 'request', description: 'SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.' }],
         returns: 'preset identity and verified canonical directory.',
+        throws: ['{SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.'],
+      },
+      {
+        signature: 'async forget(host: string): Promise<void>',
+        description: 'Forget the password saved for a host once no workspace uses it.',
+        parameters: [{ name: 'host', description: 'OpenSSH alias or `user@host[:port]`.' }],
       },
     ],
   },
@@ -6664,6 +6670,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RemoteEventHostInfo {\n    readonly home: string;\n}',
   },
   {
+    name: 'RemoteWorkspaceAuthChoice',
+    declaration: 'export type RemoteWorkspaceAuthChoice = {\n    readonly kind: \'key\';\n} | {\n    readonly kind: \'password\';\n    readonly password: string;\n};',
+  },
+  {
+    name: 'RemoteWorkspaceInspection',
+    declaration: 'export interface RemoteWorkspaceInspection extends RemoteWorkspaceRequest {\n    readonly auth?: RemoteWorkspaceAuthChoice;\n}',
+  },
+  {
     name: 'RemoteWorkspacePreset',
     declaration: 'export interface RemoteWorkspacePreset {\n    presetId: string;\n    canonicalPath: string;\n}',
   },
@@ -8601,7 +8615,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceCreateRequest',
-    declaration: 'export type WorkspaceCreateRequest = {\n    readonly path: string;\n    readonly location?: never;\n} | {\n    readonly location: WorkspaceLocation;\n    readonly path?: never;\n};',
+    declaration: 'export type WorkspaceCreateRequest = {\n    readonly path: string;\n    readonly location?: never;\n    readonly sshAuth?: never;\n} | {\n    readonly location: WorkspaceLocation;\n    readonly path?: never;\n    readonly sshAuth?: WorkspaceSshAuth;\n};',
   },
   {
     name: 'WorkspaceCreateValue',
@@ -8694,6 +8708,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceRenameRequest',
     declaration: 'export interface WorkspaceRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceSshAuth',
+    declaration: 'export type WorkspaceSshAuth = {\n    readonly kind: \'key\';\n} | {\n    readonly kind: \'password\';\n    readonly password: string;\n};',
   },
   {
     name: 'WorkspaceUnarchiveSessionRequest',

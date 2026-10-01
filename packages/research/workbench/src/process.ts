@@ -1,6 +1,8 @@
 /** Bounded process calls and OpenSSH transport. Long experiments have independent supervisors. */
 import { spawn } from 'node:child_process'
 import { win32 } from 'node:path'
+import type { Context } from '@deepseek-ai/cordis'
+import { planSshAuth, sshPasswordStoreOf } from '@deepseek-ai/dsh-ssh/auth'
 
 /** Closed process result with UTF-8 output and exit code; a missing exit code is represented by -1. */
 export interface ProcessResult { code: number; stdout: string; stderr: string }
@@ -100,16 +102,38 @@ export function runProcess(command: string, args: readonly string[], options: Pr
  */
 export function shQuote(value: string): string { return `'${value.replaceAll("'", "'\\''")}'` }
 
+/** The context whose credential provider holds the SSH passwords remote runs may use. */
+let sshPasswordSource: Context | undefined
+
 /**
- * Execute on an explicitly configured OpenSSH alias or ssh:// URI.
+ * Let remote runs authenticate with the password saved for their host.
+ * @param ctx - context with the credential provider, read at each SSH call so a changed password applies to the next one.
+ * @returns a function that removes the source again.
+ */
+export function installSshPasswords(ctx: Context): () => void {
+  sshPasswordSource = ctx
+  return () => { if (sshPasswordSource === ctx) sshPasswordSource = undefined }
+}
+
+/**
+ * Execute on an explicitly configured OpenSSH alias, `user@host[:port]` or ssh:// URI.
  * @param host - destination without leading options, whitespace or control characters.
  * @param args - remote argument vector quoted for the POSIX login shell.
  * @param options - limits, cancellation and input for the local SSH process.
- * @returns SSH exit status and captured output; authentication is noninteractive.
+ * @returns SSH exit status and captured output; authentication is noninteractive, with keys and agent unless a
+ * password is saved for the host. Output never contains that password.
  */
 export function ssh(host: string, args: readonly string[], options: ProcessOptions = {}): Promise<ProcessResult> {
-  if (!host || host.startsWith('-') || /[\x00-\x20]/.test(host)) throw new Error('Use an OpenSSH host alias or ssh://user@host:port URI')
-  return runProcess('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', host, args.map(shQuote).join(' ')], options)
+  if (!host || host.startsWith('-') || /[\x00-\x20]/.test(host)) throw new Error('Use an OpenSSH host alias, user@host[:port] or ssh://user@host:port URI')
+  return sshWithAuth(host, args, options)
+}
+
+async function sshWithAuth(host: string, args: readonly string[], options: ProcessOptions): Promise<ProcessResult> {
+  const plan = await planSshAuth(host, sshPasswordSource === undefined ? undefined : sshPasswordStoreOf(sshPasswordSource))
+  const result = await runProcess('ssh', [
+    ...plan.options, '-o', 'ConnectTimeout=15', ...plan.destination, args.map(shQuote).join(' '),
+  ], plan.env === undefined ? options : { ...options, env: { ...options.env, ...plan.env } })
+  return { ...result, stdout: plan.redact(result.stdout), stderr: plan.redact(result.stderr) }
 }
 
 /**

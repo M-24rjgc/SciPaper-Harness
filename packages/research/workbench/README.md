@@ -187,7 +187,7 @@ These are current constraints of the package, not a task backlog.
 No runtime invariant companion is published because every relationship the ledger keeps (revisions, evidence links, run identities) is enforced where it is written, inside each project's one-at-a-time change queue.
 
 - **Windows-first provisioning** — automatic installation of Python, uv, TeX and draw.io targets Windows x64. Existing TeX on `PATH` is detected on every platform; other tools need bindings in settings outside Windows.
-- **SSH without provisioning** — remote runs use explicitly configured OpenSSH authentication and a dedicated remote directory; accounts, cluster schedulers and a server's global Python are never touched.
+- **SSH without provisioning** — remote runs use explicitly configured OpenSSH authentication, or the password saved for the environment's `user@host[:port]` when its SSH workspace was added with one, and a dedicated remote directory; the password reaches `ssh` only through `SSH_ASKPASS` and never appears in a command line, a run record or a tool result. Accounts, cluster schedulers and a server's global Python are never touched.
 - **No draw.io export from the agent** — diagrams are edited in the built-in editor, but a vector export needs the desktop app's main process, which this package does not extend; the agent draws TikZ by default.
 - **NVIDIA-only GPU readings** — the board's machine probe reads GPUs through `nvidia-smi`, and reads no processor or memory use on macOS.
 - **Single-user projects** — one person's projects on one machine; collaborative accounts are out of scope.

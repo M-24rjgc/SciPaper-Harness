@@ -43,6 +43,7 @@ import {
 } from './files.ts'
 import { registerResearchRoutes } from './routes.ts'
 import { remoteResearchAt } from './session-project.ts'
+import { installSshPasswords } from './process.ts'
 import {
   blankRecord, canonicalPath, DRAFT_TITLE, holdsFiles, nextDraftRoot, onlyScaffold, removeEmptyScaffold, resolveResearchHome, SCAFFOLD,
 } from './drafts.ts'
@@ -377,6 +378,8 @@ export class ResearchWorkbench extends TypertRemoteService {
     this.ctx.on('session/created', (session) => { this.align(session, researchOf(session, this.projects())) })
     const projects = this.projects()
     for (const session of this.ctx.sessions.list()) this.align(session, researchOf(session, projects))
+    // Remote runs authenticate with the password saved for their host, read at each SSH call.
+    this.ctx.effect(() => installSshPasswords(this.ctx), 'research.ssh-passwords')
     // Tools are the research preset's to mount (./tools), so agents composed from other presets never see them.
     this.refreshResourceRoutes = registerResearchRoutes(this.ctx, this)
     let polling = false

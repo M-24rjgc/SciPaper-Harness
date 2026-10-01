@@ -9,8 +9,8 @@
   en: aa72983e0421a4ab
   zh: 5a916f668fa9be67
 /deepseek-ai-dsh-ssh/summary:
-  en: 494cf66bd0230e58
-  zh: c3206a6013771b94
+  en: 3d9183591a467ea4
+  zh: d3ea61a75cb8d301
 /deepseek-ai-dsh-ssh/table-of-contents:
   en: d152484eb41ac6b4
   zh: 725b47765ee8f30b
@@ -18,14 +18,17 @@
   en: 8fbb876fefb42f3c
   zh: ddd38f747088e032
 /deepseek-ai-dsh-ssh/use-this-package/deployment-prerequisites:
-  en: 00cbb10142c2c1a0
-  zh: e9fb30f8a62a297d
+  en: 097e7a3657bd02be
+  zh: d756760bb352f280
+/deepseek-ai-dsh-ssh/use-this-package/password-login:
+  en: eadb795cf683734d
+  zh: 83230cac1c6545ad
 /deepseek-ai-dsh-ssh/understand-the-implementation:
   en: 745134e2c519e805
   zh: c2cfa395fca03d44
 /deepseek-ai-dsh-ssh/further-exploration:
-  en: 1d179b90a32af26b
-  zh: 683cf3c0085147e1
+  en: dc51dc261211643c
+  zh: dce7314d581d2412
 /deepseek-ai-dsh-ssh/model-experience:
   en: 46f8a19ad50774a3
   zh: cfa8af8f94f691f5
@@ -33,8 +36,8 @@
   en: 21f304c66e5ba98b
   zh: 18185d5b164f8216
 /deepseek-ai-dsh-ssh/known-limitations-and-deferred-work:
-  en: f48f4811a2b0c017
-  zh: d6cb4499927b84fc
+  en: 12b39b8cb6a98789
+  zh: 7666556bde429dba
 /deepseek-ai-dsh-ssh/known-limitations-and-deferred-work/dev-note:
   en: 6ca4f1d4b4810fff
   zh: e42f580ca971972b

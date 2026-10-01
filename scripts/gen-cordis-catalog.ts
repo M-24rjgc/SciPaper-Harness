@@ -771,6 +771,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   Workspace: 'workspace.md',
   WorkspaceLocation: 'workspace.md',
   RemoteWorkspaceRequest: 'ssh.md',
+  RemoteWorkspaceInspection: 'ssh.md',
   RemoteWorkspacePreset: 'ssh.md',
   ArchiveSessionOptions: 'workspace.md',
   SessionActivity: 'workspace.md',

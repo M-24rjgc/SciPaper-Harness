@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-ssh` connects a Windows, Linux or macOS Harness host to an installed helper on a POSIX SSH host. One deployment-owned OpenSSH alias supplies authentication and host identity; the paired filesystem, subprocess and sandbox providers use that connection. The connection verifies installed artifact digests before readiness; the helper owns remote cleanup when the connection closes or its lease expires.
+`dsh-ssh` connects a Windows, Linux or macOS Harness host to an installed helper on a POSIX SSH host. One deployment-owned OpenSSH alias, or a `user@host[:port]` destination with a saved password, supplies authentication and host identity; the paired filesystem, subprocess and sandbox providers use that connection. The connection verifies installed artifact digests before readiness; the helper owns remote cleanup when the connection closes or its lease expires.
 
 ## Table of Contents
 
@@ -29,13 +29,13 @@ Compose this service with [`fs-ssh`](../fs-ssh/README.md), [`subprocess-ssh`](..
 
 ### Deployment prerequisites
 
-The remote endpoint requires Linux or macOS. Linux and macOS clients use connection multiplexing and Unix-socket forwarding; Windows clients use independent SSH exec channels for streams. Configure the alias, credentials and known-host entry before startup: the service enables `BatchMode`, requires strict host-key checking, disables agent forwarding and adds no interactive authentication flow.
+The remote endpoint requires Linux or macOS. Linux and macOS clients use connection multiplexing and Unix-socket forwarding; Windows clients use independent SSH exec channels for streams. Configure the alias or destination, credentials and known-host entry before startup: the service requires strict host-key checking and disables agent forwarding. Key, agent and ssh-config authentication run in `BatchMode` with no interactive flow; a saved password is the only other login ([Password login](#password-login)).
 
 Install the built helper on the remote host, or use [`remote-workspace-presets`](../remote-workspace-presets/README.md) to install the self-contained helper under a private remote home directory. Keep Node, helper, bootstrap and their dependencies outside the workspace and writable temporary roots. They must also remain outside a backend’s replaced temporary tree, such as bwrap’s private `/tmp`; the workspace may still be under `/tmp`. Digest verification detects an unexpected installed artifact after helper startup; it does not make writable deployment files safe to execute or authenticate a malicious SSH host.
 
 | Field | Default | Meaning |
 |---|---|---|
-| `host` | required | Existing OpenSSH host alias |
+| `host` | required | Existing OpenSSH host alias, or `user@host` with an optional `:port` |
 | `node`, `helper`, `workspace` | required | Absolute remote Node executable, bundled helper entry and default workspace |
 | `helperHash` | required | Lowercase SHA-256 of the installed helper entry |
 | `bootstrapPath`, `bootstrapHash` | omitted | Paired remote PTC entry and its lowercase SHA-256 |
@@ -45,6 +45,16 @@ Install the built helper on the remote host, or use [`remote-workspace-presets`]
 | `leaseMs` | `30000` | Helper heartbeat lease, from 3000 to 600000 ms |
 
 For PTC, configure both bootstrap fields and pass the verified `ctx.ssh.nodeExecutable` and `ctx.ssh.bootstrapPath` to [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.md). Basic filesystem and Bash use may omit the pair. The `bootstrapPath` getter refuses an unconfigured PTC deployment.
+
+### Password login
+
+A host that has a saved password logs in with it instead of keys. The password is a credential record that [`credentials`](../../credentials/credentials/README.md) keeps under `ssh/host-<hash of the host>`; `ctx.credentials` must be composed for a password to be read. Saved passwords are written by [`remote-workspace-presets`](../remote-workspace-presets/README.md) after the host accepted them.
+
+Every ssh child of such a host receives `SSH_ASKPASS` and `SSH_ASKPASS_REQUIRE=force`. The askpass program is a script in a private temporary directory; it prints the password from the child's environment variable `DSH_SSH_ASKPASS_SECRET`, so the password is in no argument, file, log or error text, and diagnostics drop every occurrence of it. The child runs without `BatchMode`, with one password attempt, public keys off, and only password and keyboard-interactive methods, so a wrong password fails at once. Strict host-key checking stays on: an unknown or changed host key fails and never prompts.
+
+This needs OpenSSH 8.4 or newer, which introduced `SSH_ASKPASS_REQUIRE`; older or unrecognized clients fail with kind `unsupported` before any connection. On Windows the program is `askpass.cmd` running `askpass.ps1` in Windows PowerShell, which writes the password as UTF-8 without passing it through `cmd.exe`. The Windows OpenSSH client cannot start a program from a path with non-ASCII characters, so the directory is created under the temporary directory, `ProgramData` or `Users\Public`, whichever is first and ASCII. Windows opens one authenticated connection per stream, so each stream logs in again.
+
+The package entry `@deepseek-ai/dsh-ssh/auth` exports the pieces every ssh caller shares: `parseSshHost` and `sshDestinationArguments` for `user@host:port`, `planSshAuth`, the `SshPasswordStore`, and `SshFailure` with `classifySshFailure`, which reduce ssh diagnostics to `auth`, `unreachable`, `host-key`, `host-key-changed` or `unsupported`.
 
 -----
 
@@ -75,6 +85,7 @@ The helper starts with `--disable-sigusr1`, so a same-user process signal cannot
 
 - [SSH subsystem](../../../docs/subsystems/ssh.md) — execution coordinates, transport semantics and lifecycle ownership.
 - [POSIX SSH decision](../../../.agents/notes/implemented/architecture/2026-09-11-posix-ssh-runtime.md) — rationale, alternatives and required verification.
+- [SSH password login decision](../../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.md) — askpass transport, storage, host-key policy and rejected alternatives.
 
 -----
 
@@ -94,6 +105,8 @@ This provider contributes no request-prefix content. Its consumers own model-vis
 - The low-level connection does not provision a helper, reconnect or replay operations; `remote-workspace-presets` supplies helper installation and preset registration.
 - Web workspace UI paths still assume host filesystem access; use headless or a custom composition whose consumers honor provider paths.
 - TLS stream keys do not protect against remote OS process-memory inspection or debugging. File-effect policy retains the selected sandbox backend’s limits.
+- A saved password is protected as the credential file is: by the operating-system user's own file permissions, which on Windows are the user profile's access control list. Processes of that user, including Agent tool processes, can read the file and the environment of a running ssh child. An operating-system keychain is not used.
+- Password login adds no host-key enrollment. A host key that is not yet in `known_hosts` fails; trusting it takes one interactive `ssh` to the host.
 
 <a id="dev-note"></a>
 ### Dev Note

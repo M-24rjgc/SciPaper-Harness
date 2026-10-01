@@ -50,7 +50,7 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve }
 }
 
-async function harness(options: { systemDocuments?: boolean } = {}) {
+async function harness(options: { systemDocuments?: boolean; remote?: boolean } = {}) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-controller-')))
   tempDirs.push(root)
   const ctx = new Context()
@@ -62,8 +62,9 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
   ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
-  const remoteInspect = vi.fn(async ({ path }: { host: string; path: string }) => ({ canonicalPath: path }))
-  ctx.provide('remoteWorkspacePresets', { inspect: remoteInspect } as never)
+  const remoteInspect = vi.fn(async ({ path }: { host: string; path: string; auth?: unknown }) => ({ canonicalPath: path }))
+  const remoteForget = vi.fn(async (_host: string) => {})
+  if (options.remote !== false) ctx.provide('remoteWorkspacePresets', { inspect: remoteInspect, forget: remoteForget } as never)
   await ctx.plugin(WorkspaceRegistry)
   const dispose = (): void => {}
   ctx.provide('typert', {
@@ -71,7 +72,7 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
     contexts: { configureHost: () => dispose },
   } as never)
   const controller = new WorkspaceController(ctx, options.systemDocuments === true ? {} : { documentsDirectory: root })
-  return { controller, ctx, root, storageDomain, remoteInspect }
+  return { controller, ctx, root, storageDomain, remoteInspect, remoteForget }
 }
 
 function stageDir(root: string, name: string): string {
@@ -108,6 +109,67 @@ describe('WorkspaceController commands', () => {
     expect(created.workspace.location).toEqual({ kind: 'ssh', host: 'alpha', path: '/srv/canonical' })
     await expect(controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/missing' } }))
       .rejects.toMatchObject({ code: 'workspace/invalid-path' })
+  })
+
+  it('passes the chosen login to the SSH backend and returns nothing that holds a password', async () => {
+    const { controller, remoteInspect } = await harness()
+    const created = await controller.create({
+      location: { kind: 'ssh', host: 'alice@192.0.2.10:2222', path: '/srv/research' }, sshAuth: { kind: 'password', password: 'pässwörd-secret' },
+    })
+    expect(remoteInspect).toHaveBeenCalledWith({
+      host: 'alice@192.0.2.10:2222', path: '/srv/research', auth: { kind: 'password', password: 'pässwörd-secret' },
+    })
+    expect(created.workspace.location).toEqual({ kind: 'ssh', host: 'alice@192.0.2.10:2222', path: '/srv/research' })
+    expect(JSON.stringify(created)).not.toContain('pässwörd-secret')
+    await controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/research' }, sshAuth: { kind: 'key' } })
+    expect(remoteInspect).toHaveBeenLastCalledWith({ host: 'alpha', path: '/srv/research', auth: { kind: 'key' } })
+    await controller.create({ location: { kind: 'ssh', host: 'beta', path: '/srv/research' } })
+    expect(remoteInspect).toHaveBeenLastCalledWith({ host: 'beta', path: '/srv/research' })
+  })
+
+  it('reports why an SSH host refused, without a password in the failure', async () => {
+    const { controller, remoteInspect } = await harness()
+    const refusal = (kind: string): Error => Object.assign(new Error(`SSH ${kind} refusal`), { name: 'SshFailure', kind })
+    for (const reason of ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported'] as const) {
+      remoteInspect.mockRejectedValueOnce(refusal(reason))
+      const failure = await controller.create({
+        location: { kind: 'ssh', host: 'alpha', path: '/srv/x' }, sshAuth: { kind: 'password', password: 'pässwörd-secret' },
+      }).catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(RemoteError)
+      expect(failure).toMatchObject({ code: 'workspace/ssh-failed', details: { path: '/srv/x', reason } })
+      expect(JSON.stringify({ message: (failure as Error).message, details: (failure as RemoteError<'workspace/ssh-failed'>).details })).not.toContain('pässwörd-secret')
+    }
+    remoteInspect.mockRejectedValueOnce(refusal('unrecognized'))
+    await expect(controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/x' } }))
+      .rejects.toMatchObject({ code: 'workspace/invalid-path' })
+  })
+
+  it('refuses a login choice for a local directory', async () => {
+    const { controller, root } = await harness()
+    const path = stageDir(root, 'local')
+    await expect(controller.create({ location: { kind: 'local', path }, sshAuth: { kind: 'key' } } as never))
+      .rejects.toMatchObject({ code: 'gateway/bad-request' })
+  })
+
+  it('forgets the saved password with the last Workspace of its host', async () => {
+    const { controller, remoteForget } = await harness()
+    const first = await controller.create({ location: { kind: 'ssh', host: 'alice@lab', path: '/srv/one' } })
+    const second = await controller.create({ location: { kind: 'ssh', host: 'alice@lab', path: '/srv/two' } })
+    await controller.delete({ workspaceId: first.workspace.workspaceId })
+    expect(remoteForget).not.toHaveBeenCalled()
+    await controller.delete({ workspaceId: second.workspace.workspaceId })
+    expect(remoteForget).toHaveBeenCalledExactlyOnceWith('alice@lab')
+  })
+
+  it('keeps passwords alone when a local Workspace is deleted or no SSH backend is composed', async () => {
+    const local = await harness()
+    const path = stageDir(local.root, 'local')
+    const created = await local.controller.create({ path })
+    await local.controller.delete({ workspaceId: created.workspace.workspaceId })
+    expect(local.remoteForget).not.toHaveBeenCalled()
+    const bare = await harness({ remote: false })
+    const stored = await bare.ctx.workspaceRegistry.create({ kind: 'ssh', host: 'alice@lab', path: '/srv/one' })
+    await expect(bare.controller.delete({ workspaceId: stored.id })).resolves.toEqual({ deleted: true })
   })
 
   it('serializes concurrent path adoption and preserves an existing title', async () => {

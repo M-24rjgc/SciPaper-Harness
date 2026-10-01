@@ -1033,7 +1033,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceCreateRequest',
-    declaration: 'export type WorkspaceCreateRequest = {\n    readonly path: string;\n    readonly location?: never;\n} | {\n    readonly location: WorkspaceLocation;\n    readonly path?: never;\n};',
+    declaration: 'export type WorkspaceCreateRequest = {\n    readonly path: string;\n    readonly location?: never;\n    readonly sshAuth?: never;\n} | {\n    readonly location: WorkspaceLocation;\n    readonly path?: never;\n    readonly sshAuth?: WorkspaceSshAuth;\n};',
+  },
+  {
+    name: 'WorkspaceSshAuth',
+    declaration: 'export type WorkspaceSshAuth = {\n    readonly kind: \'key\';\n} | {\n    readonly kind: \'password\';\n    readonly password: string;\n};',
   },
   {
     name: 'WorkspaceView',

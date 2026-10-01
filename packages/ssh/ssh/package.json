@@ -31,6 +31,10 @@
     "./schemas": {
       "types": "./lib/types/schemas.d.ts",
       "default": "./lib/schemas.js"
+    },
+    "./auth": {
+      "types": "./lib/types/auth.d.ts",
+      "default": "./lib/auth.js"
     }
   },
   "files": [
@@ -38,8 +42,10 @@
     "lib/helper.js",
     "lib/protocol.js",
     "lib/schemas.js",
+    "lib/auth.js",
     "lib/protocol-*.js",
     "lib/schemas-*.js",
+    "lib/auth-*.js",
     "lib/stream-security-*.js",
     "lib/types/**/*.d.ts"
   ],
@@ -55,7 +61,8 @@
     "@deepseek-ai/dsh-sandbox-local": "workspace:*",
     "@deepseek-ai/dsh-sandbox-policy": "workspace:*",
     "@deepseek-ai/dsh-session-projection": "workspace:*",
-    "@deepseek-ai/dsh-brand": "workspace:*"
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-credentials": "workspace:*"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:~",
@@ -79,6 +86,7 @@
     "@deepseek-ai/dsh-lsp": "workspace:*",
     "@deepseek-ai/dsh-lsp-stdio": "workspace:*",
     "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-credentials": "workspace:*",
     "typescript": "^6.0.3"
   },
   "scipaper": {

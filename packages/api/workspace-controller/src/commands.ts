@@ -25,10 +25,26 @@ import type {
   WorkspacePinSessionRequest,
   WorkspacePinValue,
   WorkspaceRenameRequest,
+  WorkspaceSshFailure,
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
 } from './types.ts'
+
+const SSH_FAILURES: readonly WorkspaceSshFailure[] = ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported']
+
+/** The classification of an SSH connection failure, read without importing the SSH package. */
+function sshFailureOf(error: unknown): WorkspaceSshFailure | undefined {
+  if (!(error instanceof Error) || error.name !== 'SshFailure') return undefined
+  const kind = (error as { kind?: unknown }).kind
+  return SSH_FAILURES.find(candidate => candidate === kind)
+}
+
+/** The SSH workspace service, reached by name so this package keeps no dependency on the SSH packages. */
+interface RemoteWorkspaces {
+  inspect(input: { host: string; path: string; auth?: WorkspaceCreateRequest['sshAuth'] }): Promise<{ canonicalPath: string }>
+  forget(host: string): Promise<void>
+}
 
 /** Interpret the legacy local path payload alongside explicit location identity. */
 function requestedLocation(request: WorkspaceCreateRequest): WorkspaceLocation {
@@ -53,14 +69,16 @@ export class WorkspaceCommands {
   create(request: WorkspaceCreateRequest): Promise<WorkspaceCreateValue> {
     return this.enqueue(async () => {
       let location = requestedLocation(request)
+      if (location.kind !== 'ssh' && request.sshAuth !== undefined) {
+        throw new RemoteError('gateway/bad-request', 'Only an SSH Workspace takes an authentication choice', {})
+      }
       try {
         if (location.kind === 'ssh') {
-          const services: { get(name: string): unknown } = this.ctx
-          const remote = services.get('remoteWorkspacePresets') as
-            | { inspect(input: { host: string; path: string }): Promise<{ canonicalPath: string }> }
-            | undefined
+          const remote = this.remoteWorkspaces()
           if (remote === undefined) throw new Error('SSH workspace backend is unavailable')
-          const verified = await remote.inspect({ host: location.host, path: location.path })
+          const verified = await remote.inspect({
+            host: location.host, path: location.path, ...request.sshAuth === undefined ? {} : { auth: request.sshAuth },
+          })
           location = { ...location, path: verified.canonicalPath }
         }
         const existing = await this.ctx.workspaceRegistry.resolveByPath(location)
@@ -71,6 +89,10 @@ export class WorkspaceCommands {
         return { workspace: workspaceView(workspace), created: true }
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error
+        const failure = sshFailureOf(error)
+        if (failure !== undefined) {
+          throw new RemoteError('workspace/ssh-failed', errorMessage(error), { path: location.path, reason: failure }, { cause: error })
+        }
         throw new RemoteError(
           'workspace/invalid-path',
           `cannot create a Workspace at "${location.kind === 'ssh' ? `${location.host}:` : ''}${location.path}": ${errorMessage(error)}`,
@@ -115,11 +137,21 @@ export class WorkspaceCommands {
    */
   delete(request: WorkspaceDeleteRequest): Promise<WorkspaceDeleteValue> {
     return this.enqueue(async () => {
+      const removed = this.ctx.workspaceRegistry.get(WorkspaceId(request.workspaceId))?.location
       if (!await this.ctx.workspaceRegistry.delete(WorkspaceId(request.workspaceId))) {
         throw workspaceNotFound(request.workspaceId)
       }
+      // A password saved for a host leaves with the last Workspace that uses the host.
+      if (removed?.kind === 'ssh' && !this.ctx.workspaceRegistry.list().some(item => item.location.kind === 'ssh' && item.location.host === removed.host)) {
+        await this.remoteWorkspaces()?.forget(removed.host)
+      }
       return { deleted: true }
     })
+  }
+
+  private remoteWorkspaces(): RemoteWorkspaces | undefined {
+    const services: { get(name: string): unknown } = this.ctx
+    return services.get('remoteWorkspacePresets') as RemoteWorkspaces | undefined
   }
 
   /**

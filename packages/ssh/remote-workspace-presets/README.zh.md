@@ -26,7 +26,9 @@ kind: "package-reference"
 
 将本服务与 `agentPresets` 及 SSH、文件系统、子进程、沙箱、Bash、搜索和 LSP 插件包一起挂载。调用 `inspect({ host, path })` 可获得 `{ presetId, canonicalPath }`；只需要预设 ID 时调用 `ensure({ host, path })`。SSH 登录、远端 Node.js、目录访问、辅助程序或 LSP 安装、预设激活失败时，两个方法都会报错。Host 同时挂载共享科研工作台服务时，可显式设置 `researchTools: true` 添加十类科研工具。
 
-主机参数是已有的 OpenSSH 别名。SSH 使用非交互模式，严格检查主机密钥，不转发 SSH Agent。远端主机需要 Node.js 22 或更新版本。本服务不配置 SSH 凭据，也不放宽主机密钥策略。
+主机参数是已有的 OpenSSH 别名，或带可选 `:端口` 的 `用户@主机`。SSH 使用非交互模式，严格检查主机密钥，不转发 SSH Agent。远端主机需要 Node.js 22 或更新版本。本服务不配置 SSH 凭据，也不放宽主机密钥策略。
+
+添加工作区时，`inspect` 还接受 `auth` 登录选择。`{ kind: 'password', password }` 会先拿这个密码向主机验证，主机接受之后才把它保存到凭据库中该主机的记录下（见[密码登录](../ssh/README.zh.md#password-login)）；密码错误不会改变任何内容，下一次请求会重新验证。`{ kind: 'key' }` 用 OpenSSH 密钥、认证代理和配置验证，并清除此前为该主机保存的密码。不带 `auth` 的请求，例如每次恢复会话，使用主机已保存的认证方式。`forget(host)` 删除已保存的密码。主机拒绝时会以 `SshFailure` 报错，其 `kind` 为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`；错误信息中绝不含密码。
 
 -----
 
@@ -62,6 +64,7 @@ kind: "package-reference"
 
 - 科研工具需要已就绪的 SSH 环境，将远端执行根目录映射到一个本地研究项目；它们不会在远端另建科研记录。
 - 仅支持 POSIX SSH 主机。SSH 别名认证、主机密钥录入及 Node.js 安装由本服务之外管理。
+- 保存密码需要已组合的 `ctx.credentials`；没有它时，选择密码会在运行任何 SSH 命令之前被拒绝。密码会一直留在凭据库中，直到 `forget` 或密钥登录将其替换。
 - 搜索依赖远端的 `rg` 可执行文件。TypeScript/JavaScript LSP 在工作区初始化时从随包运行时安装。
 
 <a id="dev-note"></a>

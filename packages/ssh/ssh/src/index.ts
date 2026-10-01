@@ -8,22 +8,34 @@ import { Duplex } from 'node:stream'
 import { Context, Service } from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
 import { z } from 'zod'
+import { planSshAuth, sshDestinationArguments, sshPasswordStoreOf, SSH_HOST_PATTERN, type SshAuthPlan } from './auth.ts'
 import { SshRpcPeer, SSH_PROTOCOL_VERSION } from './protocol.ts'
 import { helloSchema, type SshStreamEndpoint } from './schemas.ts'
 import { authenticateStream } from './stream-security.ts'
 
 type Hello = z.infer<typeof helloSchema>
 
-const SSH_OPTIONS = [
-  '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no',
-  '-o', 'ClearAllForwardings=yes', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
-] as const
+/** Fixed options for every ssh invocation; the authentication options come first. */
+function sshOptions(auth: SshAuthPlan): string[] {
+  return [
+    ...auth.options, '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no',
+    '-o', 'ClearAllForwardings=yes', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
+  ]
+}
+
+/** Spawn options that give a password-authenticated child its askpass environment. */
+function authEnvironment(auth: SshAuthPlan): { env?: NodeJS.ProcessEnv } {
+  return auth.env === undefined ? {} : { env: { ...process.env, ...auth.env } }
+}
 
 function quoteRemoteArgument(value: string): string { return `'${value.replaceAll("'", "'\\''")}'` }
 
 /** Deployment-owned SSH identity and installed helper; no model argument selects these values. */
 export interface Config {
-  /** OpenSSH host alias, including its existing user, key and known-host configuration. */
+  /**
+   * OpenSSH host alias, or `user@host` with an optional `:port`. An alias brings its existing user, key and
+   * known-host configuration. A host with a saved password authenticates with it; any other uses keys.
+   */
   host: string
   /** Absolute remote Node executable. */
   node: string
@@ -78,6 +90,7 @@ export class SshConnection extends Service {
   private nextSocket = 0
   private readonly config: Required<Omit<Config, 'bootstrapPath' | 'bootstrapHash'>> & Pick<Config, 'bootstrapPath' | 'bootstrapHash'>
   private remote: Hello | undefined
+  private auth: SshAuthPlan | undefined
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'ssh')
@@ -85,7 +98,7 @@ export class SshConnection extends Service {
       throw new Error('SSH runtime requires Linux, macOS, or Windows')
     }
     this.config = z.object({
-      host: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$/),
+      host: z.string().regex(SSH_HOST_PATTERN),
       node: z.string().startsWith('/'), helper: z.string().startsWith('/'), helperHash: z.string().regex(/^[0-9a-f]{64}$/),
       workspace: z.string().startsWith('/'), requestTimeoutMs: z.number().int().positive().max(2_147_483_647),
       bootstrapPath: z.string().startsWith('/').optional(), bootstrapHash: z.string().regex(/^[0-9a-f]{64}$/).optional(),
@@ -199,7 +212,10 @@ export class SshConnection extends Service {
       this.config.node, '--disable-sigusr1', this.config.helper,
       '--stream', endpoint.path, this.config.helperHash,
     ].map(quoteRemoteArgument).join(' ')
-    const child = spawn('ssh', ['-T', ...SSH_OPTIONS, this.config.host, command], { stdio: ['pipe', 'pipe', 'pipe'] })
+    const auth = this.auth as SshAuthPlan
+    const child = spawn('ssh', ['-T', ...sshOptions(auth), ...auth.destination, command], {
+      stdio: ['pipe', 'pipe', 'pipe'], ...authEnvironment(auth),
+    })
     this.streamChildren.add(child)
     child.once('close', () => { this.streamChildren.delete(child) })
     child.stderr.resume()
@@ -282,7 +298,8 @@ export class SshConnection extends Service {
     const combined = AbortSignal.any(signals)
     combined.throwIfAborted()
     const result = Promise.withResolvers<undefined>()
-    const command = execFile('ssh', ['-S', this.controlPath(), ...args, this.config.host], {
+    // The running master already authenticated; this client only talks to its control socket.
+    const command = execFile('ssh', ['-S', this.controlPath(), ...args, ...sshDestinationArguments(this.config.host)], {
       signal: combined, maxBuffer: 64 * 1024,
     }, (error) => { if (error === null) result.resolve(undefined); else result.reject(error) })
     const closed = new Promise<void>((resolve) => { command.once('close', () => { resolve() }) })
@@ -312,12 +329,14 @@ export class SshConnection extends Service {
 
   private async start(): Promise<Hello> {
     if (process.platform !== 'win32') this.directory = await mkdtemp('/tmp/dsh-ssh-')
+    const auth = await planSshAuth(this.config.host, sshPasswordStoreOf(this.ctx))
+    this.auth = auth
     if (this.closed) throw new Error('SSH connection closed before startup')
     const command = [this.config.node, '--disable-sigusr1', this.config.helper].map(quoteRemoteArgument).join(' ')
     const child = spawn('ssh', [
       '-T', ...(process.platform === 'win32' ? [] : ['-M', '-S', this.controlPath(), '-o', 'ControlPersist=no']),
-      ...SSH_OPTIONS, this.config.host, command,
-    ], { stdio: ['pipe', 'pipe', 'pipe'] })
+      ...sshOptions(auth), ...auth.destination, command,
+    ], { stdio: ['pipe', 'pipe', 'pipe'], ...authEnvironment(auth) })
     this.child = child
     this.childClosed = new Promise((resolve) => { child.once('close', () => { resolve() }) })
     child.stderr.resume() // SSH diagnostics can contain configured paths; operation errors remain structured.

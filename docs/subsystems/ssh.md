@@ -16,6 +16,10 @@ Administrative RPC uses the helper’s SSH exec streams. Ordinary stdin, stdout,
 
 Deployment authentication, installed artifact verification and per-stream TLS authentication belong to [`dsh-ssh`](../../packages/ssh/ssh/README.md). The helper executes filesystem and process requests with trusted local providers on the remote machine. SSH is a transport; the selected remote sandbox provider enforces file effects.
 
+## Login methods
+
+A host logs in with OpenSSH keys, agent or configuration, or with a password saved for it. Both run through the system `ssh` client with strict host-key checking. A password reaches `ssh` only through `SSH_ASKPASS` and the environment of that one child, never through an argument; every code path that starts `ssh` shares one plan for this, including the experiment runner's remote calls. The credential store keeps the password with the same protection as other credentials. [Password login](../../packages/ssh/ssh/README.md#password-login) states the mechanism, and the [decision record](../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.md) the alternatives.
+
 ## Process lifetime and cancellation
 
 A process is reserved before its streams are connected, and launch is accepted at most once. `done` reports the direct result; `waitForExit` observes the remote managed range. Terminal operations retain the asynchronous shared API. Preparation cancellation, launched-process termination and provider disposal release their owned resources through the helper.
@@ -33,7 +37,10 @@ See the [decision record](../../.agents/notes/implemented/architecture/2026-09-1
 ```ts type-equiv
 /** Deployment-owned SSH identity and installed helper; no model argument selects these values. */
 interface Config {
-  /** OpenSSH host alias, including its existing user, key and known-host configuration. */
+  /**
+   * OpenSSH host alias, or `user@host` with an optional `:port`. An alias brings its existing user, key and
+   * known-host configuration. A host with a saved password authenticates with it; any other uses keys.
+   */
   host: string
   /** Absolute remote Node executable. */
   node: string
@@ -121,10 +128,18 @@ isRemotePreset(id: string): boolean
 async ensure(request: RemoteWorkspaceRequest): Promise<string>
 
 /** Resolve the canonical remote path and mounted preset for a Session header.
- * @param request - configured OpenSSH alias and absolute POSIX workspace.
+ * A request with an authentication choice is always verified again, and a password is saved only after it worked.
+ * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.
  * @returns preset identity and verified canonical directory.
+ * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.
  */
-async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset>
+async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset>
+
+/**
+ * Forget the password saved for a host once no workspace uses it.
+ * @param host - OpenSSH alias or `user@host[:port]`.
+ */
+async forget(host: string): Promise<void>
 ```
 
 Source: [`packages/ssh/remote-workspace-presets/src/index.ts`](../../packages/ssh/remote-workspace-presets/src/index.ts)

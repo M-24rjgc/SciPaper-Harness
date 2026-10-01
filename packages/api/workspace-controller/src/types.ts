@@ -36,6 +36,11 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** The requested directory cannot back a Workspace. */
     'workspace/invalid-path': { readonly path: string }
+    /**
+     * The SSH host refused the connection: `reason` says whether login failed, the host could not be
+     * reached, its host key is unknown or changed, or this computer cannot send a password.
+     */
+    'workspace/ssh-failed': { readonly path: string; readonly reason: WorkspaceSshFailure }
     /** Another Workspace already uses the requested name. */
     'workspace/name-conflict': { readonly name: string }
     /**
@@ -64,10 +69,25 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   }
 }
 
-/** Directory requested for Workspace registration; legacy path means local. */
+/** Why an SSH Workspace could not be registered. */
+export type WorkspaceSshFailure = 'auth' | 'unreachable' | 'host-key' | 'host-key-changed' | 'unsupported'
+
+/**
+ * How a person chose to authenticate to the SSH host of a new Workspace. `key` uses OpenSSH keys, agent and
+ * configuration and drops a password saved earlier for the host. A `password` is verified, then saved in the
+ * credential store; no Workspace record, event or response carries it.
+ */
+export type WorkspaceSshAuth =
+  | { readonly kind: 'key' }
+  | { readonly kind: 'password'; readonly password: string }
+
+/**
+ * Directory requested for Workspace registration; legacy path means local. An SSH location may choose how to
+ * authenticate; without a choice the host keeps its saved authentication.
+ */
 export type WorkspaceCreateRequest =
-  | { readonly path: string; readonly location?: never }
-  | { readonly location: WorkspaceLocation; readonly path?: never }
+  | { readonly path: string; readonly location?: never; readonly sshAuth?: never }
+  | { readonly location: WorkspaceLocation; readonly path?: never; readonly sshAuth?: WorkspaceSshAuth }
 
 /** Created or previously registered Workspace. */
 export interface WorkspaceCreateValue {

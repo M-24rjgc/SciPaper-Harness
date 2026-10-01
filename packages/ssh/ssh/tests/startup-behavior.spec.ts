@@ -165,6 +165,18 @@ describe.skipIf(process.platform === 'win32')('SSH connection startup', () => {
     expect(test.calls[0]?.params).toEqual({ protocol: 1, workspace: '/remote/workspace', leaseMs: 30_000, bootstrapPath: '/remote/process.js' })
   })
 
+  it('addresses the master and its forwarding commands by user, host and port', async () => {
+    const test = setup({ config: { host: 'alice@lab.example.org:2222' } })
+    await test.service.ready
+    const argv = transport.spawn.mock.calls[0]?.[1] as string[]
+    expect(argv.slice(-4, -1)).toEqual(['-p', '2222', 'alice@lab.example.org'])
+    expect(argv).toContain('BatchMode=yes')
+    await test.service.connectStream({ path: '/tmp/remote-helper/control', capability: 'b'.repeat(64) })
+    const forward = transport.exec.mock.calls[0]?.[1] as string[]
+    expect(forward.slice(-3)).toEqual(['-p', '2222', 'alice@lab.example.org'])
+    expect(forward).toContain('forward')
+  })
+
   it('permits filesystem-only deployments and refuses an unconfigured PTC bootstrap getter', async () => {
     const test = setup()
     await test.service.ready

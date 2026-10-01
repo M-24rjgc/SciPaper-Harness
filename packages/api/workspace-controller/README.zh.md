@@ -26,6 +26,13 @@ Host 控制器会串行执行正确性取决于当前注册表状态的变更，
 
 Client 入口提供 `ClientWorkspaceModel` 和 `createWorkspaceStateStream()`。该模型拥有 Workspace 行、registry 顺序、归档与置顶会话身份、一元变更回显，以及流与一元调用的竞态处理。较新的 Host 行按 `updatedAt` 获胜；已提交的流顺序优先于较旧的一元响应；已经移除的 Workspace id 不会被延迟数据复活。置顶快照仅在会话身份或顺序变化时更新。该包公开与框架无关的快照和订阅，把导航策略与 React 钩子留给 UI owner。`WorkspaceController.archiveSession(sessionId, { stopActivity })` 抛出携带 Host `rpcError` 的 `WorkspaceArchiveError`，界面因此能区分"仍有工作在跑"的拒绝与会话缺失或载体故障，并提议停止这些工作。
 
+<a id="ssh-workspaces"></a>
+### SSH 工作区
+
+`workspace.create({ location: { kind: 'ssh', host, path }, sshAuth })` 通过 `remoteWorkspacePresets` 服务登记远端目录，本包按名称访问该服务。`host` 是 OpenSSH 别名或 `用户@主机[:端口]`；Workspace 记录、Session 头部和每个响应都只携带这种写法，绝不携带密钥。可选的 `sshAuth` 为该主机选择登录方式：`{ kind: 'key' }` 使用 OpenSSH 密钥、认证代理和配置，并清除此前保存的密码；`{ kind: 'password', password }` 先向主机验证，主机接受之后才保存到凭据库。不带 `sshAuth` 的请求保留该主机已保存的登录方式。本地位置带 `sshAuth` 会以 `gateway/bad-request` 拒绝。
+
+主机拒绝时以 `workspace/ssh-failed` 失败，其 details 给出 `path` 与 `reason`（`auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`），由 Client 用读者的语言表述；消息为英文且不含密码。其他设置失败仍为 `workspace/invalid-path`。删除使用某主机的最后一个 Workspace 时，也会删除该主机已保存的密码。
+
 <a id="first-use-workspace"></a>
 ### 首次使用工作区
 

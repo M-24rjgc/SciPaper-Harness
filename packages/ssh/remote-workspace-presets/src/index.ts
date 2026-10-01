@@ -4,7 +4,8 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import schema from '@deepseek-ai/schemastery'
 import type { PresetDefinition } from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import { provisionRemoteWorkspace, validateRemoteWorkspace, type RemoteWorkspaceRequest, type RemoteWorkspaceRuntime } from './provision.ts'
+import { sshPasswordStoreOf, validateSshPassword, type SshPasswordStore } from '@deepseek-ai/dsh-ssh/auth'
+import { provisionRemoteWorkspace, validateRemoteWorkspace, type RemoteWorkspaceAuth, type RemoteWorkspaceRequest, type RemoteWorkspaceRuntime } from './provision.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { remoteWorkspacePresets: RemoteWorkspacePresets }
@@ -14,6 +15,20 @@ declare module '@deepseek-ai/cordis' {
 export interface RemoteWorkspacePreset {
   presetId: string
   canonicalPath: string
+}
+
+/**
+ * The authentication a person chose while adding a workspace. `key` uses OpenSSH keys, agent and
+ * configuration and forgets any saved password of the host; `password` is verified, then saved.
+ */
+export type RemoteWorkspaceAuthChoice =
+  | { readonly kind: 'key' }
+  | { readonly kind: 'password'; readonly password: string }
+
+/** A workspace to verify, with the authentication chosen for its host when the person is adding it. */
+export interface RemoteWorkspaceInspection extends RemoteWorkspaceRequest {
+  /** Absent for a workspace that already exists, which uses the host's saved authentication. */
+  readonly auth?: RemoteWorkspaceAuthChoice
 }
 
 /** Product composition may explicitly include research tools when a shared ledger service is mounted. */
@@ -80,6 +95,8 @@ export class RemoteWorkspacePresets extends Service {
   static inject = ['agentPresets']
   static Config: schema<Config> = schema.object({ researchTools: schema.boolean().default(false) })
   private readonly pending = new Map<string, Promise<RemoteWorkspacePreset>>()
+  /** Verifications that carry a new authentication choice; they are never reused and settle before shutdown. */
+  private readonly choosing = new Set<Promise<RemoteWorkspacePreset>>()
   private readonly mounting = new Map<string, Promise<RemoteWorkspacePreset>>()
   private readonly mounted = new Map<string, RemoteWorkspacePreset>()
   private readonly disposers = new Map<string, () => Promise<void>>()
@@ -99,7 +116,7 @@ export class RemoteWorkspacePresets extends Service {
     this.researchTools = config.researchTools === true
     ctx.effect(() => async () => {
       this.closed = true
-      await Promise.allSettled([...this.pending.values()])
+      await Promise.allSettled([...this.pending.values(), ...this.choosing])
       await Promise.all([...this.disposers.values()].map(dispose => dispose()))
       this.disposers.clear()
       this.mounted.clear()
@@ -113,23 +130,57 @@ export class RemoteWorkspacePresets extends Service {
   async ensure(request: RemoteWorkspaceRequest): Promise<string> { return (await this.inspect(request)).presetId }
 
   /** Resolve the canonical remote path and mounted preset for a Session header.
-   * @param request - configured OpenSSH alias and absolute POSIX workspace.
+   * A request with an authentication choice is always verified again, and a password is saved only after it worked.
+   * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.
    * @returns preset identity and verified canonical directory.
+   * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.
    */
-  async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset> {
+  async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset> {
     if (this.closed) throw new Error('Remote workspace preset service is closed')
     validateRemoteWorkspace(request)
+    if (request.auth?.kind === 'password') validateSshPassword(request.auth.password)
     const key = `${request.host}\0${request.path}`
+    // The coordinates alone travel on: nothing below needs the choice object that holds the password.
+    if (request.auth !== undefined) return this.choose(key, { host: request.host, path: request.path }, request.auth)
     const existing = this.pending.get(key)
     if (existing !== undefined) return existing
-    const operation = this.prepare(request)
+    const passwords = sshPasswordStoreOf(this.ctx)
+    const operation = this.prepare(request, passwords === undefined ? {} : { passwords })
     this.pending.set(key, operation)
     try { return await operation } catch (error) { this.pending.delete(key); throw error }
   }
 
-  private async prepare(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset> {
-    const runtime = await provisionRemoteWorkspace(request)
+  /**
+   * Forget the password saved for a host once no workspace uses it.
+   * @param host - OpenSSH alias or `user@host[:port]`.
+   */
+  async forget(host: string): Promise<void> {
+    await sshPasswordStoreOf(this.ctx)?.delete(host)
+  }
+
+  private async choose(key: string, request: RemoteWorkspaceRequest, choice: RemoteWorkspaceAuthChoice): Promise<RemoteWorkspacePreset> {
+    const store = sshPasswordStoreOf(this.ctx)
+    if (choice.kind === 'password' && store === undefined) throw new Error('Saving an SSH password needs a credential provider')
+    // The choice is saved only after the host accepted it, so a typo never replaces a working password.
+    const save = async (): Promise<void> => {
+      if (choice.kind === 'password') await (store as SshPasswordStore).set(request.host, choice.password)
+      else await store?.delete(request.host)
+    }
+    const operation = this.prepare(request, choice.kind === 'password' ? { password: choice.password } : {}, save)
+    this.choosing.add(operation)
+    try {
+      const result = await operation
+      this.pending.set(key, operation)
+      return result
+    } finally { this.choosing.delete(operation) }
+  }
+
+  private async prepare(
+    request: RemoteWorkspaceRequest, auth: RemoteWorkspaceAuth, save?: () => Promise<void>,
+  ): Promise<RemoteWorkspacePreset> {
+    const runtime = await provisionRemoteWorkspace(request, auth)
     if (this.closed) throw new Error('Remote workspace preset service closed during SSH setup')
+    await save?.()
     const id = presetId(request.host, runtime.canonicalPath)
     const existing = this.mounted.get(id)
     if (existing !== undefined) return existing

@@ -5,17 +5,25 @@ import { readFile, readdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, posix } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { planSshAuth, sshFailureFrom, SSH_HOST_PATTERN, type SshPasswordLookup } from '@deepseek-ai/dsh-ssh/auth'
 
-const SSH_OPTIONS = [
-  '-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no',
-  '-o', 'ClearAllForwardings=yes', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
-] as const
 const MAX_RESPONSE_BYTES = 64 * 1024
 const MAX_HELPER_BYTES = 8 * 1024 * 1024
 const MAX_LSP_ARCHIVE_BYTES = 32 * 1024 * 1024
 
 /** One workspace the remote helper can address. */
 export interface RemoteWorkspaceRequest { host: string; path: string }
+
+/**
+ * How the setup commands authenticate. Without either field the host uses OpenSSH keys, agent or
+ * configuration.
+ */
+export interface RemoteWorkspaceAuth {
+  /** A password to verify before it is saved; it takes the place of a saved one. */
+  password?: string
+  /** Saved passwords; one saved for the host is used. */
+  passwords?: SshPasswordLookup
+}
 
 /** Verified executable and canonical directory coordinates on an SSH host. */
 export interface RemoteWorkspaceRuntime {
@@ -27,11 +35,11 @@ export interface RemoteWorkspaceRuntime {
   typescriptLanguageServer: string
 }
 
-/** Validate SSH alias and POSIX path before either reaches an SSH argument.
- * @param request - configured host alias and proposed remote workspace path.
+/** Validate SSH host and POSIX path before either reaches an SSH argument.
+ * @param request - OpenSSH alias or `user@host[:port]`, and the proposed remote workspace path.
  */
 export function validateRemoteWorkspace(request: RemoteWorkspaceRequest): void {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$/u.test(request.host)) throw new Error('SSH host must be a configured OpenSSH alias')
+  if (!SSH_HOST_PATTERN.test(request.host)) throw new Error('SSH host must be an OpenSSH alias or user@host with an optional :port')
   if (!posix.isAbsolute(request.path) || /[\0\r\n]/u.test(request.path)) throw new Error('SSH workspace path must be an absolute POSIX path')
 }
 
@@ -41,14 +49,24 @@ function quote(value: string): string {
 }
 
 /** Run one bounded noninteractive SSH command, optionally streaming an artifact into stdin.
- * @param host - configured OpenSSH host alias.
+ * @param host - OpenSSH host alias, or `user@host[:port]`.
  * @param command - fully quoted command for the remote shell.
  * @param input - optional artifact streamed to remote standard input.
  * @param timeoutMs - maximum command runtime in milliseconds.
+ * @param auth - how to authenticate; keys, agent and ssh configuration when omitted.
  * @returns remote standard output without trailing whitespace.
+ * @throws {SshFailure} when ssh reports a wrong password, an unreachable host or an untrusted host key; the
+ * message is free of the password.
  */
-export async function sshCommand(host: string, command: string, input?: Uint8Array, timeoutMs = 30_000): Promise<string> {
-  const child = spawn('ssh', [...SSH_OPTIONS, host, command], { stdio: ['pipe', 'pipe', 'pipe'] })
+export async function sshCommand(
+  host: string, command: string, input?: Uint8Array, timeoutMs = 30_000, auth: RemoteWorkspaceAuth = {},
+): Promise<string> {
+  const plan = await planSshAuth(host, auth.passwords, auth.password)
+  const child = spawn('ssh', [
+    '-T', ...plan.options, '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no',
+    '-o', 'ClearAllForwardings=yes', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
+    ...plan.destination, command,
+  ], { stdio: ['pipe', 'pipe', 'pipe'], ...plan.env === undefined ? {} : { env: { ...process.env, ...plan.env } } })
   const chunks: Buffer[] = []
   const errors: Buffer[] = []
   let outputBytes = 0
@@ -67,8 +85,10 @@ export async function sshCommand(host: string, command: string, input?: Uint8Arr
     })
     child.once('close', (code) => {
       if (outputBytes > MAX_RESPONSE_BYTES) reject(new Error('SSH setup returned too much output'))
-      else if (code !== 0) reject(new Error(`SSH setup failed (exit ${String(code)}): ${Buffer.concat(errors).toString('utf8').trim()}`))
-      else resolve(Buffer.concat(chunks).toString('utf8').trim())
+      else if (code !== 0) {
+        const text = plan.redact(Buffer.concat(errors).toString('utf8').trim())
+        reject(sshFailureFrom(text, new Error(`SSH setup failed (exit ${String(code)}): ${text}`)))
+      } else resolve(Buffer.concat(chunks).toString('utf8').trim())
     })
   })
   child.stdin.on('error', () => { /* A failed remote command may close its input before upload completes. */ })
@@ -235,24 +255,27 @@ function absolutePath(value: unknown, label: string): string {
 }
 
 /** Upload the local release helper and validate the remote directory before preset registration.
- * @param request - configured host alias and remote workspace path.
+ * @param request - host and remote workspace path.
+ * @param auth - how to authenticate; keys, agent and ssh configuration when omitted.
  * @returns verified remote helper, language server, and canonical workspace paths.
  */
-export async function provisionRemoteWorkspace(request: RemoteWorkspaceRequest): Promise<RemoteWorkspaceRuntime> {
+export async function provisionRemoteWorkspace(
+  request: RemoteWorkspaceRequest, auth: RemoteWorkspaceAuth = {},
+): Promise<RemoteWorkspaceRuntime> {
   validateRemoteWorkspace(request)
   const helperBytes = await readFile(fileURLToPath(import.meta.resolve('@deepseek-ai/dsh-ssh/helper')))
   if (helperBytes.length > MAX_HELPER_BYTES) throw new Error('Bundled SSH helper exceeds the upload size limit')
   const helperHash = createHash('sha256').update(helperBytes).digest('hex')
-  const nodeFacts = parseObject(await sshCommand(request.host, `node --disable-sigusr1 -e ${quote(DISCOVER_NODE)}`), 'SSH Node discovery')
+  const nodeFacts = parseObject(await sshCommand(request.host, `node --disable-sigusr1 -e ${quote(DISCOVER_NODE)}`, undefined, undefined, auth), 'SSH Node discovery')
   const node = absolutePath(nodeFacts.node, 'Remote Node executable')
   if (typeof nodeFacts.major !== 'number' || nodeFacts.major < 22) throw new Error('SSH host needs Node.js 22 or newer')
   const installed = parseObject(await sshCommand(request.host,
     `${quote(node)} --disable-sigusr1 -e ${quote(INSTALL_HELPER)} ${quote(helperHash)} ${quote(request.path)}`,
-    helperBytes), 'SSH helper installation')
+    helperBytes, undefined, auth), 'SSH helper installation')
   const archive = await buildRemoteLspArchive()
   const lsp = parseObject(await sshCommand(request.host,
     `${quote(node)} --disable-sigusr1 -e ${quote(INSTALL_LSP)} ${quote(archive.hash)}`,
-    archive.bytes, 120_000), 'SSH LSP installation')
+    archive.bytes, 120_000, auth), 'SSH LSP installation')
   return {
     node,
     helper: absolutePath(installed.helper, 'Installed SSH helper'),

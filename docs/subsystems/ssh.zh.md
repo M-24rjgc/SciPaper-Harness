@@ -16,6 +16,10 @@
 
 部署认证、已安装产物验证及逐流 TLS 认证属于 [`dsh-ssh`](../../packages/ssh/ssh/README.zh.md)。辅助进程使用远端机器上的可信本地提供方执行文件系统与进程请求。SSH 是传输方式；文件效果限制由所选远端沙箱提供方执行。
 
+## 登录方式
+
+主机用 OpenSSH 密钥、认证代理或配置登录，也可以用为它保存的密码登录。两种方式都通过系统的 `ssh` 客户端运行，并严格检查主机密钥。密码只通过 `SSH_ASKPASS` 和那一个子进程的环境交给 `ssh`，绝不通过命令行参数；所有启动 `ssh` 的代码路径共用同一个方案，包括实验运行器的远程调用。凭据库对密码的保护与其他凭据相同。[密码登录](../../packages/ssh/ssh/README.zh.md#password-login)说明其机制，[决策记录](../../.agents/notes/implemented/architecture/2026-10-01-ssh-password-login.zh.md)说明替代方案。
+
 ## 进程生命周期与取消
 
 进程先预留，再连接流，且启动最多接受一次。`done` 报告直接结果，`waitForExit` 观察远端托管进程范围。终端操作保留共享异步 API。准备阶段取消、已启动进程终止及提供方释放都通过辅助进程释放各自资源。
@@ -33,7 +37,10 @@ headless 通过已挂载的文件系统提供方记录和检查 Session cwd。�
 ```ts type-equiv
 /** Deployment-owned SSH identity and installed helper; no model argument selects these values. */
 interface Config {
-  /** OpenSSH host alias, including its existing user, key and known-host configuration. */
+  /**
+   * OpenSSH host alias, or `user@host` with an optional `:port`. An alias brings its existing user, key and
+   * known-host configuration. A host with a saved password authenticates with it; any other uses keys.
+   */
   host: string
   /** Absolute remote Node executable. */
   node: string
@@ -121,10 +128,18 @@ isRemotePreset(id: string): boolean
 async ensure(request: RemoteWorkspaceRequest): Promise<string>
 
 /** Resolve the canonical remote path and mounted preset for a Session header.
- * @param request - configured OpenSSH alias and absolute POSIX workspace.
+ * A request with an authentication choice is always verified again, and a password is saved only after it worked.
+ * @param request - SSH host, absolute POSIX workspace and, when a workspace is being added, how to authenticate.
  * @returns preset identity and verified canonical directory.
+ * @throws {SshFailure} when SSH reports a wrong password, an unreachable host or an untrusted host key.
  */
-async inspect(request: RemoteWorkspaceRequest): Promise<RemoteWorkspacePreset>
+async inspect(request: RemoteWorkspaceInspection): Promise<RemoteWorkspacePreset>
+
+/**
+ * Forget the password saved for a host once no workspace uses it.
+ * @param host - OpenSSH alias or `user@host[:port]`.
+ */
+async forget(host: string): Promise<void>
 ```
 
 Source: [`packages/ssh/remote-workspace-presets/src/index.ts`](../../packages/ssh/remote-workspace-presets/src/index.ts)

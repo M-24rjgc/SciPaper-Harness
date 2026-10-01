@@ -2487,7 +2487,7 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-remote-workspace-presets`
 
 - `inject`: `agentPresets`
-- `source`: [`packages/ssh/remote-workspace-presets/src/index.ts:20`](../packages/ssh/remote-workspace-presets/src/index.ts)
+- `source`: [`packages/ssh/remote-workspace-presets/src/index.ts:35`](../packages/ssh/remote-workspace-presets/src/index.ts)
 
 ```ts config-catalog
 /** Product composition may explicitly include research tools when a shared ledger service is mounted. */
@@ -2540,7 +2540,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-research-workbench`
 
 - `inject`: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals` · `sessions` · `permissionPresets`
-- `source`: [`packages/research/workbench/src/index.ts:56`](../packages/research/workbench/src/index.ts)
+- `source`: [`packages/research/workbench/src/index.ts:57`](../packages/research/workbench/src/index.ts)
 
 ```ts config-catalog
 /** Research workbench configuration. */
@@ -3099,12 +3099,15 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-ssh`
 
-- `source`: [`packages/ssh/ssh/src/index.ts:25`](../packages/ssh/ssh/src/index.ts)
+- `source`: [`packages/ssh/ssh/src/index.ts:34`](../packages/ssh/ssh/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-owned SSH identity and installed helper; no model argument selects these values. */
 export interface Config {
-  /** OpenSSH host alias, including its existing user, key and known-host configuration. */
+  /**
+   * OpenSSH host alias, or `user@host` with an optional `:port`. An alias brings its existing user, key and
+   * known-host configuration. A host with a saved password authenticates with it; any other uses keys.
+   */
   host: string
   /** Absolute remote Node executable. */
   node: string
