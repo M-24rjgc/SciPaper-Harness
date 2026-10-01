@@ -102,6 +102,8 @@ export const SERVICE_PAGE: Record<string, string> = {
   planMode: 'plan.md',
   research: 'research.md',
   researchKnowledge: 'research.md',
+  researchKnowledgeMap: 'research.md',
+  researchKnowledgeEvidence: 'research.md',
   terminals: 'terminal.md',
   sandbox: 'sandbox.md',
   sandboxPolicy: 'sandbox.md',
@@ -852,6 +854,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   ...Object.fromEntries([
     'ResearchSnapshot', 'ResearchTask', 'CreateProjectRequest', 'ResearchProject', 'ResearchPreferences',
     'ResearchResponse', 'ResearchCommand', 'ProjectId', 'ResearchModeEvent', 'ResearchStanding', 'ResearchGoal',
+    'EvidenceGraphPage', 'MapViewPage', 'MapOverlayPage',
   ].map(name => [name, 'research record contract is owned by packages/research/workbench/src/types.ts'])),
   ProductEvent: 'Desktop event fields are owned by packages/client/product-analytics/README.md and src/events.ts',
   ConnectionFetchHandler: 'shared Fetch dispatch is owned by packages/client/connection/src/rpc.ts',

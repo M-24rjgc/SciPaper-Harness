@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-01-knowledge-graph-sub-plugins.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-01-knowledge-graph-sub-plugins.md
+/agent-note-knowledge-graph-sub-plugins-and-the-evidence-graph:
+  en: ddfc238697d13502
+  zh: edaad4eb85f37799
+/agent-note-knowledge-graph-sub-plugins-and-the-evidence-graph/problem:
+  en: 77c73cc73774be44
+  zh: 11076d6a97b43f31
+/agent-note-knowledge-graph-sub-plugins-and-the-evidence-graph/decision:
+  en: d281d78d3e33acda
+  zh: adc2b5c500c4b0a7
+/agent-note-knowledge-graph-sub-plugins-and-the-evidence-graph/alternatives-considered:
+  en: 5010ef4a3978ecb2
+  zh: 3ecf8bb5d2df5aa3
+/agent-note-knowledge-graph-sub-plugins-and-the-evidence-graph/consequences:
+  en: 8a574de20be8185c
+  zh: 3409925e1718dd29

@@ -1,3 +1,7 @@
 - insert:
     - id: research-knowledge-provider
       name: '@deepseek-ai/dsh-research-workbench/knowledge-plugin'
+    - id: research-knowledge-map
+      name: '@deepseek-ai/dsh-research-workbench/knowledge-map-plugin'
+    - id: research-knowledge-evidence
+      name: '@deepseek-ai/dsh-research-workbench/knowledge-evidence-plugin'

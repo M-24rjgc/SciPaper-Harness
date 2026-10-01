@@ -35,6 +35,8 @@ import { fetchReferenceFigures, generateImage } from './images.ts'
 import { FigureGallery } from './gallery.ts'
 import { createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder } from './knowledge.ts'
 import type {} from './knowledge-plugin.ts'
+import type {} from './knowledge-map-plugin.ts'
+import type {} from './knowledge-evidence-plugin.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
 import {
@@ -48,8 +50,9 @@ import {
   blankRecord, canonicalPath, DRAFT_TITLE, holdsFiles, nextDraftRoot, onlyScaffold, removeEmptyScaffold, resolveResearchHome, SCAFFOLD,
 } from './drafts.ts'
 import type {
-  ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, LiteratureItem, ProjectId, ResearchCommand, ResearchGoal,
-  ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchStanding, ResearchTask, VisualReview,
+  ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, KnowledgeModules, LiteratureItem, ProjectId,
+  ResearchCommand, ResearchGoal, ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
+  ResearchStanding, ResearchTask, VisualReview,
 } from './types.ts'
 export type * from './types.ts'
 
@@ -90,6 +93,14 @@ type KnowledgeAction = 'graph-status' | 'graph-view' | 'recall' | 'novelty' | 'b
 type KnowledgeCommand = Extract<ResearchCommand, { action: KnowledgeAction }>
 const KNOWLEDGE_ACTIONS: ReadonlySet<string> = new Set<KnowledgeAction>(['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns'])
 function isKnowledgeCommand(request: ResearchCommand): request is KnowledgeCommand { return KNOWLEDGE_ACTIONS.has(request.action) }
+/** The commands of the optional knowledge sub-plugins; each one refuses by name while its plugin is off. */
+type ModuleAction = 'evidence-graph' | 'map-view' | 'map-overlay'
+type ModuleCommand = Extract<ResearchCommand, { action: ModuleAction }>
+const MODULE_ACTIONS: ReadonlySet<string> = new Set<ModuleAction>(['evidence-graph', 'map-view', 'map-overlay'])
+function isModuleCommand(request: ResearchCommand): request is ModuleCommand { return MODULE_ACTIONS.has(request.action) }
+/** Why a command of a sub-plugin that is not mounted is refused. */
+const EVIDENCE_DISABLED = 'Evidence graph plugin is disabled. Enable Evidence graph in Plugins to read the question, conclusions and evidence of a research.'
+const MAP_DISABLED = 'Domain map plugin is disabled. Enable Domain map in Plugins (it also needs Knowledge graph).'
 /**
  * The person's commands: open, move or remove the untouched draft research,
  * and remove a research from the list or restore it; the agent never sends them.
@@ -101,7 +112,7 @@ const PERSON_ACTIONS: ReadonlySet<ResearchCommand['action']> = new Set<PersonCom
 /** Commands on one existing project. */
 type ProjectCommand = Exclude<ResearchCommand, PersonCommand>
 /** Commands that record something in the project. */
-type RecordingCommand = Exclude<ProjectCommand, { action: ReadOnlyAction | KnowledgeAction }>
+type RecordingCommand = Exclude<ProjectCommand, { action: ReadOnlyAction | KnowledgeAction | ModuleAction }>
 /** Commands whose whole effect is a record change. */
 type ShortCommand = Extract<ResearchCommand, {
   action: 'set-mode' | 'set-autonomy' | 'rename' | 'record-decision' | 'claim' | 'save-artifact' | 'register-artifact' | 'experiment-dismiss' | 'complete-visual-review'
@@ -229,6 +240,10 @@ export class ResearchWorkbench extends TypertRemoteService {
   readonly components: ComponentManager
   /** Whether the optional graph provider is mounted in this profile. */
   get knowledgeEnabled(): boolean { return this.ctx.get('researchKnowledge') !== undefined }
+  /** Which optional knowledge sub-plugins are mounted in this profile. */
+  get knowledgeModules(): KnowledgeModules {
+    return { map: this.ctx.get('researchKnowledgeMap') !== undefined, evidence: this.ctx.get('researchKnowledgeEvidence') !== undefined }
+  }
   /** Published papers' Figure 1s to study before drawing, fetched on demand into the product home's cache. */
   readonly gallery: FigureGallery
   /** Each project's experiment board: the agent's layout, filled by scripts on a timer. */
@@ -422,7 +437,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       preferences: structuredClone(this.domain.global.get()),
       components: await this.components.status(),
       modes: this.modes.summaries(),
-      knowledge: { enabled: this.knowledgeEnabled },
+      knowledge: { enabled: this.knowledgeEnabled, modules: this.knowledgeModules },
       researchHome: this.researchHome(),
     }
   }
@@ -786,6 +801,7 @@ export class ResearchWorkbench extends TypertRemoteService {
         ? this.begin(request.action, project.id, signal => this.runKnowledge(request, signal))
         : this.clipped(await this.runKnowledge(request, signal))
     }
+    if (isModuleCommand(request)) return this.runModule(request, project, signal)
     switch (request.action) {
       case 'search-evidence': return this.clipped(searchEvidence(this.getProject(project.id), request.query, this.config.maxSourceBytes))
       case 'read-artifact': {
@@ -1319,7 +1335,9 @@ export class ResearchWorkbench extends TypertRemoteService {
       switch (request.action) {
         case 'graph-status': return {
           message: 'Knowledge graphs available to this project',
-          content: JSON.stringify(await knowledge.status(root, this.domain.global.get().embedding?.model)),
+          content: JSON.stringify({
+            ...await knowledge.status(root, this.domain.global.get().embedding?.model), modules: this.knowledgeModules,
+          }),
         }
         case 'graph-view': return { message: 'Research knowledge graph', knowledgeGraph: await knowledge.view(root, request) }
         case 'recall': {
@@ -1347,6 +1365,29 @@ export class ResearchWorkbench extends TypertRemoteService {
         }
       }
     })
+  }
+
+  /** Execute a command of an optional knowledge sub-plugin; a plugin that is not mounted refuses by its name. */
+  private async runModule(request: ModuleCommand, project: ResearchProject, signal: AbortSignal): Promise<ResearchResponse> {
+    switch (request.action) {
+      case 'evidence-graph': {
+        const provider = this.ctx.get('researchKnowledgeEvidence')
+        if (!provider) throw new Error(EVIDENCE_DISABLED)
+        const evidenceGraph = provider.graph(project)
+        const { claims, supported, stale, missing } = evidenceGraph.summary
+        return { message: `Evidence graph: ${claims} claim(s), ${supported} supported, ${stale} to re-check, ${missing} without evidence`, evidenceGraph }
+      }
+      case 'map-view': {
+        const provider = this.ctx.get('researchKnowledgeMap')
+        if (!provider) throw new Error(MAP_DISABLED)
+        return { message: 'The domain map is not built yet', mapView: await provider.view(signal) }
+      }
+      case 'map-overlay': {
+        const provider = this.ctx.get('researchKnowledgeMap')
+        if (!provider) throw new Error(MAP_DISABLED)
+        return { message: 'The domain map is not built yet', mapOverlay: await provider.overlay(signal) }
+      }
+    }
   }
 
   /**

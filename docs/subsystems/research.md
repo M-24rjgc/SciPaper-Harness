@@ -119,6 +119,10 @@ A read runs three kinds of script: `board-view` with `refresh` starts one at mos
 
 Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. With an embedding endpoint configured (`preferences.embedding`, key `RESEARCH_EMBEDDING_API_KEY`), cosine similarity over pattern texts joins in by reciprocal-rank fusion, novelty compares the story with the closest works in embedding space against the upstream 0.88 / 0.82 bands, and a project graph clusters by average linkage instead of k-means. Every result names its basis. Graphs load on first use and are released after ten idle minutes.
 
+The graph is optional and split across three plugins of the knowledge bundle, each with its own switch: the engine behind `research_knowledge`, the domain map and the evidence graph. The domain map injects the engine; the evidence graph reads only the project record. A command of a plugin that is off fails with an error naming it, `graph-status` and the snapshot's `knowledge.modules` report which are on, and disabling a plugin deletes no file under `.research`.
+
+The evidence graph (`evidence-graph`) is a pure projection of the project record, computed by `src/knowledge-evidence.ts` and stored nowhere. It returns the research question (the brief, else the title), each claim with its status, the files that carry it and its citations, and the runs, literature and files the claims cite; a run is one node however many of its outputs are cited. A claim's status derives from recorded fields alone. A claim recorded `contradicted` is `contradicted`. A claim that cites nothing is `proposed` when it is a hypothesis and `missing` otherwise. A claim that cites a source that is gone, recorded stale or on another revision than the one cited, or that is recorded `stale`, is `stale`. A claim recorded `proposed` stays `proposed`, and every other claim is `supported`. A claim that cites nothing and that a run can test, an empirical claim or a hypothesis, is shown with the runs that are in progress or finished without collected results, at most three, because the record does not tie a planned run to a claim; without such a run it carries a marker that nothing is cited or under way. The domain map's `map-view` and `map-overlay` answer `built: false` while the plugin has no map data.
+
 ## Checks
 
 `research_check` runs deterministic checks over the files on disk and the ledger, and reports; it is the definition of done, not a permission. The base checks below run in every mode; a pack adds its phases and gates. A phase is done when its requirements hold and its checks carry no errors. The whole paper (scope `all`) is clean only when no check reports an error and every phase of its mode on its route is done.
@@ -332,6 +336,55 @@ run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) =
 ```
 
 Source: [`packages/research/workbench/src/knowledge-plugin.ts`](../../packages/research/workbench/src/knowledge-plugin.ts)
+
+<a id="ctxresearchknowledgeevidence--researchknowledgeevidence"></a>
+
+### `ctx.researchKnowledgeEvidence` — `ResearchKnowledgeEvidence`
+
+The research question, conclusions and evidence of a project, shared by all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Project a research record into its evidence graph. Nothing is stored or written.
+ * @param project - the research record.
+ * @returns the question, the conclusions, the evidence behind them and the counts per status.
+ */
+graph(project: ResearchProject): EvidenceGraphPage
+```
+
+Source: [`packages/research/workbench/src/knowledge-evidence-plugin.ts`](../../packages/research/workbench/src/knowledge-evidence-plugin.ts)
+
+<a id="ctxresearchknowledgemap--researchknowledgemap"></a>
+
+### `ctx.researchKnowledgeMap` — `ResearchKnowledgeMap`
+
+The domain map of the research field, shared by all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Execute map work within both caller and plugin lifetimes.
+ * @param signal - caller cancellation.
+ * @param work - the operation; it receives a signal that fires on either cancellation.
+ * @returns the operation's result.
+ */
+run<T>(signal: AbortSignal, work: (signal: AbortSignal) => Promise<T>): Promise<T>
+
+/**
+ * Read the domain map of the field around a research.
+ * @param signal - caller cancellation.
+ * @returns the map, or the page that says it is not built.
+ */
+view(signal: AbortSignal): Promise<MapViewPage>
+
+/**
+ * Read what a research places over the domain map: its idea, its library and what the agent recalled.
+ * @param signal - caller cancellation.
+ * @returns the overlay, or the page that says the map is not built.
+ */
+overlay(signal: AbortSignal): Promise<MapOverlayPage>
+```
+
+Source: [`packages/research/workbench/src/knowledge-map-plugin.ts`](../../packages/research/workbench/src/knowledge-map-plugin.ts)
 
 <a id="research-events"></a>
 

@@ -48,9 +48,23 @@
     "./knowledge-skills": {
       "types": "./lib/types/knowledge-skills.d.ts",
       "default": "./lib/types/knowledge-skills.js"
-    }
+    },
+    "./knowledge-map-plugin": {
+      "types": "./lib/types/knowledge-map-plugin.d.ts",
+      "default": "./lib/types/knowledge-map-plugin.js"
+    },
+    "./knowledge-evidence-plugin": {
+      "types": "./lib/types/knowledge-evidence-plugin.d.ts",
+      "default": "./lib/types/knowledge-evidence-plugin.js"
+    },
+    "./knowledge-plugin/locale/*.json": "./locale/knowledge-plugin/*.json",
+    "./knowledge-map-plugin/locale/*.json": "./locale/knowledge-map-plugin/*.json",
+    "./knowledge-evidence-plugin/locale/*.json": "./locale/knowledge-evidence-plugin/*.json"
   },
   "files": [
+    "locale/knowledge-evidence-plugin/*.json",
+    "locale/knowledge-map-plugin/*.json",
+    "locale/knowledge-plugin/*.json",
     "lib/index.js",
     "runtime/**/*",
     "lib/types/**/*.js",

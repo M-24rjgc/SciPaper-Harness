@@ -521,8 +521,8 @@ export interface ResearchSnapshot {
   components: ComponentStatus[]
   /** The installed modes, in display order. */
   modes: ModeSummary[]
-  /** Availability of the optional knowledge graph provider in this profile. */
-  knowledge?: { enabled: boolean } | undefined
+  /** Availability of the optional knowledge graph provider and of its sub-plugins in this profile. */
+  knowledge?: { enabled: boolean; modules: KnowledgeModules } | undefined
   /**
    * The folder new researches are created in now: the `researchHome`
    * preference, else the configured one, else `<profile home>/SciPaper`.
@@ -806,6 +806,108 @@ export interface KnowledgeGraphPage {
   hasMore: boolean
 }
 
+/** Which optional knowledge sub-plugins are mounted in this profile; each one adds a view and its commands. */
+export interface KnowledgeModules {
+  /** The domain map (`research-knowledge-map`); it also needs the graph engine, so it is off whenever that is. */
+  map: boolean
+  /** The evidence graph (`research-knowledge-evidence`); it reads only the project's own record. */
+  evidence: boolean
+}
+
+/**
+ * How a claim stands against the sources it cites. `contradicted` is the
+ * recorded state. A claim that cites nothing is `proposed` when it is a
+ * hypothesis and `missing` otherwise. A claim that cites a source that changed
+ * since, or is recorded `stale`, is `stale`. A claim recorded `proposed` stays
+ * `proposed`; every other claim is `supported`.
+ */
+export type EvidenceClaimStatus = 'supported' | 'stale' | 'missing' | 'proposed' | 'contradicted'
+
+/**
+ * One node on the evidence side of the graph: a run, a literature item or a
+ * file that a claim cites, or a placeholder where evidence is still to come.
+ */
+export interface EvidenceGraphSource {
+  /** Stable for a record: `run:<id>`, `source:<id>`, `expected:<run id>` or `none:<claim id>`. */
+  id: string
+  /** `expected-run` is a run in progress or not yet collected; `none` marks a claim nothing is expected for. */
+  kind: 'run' | 'literature' | 'file' | 'expected-run' | 'none'
+  /** A run's name, or a source's title; empty for `none`. */
+  label: string
+  /** A run's seed. */
+  seed?: number | undefined
+  /** Where a run executes: `local`, or its SSH host alias. */
+  host?: string | undefined
+  /** A run's status. */
+  status?: RunStatus | undefined
+  /** A run's recorded metrics. */
+  metrics?: Record<string, number> | undefined
+  /** A literature item or file: whether the host verified it. */
+  verified?: boolean | undefined
+  /** A literature item or file: what was extracted from it. */
+  coverage?: EvidenceRecord['coverage'] | undefined
+  /** The source is recorded stale, or a claim cites an older revision of it. */
+  changed: boolean
+  /** Project-relative path of the source's record, for opening it. */
+  path?: string | undefined
+}
+
+/** One citation of a source by a claim. */
+export interface EvidenceGraphLink {
+  /** The {@link EvidenceGraphSource.id} cited. */
+  sourceId: string
+  /** The revision the claim cited. */
+  revision: number
+  /** The source is recorded stale, is gone, or has a newer revision than the one cited. */
+  outdated: boolean
+  locator: SourceLocator
+  /** The quoted passage; absent when the citation quotes none. */
+  quote?: string | undefined
+}
+
+/** A file that carries a claim, as the claim and the file each record it. */
+export interface EvidenceGraphFile {
+  id: ArtifactId
+  path: string
+  revision: number
+  stale: boolean
+}
+
+/** One conclusion of the research with the sources behind it. */
+export interface EvidenceGraphClaim {
+  id: string
+  text: string
+  kind: ClaimRecord['kind']
+  status: EvidenceClaimStatus
+  files: EvidenceGraphFile[]
+  links: EvidenceGraphLink[]
+  /** Placeholder sources (`expected-run`, or one `none`) for a claim that cites nothing. */
+  expected: string[]
+  /** Runs in progress or not yet collected that `expected` leaves out. */
+  expectedMore: number
+}
+
+/** The research question, its conclusions and their evidence, derived from the project record alone. */
+export interface EvidenceGraphPage {
+  /** The brief, or the title while the brief is empty. */
+  question: string
+  claims: EvidenceGraphClaim[]
+  sources: EvidenceGraphSource[]
+  summary: { claims: number } & Record<EvidenceClaimStatus, number>
+}
+
+// The two map pages are placeholders: the map plugin answers `built: false` until its map data is wired in.
+// Replace both together with the map plugin's view and overlay, and update the map view in the client with them.
+/** The domain map of the research field, as the map plugin serves it. */
+export interface MapViewPage {
+  built: false
+}
+
+/** The research's idea, library and recall placed over the domain map. */
+export interface MapOverlayPage {
+  built: false
+}
+
 /** Command result or acknowledgement; `jobId` identifies asynchronous work whose result appears in a ResearchTask. */
 export interface ResearchResponse {
   project?: ResearchProject | undefined
@@ -819,6 +921,9 @@ export interface ResearchResponse {
   literature?: LiteratureItem[] | undefined
   gallery?: GalleryPage | undefined
   knowledgeGraph?: KnowledgeGraphPage | undefined
+  evidenceGraph?: EvidenceGraphPage | undefined
+  mapView?: MapViewPage | undefined
+  mapOverlay?: MapOverlayPage | undefined
   board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
@@ -971,6 +1076,12 @@ export type ResearchCommand =
   | { action: 'build-graph'; projectId: ProjectId; papers: string; domain: string }
   /** Name the clusters (cluster_meta.json or `names`) and assemble the project graph. */
   | { action: 'name-patterns'; projectId: ProjectId; names?: string | undefined }
+  /** The question, conclusions and evidence of the research record as a graph; needs the evidence graph plugin. */
+  | { action: 'evidence-graph'; projectId: ProjectId }
+  /** The domain map of the research field; needs the domain map plugin. */
+  | { action: 'map-view'; projectId: ProjectId }
+  /** The research's idea, library and recall placed over the domain map; needs the domain map plugin. */
+  | { action: 'map-overlay'; projectId: ProjectId }
   /**
    * The person's 新研究 (New research): the one untouched draft research, or a
    * new one at `<research home>/<yyyy-mm-dd>-<n>` (the next free `n`) with a

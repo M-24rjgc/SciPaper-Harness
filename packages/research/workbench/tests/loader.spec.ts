@@ -5,6 +5,8 @@ import Include from '@deepseek-ai/cordis-plugin-include'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ResearchKnowledge from '../src/knowledge-plugin.ts'
+import ResearchKnowledgeMap from '../src/knowledge-map-plugin.ts'
+import ResearchKnowledgeEvidence from '../src/knowledge-evidence-plugin.ts'
 import { pathToFileURL } from 'node:url'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import * as DomainPlugin from '@deepseek-ai/dsh-storage-domain'
@@ -204,6 +206,9 @@ interface Harness {
 
 interface BootOptions {
   knowledge?: boolean
+  /** Whether the domain map and evidence graph rows are in the composition; both are by default. */
+  knowledgeMap?: boolean
+  knowledgeEvidence?: boolean
   componentRoot?: boolean
   /** Sessions already live when the service starts. */
   live?: FakeSession[]
@@ -263,6 +268,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
     ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['research-mode-skills', ModeSkills], ['research-knowledge-provider', ResearchKnowledge],
+    ['research-knowledge-map', ResearchKnowledgeMap], ['research-knowledge-evidence', ResearchKnowledgeEvidence],
     ['skills', SkillRegistry], ['system-prompt', SystemPrompt], ['tools', ToolRuntime],
     ['adapters', { inject: ['storage'], apply(c: Context) {
       const backend = new MemoryStorageBackend(pool)
@@ -375,6 +381,8 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
     '- name: storage', '- name: adapters', '- name: domain', '  config:', '    backend: memory',
     '- name: skills', '- name: system-prompt', '- name: tools',
     ...(options.knowledge === false ? [] : ['- id: knowledge-provider', '  name: research-knowledge-provider']),
+    ...(options.knowledgeMap === false ? [] : ['- id: knowledge-map', '  name: research-knowledge-map']),
+    ...(options.knowledgeEvidence === false ? [] : ['- id: knowledge-evidence', '  name: research-knowledge-evidence']),
     ...(options.toolModules ?? [[...RESEARCH_TOOL_MODULES]]).flatMap((modules, index) => [
       `- id: research-tools-${index}`, '  name: research-tools', '  config:', `    modules: ${JSON.stringify(modules)}`,
     ]),
@@ -644,7 +652,8 @@ describe('the research service records; it never drives the agent', () => {
     expect(tools()).not.toContain('research_knowledge')
     expect(tools()).toContain('research_project')
     expect(await skills()).not.toContain('research-knowledge')
-    expect((await service.snapshot()).knowledge).toEqual({ enabled: false })
+    // The domain map builds on the engine and goes with it; the evidence graph reads only the record and stays.
+    expect((await service.snapshot()).knowledge).toEqual({ enabled: false, modules: { map: false, evidence: true } })
     await expect(service.execute({ action: 'graph-view', projectId: project.id }, signal, 'agent')).rejects.toThrow(/disabled|enable/i)
     expect(await readFile(marker, 'utf8')).toBe('retained research data')
     await provider.update({ disabled: false }); await ctx!.loader.await()
@@ -658,6 +667,68 @@ describe('the research service records; it never drives the agent', () => {
     expect(tools()).not.toContain('research_knowledge')
     expect((await restarted.service.snapshot()).projects.some(item => item.id === project.id)).toBe(true)
     expect(await readFile(marker, 'utf8')).toBe('retained research data')
+  })
+
+  it('mounts the domain map and the evidence graph as rows of their own and refuses each one\'s commands by name while it is off', async () => {
+    root = await temporaryRoot('research-graph-modules-')
+    const { service } = await boot(new MemoryMediaPool())
+    const project = await service.create({ title: 'Modules', root: join(root, 'paper'), brief: 'Does it scale?' })
+    const marker = join(project.root, '.research/kg/keep.txt')
+    await write(marker, 'retained research data')
+    const toggle = async (id: string, disabled: boolean): Promise<void> => {
+      await [...ctx!.loader.entries()].find(entry => entry.options.id === id)!.update({ disabled })
+      await ctx!.loader.await()
+    }
+    const run = (action: 'evidence-graph' | 'map-view' | 'map-overlay' | 'graph-status') => service.execute({ action, projectId: project.id }, signal, 'user')
+    const modules = async () => (await service.snapshot()).knowledge
+    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true } })
+    expect(JSON.parse((await run('graph-status')).content ?? '{}')).toMatchObject({ modules: { map: true, evidence: true } })
+    expect((await run('evidence-graph')).evidenceGraph).toMatchObject({ question: 'Does it scale?', claims: [], sources: [] })
+    expect(await run('map-view')).toMatchObject({ mapView: { built: false } })
+    expect(await run('map-overlay')).toMatchObject({ mapOverlay: { built: false } })
+
+    await toggle('knowledge-evidence', true)
+    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: false } })
+    await expect(run('evidence-graph')).rejects.toThrow(/Evidence graph plugin is disabled/)
+    expect((await run('map-view')).mapView).toEqual({ built: false })
+    await toggle('knowledge-evidence', false)
+
+    await toggle('knowledge-map', true)
+    expect(await modules()).toEqual({ enabled: true, modules: { map: false, evidence: true } })
+    for (const action of ['map-view', 'map-overlay'] as const) await expect(run(action)).rejects.toThrow(/Domain map plugin is disabled/)
+    expect((await run('evidence-graph')).evidenceGraph?.question).toBe('Does it scale?')
+    await toggle('knowledge-map', false)
+
+    // Map work in flight is cancelled with its plugin.
+    const started = Promise.withResolvers<boolean>()
+    const inFlight = ctx!.researchKnowledgeMap.run(signal, async workSignal => new Promise<void>((_resolve, reject) => {
+      workSignal.addEventListener('abort', () => { reject(new Error(String(workSignal.reason))) }, { once: true })
+      started.resolve(true)
+    }))
+    const cancelled = expect(inFlight).rejects.toThrow(/domain map plugin was disabled/)
+    await started.promise
+    await toggle('knowledge-map', true)
+    await cancelled
+    await toggle('knowledge-map', false)
+
+    // Without the engine the map goes too, because it injects the engine; the evidence graph reads only the record and stays.
+    await toggle('knowledge-provider', true)
+    expect(await modules()).toEqual({ enabled: false, modules: { map: false, evidence: true } })
+    await expect(run('map-view')).rejects.toThrow(/Domain map plugin is disabled/)
+    await expect(run('graph-status')).rejects.toThrow(/Knowledge graph plugin is disabled/)
+    expect((await run('evidence-graph')).evidenceGraph).toBeDefined()
+    await toggle('knowledge-provider', false)
+    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true } })
+    expect(await readFile(marker, 'utf8')).toBe('retained research data')
+  })
+
+  it('composes without the sub-plugins: the snapshot reports them off and the project is untouched', async () => {
+    root = await temporaryRoot('research-graph-no-modules-')
+    const { service } = await boot(new MemoryMediaPool(), { knowledgeMap: false, knowledgeEvidence: false })
+    const project = await service.create({ title: 'Plain', root: join(root, 'paper'), brief: '' })
+    expect((await service.snapshot()).knowledge).toEqual({ enabled: true, modules: { map: false, evidence: false } })
+    await expect(service.execute({ action: 'evidence-graph', projectId: project.id }, signal, 'user')).rejects.toThrow(/Evidence graph plugin is disabled/)
+    await expect(service.execute({ action: 'map-view', projectId: project.id }, signal, 'user')).rejects.toThrow(/Domain map plugin is disabled/)
   })
 
   it('shows a project\'s sessions the skills of its mode, and swaps them when the mode changes', async () => {

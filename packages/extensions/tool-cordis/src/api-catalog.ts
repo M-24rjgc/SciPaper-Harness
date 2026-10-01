@@ -1977,6 +1977,44 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'researchKnowledgeEvidence',
+    summary: 'The research question, conclusions and evidence of a project, shared by all research modes in one profile.',
+    description: 'The research question, conclusions and evidence of a project, shared by all research modes in one profile.',
+    methods: [
+      {
+        signature: 'graph(project: ResearchProject): EvidenceGraphPage',
+        description: 'Project a research record into its evidence graph. Nothing is stored or written.',
+        parameters: [{ name: 'project', description: 'the research record.' }],
+        returns: 'the question, the conclusions, the evidence behind them and the counts per status.',
+      },
+    ],
+  },
+  {
+    key: 'researchKnowledgeMap',
+    summary: 'The domain map of the research field, shared by all research modes in one profile.',
+    description: 'The domain map of the research field, shared by all research modes in one profile.',
+    methods: [
+      {
+        signature: 'run<T>(signal: AbortSignal, work: (signal: AbortSignal) => Promise<T>): Promise<T>',
+        description: 'Execute map work within both caller and plugin lifetimes.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }, { name: 'work', description: 'the operation; it receives a signal that fires on either cancellation.' }],
+        returns: 'the operation\'s result.',
+      },
+      {
+        signature: 'view(signal: AbortSignal): Promise<MapViewPage>',
+        description: 'Read the domain map of the field around a research.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the map, or the page that says it is not built.',
+      },
+      {
+        signature: 'overlay(signal: AbortSignal): Promise<MapOverlayPage>',
+        description: 'Read what a research places over the domain map: its idea, its library and what the agent recalled.',
+        parameters: [{ name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the overlay, or the page that says the map is not built.',
+      },
+    ],
+  },
+  {
     key: 'sandbox',
     summary: 'Abstract process-sandbox service.',
     description: 'Abstract process-sandbox service. confine must return enforcing argv or fail closed at wrap or runner-execution time; silent unconfined passthrough is forbidden. Functional probes arbitrate multi-runner chains and may be skipped for a sole candidate, whose own refusal remains the fail-closed end.',
@@ -5502,6 +5540,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EvidenceChunk {\n    text: string;\n    locator: SourceLocator;\n}',
   },
   {
+    name: 'EvidenceClaimStatus',
+    declaration: 'export type EvidenceClaimStatus = \'supported\' | \'stale\' | \'missing\' | \'proposed\' | \'contradicted\';',
+  },
+  {
+    name: 'EvidenceGraphClaim',
+    declaration: 'export interface EvidenceGraphClaim {\n    id: string;\n    text: string;\n    kind: ClaimRecord[\'kind\'];\n    status: EvidenceClaimStatus;\n    files: EvidenceGraphFile[];\n    links: EvidenceGraphLink[];\n    expected: string[];\n    expectedMore: number;\n}',
+  },
+  {
+    name: 'EvidenceGraphFile',
+    declaration: 'export interface EvidenceGraphFile {\n    id: ArtifactId;\n    path: string;\n    revision: number;\n    stale: boolean;\n}',
+  },
+  {
+    name: 'EvidenceGraphLink',
+    declaration: 'export interface EvidenceGraphLink {\n    sourceId: string;\n    revision: number;\n    outdated: boolean;\n    locator: SourceLocator;\n    quote?: string | undefined;\n}',
+  },
+  {
+    name: 'EvidenceGraphPage',
+    declaration: 'export interface EvidenceGraphPage {\n    question: string;\n    claims: EvidenceGraphClaim[];\n    sources: EvidenceGraphSource[];\n    summary: {\n        claims: number;\n    } & Record<EvidenceClaimStatus, number>;\n}',
+  },
+  {
+    name: 'EvidenceGraphSource',
+    declaration: 'export interface EvidenceGraphSource {\n    id: string;\n    kind: \'run\' | \'literature\' | \'file\' | \'expected-run\' | \'none\';\n    label: string;\n    seed?: number | undefined;\n    host?: string | undefined;\n    status?: RunStatus | undefined;\n    metrics?: Record<string, number> | undefined;\n    verified?: boolean | undefined;\n    coverage?: EvidenceRecord[\'coverage\'] | undefined;\n    changed: boolean;\n    path?: string | undefined;\n}',
+  },
+  {
     name: 'EvidenceId',
     declaration: 'export type EvidenceId = Branded<\'ResearchEvidenceId\'>;',
   },
@@ -5966,6 +6028,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KnowledgeGraphQuery {\n    source?: \'all\' | \'ai\' | \'project\' | undefined;\n    query?: string | undefined;\n    domain?: string | undefined;\n    pattern?: string | undefined;\n    offset?: number | undefined;\n    limit?: number | undefined;\n}',
   },
   {
+    name: 'KnowledgeModules',
+    declaration: 'export interface KnowledgeModules {\n    map: boolean;\n    evidence: boolean;\n}',
+  },
+  {
     name: 'KnowledgeReference',
     declaration: 'export interface KnowledgeReference {\n    title: string;\n    text: string;\n    url?: string | undefined;\n}',
   },
@@ -6112,6 +6178,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ManualCompactAgentContext',
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
+  },
+  {
+    name: 'MapOverlayPage',
+    declaration: 'export interface MapOverlayPage {\n    built: false;\n}',
+  },
+  {
+    name: 'MapViewPage',
+    declaration: 'export interface MapViewPage {\n    built: false;\n}',
   },
   {
     name: 'McpResourceProvider',
@@ -6747,11 +6821,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
   },
   {
     name: 'ResearchSnapshot',
-    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n    knowledge?: {\n        enabled: boolean;\n    } | undefined;\n    researchHome?: string | undefined;\n}',
+    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n    knowledge?: {\n        enabled: boolean;\n        modules: KnowledgeModules;\n    } | undefined;\n    researchHome?: string | undefined;\n}',
   },
   {
     name: 'ResearchStanding',

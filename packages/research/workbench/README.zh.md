@@ -29,6 +29,8 @@ kind: "package-reference"
 
 项目的自主程度就是它每段对话的权限预设：服务注入 `ctx.permissionPresets`，在每次设置自主程度时、以及每个会话上线时，为项目的每个在线会话设置预设，`checkpoints` 对应 `workspace-write`，`automatic` 对应 `research-auto`；示例和委派出的子会话不受影响（[详情](../../../docs/subsystems/research.zh.md#autonomy-and-permission)）。权限配置行必须同时配置这两个预设（research-app bundle 已经如此），否则服务不会加载。
 
+可选的知识图谱 bundle 从本包挂载三个插件，各占一行、各有独立开关。`knowledge-plugin` 提供图谱引擎（`ctx.researchKnowledge`），`knowledge-map-plugin` 提供领域地图（`ctx.researchKnowledgeMap`），`knowledge-evidence-plugin` 提供证据图（`ctx.researchKnowledgeEvidence`）。地图注入图谱引擎，因此引擎关闭时地图也关闭；证据图只读取项目记录，不需要引擎。桌面端命令 `evidence-graph`、`map-view` 和 `map-overlay` 在对应插件关闭时报错，错误中写明插件名；`graph-status` 报告哪些子插件已开启，快照也在 `knowledge.modules` 中带有同样的标志。关闭任何一个插件都不会改动项目文件。每一行的名称和说明来自 `locale/<plugin>/en.json` 与 `zh.json`，以 `<plugin>/locale/*.json` 导出。
+
 首次读取科研快照时，在 `<data home>/research/examples/v1` 初始化两套离线示例，包含合成数据、中英文正文、PDF 札记、可编辑 SVG 图，以及通过 Session Controller 创建的持久对话。初始化保留已有文件和记录，恢复缺失材料，以稳定标识续接中断的登记。`showExamples` 只控制显示，不创建或删除示例。发布示例的对话采用 `read-only` 权限预设，科研写操作均拒绝示例目录，数据 home 的别名也受保护。旧 `<data home>/demo` 和默认 home 的 demo 保持只读，不会被改写。
 
 服务还通过 Session Controller 的命令准入 waterfall，在激活 Agent 或写入前拒绝示例对话的分支、重命名、发消息、队列修改和新增对话。已登记的示例对话仍可幂等收养；创建和缺失对话恢复仅允许初始化器的原始进程内请求。保护依据实际目录和已登记的项目身份，涵盖 home 别名，不依赖 Session 名称前缀。普通研究对话仍可正常分支和编辑。
@@ -105,6 +107,9 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 | [`runtime/venues/`](runtime/venues) | 139 个会议、16 套官方样式，附指南与示例，由 [`scripts/build_venues.py`](scripts/build_venues.py) 构建 |
 | [`src/examples.ts`](src/examples.ts)、[`runtime/examples/v1/`](runtime/examples/v1) | 两套合成研究示例的保留式安装、稳定登记及成稿对话 |
 | [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`：加载图谱、召回、新颖性、构建并命名项目图谱 |
+| [`src/knowledge-plugin.ts`](src/knowledge-plugin.ts)、[`src/knowledge-map-plugin.ts`](src/knowledge-map-plugin.ts)、[`src/knowledge-evidence-plugin.ts`](src/knowledge-evidence-plugin.ts) | 三个可选的知识图谱服务；前两个在 [`src/operation-scope.ts`](src/operation-scope.ts) 下运行任务，插件关闭时由它中止任务 |
+| [`src/knowledge-evidence.ts`](src/knowledge-evidence.ts) | 证据图：研究问题、结论及其背后的运行与文献，由纯函数从记录投影得到 |
+| [`src/knowledge-map-shell.ts`](src/knowledge-map-shell.ts) | 领域地图唯一的读取入口，在地图数据接入之前报告地图尚未建好 |
 | [`src/clustering.ts`](src/clustering.ts) | 分词、BM25、词项向量、余弦、排名融合、平均链接与 k-means 聚类 |
 | [`runtime/kg/`](runtime/kg) | 内置科研模式图谱，由 [`scripts/build_kg.py`](scripts/build_kg.py) 精简而来 |
 | [`src/latex.ts`](src/latex.ts) | 主稿发现、输入展开、参考文献与插图解析 |

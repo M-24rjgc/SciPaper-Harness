@@ -119,6 +119,10 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 排序使用对模式与论文文本的 BM25，再加上图谱里的论文近邻。配置了嵌入接口（`preferences.embedding`，密钥 `RESEARCH_EMBEDDING_API_KEY`）后，对模式文本的余弦相似度通过倒数排名融合加入排序；新颖性检查在嵌入空间里把故事与最接近的工作比较，沿用上游 0.88 / 0.82 的分档；项目图谱改用平均链接聚类而不是 k-means。每个结果都会注明依据。图谱在首次使用时加载，闲置十分钟后释放。
 
+图谱是可选的，由知识图谱 bundle 的三个插件分担，各有独立开关：`research_knowledge` 背后的引擎、领域地图和证据图。领域地图注入引擎；证据图只读取项目记录。已关闭插件的命令会报错并写明插件名，`graph-status` 和快照里的 `knowledge.modules` 报告哪些已开启，关闭插件不会删除 `.research` 下的任何文件。
+
+证据图（`evidence-graph`）是项目记录的纯投影，由 `src/knowledge-evidence.ts` 计算，不存放在任何地方。它返回研究问题（简介，简介为空时用标题）、每条结论及其状态、写有该结论的文件和它的引用，以及这些结论引用的运行、文献和文件；一次运行不论有多少输出被引用，都只是一个节点。结论的状态只由记录中的字段推出。记录为 `contradicted` 的结论就是 `contradicted`。没有引用任何来源的结论，是假设时为 `proposed`，否则为 `missing`。引用的来源已不存在、被记录为过期、或版本与引用时不同，或者结论本身被记录为 `stale`，则为 `stale`。记录为 `proposed` 的结论保持 `proposed`，其余结论为 `supported`。没有引用任何来源、而又能由运行检验的结论（实证结论或假设），会连上进行中、或已结束但没有收集结果的运行，最多三个，因为记录并不把计划中的运行与某条结论关联起来；没有这样的运行时，它带一个“没有引用，也没有进行中的运行”的标记。领域地图的 `map-view` 和 `map-overlay` 在插件没有地图数据时回答 `built: false`。
+
 ## 检查
 
 `research_check` 对磁盘上的文件和台账做确定性检查并给出报告；它定义的是“完成”，而不是许可。下列基础检查在每种模式下都会运行；模式包再加上自己的阶段与门禁。阶段的要求成立、且决定它的检查没有错误时即为完成。整篇论文（scope 为 `all`）只有在没有任何检查报告错误、并且当前模式在当前路线上的每个阶段都已完成时，才算通过。
@@ -332,6 +336,55 @@ run<T>(signal: AbortSignal, work: (engine: KnowledgeBase, signal: AbortSignal) =
 ```
 
 Source: [`packages/research/workbench/src/knowledge-plugin.ts`](../../packages/research/workbench/src/knowledge-plugin.ts)
+
+<a id="ctxresearchknowledgeevidence--researchknowledgeevidence"></a>
+
+### `ctx.researchKnowledgeEvidence` — `ResearchKnowledgeEvidence`
+
+The research question, conclusions and evidence of a project, shared by all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Project a research record into its evidence graph. Nothing is stored or written.
+ * @param project - the research record.
+ * @returns the question, the conclusions, the evidence behind them and the counts per status.
+ */
+graph(project: ResearchProject): EvidenceGraphPage
+```
+
+Source: [`packages/research/workbench/src/knowledge-evidence-plugin.ts`](../../packages/research/workbench/src/knowledge-evidence-plugin.ts)
+
+<a id="ctxresearchknowledgemap--researchknowledgemap"></a>
+
+### `ctx.researchKnowledgeMap` — `ResearchKnowledgeMap`
+
+The domain map of the research field, shared by all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Execute map work within both caller and plugin lifetimes.
+ * @param signal - caller cancellation.
+ * @param work - the operation; it receives a signal that fires on either cancellation.
+ * @returns the operation's result.
+ */
+run<T>(signal: AbortSignal, work: (signal: AbortSignal) => Promise<T>): Promise<T>
+
+/**
+ * Read the domain map of the field around a research.
+ * @param signal - caller cancellation.
+ * @returns the map, or the page that says it is not built.
+ */
+view(signal: AbortSignal): Promise<MapViewPage>
+
+/**
+ * Read what a research places over the domain map: its idea, its library and what the agent recalled.
+ * @param signal - caller cancellation.
+ * @returns the overlay, or the page that says the map is not built.
+ */
+overlay(signal: AbortSignal): Promise<MapOverlayPage>
+```
+
+Source: [`packages/research/workbench/src/knowledge-map-plugin.ts`](../../packages/research/workbench/src/knowledge-map-plugin.ts)
 
 <a id="research-events"></a>
 

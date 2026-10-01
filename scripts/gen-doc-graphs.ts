@@ -485,6 +485,22 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns the shared graph engine, caches and cancellation for graph operations across research modes. Its optional bundle controls availability without deleting project graph files.',
   },
   {
+    key: 'researchKnowledgeMap',
+    pkg: 'research-workbench',
+    title: 'Optional domain map',
+    mode: 'core',
+    consumers: ['research-workbench'],
+    note: 'Owns the domain map work and its cancellation, and injects the graph engine, so it is available only while the engine is. Its own switch controls availability without deleting project files.',
+  },
+  {
+    key: 'researchKnowledgeEvidence',
+    pkg: 'research-workbench',
+    title: 'Optional evidence graph',
+    mode: 'core',
+    consumers: ['research-workbench'],
+    note: 'Projects a research record into its question, conclusions and evidence. It reads only the record, needs no graph engine, and its own switch controls availability without deleting project files.',
+  },
+  {
     key: 'research',
     pkg: 'research-workbench',
     title: 'Research project ledger and operations',

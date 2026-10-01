@@ -2542,7 +2542,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-research-workbench`
 
 - `inject`: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals` · `sessions` · `permissionPresets`
-- `source`: [`packages/research/workbench/src/index.ts:57`](../packages/research/workbench/src/index.ts)
+- `source`: [`packages/research/workbench/src/index.ts:60`](../packages/research/workbench/src/index.ts)
 
 ```ts config-catalog
 /** Research workbench configuration. */

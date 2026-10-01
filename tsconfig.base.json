@@ -36,6 +36,8 @@
       "@deepseek-ai/dsh-research-workbench/tools": ["./packages/research/workbench/src/agent-tools.ts"],
       "@deepseek-ai/dsh-research-workbench/mode-skills": ["./packages/research/workbench/src/mode-skills.ts"],
       "@deepseek-ai/dsh-research-workbench/knowledge-plugin": ["./packages/research/workbench/src/knowledge-plugin.ts"],
+    "@deepseek-ai/dsh-research-workbench/knowledge-map-plugin": ["./packages/research/workbench/src/knowledge-map-plugin.ts"],
+    "@deepseek-ai/dsh-research-workbench/knowledge-evidence-plugin": ["./packages/research/workbench/src/knowledge-evidence-plugin.ts"],
       "@deepseek-ai/dsh-research-workbench/remote": ["./packages/research/workbench/lib/typert.remote-client.d.ts"],
       "@deepseek-ai/dsh-client-product-analytics": ["./packages/client/product-analytics/src/index.ts"],
       "@deepseek-ai/dsh-client-product-analytics/types": ["./packages/client/product-analytics/src/events.ts"],

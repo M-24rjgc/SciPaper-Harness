@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Knowledge graph engine",
+    "description": "Searches research patterns and papers, compares claims with the closest works and builds project graphs. The domain map builds on it."
+  }
+}

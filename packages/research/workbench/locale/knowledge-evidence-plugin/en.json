@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Evidence graph",
+    "description": "Shows each conclusion of a research with the runs and literature behind it, and which ones need re-checking. Reads only the research record, so it works without the knowledge graph engine."
+  }
+}
