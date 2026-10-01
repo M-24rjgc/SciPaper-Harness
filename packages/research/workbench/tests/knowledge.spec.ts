@@ -381,6 +381,30 @@ describe('the embedding endpoint', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret')
   })
 
+  it('halves the batch when the endpoint caps it, and remembers the size that worked', async () => {
+    const sizes: number[] = []
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as { input: string[] }
+      sizes.push(body.input.length)
+      if (body.input.length > 10) return new Response('batch size is invalid, it should not be larger than 10', { status: 400 })
+      return new Response(JSON.stringify({ data: body.input.map((_, index) => ({ index, embedding: [index] })) }), { status: 200 })
+    }))
+    const embed = createEmbedder({ baseUrl: 'https://capped.example/v1', model: 'emb' }, 'k')
+    expect(await embed.embed(Array.from({ length: 25 }, (_, at) => `t${at}`), signal)).toHaveLength(25)
+    expect(sizes).toEqual([25, 12, 6, 6, 6, 6, 1])
+    sizes.length = 0
+    expect(await embed.embed(Array.from({ length: 9 }, (_, at) => `u${at}`), signal)).toHaveLength(9)
+    expect(sizes).toEqual([6, 3])
+  })
+
+  it("names the endpoint's own reason when even one text is refused", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":{"message":"model not found"}}', { status: 400 })))
+    await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a', 'b', 'c'], signal)).rejects.toThrow(/HTTP 400: .*model not found/)
+    await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a'], signal)).rejects.toThrow(/HTTP 400: .*model not found/)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, text: () => Promise.reject(new Error('closed')) }) as unknown as Response))
+    await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a'], signal)).rejects.toThrow(/^Embedding endpoint returned HTTP 500$/)
+  })
+
   it('reports an HTTP error and a response with the wrong number of vectors', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('no', { status: 401 })))
     await expect(createEmbedder({ baseUrl: 'https://e', model: 'm' }, 'k').embed(['a'], signal)).rejects.toThrow(/HTTP 401/)

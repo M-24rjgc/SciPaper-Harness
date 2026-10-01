@@ -460,7 +460,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-width: min(400px, calc(100vw - 80px));
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .field {
@@ -472,6 +473,8 @@
 }
 
 .input {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   padding: 8px 9px;
   border: 0.5px solid var(--dsw-alias-border-l3);

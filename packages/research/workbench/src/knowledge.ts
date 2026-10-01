@@ -102,26 +102,38 @@ const embeddingResponse = z.object({ data: z.array(z.object({ embedding: z.array
  * An embedder for an OpenAI-compatible `/embeddings` endpoint.
  * @param binding - the endpoint and model.
  * @param key - the API key.
- * @returns the embedder, which sends at most 64 texts per request.
+ * @returns the embedder, which starts at 64 texts per request and halves the batch, down to one,
+ * whenever the endpoint rejects it as too large.
  */
 export function createEmbedder(binding: { baseUrl: string; model: string }, key: string): Embedder {
   const base = binding.baseUrl.replace(/\/$/, '')
+  // Providers cap a batch differently (some at 10 texts); the size that worked is kept for the next call.
+  let limit = 64
   return {
     model: binding.model,
     async embed(texts, signal) {
       const vectors: Float32Array[] = []
-      for (let start = 0; start < texts.length; start += 64) {
-        const batch = texts.slice(start, start + 64)
+      let start = 0
+      while (start < texts.length) {
+        const batch = texts.slice(start, start + limit)
         const response = await fetch(`${base}/embeddings`, {
           method: 'POST',
           signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
           headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: binding.model, input: batch }),
         })
-        if (!response.ok) throw new Error(`Embedding endpoint returned HTTP ${response.status}`)
+        if (!response.ok) {
+          if ([400, 413, 422].includes(response.status) && batch.length > 1) {
+            limit = Math.max(1, Math.floor(batch.length / 2))
+            continue
+          }
+          const detail = (await response.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200)
+          throw new Error(`Embedding endpoint returned HTTP ${response.status}${detail === '' ? '' : `: ${detail}`}`)
+        }
         const data = embeddingResponse.parse(await response.json()).data.sort((a, b) => a.index - b.index)
         if (data.length !== batch.length) throw new Error('The embedding endpoint returned a different number of vectors')
         vectors.push(...data.map(item => Float32Array.from(item.embedding)))
+        start += batch.length
       }
       return vectors
     },
