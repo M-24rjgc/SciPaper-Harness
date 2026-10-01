@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-01-knowledge-graph-annotations.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-10-01-knowledge-graph-annotations.md
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors:
+  en: 01be2af1a938a4e4
+  zh: 866d16d5d70366d4
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/problem:
+  en: 2fb8f872aa78baba
+  zh: 4cc56e3fa4a20a56
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/proposal:
+  en: 27ebc62d3f2aef3d
+  zh: 5d6bbb629c13685b
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/measurements-on-the-built-in-graph:
+  en: 9d6ae6513e048dd0
+  zh: 9e1e6e23e193bfcb
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/alternatives-considered:
+  en: 3ec8fa6d6849ae5b
+  zh: fa372522385b5cb7
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/open-questions:
+  en: b362e4d9c08ba317
+  zh: 11f77171342f71ed
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/acceptance-criteria:
+  en: a82b1a47f2fd068f
+  zh: c14f174e846cc1b2
+/agent-note-marks-on-knowledge-graph-results-that-every-recall-honors/risks:
+  en: 54eaa1c1af791c35
+  zh: 11a57b11cc3909e4
