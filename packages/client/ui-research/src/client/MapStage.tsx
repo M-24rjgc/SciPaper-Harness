@@ -153,7 +153,10 @@ export function MapStage(props: StageProps): ReactNode {
   const regions = props.regions.map(region => ({ region, at: screen(region.x, region.y) }))
   const gaps = (props.gaps ?? []).map(gap => ({ gap, at: screen(gap.x, gap.y), radius: gapRadius(gap.area) * transform.scale }))
   const gapTitle = (gap: MapGapView): string => `${t('kmGapLabel', { regions: gap.borders.slice(0, 2).join(' · ') })} · ${t('kmGapRecurs', { recurs: gap.recurs, others: gap.runs - 1 })}`
+  // The caption keeps its corner: it takes room from the labels first and is never drawn by them.
+  const captionWidth = labelWidth(props.caption, 11.5, 16)
   const candidates: LabelCandidate[] = [
+    { key: 'caption', x: 12 + captionWidth / 2, y: 21, width: captionWidth, height: 22, priority: Infinity },
     ...markers.flatMap(({ marker, at }) => {
       if (marker.label === undefined) return []
       const width = labelWidth(marker.label, 11, 12)

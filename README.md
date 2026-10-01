@@ -49,6 +49,12 @@ Before it writes anything, the agent recalls the closest patterns from a built-i
 
 ![The agent recalls similar patterns from the knowledge graph and writes the idea card from them](docs/assets/readme/graph.en.png)
 
+The same graph is also a map. Every paper is a point, similar papers sit together, and your idea, the literature you imported and the papers the agent recalled are drawn over it. A panel beside the map says how crowded the field is around your idea and which work is closest. Mark a paper relevant or not and the agent follows your marks the next time it recalls; one switch pauses them when you want its independent view. The map shows where papers are close, never that a topic is unexplored, so its sparse areas are an optional layer, off at first.
+
+![The domain map of 29,240 papers with the idea, the agent's recalls, and the closest work to mark (the interface is shown in Chinese)](docs/assets/readme/map.png)
+
+Beside the map, the knowledge graph also keeps the relations between methods, tasks and datasets that your own sources state, each with the sentence it was taken from, and a memory of what your earlier researches left that a new research can carry.
+
 ### 3. Read the literature and cite it properly
 
 Every reference is fetched again from Crossref, OpenAlex or arXiv and imported one paper at a time, never taken on the model's word. Open-access papers open as full text beside the conversation.
