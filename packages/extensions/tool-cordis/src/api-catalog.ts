@@ -6178,6 +6178,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KnowledgeReference {\n    title: string;\n    text: string;\n    url?: string | undefined;\n}',
   },
   {
+    name: 'KnowledgeTrace',
+    declaration: 'export interface KnowledgeTrace {\n    v: 1;\n    action: \'recall\' | \'marks\' | \'mark\' | \'unmark\' | \'relations-neighbourhood\' | \'relations-paths\';\n    query?: string | undefined;\n    nodes: KnowledgeTraceNode[];\n    edges: KnowledgeTraceEdge[];\n    marks?: {\n        count: number;\n        honour?: boolean | undefined;\n    } | undefined;\n    paths?: number | undefined;\n    omitted?: number | undefined;\n}',
+  },
+  {
+    name: 'KnowledgeTraceEdge',
+    declaration: 'export interface KnowledgeTraceEdge {\n    id: string;\n    kind: RelationKindId;\n    from: string;\n    to: string;\n    by?: RelationAuthor | undefined;\n    walked?: true | undefined;\n}',
+  },
+  {
+    name: 'KnowledgeTraceNode',
+    declaration: 'export interface KnowledgeTraceNode {\n    id: string;\n    source: KnowledgeTraceSource;\n    kind: \'pattern\' | RelationEntityKind;\n    label: string;\n    use?: \'pinned\' | \'recalled\' | \'skipped\' | \'centre\' | \'end\' | undefined;\n    index?: number | undefined;\n}',
+  },
+  {
+    name: 'KnowledgeTraceSource',
+    declaration: 'export type KnowledgeTraceSource = \'ai\' | \'project\' | \'relations\';',
+  },
+  {
     name: 'KvFacet',
     declaration: 'export interface KvFacet {\n    open(descriptor: KvUnitDescriptor): Promise<KvUnit>;\n}',
   },
@@ -7171,7 +7187,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    memory?: ResearchMemoryPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    mapPapers?: MapPaperView[] | undefined;\n    mapSearch?: MapSearchView | undefined;\n    relations?: RelationsPage | undefined;\n    relationPaths?: RelationPathsPage | undefined;\n    relationGaps?: RelationGapPage | undefined;\n    relationOutcomes?: RelationOutcomeView[] | undefined;\n    relationEntity?: RelationEntityOutcomeView | undefined;\n    relationMerge?: RelationMergeOutcomeView | undefined;\n    relationSuggestions?: RelationMergeSuggestionView[] | undefined;\n    relationReground?: RelationRegroundView | undefined;\n    relationCitations?: RelationCitationsView | undefined;\n    marks?: KnowledgeMarkView[] | undefined;\n    honour?: boolean | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: st /* …truncated — full shape in source */',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    memory?: ResearchMemoryPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    mapPapers?: MapPaperView[] | undefined;\n    mapSearch?: MapSearchView | undefined;\n    relations?: RelationsPage | undefined;\n    relationPaths?: RelationPathsPage | undefined;\n    relationGaps?: RelationGapPage | undefined;\n    relationOutcomes?: RelationOutcomeView[] | undefined;\n    relationEntity?: RelationEntityOutcomeView | undefined;\n    relationMerge?: RelationMergeOutcomeView | undefined;\n    relationSuggestions?: RelationMergeSuggestionView[] | undefined;\n    relationReground?: RelationRegroundView | undefined;\n    relationCitations?: RelationCitationsView | undefined;\n    marks?: KnowledgeMarkView[] | undefined;\n    honour?: boolean | undefined;\n    knowledgeTrace?: KnowledgeTrace | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, /* …truncated — full shape in source */',
   },
   {
     name: 'ResearchSnapshot',

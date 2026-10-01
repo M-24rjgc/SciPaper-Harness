@@ -1446,6 +1446,68 @@ export interface RelationProposalInput {
   ground: RelationGroundInput
 }
 
+// ── Knowledge trace (what one research_knowledge call touched) ──
+
+/** Where a traced node lives: the built-in graph, the research's own graph, or the relation graph. */
+export type KnowledgeTraceSource = 'ai' | 'project' | 'relations'
+
+/** One node a knowledge call touched. */
+export interface KnowledgeTraceNode {
+  /**
+   * The node's id in its own view. For `ai` and `project` it is `<graph>:<kind>:<id>`, which is also the id of a mark on
+   * it and the node id of graph-view; for `relations` it is the relation graph's entity id.
+   */
+  id: string
+  source: KnowledgeTraceSource
+  /** `pattern` or `paper` for the two graphs; a relation graph node keeps its entity kind. */
+  kind: 'pattern' | RelationEntityKind
+  label: string
+  /**
+   * recall: `pinned` by a mark, `recalled` by the query, or `skipped` because a mark calls it irrelevant. relations:
+   * the `centre` of a neighbourhood, or an `end` of a path search.
+   */
+  use?: 'pinned' | 'recalled' | 'skipped' | 'centre' | 'end' | undefined
+  /** A built-in graph paper's index, for placing it on the domain map. */
+  index?: number | undefined
+}
+
+/** One relation of the relation graph that a call read or walked. */
+export interface KnowledgeTraceEdge {
+  /** The relation's id. */
+  id: string
+  kind: RelationKindId
+  from: string
+  to: string
+  /** Who first recorded the relation; absent where the call's answer does not say. */
+  by?: RelationAuthor | undefined
+  /** A hop of a path the call found. */
+  walked?: true | undefined
+}
+
+/**
+ * What one research_knowledge call touched, kept beside its result as the tool's presentation metadata so that the
+ * result itself stays what the model reads. The trace holds ids and the names the call saw; whether a node is marked now
+ * is read from the current marks, never from the trace.
+ */
+export interface KnowledgeTrace {
+  /** Version of this payload. */
+  v: 1
+  action: 'recall' | 'marks' | 'mark' | 'unmark' | 'relations-neighbourhood' | 'relations-paths'
+  /** recall: the query. */
+  query?: string | undefined
+  nodes: KnowledgeTraceNode[]
+  edges: KnowledgeTraceEdge[]
+  /**
+   * The marks the call read (`marks`, `mark`, `unmark`) or applied to its recall, and, for a read, whether the person
+   * lets the agent follow them.
+   */
+  marks?: { count: number; honour?: boolean | undefined } | undefined
+  /** relations-paths: how many paths it found. */
+  paths?: number | undefined
+  /** Nodes the trace's size limit left out. */
+  omitted?: number | undefined
+}
+
 /** Command result or acknowledgement; `jobId` identifies asynchronous work whose result appears in a ResearchTask. */
 export interface ResearchResponse {
   project?: ResearchProject | undefined
@@ -1480,6 +1542,11 @@ export interface ResearchResponse {
   marks?: KnowledgeMarkView[] | undefined
   /** marks, honour-marks: whether the agent follows the marks. */
   honour?: boolean | undefined
+  /**
+   * An agent's knowledge call: what it touched. The research_knowledge tool keeps it out of the model's result and
+   * persists it as the call's presentation metadata.
+   */
+  knowledgeTrace?: KnowledgeTrace | undefined
   board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined

@@ -118,6 +118,7 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 | [`src/knowledge-map.ts`](src/knowledge-map.ts)、[`src/knowledge-map-view.ts`](src/knowledge-map-view.ts) | 领域地图：读取随附的布局（[`runtime/kg/MAP-FORMAT.md`](runtime/kg/MAP-FORMAT.md)）、把一次召回放到地图上，以及地图命令返回的页面 |
 | [`src/knowledge-recall-log.ts`](src/knowledge-recall-log.ts) | 研究最近 20 次召回，按内置图谱的论文和模式下标记录；地图展示它们，并据此定位想法 |
 | [`src/knowledge-annotations.ts`](src/knowledge-annotations.ts) | 论文和模式上的标记，保存在 `.research/kg/annotations.json`，以及召回如何遵从它们 |
+| [`src/knowledge-trace.ts`](src/knowledge-trace.ts) | 一次 `research_knowledge` 调用碰过什么（召回的和被跳过的条目、读到的标注、一个实体周围的关系、找到的路径的各跳），由调用本来就算出的值生成，作为工具结果的展示元数据保存，从不放进模型看到的文字 |
 | [`src/clustering.ts`](src/clustering.ts) | 分词、BM25、词项向量、余弦、排名融合、平均链接与 k-means 聚类 |
 | [`runtime/kg/`](runtime/kg) | 内置科研模式图谱，由 [`scripts/build_kg.py`](scripts/build_kg.py) 精简而来 |
 | [`src/latex.ts`](src/latex.ts) | 主稿发现、输入展开、参考文献与插图解析 |

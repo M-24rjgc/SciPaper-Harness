@@ -26,7 +26,10 @@ interface RegisteredTool {
   parameters: { properties: Record<string, { enum?: string[] }> }
   execute(args: unknown, exec: unknown): Promise<unknown>
   presentCall(args: unknown): { title: string } | undefined
-  output: { render(args: unknown, value: unknown): { type: string; text: string }[] }
+  output: {
+    render(args: unknown, value: unknown): { type: string; text: string }[]
+    presentationMeta?(args: unknown, value: unknown): unknown
+  }
 }
 type PreExecute = (exec: ToolExecution, next: () => Promise<PreToolDecision>) => Promise<PreToolDecision>
 
@@ -280,6 +283,19 @@ describe('research tools find the project from the working directory', () => {
     expect(h.executed.at(-1)?.request).toEqual({ action: 'relations-gaps', projectId: h.project.id, axis: 'dataset', rows: ['Alpha'], limit: 5 })
     await expect(h.call('research_knowledge', { action: 'relations-propose', proposals: [] })).rejects.toThrow()
     expect(h.tools.get('research_knowledge')!.presentCall({ action: 'relations-gaps' })?.title).toBe('Research knowledge graph')
+  })
+
+  it('keeps the knowledge trace out of the model\'s result and persists it as the call\'s presentation metadata', () => {
+    const h = harness()
+    const output = h.tools.get('research_knowledge')!.output
+    const trace = { v: 1, action: 'marks', nodes: [], edges: [], marks: { count: 3, honour: true } }
+    const value = { message: '3 mark(s)', content: '[]', knowledgeTrace: trace }
+    expect(output.render({}, value)).toEqual([{ type: 'text', text: '{"message":"3 mark(s)","content":"[]"}' }])
+    expect(output.presentationMeta?.({}, value)).toEqual(trace)
+    // A call that touched nothing to draw persists null, and every other research tool persists no metadata at all.
+    expect(output.presentationMeta?.({}, { message: 'Graph status' })).toBeNull()
+    expect(Object.keys(h.tools.get('research_project')!.output)).not.toContain('presentationMeta')
+    expect(Object.keys(output)).toContain('presentationMeta')
   })
 
   it('reads desktop tasks only for the calling project, without the project body', async () => {

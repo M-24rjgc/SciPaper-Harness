@@ -33,9 +33,10 @@ import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
 import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
 import { FigureGallery } from './gallery.ts'
-import { builtinIndices, createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder, type KnowledgeBase } from './knowledge.ts'
-import { locateTarget, readAnnotations, removeAnnotation, setAnnotation } from './knowledge-annotations.ts'
+import { builtinIndices, createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, returnedItems, type Embedder, type KnowledgeBase } from './knowledge.ts'
+import { annotationId, locateTarget, readAnnotations, removeAnnotation, setAnnotation } from './knowledge-annotations.ts'
 import { markViews } from './knowledge-map-view.ts'
+import { markTrace, marksTrace, neighbourhoodTrace, pathsTrace, recallTrace } from './knowledge-trace.ts'
 import { appendRecall } from './knowledge-recall-log.ts'
 import { readHonour, writeHonour } from './knowledge-marks-state.ts'
 import type {} from './knowledge-plugin.ts'
@@ -1395,7 +1396,8 @@ export class ResearchWorkbench extends TypertRemoteService {
           if (indices !== undefined && !isExampleRoot(root)) await appendRecall(root, request.query, indices)
           if (request.path) await atomicWrite(await projectPath(root, request.path), `${JSON.stringify({ query: request.query, ...result }, null, 1)}\n`)
           return { message: `${result.patterns.length} pattern(s) recalled (${result.basis})${request.path ? `; saved to ${request.path}` : ''}`,
-            content: JSON.stringify(result), ...(request.path ? { path: request.path } : {}) }
+            content: JSON.stringify(result), ...(request.path ? { path: request.path } : {}),
+            ...actor === 'agent' ? { knowledgeTrace: recallTrace(request.query, result, returnedItems(result)) } : {} }
         }
         case 'novelty': {
           const path = request.path ?? 'novelty_report.json'
@@ -1423,18 +1425,19 @@ export class ResearchWorkbench extends TypertRemoteService {
           })
           const marks = await this.markList(knowledge, root)
           return { message: `${change.changed ? 'Marked' : 'Already marked'} ${request.target.id} ${request.verdict}${change.problems.length ? `; ${change.problems.join('; ')}` : ''}`,
-            marks, content: JSON.stringify(marks) }
+            marks, content: JSON.stringify(marks), ...actor === 'agent' ? { knowledgeTrace: markTrace(marks, annotationId(request.target)) } : {} }
         }
         case 'unmark': {
           const change = await removeAnnotation(root, request.id)
           const marks = await this.markList(knowledge, root)
-          return { message: change.changed ? `Removed the mark ${request.id}` : `No mark ${request.id}`, marks, content: JSON.stringify(marks) }
+          return { message: change.changed ? `Removed the mark ${request.id}` : `No mark ${request.id}`, marks, content: JSON.stringify(marks),
+            ...actor === 'agent' ? { knowledgeTrace: marksTrace('unmark', marks) } : {} }
         }
         case 'marks': {
           const marks = await this.markList(knowledge, root)
           const honour = await readHonour(root)
           return { message: `${marks.length} mark(s)${honour ? '' : '; the person paused them, so recall does not apply them'}`,
-            marks, honour, content: JSON.stringify(marks) }
+            marks, honour, content: JSON.stringify(marks), ...actor === 'agent' ? { knowledgeTrace: marksTrace('marks', marks, honour) } : {} }
         }
         case 'honour-marks': {
           if (actor !== 'user') throw new Error(HONOUR_PERSON_ONLY)
@@ -1556,12 +1559,15 @@ export class ResearchWorkbench extends TypertRemoteService {
       case 'relations-graph': {
         const { page, text } = await provider.graph(project, { ...request, maxNodes: request.maxNodes ?? (actor === 'agent' ? AGENT_NEIGHBOURHOOD : undefined) }, signal)
         const message = page.neighbourhood === undefined ? text : `${page.neighbourhood.nodes.length} node(s) and ${page.neighbourhood.edges.length} relation(s) around ${page.neighbourhood.center}`
-        return actor === 'user' ? { message, relations: page } : { message: 'Relation graph', content: text }
+        return actor === 'user' ? { message, relations: page } : {
+          message: 'Relation graph', content: text,
+          ...page.neighbourhood === undefined ? {} : { knowledgeTrace: neighbourhoodTrace(page.neighbourhood) },
+        }
       }
       case 'relations-paths': {
         const { page, text } = await provider.paths(project, request, signal)
         const message = `${page.paths.length} path(s) from ${page.from} to ${page.to}`
-        return actor === 'user' ? { message, relationPaths: page } : { message, content: text }
+        return actor === 'user' ? { message, relationPaths: page } : { message, content: text, knowledgeTrace: pathsTrace(page) }
       }
       case 'relations-gaps': {
         const { page, text } = await provider.gaps(this.getProject(project.id), request, signal)

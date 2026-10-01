@@ -789,6 +789,29 @@ describe('the research service records; it never drives the agent', () => {
     expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${first.id}` }, signal, 'user')).marks).toEqual([])
     expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${first.id}` }, signal, 'user')).message).toMatch(/^No mark/)
 
+    // The agent's recall, reads and marks carry a trace of what they touched; the person's commands carry none.
+    expect(recall.knowledgeTrace).toMatchObject({
+      v: 1, action: 'recall', query: 'block sparse attention long context accuracy',
+      nodes: expect.arrayContaining([expect.objectContaining({ id: `ai:paper:${first.id}`, source: 'ai', kind: 'paper', label: expect.stringContaining(first.title.slice(0, 30)) as string, use: 'recalled', index: expect.any(Number) as number })]) as unknown[],
+    })
+    expect(marked.knowledgeTrace).toBeUndefined()
+    expect((await service.execute({ action: 'marks', projectId: project.id }, signal, 'user')).knowledgeTrace).toBeUndefined()
+    const second = hits[1]!
+    const agentMark = await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: second.id }, verdict: 'irrelevant' }, signal, 'agent')
+    expect(agentMark.knowledgeTrace).toMatchObject({
+      action: 'mark', marks: { count: 1 }, nodes: [{ id: `ai:paper:${second.id}`, use: 'skipped', label: expect.stringContaining(second.title.slice(0, 30)) as string, index: expect.any(Number) as number }],
+    })
+    expect((await service.execute({ action: 'marks', projectId: project.id }, signal, 'agent')).knowledgeTrace).toEqual({ v: 1, action: 'marks', nodes: [], edges: [], marks: { count: 1, honour: true } })
+    expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${second.id}` }, signal, 'agent')).knowledgeTrace)
+      .toEqual({ v: 1, action: 'unmark', nodes: [], edges: [], marks: { count: 0 } })
+    // The next recall shows the mark's effect in its trace: the skipped paper is a node, the person's pin leads.
+    await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: first.id }, verdict: 'pin' }, signal, 'user')
+    await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: second.id }, verdict: 'irrelevant' }, signal, 'user')
+    const shaped = await service.execute({ action: 'recall', projectId: project.id, query: 'block sparse attention long context accuracy' }, signal, 'agent')
+    expect(shaped.knowledgeTrace?.marks).toEqual({ count: 2 })
+    expect(shaped.knowledgeTrace?.nodes[0]).toMatchObject({ id: `ai:paper:${first.id}`, use: 'pinned' })
+    expect(shaped.knowledgeTrace?.nodes.find(node => node.use === 'skipped')).toMatchObject({ id: `ai:paper:${second.id}`, label: expect.stringContaining(second.title.slice(0, 30)) as string })
+
     // A reference the built-in graph holds sits on its paper; another is placed from its words; only literature is placed.
     const literature = (id: string, title: string, text: string) => ({
       id, title, kind: 'literature' as const, path: `.research/sources/${id}.json`, sha256: 'x', revision: 1, importedAt: '', coverage: 'abstract' as const,
@@ -1025,12 +1048,25 @@ describe('the research service records; it never drives the agent', () => {
     const read = await agent({ action: 'relations-graph', entity: 'beta' })
     expect(read.relations).toBeUndefined()
     expect(read.content).toContain('Alpha (method) —improves-on→ Beta (method), 0.7, paper.md [improves-on:method:alpha>method:beta]')
+    // What it read travels beside the result as a trace, under the ids the Relations view uses; the person's read carries none.
+    expect(read.knowledgeTrace).toMatchObject({
+      v: 1, action: 'relations-neighbourhood',
+      nodes: expect.arrayContaining([expect.objectContaining({ id: 'method:beta', source: 'relations', kind: 'method', use: 'centre' })]) as unknown[],
+      edges: expect.arrayContaining([{ id: 'improves-on:method:alpha>method:beta', kind: 'improves-on', from: 'method:alpha', to: 'method:beta', by: 'agent' }]) as unknown[],
+    })
+    expect((await around('Beta')).knowledgeTrace).toBeUndefined()
 
     const paths = (await user({ action: 'relations-paths', from: 'Alpha', to: 'Gamma' })).relationPaths
     expect(paths?.paths[0]?.hops.map(hop => [hop.kind, hop.direction, hop.grounds[0]?.quote])).toEqual([
       ['improves-on', 'forward', 'Alpha outperforms Beta on Bench at 32K.'], ['improves-on', 'backward', 'Gamma outperforms Beta on Bench.'],
     ])
-    expect((await agent({ action: 'relations-paths', from: 'Alpha', to: 'Gamma' })).content).toContain('Alpha —improves-on→ Beta')
+    const walked = await agent({ action: 'relations-paths', from: 'Alpha', to: 'Gamma' })
+    expect(walked.content).toContain('Alpha —improves-on→ Beta')
+    expect(walked.knowledgeTrace).toMatchObject({
+      action: 'relations-paths', paths: 1,
+      nodes: expect.arrayContaining([expect.objectContaining({ id: 'method:alpha', use: 'end' }), expect.objectContaining({ id: 'method:gamma', use: 'end' })]) as unknown[],
+      edges: [expect.objectContaining({ walked: true }), expect.objectContaining({ walked: true })],
+    })
 
     // The gap matrix speaks of this project's sources only; a project file is not a paper.
     const gaps = (await user({ action: 'relations-gaps', axis: 'dataset', rows: ['Alpha', 'Gamma'], columns: ['Bench'] })).relationGaps
@@ -1238,6 +1274,11 @@ describe('the research service records; it never drives the agent', () => {
     expect(recalled).toMatchObject({ message: '3 pattern(s) recalled (lexical); saved to recall.json', path: 'recall.json' })
     expect(JSON.parse(await readFile(join(p.root, 'recall.json'), 'utf8'))).toMatchObject({ query: 'continual category discovery for e-commerce agents', basis: 'lexical' })
     expect((await run({ action: 'recall', query: 'graph neural networks' })).message).toBe('8 pattern(s) recalled (lexical)')
+    // The agent's recall carries its trace; the person's, which runs as a job, carries none.
+    expect(recalled.knowledgeTrace).toMatchObject({ action: 'recall', query: 'continual category discovery for e-commerce agents' })
+    const person = await service.execute({ action: 'recall', projectId: p.id, query: 'graph neural networks' }, signal, 'user')
+    await vi.waitFor(() => { expect(service.tasks().find(task => task.id === person.jobId)?.status).toBe('completed') })
+    expect(service.tasks().find(task => task.id === person.jobId)?.result).not.toHaveProperty('knowledgeTrace')
     await write(join(p.root, 'story.json'), JSON.stringify({ title: 'Continual category discovery', abstract: 'New product categories appear over time' }))
     const novelty = await run({ action: 'novelty' })
     expect(novelty).toMatchObject({ path: 'novelty_report.json', message: expect.stringMatching(/^Novelty risk unknown \(lexical/) as unknown })

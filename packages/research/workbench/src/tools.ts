@@ -15,6 +15,7 @@ import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
 import { remoteResearchAt } from './session-project.ts'
 import { RELATION_GROUNDING_RULE, RELATION_KINDS } from './knowledge-relations-grounding.ts'
+import { traceMeta, withoutTrace } from './knowledge-trace.ts'
 import { autonomies, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
 import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchResponse, ResearchStanding } from './types.ts'
 
@@ -23,6 +24,15 @@ const list = (description: string) => ({ type: 'array' as const, items: { type: 
 const json = (description: string) => ({ type: 'json' as const, description })
 const projectId = text('Optional; defaults to the research linked to this conversation’s workspace.')
 const output = { schema: { type: 'json' as const }, render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }] }
+/**
+ * The knowledge tool's output: the model reads the result without the trace, and the trace persists as the call's
+ * presentation metadata, which the conversation's cards and the Knowledge tab read.
+ */
+const knowledgeOutput = {
+  schema: { type: 'json' as const },
+  render: (args: unknown, value: JsonValue) => output.render(args, withoutTrace(value)),
+  presentationMeta: (_args: unknown, value: JsonValue): JsonValue => traceMeta(value),
+}
 
 /** Independently selectable tool families, sharing the same project ledger. */
 export const RESEARCH_TOOL_MODULES = ['project', 'evidence', 'artifact', 'environment', 'experiment', 'board', 'media', 'knowledge', 'checks', 'tasks'] as const
@@ -633,7 +643,7 @@ export function registerResearchTools(
       projectId,
       ...family.fields,
     },
-    output,
+    output: family.name === 'research_knowledge' ? knowledgeOutput : output,
     async execute(args, exec) {
       const { action, projectId: requested, ...fields } = args as Record<string, unknown> & { action: string }
       const project = await projectFor(service, requested, exec)

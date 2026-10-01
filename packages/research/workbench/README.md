@@ -118,6 +118,7 @@ A stale editor save commits the revision adopted from disk before reporting the 
 | [`src/knowledge-map.ts`](src/knowledge-map.ts), [`src/knowledge-map-view.ts`](src/knowledge-map-view.ts) | The domain map: reading the shipped layout ([`runtime/kg/MAP-FORMAT.md`](runtime/kg/MAP-FORMAT.md)), placing a recall on it, and the pages the map commands return |
 | [`src/knowledge-recall-log.ts`](src/knowledge-recall-log.ts) | The research's last 20 recalls by built-in paper and pattern index, which the map shows and places the idea from |
 | [`src/knowledge-annotations.ts`](src/knowledge-annotations.ts) | Marks on papers and patterns, kept in `.research/kg/annotations.json`, and how recall honours them |
+| [`src/knowledge-trace.ts`](src/knowledge-trace.ts) | What one `research_knowledge` call touched (the recalled and skipped items, the marks read, the relations around an entity, the hops of the paths found), built from the value the call computed and stored as the tool result's presentation metadata, never in the model's text |
 | [`src/clustering.ts`](src/clustering.ts) | Tokens, BM25, term vectors, cosine, rank fusion, average-linkage and k-means clustering |
 | [`runtime/kg/`](runtime/kg) | The built-in research-pattern graph, distilled by [`scripts/build_kg.py`](scripts/build_kg.py) |
 | [`src/latex.ts`](src/latex.ts) | Manuscript discovery, input flattening, bibliography and graphic resolution |

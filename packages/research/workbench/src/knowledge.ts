@@ -261,6 +261,43 @@ export function builtinIndices(result: RecallResult): RecallIndices | undefined 
   return recalledIndices.get(result)
 }
 
+/** A pattern or paper a recall returned, with the graph it came from and its place there. */
+export interface ReturnedItem {
+  graph: GraphSource
+  /** Index in that graph's patterns or papers. */
+  index: number
+  /** The pattern's or paper's id in that graph. */
+  id: string
+  /** The pattern's name or the paper's title. */
+  label: string
+  why?: AnnotationWhy
+}
+
+/** The patterns and papers one recall returned, in the order it lists them. */
+export interface RecallReturned {
+  patterns: ReturnedItem[]
+  papers: ReturnedItem[]
+}
+
+/**
+ * The key under which a recall keeps what it returned. It is a registered symbol on a non-enumerable property, not a
+ * module-level WeakMap, because the host loads this file twice (inside the bundled entry and as the unbundled module the
+ * graph plugin imports); a registry symbol reads the same from both copies, and the result's JSON and spread stay as before.
+ */
+const RETURNED = Symbol.for('@deepseek-ai/dsh-research-workbench/recall-returned')
+
+/** A recall result with what it returned kept beside its own fields. */
+type RecallWithReturned = RecallResult & { [RETURNED]?: RecallReturned }
+
+/**
+ * The patterns and papers a recall returned, with the graph source and index that the result's own fields do not carry.
+ * @param result - a result that `KnowledgeBase.recall` returned, not a copy of one.
+ * @returns the returned items; empty for a result that did not come from `recall`.
+ */
+export function returnedItems(result: RecallResult): RecallReturned {
+  return (result as RecallWithReturned)[RETURNED] ?? { patterns: [], papers: [] }
+}
+
 /** Story fields the novelty check compares, in upstream order. */
 const STORY_FIELDS = ['title', 'abstract', 'problem_framing', 'gap_pattern', 'solution', 'method_skeleton', 'experiments_plan'] as const
 
@@ -642,6 +679,19 @@ export class KnowledgeBase {
       ...closePaper(byName.get(source) as LoadedGraph, index), ...why === undefined ? {} : { why },
     }))
     const result: RecallResult = { basis, note, patterns, closestPapers }
+    const returned = (source: GraphSource, at: number, label: string, id: string, why: AnnotationWhy | undefined): ReturnedItem =>
+      ({ graph: source, index: at, id, label, ...why === undefined ? {} : { why } })
+    const items: RecallReturned = {
+      patterns: fused.map(({ graph: source, index: at, why }) => {
+        const pattern = (byName.get(source) as LoadedGraph).file.patterns[at] as GraphPattern
+        return returned(source, at, pattern.name, pattern.id, why)
+      }),
+      papers: closest.map(({ graph: source, index: at, why }) => {
+        const paper = (byName.get(source) as LoadedGraph).file.papers[at] as GraphPaper
+        return returned(source, at, paper.title, paper.id, why)
+      }),
+    }
+    Object.defineProperty(result, RETURNED, { value: items, enumerable: false })
     if (annotated) {
       result.annotations = { applied: describeAnnotations(annotated.summary), skipped: annotated.skipped, summary: annotated.summary }
     }

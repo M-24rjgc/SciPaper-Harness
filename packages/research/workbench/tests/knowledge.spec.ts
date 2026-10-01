@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { createEmbedder, KnowledgeBase, MAX_CORPUS, PROJECT_CLUSTERS, PROJECT_GRAPH, type Embedder, type GraphFile } from '../src/knowledge.ts'
+import { createEmbedder, KnowledgeBase, MAX_CORPUS, PROJECT_CLUSTERS, PROJECT_GRAPH, returnedItems, type Embedder, type GraphFile } from '../src/knowledge.ts'
 import { writeHonour } from '../src/knowledge-marks-state.ts'
 import { ANNOTATIONS_FILE, setAnnotation } from '../src/knowledge-annotations.ts'
 
@@ -129,6 +129,15 @@ describe('recall', () => {
     expect(result.patterns[0]?.matchedPapers).toContain('Block sparse attention kernels')
     expect(result.closestPapers[0]).toMatchObject({ graph: 'ai', id: 'p0', pattern: 'Sparse attention at scale' })
     expect(result.closestPapers.find(item => item.id === 'p3')?.pattern).toBeNull()
+    // The graph source and index that the result's own fields lack stay beside it.
+    expect(returnedItems(result).patterns[0]).toEqual({ graph: 'ai', index: 0, id: 'pattern_0', label: 'Sparse attention at scale' })
+    expect(returnedItems(result).papers[0]).toEqual({ graph: 'ai', index: 0, id: 'p0', label: 'Block sparse attention kernels' })
+    expect(returnedItems({ ...result })).toEqual({ patterns: [], papers: [] })
+    // The host loads this module twice (bundled entry and unbundled plugin), so the items sit under a registry symbol on a
+    // property that JSON and spread skip: a second copy of the module reads them under the same key.
+    const key = Symbol.for('@deepseek-ai/dsh-research-workbench/recall-returned')
+    expect(Object.getOwnPropertyDescriptor(result, key)).toMatchObject({ enumerable: false, value: returnedItems(result) })
+    expect(Object.keys(result)).toEqual(['basis', 'note', 'patterns', 'closestPapers'])
     // A query without any known word still returns nothing rather than failing.
     expect((await base.recall(root, 'zzz', 5, undefined, signal)).patterns).toEqual([])
   })
@@ -188,6 +197,7 @@ describe('recall with marks', () => {
     expect(marked.annotations?.applied).not.toBe('')
     expect(marked.annotations?.summary).toMatchObject({ marks: 2, pinned: 1, skipped: 1 })
     expect(marked.patterns.every(item => 'why' in item)).toBe(true)
+    expect(returnedItems(marked).papers[0]).toMatchObject({ graph: 'ai', id: 'p2', why: { kind: 'pinned' } })
     await writeFile(join(root, ANNOTATIONS_FILE), '{not json')
     const damaged = await base.recall(root, 'sparse attention', 2, undefined, signal)
     expect(damaged.note).toMatch(/Marks: /)
