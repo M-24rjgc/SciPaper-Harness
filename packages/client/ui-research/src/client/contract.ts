@@ -263,6 +263,11 @@ export interface ResearchInjected {
   openGallery(): void
   /** Inspect the current research's graph beside the conversation. */
   openKnowledge(params?: ResearchKnowledgeParams): void
+  /**
+   * 新研究 (New research): the entry the sidebar's button takes, which opens the untouched draft or creates one
+   * (`uiWorkspace.startSession` without a Workspace).
+   */
+  startNew(): void
 }
 
 /**

@@ -381,6 +381,13 @@ describe('the research plugin', () => {
     expect(b.sidebarRight.openTab).toHaveBeenCalledWith('research')
   })
 
+  it('starts a new research through the entry the sidebar button takes, with no Workspace named', async () => {
+    const b = await bench()
+    b.face.startNew()
+    expect(b.uiWorkspace.startSession).toHaveBeenCalledTimes(1)
+    expect(b.uiWorkspace.startSession).toHaveBeenCalledWith()
+  })
+
   it('opens each secondary tool as a tab beside the conversation, the board and the gallery wide, the Sources list as a column', async () => {
     const b = await bench()
     const opened = (): unknown[] => b.sidebarRight.openTab.mock.calls.map((call: unknown[]) => call)

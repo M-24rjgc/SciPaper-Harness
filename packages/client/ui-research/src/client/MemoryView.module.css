@@ -1,0 +1,94 @@
+/* The view is its own size container, so the graph answers the width of the right panel it sits in, not the window's. */
+.view { container-type: inline-size; display: flex; flex-direction: column; gap: 12px; min-width: 0; color: var(--dsw-alias-label-primary); font-size: 12.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.view p, .view h4 { margin: 0; }
+.note { padding: 24px 0; color: var(--dsw-alias-label-secondary); line-height: 1.75; }
+
+.strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.headline { flex: 1 1 240px; min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.6; }
+.lock { display: inline-flex; align-items: center; gap: 5px; }
+.caption { color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+
+.body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.graph { min-width: 0; padding: 40px 14px 14px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); }
+
+/* Three columns and the gutters between them. Every card has a fixed height and a computed top, so the gutters draw their lines without measuring. */
+.columns { display: grid; grid-template-columns: minmax(104px, 1.1fr) 24px minmax(0, 1.9fr) 24px minmax(112px, 0.9fr); min-width: 0; }
+.column { position: relative; height: var(--mv-height); min-width: 0; margin: 0; padding: 0; list-style: none; }
+.column::before { content: attr(data-heading); position: absolute; top: -26px; left: 0; right: 0; overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.node { position: absolute; top: var(--mv-top); left: 0; right: 0; margin: 0; padding: 0; list-style: none; }
+
+.gutter { display: block; width: 100%; height: var(--mv-height); overflow: visible; }
+.line { fill: none; stroke: var(--dsw-alias-label-dimmed); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.line[data-kind='source'][data-active='true'] { stroke: var(--dsw-alias-brand-primary); stroke-width: 2.5; }
+.line[data-kind='carry'] { stroke: var(--dsw-alias-brand-primary); stroke-width: 2; stroke-dasharray: 5 4; }
+.line[data-kind='carry'][data-active='true'] { stroke-width: 3; }
+
+.research { --mv-tone: var(--dsw-alias-brand-primary); box-sizing: border-box; display: flex; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; height: var(--mv-research-height); padding: 10px 12px; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .15s ease; }
+.research[data-finished='true'] { --mv-tone: var(--dsw-alias-state-success-primary); }
+.research:hover { background: var(--dsw-alias-interactive-bg-hover); }
+.research[data-current='true'] { border-color: var(--mv-tone); }
+.research[aria-pressed='true'] { border: 1px solid var(--mv-tone); box-shadow: 0 0 0 1px var(--mv-tone); }
+.research:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 3px; }
+.kicker { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--mv-tone); font-size: 11px; font-weight: 600; }
+.dot { flex: none; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--mv-tone); }
+.state { flex: none; }
+.where { min-width: 0; overflow: hidden; color: var(--dsw-alias-label-tertiary); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.researchTitle { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; font-weight: 600; line-height: 1.45; }
+.researchMeta { overflow: hidden; color: var(--dsw-alias-label-tertiary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+.chip { --mv-tone: var(--dsw-alias-label-tertiary); box-sizing: border-box; display: flex; align-items: center; gap: 6px; height: var(--mv-chip-height); padding: 0 10px; overflow: hidden; border: 0.5px solid var(--dsw-alias-border-l3); border-left: 3px solid var(--mv-tone); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-1); }
+.chip[data-kind='runs'] { --mv-tone: var(--dsw-alias-state-success-primary); }
+.chip[data-kind='environments'] { --mv-tone: var(--dsw-alias-state-business-primary); }
+.chip[data-kind='writing'] { --mv-tone: var(--dsw-alias-state-warn-primary); }
+.chip[data-carried='false'] { background: var(--dsw-alias-bg-module-platform); opacity: .6; }
+.chip[data-linked='true'] { border-color: var(--mv-tone); }
+.chipKind { flex: none; color: var(--mv-tone); font-size: 10.5px; font-weight: 600; }
+.chipLabel { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+.next { position: absolute; top: var(--mv-top); left: 0; right: 0; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 2px; height: var(--mv-next-height); padding: 8px 10px; overflow: hidden; border: 1.5px dashed var(--dsw-alias-brand-primary); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); }
+.nextKicker, .nextMeta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nextKicker { color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.nextTitle { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--dsw-alias-brand-primary); font-size: 13px; font-weight: 700; line-height: 1.35; }
+.nextMeta { color: var(--dsw-alias-label-secondary); font-size: 11.5px; }
+
+.aside { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card, .lessons { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 0.5px solid var(--dsw-alias-border-l3); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); }
+.lessons { border-color: var(--dsw-alias-state-warn-secondary); background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, var(--dsw-alias-bg-layer-1)); }
+.cardTitle { font-size: 12.5px; font-weight: 700; }
+.lessonsTitle { color: var(--dsw-alias-state-warn-label); font-size: 12.5px; font-weight: 700; }
+.hint { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.6; }
+.switches { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.switchRow { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.switchRow:first-child { border-top: 0; }
+.switchText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.switchTitle { font-size: 12.5px; font-weight: 600; }
+.lesson { display: flex; flex-direction: column; gap: 1px; padding-top: 6px; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.lesson:first-of-type { padding-top: 0; border-top: 0; }
+.lessonText { font-size: 12.5px; line-height: 1.6; }
+
+.actions { display: flex; }
+.primary { flex: 1 1 auto; min-height: 36px; padding: 6px 12px; border: 0; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.primary:hover { background: var(--dsw-alias-button-primary-hover); }
+.primary:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+
+/* With room for both, the panel of switches sits beside the graph. */
+@container (min-width: 880px) {
+  .body { flex-direction: row; align-items: flex-start; }
+  .graph { flex: 1 1 0; }
+  .aside { flex: 0 0 320px; }
+}
+
+/* In a narrow panel the columns stack in reading order; a selected research still lights its items. */
+@container (max-width: 439px) {
+  .graph { padding-top: 14px; }
+  .columns { display: flex; flex-direction: column; gap: 16px; }
+  .gutter { display: none; }
+  .column { display: flex; flex-direction: column; gap: 8px; height: auto; }
+  .column::before { position: static; }
+  .node { position: static; }
+  .next { position: static; height: auto; }
+  .nextKicker, .nextMeta { white-space: normal; }
+  .research, .chip { height: auto; min-height: 0; }
+  .chip { min-height: var(--mv-chip-height); padding-top: 4px; padding-bottom: 4px; }
+  .chipLabel { white-space: normal; }
+}

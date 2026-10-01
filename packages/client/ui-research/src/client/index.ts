@@ -322,6 +322,7 @@ export function apply(ctx: Context): void {
       ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
       ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })
     },
+    startNew: () => { ctx.uiWorkspace.startSession() },
   })
   // Where startup and 新研究 go (ui-workspace's entry policy), and the untouched draft's moves.
   const entryView = createSnapshotStore<EntryView>({ notice: null })

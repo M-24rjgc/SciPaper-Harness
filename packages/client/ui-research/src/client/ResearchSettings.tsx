@@ -309,9 +309,11 @@ export function ResearchSettingsSection(props: WorkbenchProps): ReactNode {
       ...(text(form, 'pythonPath') ? { python: text(form, 'pythonPath') } : {}),
       ...(text(form, 'uvPath') ? { uv: text(form, 'uvPath') } : {}),
       ...(text(form, 'texPath') ? { texBin: text(form, 'texPath') } : {}),
-      // The research home and the examples switch have their own groups; this form keeps them as they are.
+      // The research home and the examples switch have their own groups and the memory switches live in the Memory view;
+      // this form keeps them as they are.
       ...(preferences.researchHome === undefined ? {} : { researchHome: preferences.researchHome }),
       ...(preferences.showExamples === undefined ? {} : { showExamples: preferences.showExamples }),
+      ...(preferences.memoryCarry === undefined ? {} : { memoryCarry: preferences.memoryCarry }),
     }
     const keys = { image: text(form, 'imageKey'), embedding: text(form, 'embeddingKey') }
     saving.start(() => props.configure(next, keys))

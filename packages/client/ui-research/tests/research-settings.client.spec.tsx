@@ -635,6 +635,15 @@ describe('which researches the sidebar lists', () => {
     expect(kept.saves.map(save => save.preferences)).toEqual([{ showExamples: false }])
   })
 
+  it('keeps the switches of the Memory view when the form is saved', async () => {
+    const kept = blank()
+    const preferences: ResearchPreferences = { memoryCarry: { runs: false } }
+    const form = render(<ResearchSettingsSection {...propsFor(viewOf(snapshotOf({ preferences })), kept)} />)
+    fireEvent.click(form.getByRole('button', { name: zh.save }))
+    await settle()
+    expect(kept.saves.map(save => save.preferences)).toEqual([{ memoryCarry: { runs: false } }])
+  })
+
   it('lists each research removed from the list with its folder, and restores it through the host', async () => {
     const removed = { ...await projectWithEnvironments([]), title: '桌面验收 · 证据模式', archived: true }
     const listed = await projectWithEnvironments([])

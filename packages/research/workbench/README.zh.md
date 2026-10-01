@@ -29,7 +29,9 @@ kind: "package-reference"
 
 项目的自主程度就是它每段对话的权限预设：服务注入 `ctx.permissionPresets`，在每次设置自主程度时、以及每个会话上线时，为项目的每个在线会话设置预设，`checkpoints` 对应 `workspace-write`，`automatic` 对应 `research-auto`；示例和委派出的子会话不受影响（[详情](../../../docs/subsystems/research.zh.md#autonomy-and-permission)）。权限配置行必须同时配置这两个预设（research-app bundle 已经如此），否则服务不会加载。
 
-可选的知识图谱 bundle 从本包挂载三个插件，各占一行、各有独立开关。`knowledge-plugin` 提供图谱引擎（`ctx.researchKnowledge`），`knowledge-map-plugin` 提供领域地图（`ctx.researchKnowledgeMap`），`knowledge-evidence-plugin` 提供证据图（`ctx.researchKnowledgeEvidence`）。地图注入图谱引擎，因此引擎关闭时地图也关闭；证据图只读取项目记录，不需要引擎。桌面端命令 `evidence-graph`、`map-view`、`map-overlay` 和 `map-papers` 在对应插件关闭时报错，错误中写明插件名；`graph-status` 报告哪些子插件已开启，快照也在 `knowledge.modules` 中带有同样的标志。关闭任何一个插件都不会改动项目文件。每一行的名称和说明来自 `locale/<plugin>/en.json` 与 `zh.json`，以 `<plugin>/locale/*.json` 导出。
+可选的知识图谱 bundle 从本包挂载四个插件，各占一行、各有独立开关。`knowledge-plugin` 提供图谱引擎（`ctx.researchKnowledge`），`knowledge-map-plugin` 提供领域地图（`ctx.researchKnowledgeMap`），`knowledge-evidence-plugin` 提供证据图（`ctx.researchKnowledgeEvidence`），`knowledge-memory-plugin` 提供研究记忆（`ctx.researchKnowledgeMemory`）。地图注入图谱引擎，因此引擎关闭时地图也关闭；证据图和研究记忆只读取项目记录，不需要引擎。桌面端命令 `evidence-graph`、`memory`、`memory-carry`、`map-view`、`map-overlay` 和 `map-papers` 在对应插件关闭时报错，错误中写明插件名；`graph-status` 报告哪些子插件已开启，快照也在 `knowledge.modules` 中带有同样的标志。关闭任何一个插件都不会改动项目文件。每一行的名称和说明来自 `locale/<plugin>/en.json` 与 `zh.json`，以 `<plugin>/locale/*.json` 导出。
+
+研究记忆是对主机持有的全部研究的纯投影，示例、已移出列表的研究和未动过的草稿不在其中。它按规范化后的标题合并各项研究的文献（`src/title-key.ts`，与领域地图使用同一种规范化），按名称列出每项研究已完成的实验及其命令和指标（记录里没有基线标记，所以不把任何一个叫作基线），合并可用的环境（本机 `uv` 环境合为一个，SSH 环境按主机和解释器合并），列出套用过模板的会议，并列出记录里的经验：记录了原因或退出码的失败运行，以及选择模式之外的决定。`memory` 向桌面端返回这一页。`memory-carry {kind, on}` 是用户自己的命令，agent 会被拒绝：它把开关作为 `memoryCarry` 存入研究偏好，未出现的类别视为开启。agent 的 `research_project memory` 在 `content` 中只收到已开启的类别，来自它所在研究之外的研究，每类最多 40 项，不含经验。
 
 首次读取科研快照时，在 `<data home>/research/examples/v1` 初始化两套离线示例，包含合成数据、中英文正文、PDF 札记、可编辑 SVG 图，以及通过 Session Controller 创建的持久对话。初始化保留已有文件和记录，恢复缺失材料，以稳定标识续接中断的登记。`showExamples` 只控制显示，不创建或删除示例。发布示例的对话采用 `read-only` 权限预设，科研写操作均拒绝示例目录，数据 home 的别名也受保护。旧 `<data home>/demo` 和默认 home 的 demo 保持只读，不会被改写。
 
@@ -107,8 +109,9 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 | [`runtime/venues/`](runtime/venues) | 139 个会议、16 套官方样式，附指南与示例，由 [`scripts/build_venues.py`](scripts/build_venues.py) 构建 |
 | [`src/examples.ts`](src/examples.ts)、[`runtime/examples/v1/`](runtime/examples/v1) | 两套合成研究示例的保留式安装、稳定登记及成稿对话 |
 | [`src/knowledge.ts`](src/knowledge.ts) | `research_knowledge`：加载图谱、召回、新颖性、构建并命名项目图谱 |
-| [`src/knowledge-plugin.ts`](src/knowledge-plugin.ts)、[`src/knowledge-map-plugin.ts`](src/knowledge-map-plugin.ts)、[`src/knowledge-evidence-plugin.ts`](src/knowledge-evidence-plugin.ts) | 三个可选的知识图谱服务；前两个在 [`src/operation-scope.ts`](src/operation-scope.ts) 下运行任务，插件关闭时由它中止任务 |
+| [`src/knowledge-plugin.ts`](src/knowledge-plugin.ts)、[`src/knowledge-map-plugin.ts`](src/knowledge-map-plugin.ts)、[`src/knowledge-evidence-plugin.ts`](src/knowledge-evidence-plugin.ts)、[`src/knowledge-memory-plugin.ts`](src/knowledge-memory-plugin.ts) | 四个可选的知识图谱服务；前两个在 [`src/operation-scope.ts`](src/operation-scope.ts) 下运行任务，插件关闭时由它中止任务 |
 | [`src/knowledge-evidence.ts`](src/knowledge-evidence.ts) | 证据图：研究问题、结论及其背后的运行与文献，由纯函数从记录投影得到 |
+| [`src/knowledge-memory.ts`](src/knowledge-memory.ts)、[`src/title-key.ts`](src/title-key.ts) | 研究记忆：以往研究留下的内容，由纯函数从记录投影得到，以及它与领域地图共用的标题规范化 |
 | [`src/knowledge-map.ts`](src/knowledge-map.ts)、[`src/knowledge-map-view.ts`](src/knowledge-map-view.ts) | 领域地图：读取随附的布局（[`runtime/kg/MAP-FORMAT.md`](runtime/kg/MAP-FORMAT.md)）、把一次召回放到地图上，以及地图命令返回的页面 |
 | [`src/knowledge-recall-log.ts`](src/knowledge-recall-log.ts) | 研究最近 20 次召回，按内置图谱的论文和模式下标记录；地图展示它们，并据此定位想法 |
 | [`src/knowledge-annotations.ts`](src/knowledge-annotations.ts) | 论文和模式上的标记，保存在 `.research/kg/annotations.json`，以及召回如何遵从它们 |
@@ -147,7 +150,7 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 
 #### What the model sees
 
-生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、rename、list、modes、set-mode、set-autonomy、record-decision）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
+生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、rename、list、modes、set-mode、set-autonomy、record-decision、memory）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
 
 #### Token effect
 
@@ -161,7 +164,7 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 
 #### What the model sees
 
-结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、模式是否已选定以及由谁选定（`modeChosen`、`modeSetBy`）、路线是否已定（`routingSettled`）、该模式的 `paperRoot`、自主度、这项研究某段已加载对话所持有的目标（`activeGoal`，读者自己的优先）、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、开始某阶段工作时要加载的该模式技能、不应重复创建的在运行目标，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。`research_knowledge recall` 为每个结果附上 `why`，研究中有标记时还附上 `annotations`（已应用和被跳过的标记）；非示例研究中的召回还会追加到 `.research/kg/recalls.json` 供领域地图使用，任何工具结果都不会返回它。不在任何研究中时，current 返回 `{project: null, hint}` 而不报错；`create` 只把本对话自己的文件夹设为研究，拒绝其他任何 root，并在消息中请 agent 让用户使用「新研究」和「更改位置」。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。导入用户附加到对话里的文件不会发起审批请求；从项目之外其他任何位置导入会先询问用户，而在 `automatic` 自主程度下请求会被直接拒绝，因为它的预设在这项研究的每段对话里都关闭了审批提示（审批策略的运行时上下文语句会告诉模型当前适用哪一种）。
+结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、模式是否已选定以及由谁选定（`modeChosen`、`modeSetBy`）、路线是否已定（`routingSettled`）、该模式的 `paperRoot`、自主度、这项研究某段已加载对话所持有的目标（`activeGoal`，读者自己的优先）、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、开始某阶段工作时要加载的该模式技能、不应重复创建的在运行目标，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。`research_knowledge recall` 为每个结果附上 `why`，研究中有标记时还附上 `annotations`（已应用和被跳过的标记）；非示例研究中的召回还会追加到 `.research/kg/recalls.json` 供领域地图使用，任何工具结果都不会返回它。`research_project memory` 返回用户允许新研究带上的各类记忆，来自其他研究，每类最多 40 项；插件关闭时则报错并写明插件名。不在任何研究中时，current 返回 `{project: null, hint}` 而不报错；`create` 只把本对话自己的文件夹设为研究，拒绝其他任何 root，并在消息中请 agent 让用户使用「新研究」和「更改位置」。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。导入用户附加到对话里的文件不会发起审批请求；从项目之外其他任何位置导入会先询问用户，而在 `automatic` 自主程度下请求会被直接拒绝，因为它的预设在这项研究的每段对话里都关闭了审批提示（审批策略的运行时上下文语句会告诉模型当前适用哪一种）。
 
 #### Token effect
 
