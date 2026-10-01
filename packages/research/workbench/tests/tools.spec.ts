@@ -6,6 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { attachedFilesDirectory } from '../src/files.ts'
 import { projectBrief, registerResearchTools } from '../src/tools.ts'
+import { RELATION_GROUNDING_RULE } from '../src/knowledge-relations-grounding.ts'
 import { newProject } from '../src/project.ts'
 import { ModeRegistry, type ModePack, type ResolvedMode } from '../src/modes.ts'
 import { projectStanding } from '../src/progress.ts'
@@ -21,6 +22,8 @@ const standingOf = (project: ResearchProject, mode: ResolvedMode = modes.resolve
 
 interface RegisteredTool {
   name: string
+  description: string
+  parameters: { properties: Record<string, { enum?: string[] }> }
   execute(args: unknown, exec: unknown): Promise<unknown>
   presentCall(args: unknown): { title: string } | undefined
   output: { render(args: unknown, value: unknown): { type: string; text: string }[] }
@@ -201,6 +204,15 @@ describe('research tools find the project from the working directory', () => {
     ])
   })
 
+  it('offers the memory of the other researches as a read-only action of the project tool, sent as the agent\'s', async () => {
+    const h = harness()
+    expect(await h.call('research_project', { action: 'memory' })).toEqual({ message: 'did memory' })
+    expect(h.executed.map(item => [item.request, item.actor, item.sessionId])).toEqual([[{ action: 'memory', projectId: h.project.id }, 'agent', 'agent-session']])
+    const tool = h.tools.get('research_project') as unknown as { description: string }
+    expect(tool.description).toMatch(/memory: what the user's other researches on this computer left/)
+    expect(tool.description).toMatch(/does not mark baselines/)
+  })
+
   it('reports the goal a conversation of the research already holds, and says whose it is', async () => {
     const h = harness()
     type Brief = { activeGoal: Record<string, unknown> | null; guide: string[] }
@@ -236,6 +248,38 @@ describe('research tools find the project from the working directory', () => {
     }
     for (const tool of h.tools.values()) expect(tool.presentCall(valid[tool.name])?.title).toBeTruthy()
     expect(h.tools.get('research_check')!.output.render({}, { clean: true })).toEqual([{ type: 'text', text: '{"clean":true}' }])
+  })
+
+  it('gives the agent the relation graph\'s reads, proposals and rejections, with the grounding rule, and nothing the person alone does', async () => {
+    const h = harness()
+    const tool = h.tools.get('research_knowledge')!
+    const actions = tool.parameters.properties.action?.enum ?? []
+    expect(actions.filter(action => action.startsWith('relations-'))).toEqual([
+      'relations-propose', 'relations-reject', 'relations-neighbourhood', 'relations-paths', 'relations-gaps', 'relations-suggestions',
+    ])
+    // No author, no merge, no citation fetching and no entity editing are in the schema the model sees.
+    expect(Object.keys(tool.parameters.properties)).not.toContain('by')
+    expect(Object.keys(tool.parameters.properties).filter(key => /merge|into|citation|alias/i.test(key))).toEqual([])
+    expect(tool.description).toContain(RELATION_GROUNDING_RULE)
+    expect(tool.description).not.toMatch(/relations-(merge|entity|citations|reground|restore)/)
+    expect(tool.description).toContain('never tell the person that nobody has tested a pair')
+
+    const proposal = {
+      kind: 'improves-on', from: { kind: 'method', name: 'Alpha' }, to: { kind: 'method', name: 'Beta' },
+      ground: { type: 'quote', evidenceId: 'e', revision: 1, quote: 'Alpha outperforms Beta on Bench.' },
+    }
+    await h.call('research_knowledge', { action: 'relations-propose', proposals: [{ ...proposal, by: 'user' }] })
+    // An author in the input is dropped; the service takes it from the caller, which is the agent here.
+    expect(h.executed.at(-1)).toEqual({
+      request: { action: 'relations-propose', projectId: h.project.id, proposals: [proposal] },
+      actor: 'agent', sessionId: 'agent-session',
+    })
+    await h.call('research_knowledge', { action: 'relations-neighbourhood', entity: 'Alpha', maxNodes: 10 })
+    expect(h.executed.at(-1)?.request).toEqual({ action: 'relations-graph', projectId: h.project.id, entity: 'Alpha', maxNodes: 10 })
+    await h.call('research_knowledge', { action: 'relations-gaps', axis: 'dataset', rows: ['Alpha'], limit: 5 })
+    expect(h.executed.at(-1)?.request).toEqual({ action: 'relations-gaps', projectId: h.project.id, axis: 'dataset', rows: ['Alpha'], limit: 5 })
+    await expect(h.call('research_knowledge', { action: 'relations-propose', proposals: [] })).rejects.toThrow()
+    expect(h.tools.get('research_knowledge')!.presentCall({ action: 'relations-gaps' })?.title).toBe('Research knowledge graph')
   })
 
   it('reads desktop tasks only for the calling project, without the project body', async () => {

@@ -231,6 +231,7 @@ const FAMILIES: ReadonlyMap<string, Family> = new Map([
     'set-autonomy': (args, names) => detail(names.t, 'toolProjectSetAutonomy', autonomyName(args, names.t)),
     'record-decision': about('toolProjectDecision', 'question'),
     rename: about('toolProjectRename', 'title'),
+    memory: plain('toolProjectMemory'),
   })],
   ['research_check', family('toolCheck', {
     '': (args, names) => scopeName(field(args, 'scope') ?? 'all', names.project?.mode, names),
@@ -287,6 +288,15 @@ const FAMILIES: ReadonlyMap<string, Family> = new Map([
     novelty: plain('toolKnowledgeNovelty'),
     'build-graph': plain('toolKnowledgeBuild'),
     'name-patterns': plain('toolKnowledgeName'),
+    mark: plain('toolKnowledgeMark'),
+    unmark: plain('toolKnowledgeUnmark'),
+    marks: plain('toolKnowledgeMarks'),
+    'relations-propose': plain('toolKnowledgeRelationsPropose'),
+    'relations-reject': plain('toolKnowledgeRelationsReject'),
+    'relations-neighbourhood': about('toolKnowledgeRelationsNeighbourhood', 'entity'),
+    'relations-paths': plain('toolKnowledgeRelationsPaths'),
+    'relations-gaps': plain('toolKnowledgeRelationsGaps'),
+    'relations-suggestions': plain('toolKnowledgeRelationsSuggestions'),
   })],
   ['research_task', family('toolTask', {
     '': plain('toolTaskRead'),

@@ -13,7 +13,8 @@ import {
 } from './knowledge-relations-grounding.ts'
 import {
   RELATION_TUNING, entityKeys, groundSetting, sourceKey,
-  type EntityView, type GroundSource, type GroundView, type RelationGraphView, type RelationTuning, type RelationView,
+  type Author, type Decision, type EntityView, type GroundSource, type GroundView, type RelationGraphView, type RelationTuning,
+  type RelationView,
 } from './knowledge-relations.ts'
 import type { EvidenceChunk, ResearchProject, SourceLocator } from './types.ts'
 
@@ -42,22 +43,34 @@ export interface GroundSummary {
   quote?: string | undefined
   runId?: string | undefined
   setting?: string | undefined
+  /** Who recorded a quotation or run ground; absent for a citation, which a provider's record carries. */
+  by?: Author | undefined
+  /** Who rejected the ground, when, and why; present only when its status is `rejected`. */
+  rejection?: Decision | undefined
 }
 
 function summary(view: GroundView): GroundSummary {
   const { ground } = view
-  const base = { id: ground.id, type: ground.type, source: view.source, status: view.status, title: view.title }
+  const base = {
+    id: ground.id, type: ground.type, source: view.source, status: view.status, title: view.title,
+    ...ground.rejected === undefined ? {} : { rejection: ground.rejected },
+  }
   if (ground.type === 'citation') return base
   const setting = ground.setting === undefined ? {} : { setting: ground.setting }
-  if (ground.type === 'run') return { ...base, runId: ground.runId, evidenceId: ground.evidenceId, ...setting }
+  if (ground.type === 'run') return { ...base, runId: ground.runId, evidenceId: ground.evidenceId, by: ground.by, ...setting }
   const quote = ground.quote.length > SUMMARY_QUOTE_LENGTH ? `${ground.quote.slice(0, SUMMARY_QUOTE_LENGTH - 1)}…` : ground.quote
-  return { ...base, evidenceId: ground.evidenceId, locator: ground.locator, quote, ...setting }
+  return { ...base, evidenceId: ground.evidenceId, locator: ground.locator, quote, by: ground.by, ...setting }
 }
 
 /** The weightiest grounds of a relation that are not rejected, current ones first. */
 function bestGrounds(view: RelationView, count: number): GroundSummary[] {
   return view.grounds.filter(item => item.status !== 'rejected')
     .sort((a, b) => b.weight - a.weight || byText(a.ground.id, b.ground.id)).slice(0, count).map(summary)
+}
+
+/** Every ground of a relation, rejected ones last, so that a view can offer to restore them. */
+function allGrounds(view: RelationView): GroundSummary[] {
+  return [...view.grounds].sort((a, b) => b.weight - a.weight || byText(a.ground.id, b.ground.id)).map(summary)
 }
 
 /** Code-unit order of two ids, so results do not depend on the runtime's locale. */
@@ -145,6 +158,10 @@ export interface NeighbourhoodEdge {
   sources: Record<GroundSource, number>
   /** Its weightiest ground. */
   best: GroundSummary
+  /** Every ground, the heaviest first and the rejected ones last. */
+  grounds: GroundSummary[]
+  /** Who first recorded the relation. */
+  by: Author
 }
 
 /** The neighbourhood of one node. */
@@ -184,7 +201,8 @@ function edgeOf(view: RelationView): NeighbourhoodEdge {
   const { relation } = view
   return {
     id: relation.id, kind: relation.kind, from: relation.from, to: relation.to, status: view.status === 'stale' ? 'stale' : 'active',
-    confidence: view.confidence, sources: groundCounts(view), best: bestGrounds(view, 1)[0] as GroundSummary,
+    confidence: view.confidence, sources: groundCounts(view), best: bestGrounds(view, 1)[0] as GroundSummary, grounds: allGrounds(view),
+    by: relation.by,
   }
 }
 

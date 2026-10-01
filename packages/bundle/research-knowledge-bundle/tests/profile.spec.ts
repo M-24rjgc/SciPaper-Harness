@@ -11,11 +11,13 @@ const workbench = '@deepseek-ai/dsh-research-workbench'
 describe('optional research knowledge bundle', () => {
   const entries = composeEntries([loadOverlayPatches('research-knowledge-bundle spec', join(root, 'cordis.patch.yml'))])
 
-  it('inserts the graph engine, the domain map and the evidence graph as three rows, each switched on its own', () => {
+  it('inserts the graph engine, the domain map, the evidence graph, the research memory and the relation graph as five rows, each switched on its own', () => {
     expect(entries.map(entry => [entry.id, entry.name, entry.disabled])).toEqual([
       ['research-knowledge-provider', `${workbench}/knowledge-plugin`, undefined],
       ['research-knowledge-map', `${workbench}/knowledge-map-plugin`, undefined],
       ['research-knowledge-evidence', `${workbench}/knowledge-evidence-plugin`, undefined],
+      ['research-knowledge-memory', `${workbench}/knowledge-memory-plugin`, undefined],
+      ['research-knowledge-relations', `${workbench}/knowledge-relations-plugin`, undefined],
     ])
   })
 

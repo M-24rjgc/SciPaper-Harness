@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-SciPaper Harness 的可选插件，提供研究模式检索、主张比对、项目图谱构建、可视化浏览，以及一项研究中每条结论背后证据的视图。入口位于插件页的“科研扩展”。
+SciPaper Harness 的可选插件，提供研究模式检索、主张比对、项目图谱构建、可视化浏览，一项研究中每条结论背后证据的视图，以往研究留给下一项研究的内容的视图，以及一项研究的方法、任务、数据集和论文之间关系的图。入口位于插件页的“科研扩展”。
 
 ## 目录
 
@@ -21,9 +21,9 @@ SciPaper Harness 的可选插件，提供研究模式检索、主张比对、项
 <a id="use-this-package"></a>
 ## 使用此包
 
-本 bundle 挂载三个插件，在插件页上各占一行、各有独立开关。知识图谱引擎（`research-knowledge-provider`）提供 `researchKnowledge`；启用后，普通、CCF 和 Spark to Paper 模式共享 `research_knowledge` 工具与 `research-knowledge` Skill，知识图谱标签页也随之有了“目录”视图。领域地图（`research-knowledge-map`）提供 `researchKnowledgeMap` 并增加“领域地图”视图；它注入图谱引擎，因此引擎关闭时它也关闭，在地图数据接入之前它只报告地图尚未建好。证据图（`research-knowledge-evidence`）提供 `researchKnowledgeEvidence` 并增加“我的研究”视图：研究问题、每条结论及其背后的运行与文献，以及哪些结论有证据、缺证据或需要复核。它只读取项目记录，不需要图谱引擎。
+本 bundle 挂载五个插件，在插件页上各占一行、各有独立开关。知识图谱引擎（`research-knowledge-provider`）提供 `researchKnowledge`；启用后，普通、CCF 和 Spark to Paper 模式共享 `research_knowledge` 工具与 `research-knowledge` Skill，知识图谱标签页也随之有了“目录”视图。领域地图（`research-knowledge-map`）提供 `researchKnowledgeMap` 并增加“领域地图”视图；它注入图谱引擎，因此引擎关闭时它也关闭，它把研究的想法、导入的文献、agent 的召回和你的标注放到内置图谱 29,240 篇论文的地图上。证据图（`research-knowledge-evidence`）提供 `researchKnowledgeEvidence` 并增加“我的研究”视图：研究问题、每条结论及其背后的运行与文献，以及哪些结论有证据、缺证据或需要复核。它只读取项目记录，不需要图谱引擎。研究记忆（`research-knowledge-memory`）提供 `researchKnowledgeMemory` 并增加“记忆”视图：这台电脑上各项研究的文献、已完成的实验、可用的环境和会议模板，它们记录的失败与决定，以及按类别设置新研究带上什么的开关。它只读取项目记录，不需要图谱引擎。关系（`research-knowledge-relations`）提供 `researchKnowledgeRelations`：一项研究的方法、任务、数据集、指标和论文之间有类型的关系，每条关系都以导入来源中的一段原文或一次已完成的运行为依据，并提供邻域、两个实体之间的路径，以及方法与任务、数据集或设置的空白矩阵。它只读写项目，数据在 `.research/kg/relations.json`，不需要图谱引擎。它所在的行用 `citationMaxAgeDays`（30）和 `pauseMs`（120）控制从 OpenAlex 和 Crossref 获取参考文献列表。
 
-关闭一个插件会取消它的任务，撤下它的功能和视图；已关闭插件的命令会报错，错误中写明插件名。不会删除任何项目文件，包括 `.research/kg` 目录中的数据。关闭整个 bundle 会同时关闭这三行。
+关闭一个插件会取消它的任务，撤下它的功能和视图；已关闭插件的命令会报错，错误中写明插件名。不会删除任何项目文件，包括 `.research/kg` 目录中的数据。关闭整个 bundle 会同时关闭这五行。
 
 图谱来源包括内置 AI 文献语料和项目自建图谱。未配置 embedding 时使用关键词检索；配置后可增加语义排序。主张比对支持直接提交主张与参考文献文本，并兼容 Spark to Paper 的 `story.json`。
 
@@ -38,11 +38,11 @@ SciPaper Harness 的可选插件，提供研究模式检索、主张比对、项
 
 #### 模型看到什么
 
-启用后，普通、CCF 和 Spark to Paper 模式都提供 `research_knowledge` 工具和 `research-knowledge` Skill。工具返回研究模式、论文、图谱及主张比对的结构化结果。关闭图谱引擎后，后续请求会撤下这些能力。领域地图和证据图不增加工具或 Skill，只服务于知识图谱标签页。
+启用后，普通、CCF 和 Spark to Paper 模式都提供 `research_knowledge` 工具和 `research-knowledge` Skill。工具返回研究模式、论文、图谱及主张比对的结构化结果。关闭图谱引擎后，后续请求会撤下这些能力。领域地图和证据图不增加工具或 Skill，只服务于知识图谱标签页。研究记忆为 `research_project` 增加只读的 `memory` action，它返回用户允许新研究带上的各类记忆（来自其他研究），插件关闭时报错并写明插件名。关系为 `research_knowledge` 增加六个 action，用来读取这项研究的关系图、在其中提出和否定关系，并为 `research-knowledge` Skill 增加一节；工具描述写明了引文必须满足的规则，插件关闭时这些 action 报错并写明插件名。agent 收到的是文本，每条关系或每一跳一行，它不会合并实体，也不会获取参考文献列表。
 
 #### Token 影响
 
-工具 schema、按需读取的 Skill 内容和检索结果会占用模型上下文。内置语料在本地读取，不会整库插入模型请求。
+工具 schema、按需读取的 Skill 内容和检索结果会占用模型上下文。关系的依据规则和各 action 的描述，会给每个列出 `research_knowledge` 的请求增加大约一千个 token；读取邻域默认最多返回 20 条关系。内置语料在本地读取，不会整库插入模型请求。
 
 #### KV Cache 影响
 
@@ -54,7 +54,9 @@ SciPaper Harness 的可选插件，提供研究模式检索、主张比对、项
 - 内置语料覆盖 AI 研究；其他领域需要从提取后的论文构建项目图谱。
 - 语义排序需要 embedding 服务；没有该服务时仍可使用关键词检索。
 - 主张比对只辅助检索，不能据此确认科学创新性或验证论文结论。
-- 领域地图目前回答“地图尚未建好”；这项研究有地图数据后，视图才会显示内容。
+- 领域地图只画内置的 AI 图谱，是论文的一种二维布局：离得远的两点说明不了什么，可选的稀疏区图层标出的是这张图上论文少的地方，不能证明某个话题没人研究。研究的想法取自 agent 最近一次英文召回，所以用其他语言写的简介要等 agent 召回之后才会被放上去。
+- 关系只在导入来源中的一段原文按工具描述中的规则写明它时才被接受。这条规则只看词面：它会接受点出两端、含有关系用词却没有真正写明关系的句子，会拒绝用代词或不含这类用词写出的关系，用词表也只有英文和中文。错的由用户否定，漏的由用户补上。
+- 空白矩阵只谈项目自己的来源：`absent` 表示没有一篇导入的论文报告了这个组合，`uncovered` 表示来源根本没有提到这个方法或这一列，二者都不能说明没有人测试过。OpenAlex 的参考文献列表对近期论文覆盖很差，所以最新的文献之间缺少引用路径。
 - 证据图的每个状态都由记录中的字段推出。只有进行中、或已结束但没有收集结果的运行，才会被当作一条结论可能获得证据的来源，因为记录并不把计划中的运行与某条结论关联起来。
 
 <a id="dev-note"></a>

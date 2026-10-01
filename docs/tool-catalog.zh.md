@@ -3066,7 +3066,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
 
 ### `research_knowledge`
 
-科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。graph-view {query?, source?, domain?, pattern?}：查看研究模式、论文及其已记录的关系。novelty {claim, references?, path?}：在任意研究模式下，将研究主张与参考文本 [{title,text,url?}] 及图谱中最接近的论文比较。Spark to Paper 项目也可使用 novelty {story?, path?} 读取 story.json 和 retrieved_papers.json，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。标记：用户（以及你）可以标记一篇论文或一个模式 {target: {kind, graph, id}, verdict: pin|irrelevant, note?}；recall 会遵从每一条标记：置顶的排在最前，标为无关的从结果中移除（annotations.skipped 说明原因），邻近的结果移动几位，每个结果都带有 `why`。请告诉用户哪些标记影响了这次召回（annotations.applied）。marks 列出所有标记；unmark {id} 删除一条。只在用户要求或有明确理由时才标记；用户的标记优先于你的标记。
+科研模式知识图谱：从论文中提炼出的可复用「问题 → 解法 → 故事」模式。内置图谱覆盖 OpenReview 上的机器学习论文；项目也可以自建图谱。graph-status：有哪些图谱，排序是否为语义排序。recall {query, topK?, path?}：与一个想法最接近的模式和论文（查询用英文写），附范例以及每条被召回的原因；path 把结果存下来。graph-view {query?, source?, domain?, pattern?}：查看研究模式、论文及其已记录的关系。novelty {claim, references?, path?}：在任意研究模式下，将研究主张与参考文本 [{title,text,url?}] 及图谱中最接近的论文比较。Spark to Paper 项目也可使用 novelty {story?, path?} 读取 story.json 和 retrieved_papers.json，写出 novelty_report.json。build-graph {papers, domain}：把你抽取好的语料（JSON lines，含 paper_id、title、story、base_problem、solution_pattern）聚类成候选模式。name-patterns {names?}：读取你写的簇命名（cluster_meta.json），写出项目图谱。除非在科研设置里配置了嵌入接口，排序都是按词匹配；每个结果都会注明是哪一种。标记：用户（以及你）可以标记一篇论文或一个模式 {target: {kind, graph, id}, verdict: pin|irrelevant, note?}；recall 会遵从每一条标记：置顶的排在最前，标为无关的从结果中移除（annotations.skipped 说明原因），邻近的结果移动几位，每个结果都带有 `why`。请告诉用户哪些标记影响了这次召回（annotations.applied）。marks 列出所有标记，并在用户暂停了它们时说明，此时召回不应用任何标记；unmark {id} 删除一条。只在用户要求或有明确理由时才标记；用户的标记优先于你的标记。 关系：这项研究自己的方法、任务、数据集、指标和论文之间的图，其中每条关系都以项目自己的来源为依据。relations-neighbourhood {entity?, kind?, hops?, maxNodes?}：一个实体（id、名称或别名；不指定则取连接最多的实体）周围的关系，每条一行，注明其最重的依据的来源。relations-paths {from, to, k?, maxHops?}：两个实体之间解释得最好的几条路径，每一跳附其原文。relations-gaps {axis: task|dataset|setting, rows?, columns?, rollUp?}：方法与任务、数据集或设置之间的矩阵，只按本项目的来源覆盖情况得出；absent 和 uncovered 说明不了项目之外的工作，因此绝不要告诉用户没有人测试过某个组合，或者领域里存在空白；先检索文献。relations-suggestions：可能是同一个对象的实体对，供用户合并。提出关系前先读相关关系，再用 relations-propose {proposals: [{kind, from, to, ground}]} 提出，最多 50 条，每条单独检查：kind 为 introduces、is-a、extends、improves-on、compares-with、applied-to、evaluated-on 或 measured-by（cites 只来自引用记录）。from 和 to 是 {kind: method|task|dataset|metric, name, aliases?}、{kind: paper, evidenceId} 或 {id}。ground 是 {type: quote, evidenceId, revision, quote, setting?} 或 {type: run, runId, from, to, baselineRunId?, setting?}。每条关系都需要依据；没有依据的关系会被拒绝。引文依据抄自项目某条资料记录的当前版本（空格、连字符、连字和大小写可以不同）：一两句话，至少 4 个词、至多 500 个字符，这段话本身要通过名称、别名或来源中定义的缩写写出关系的两端；在引用提出某一端的那篇论文时，「we」「our」或「this paper」可以指代该端。introduces 引自该论文本身，并写出它提出的对象。is-a、extends、improves-on、compares-with 和 evaluated-on 需要一个表明该关系的词（is a / such as；extends / builds on / based on；outperforms / better than；compared with / baseline；evaluated / results / accuracy）。improves-on 被否定或方向反了时会被拒绝：改进的方法要写在「outperforms」之前，或「outperformed by」之后。32K 之类的设置必须出现在引文中。有全文的文献记录要引其正文页面：只引提供方摘要会被拒绝，因为提供方有时会附上另一篇作品的摘要。运行依据要写明一次已完成且结果已收集的运行，以及它的名称或命令中指明每一端的词（measured-by 用它记录的某项指标；compares-with 用基线运行中的一个词）。cites 关系只来自 OpenAlex 或 Crossref 的引用记录。用户否定的关系或依据保持否定，直到用户恢复。relations-reject {relation, ground?, reason?}：否定一条错误的关系，或只否定它的某一条依据；用户的否定不由你撤销。
 
 ```json
 {
@@ -3083,7 +3083,13 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
         "name-patterns",
         "mark",
         "unmark",
-        "marks"
+        "marks",
+        "relations-propose",
+        "relations-reject",
+        "relations-neighbourhood",
+        "relations-paths",
+        "relations-gaps",
+        "relations-suggestions"
       ]
     },
     "projectId": {
@@ -3147,7 +3153,7 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     },
     "limit": {
       "type": "integer",
-      "description": "graph-view: patterns per page, 1–12 (default 8)"
+      "description": "graph-view: patterns per page, 1–12 (default 8); relations-gaps: rows and columns chosen when none are given, 1–30 (default 12)"
     },
     "offset": {
       "type": "integer",
@@ -3207,6 +3213,109 @@ web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可�
     "id": {
       "type": "string",
       "description": "unmark: the mark id, <graph>:<kind>:<id>"
+    },
+    "proposals": {
+      "description": "relations-propose: [{kind, from, to, ground}], at most 50"
+    },
+    "relation": {
+      "type": "string",
+      "description": "relations-reject: the relation id, as relations-neighbourhood lists it in brackets"
+    },
+    "ground": {
+      "type": "string",
+      "description": "relations-reject: the id of one ground, when only that ground is wrong"
+    },
+    "reason": {
+      "type": "string",
+      "description": "relations-reject: why, in a few words (at most 280 characters)"
+    },
+    "entity": {
+      "type": "string",
+      "description": "relations-neighbourhood: an entity id, name or alias"
+    },
+    "kind": {
+      "type": "string",
+      "description": "relations-neighbourhood / relations-paths: restrict a name to one kind of entity",
+      "enum": [
+        "method",
+        "task",
+        "dataset",
+        "metric",
+        "paper"
+      ]
+    },
+    "kinds": {
+      "type": "array",
+      "description": "relations-neighbourhood / relations-paths: walk only these kinds of relation",
+      "items": {
+        "type": "string",
+        "enum": [
+          "cites",
+          "introduces",
+          "is-a",
+          "extends",
+          "improves-on",
+          "compares-with",
+          "applied-to",
+          "evaluated-on",
+          "measured-by"
+        ]
+      }
+    },
+    "hops": {
+      "type": "integer",
+      "description": "relations-neighbourhood: 1 or 2 (default 2)"
+    },
+    "maxNodes": {
+      "type": "integer",
+      "description": "relations-neighbourhood: nodes returned (default 20, at most 80)"
+    },
+    "includeStale": {
+      "type": "boolean",
+      "description": "relations-neighbourhood / relations-paths: false leaves out relations whose sources changed (default true, marked [stale])"
+    },
+    "from": {
+      "type": "string",
+      "description": "relations-paths: an entity id, name or alias"
+    },
+    "to": {
+      "type": "string",
+      "description": "relations-paths: an entity id, name or alias"
+    },
+    "k": {
+      "type": "integer",
+      "description": "relations-paths: paths returned, 1–5 (default 3)"
+    },
+    "maxHops": {
+      "type": "integer",
+      "description": "relations-paths: hops per path, 1–6 (default 4)"
+    },
+    "axis": {
+      "type": "string",
+      "description": "relations-gaps: what the columns are",
+      "enum": [
+        "task",
+        "dataset",
+        "setting"
+      ]
+    },
+    "rows": {
+      "type": "array",
+      "description": "relations-gaps: method ids or names (default: the methods with most relations)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "columns": {
+      "type": "array",
+      "description": "relations-gaps: task or dataset ids or names, or setting labels such as 32K (default: those with most relations)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rollUp": {
+      "type": "boolean",
+      "description": "relations-gaps: count a row's and a column's subtypes (is-a) toward them (default false)"
     }
   },
   "required": [
@@ -3387,7 +3496,7 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
 
 ### `research_project`
 
-你工作目录所在的研究。current：研究简报——模式以及它是否已选定（modeChosen、modeSetBy、routingSettled）、自主度、每个阶段的进展、这项研究的某段对话中已在运行的目标（activeGoal）、决策、文件、资料和运行；不在任何研究中时返回 project 为 null 并附一条提示。在对话开始时和模式改变后调用。create {title, brief?, mode?, route?, autonomy?}：把本对话的文件夹设为研究；它从不在别处创建研究。rename {title}：话题明确后，给研究起一个简短的标题。list：全部研究。modes：已安装的模式及其路线与阶段——general 带齐全部工具、不走流水线；其他模式再加上自己的技能、阶段与检查。set-mode {mode, route?, reason, decidedBy?}：切换模式，并把这次选择记为一项决策——用户选定时用 decidedBy user，你自己选定时用 agent（默认）；技能随之切换，模式或路线改变时各阶段从未检查开始。set-autonomy {autonomy: checkpoints|automatic}：仅在用户用话语要求时调用；自主度由用户决定。record-decision {question, answer, rationale?, decidedBy?, key?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。key 是一个短标识，说明这项决策定下了什么：experiments-deferred 会推迟允许推迟的阶段（spark-to-paper 的实验阶段），该阶段随后显示为已推迟，永远不算已完成。
+你工作目录所在的研究。current：研究简报——模式以及它是否已选定（modeChosen、modeSetBy、routingSettled）、自主度、每个阶段的进展、这项研究的某段对话中已在运行的目标（activeGoal）、决策、文件、资料和运行；不在任何研究中时返回 project 为 null 并附一条提示。在对话开始时和模式改变后调用。create {title, brief?, mode?, route?, autonomy?}：把本对话的文件夹设为研究；它从不在别处创建研究。rename {title}：话题明确后，给研究起一个简短的标题。list：全部研究。modes：已安装的模式及其路线与阶段——general 带齐全部工具、不走流水线；其他模式再加上自己的技能、阶段与检查。set-mode {mode, route?, reason, decidedBy?}：切换模式，并把这次选择记为一项决策——用户选定时用 decidedBy user，你自己选定时用 agent（默认）；技能随之切换，模式或路线改变时各阶段从未检查开始。set-autonomy {autonomy: checkpoints|automatic}：仅在用户用话语要求时调用；自主度由用户决定。record-decision {question, answer, rationale?, decidedBy?, key?}：记录已定下的决策——检查点处用户的回答用 decidedBy user，全自动模式下你自己的决定用 agent（默认）。key 是一个短标识，说明这项决策定下了什么：experiments-deferred 会推迟允许推迟的阶段（spark-to-paper 的实验阶段），该阶段随后显示为已推迟，永远不算已完成。memory：用户在这台电脑上的其他研究留下了什么——它们导入的文献（按标题合并）、完成的实验（按名称，附命令和指标；记录里没有基线标记）、可用的环境和用过的会议模板——只包含用户允许新研究带上的类别。在研究开始时、搜索文献或搭建环境之前读取；它是只读的，需要研究记忆插件，当前研究自己的记录不在其中。
 
 ```json
 {
@@ -3403,7 +3512,8 @@ visual-review {artifactId}：把渲染好的页面发给单独的视觉模型—
         "modes",
         "set-mode",
         "set-autonomy",
-        "record-decision"
+        "record-decision",
+        "memory"
       ]
     },
     "projectId": {

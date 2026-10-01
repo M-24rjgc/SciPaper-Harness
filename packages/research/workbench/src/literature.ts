@@ -56,6 +56,18 @@ async function response(url: string, signal: AbortSignal, timeoutMs = 30000): Pr
 }
 
 /**
+ * Read one JSON document from a scholarly provider the way the literature search does: the same User-Agent, no e-mail
+ * address, a 30-second limit besides the caller's signal.
+ * @param url - the provider URL; a read-only GET.
+ * @param signal - cancellation of the request.
+ * @returns the parsed document.
+ * @throws when the provider answers with an HTTP error or the body is not JSON.
+ */
+export async function getJson(url: string, signal: AbortSignal): Promise<unknown> {
+  return (await response(url, signal)).json()
+}
+
+/**
  * BibTeX for a verified record. A work whose venue the provider names is an
  * article or a proceedings paper with its journal or book title; anything else
  * is a misc entry, so no entry claims a journal it does not have. The title is

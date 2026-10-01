@@ -1910,7 +1910,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote async configure(preferences: ResearchPreferences): Promise<ResearchPreferences>',
-        description: 'Save model roles, explicitly bound tool locations, the research home and whether examples are listed, never model secrets. A research home among the examples is refused.',
+        description: 'Save model roles, explicitly bound tool locations, the research home, whether examples are listed and which kinds of memory new researches carry, never model secrets. A research home among the examples is refused.',
         parameters: [{ name: 'preferences', description: 'the complete preference record.' }],
         returns: 'the preferences as stored.',
       },
@@ -2013,10 +2013,102 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'their details, unknown indices left out.',
       },
       {
+        signature: 'search(root: string, query: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapSearchView>',
+        description: 'Where a search text lands on the map, with the papers and patterns it matched. Nothing is recorded: a search is the person\'s, not a recall of the agent\'s.',
+        parameters: [{ name: 'root', description: 'the project root, whose marks recall honours.' }, { name: 'query', description: 'the search text.' }, { name: 'embedder', description: 'semantic pattern ranking, when configured.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the search\'s placement and matches.',
+      },
+      {
         signature: 'overlay(project: Pick<ResearchProject, \'root\' | \'brief\' | \'evidence\'>, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapOverlayPage>',
         description: 'What a research places over the map: its idea (the agent\'s latest recall query, else the brief), its imported literature, the papers its recent recalls returned, and its marks.',
         parameters: [{ name: 'project', description: 'the research record.' }, { name: 'embedder', description: 'semantic ranking for placing the brief, when configured.' }, { name: 'signal', description: 'caller cancellation.' }],
         returns: 'the overlay.',
+      },
+    ],
+  },
+  {
+    key: 'researchKnowledgeMemory',
+    summary: 'What the researches on this computer leave for the next one, shared by all research modes in one profile.',
+    description: 'What the researches on this computer leave for the next one, shared by all research modes in one profile.',
+    methods: [
+      {
+        signature: 'page(projects: readonly ResearchProject[], options: MemoryOptions): ResearchMemoryPage',
+        description: 'Project the researches into the memory a new research can carry. Nothing is stored or written.',
+        parameters: [{ name: 'projects', description: 'every research record the host holds.' }, { name: 'options', description: 'the examples to leave out, the finished researches, the person\'s switches and the venue names.' }],
+        returns: 'the researches that left memory, and their literature, finished experiments, environments, venue templates and lessons.',
+      },
+      {
+        signature: 'carried(page: ResearchMemoryPage): CarriedMemory',
+        description: 'Reduce a page to what the agent reads.',
+        parameters: [{ name: 'page', description: 'the memory of the researches other than the one the agent works in.' }],
+        returns: 'only the kinds the person switched on, each cut to the agent\'s limit, with research titles in place of ids.',
+      },
+    ],
+  },
+  {
+    key: 'researchKnowledgeRelations',
+    summary: 'The relation graph of a research: typed relations between its methods, tasks, datasets, metrics and papers, each grounded in a quotation of one of its sources.',
+    description: 'The relation graph of a research: typed relations between its methods, tasks, datasets, metrics and papers, each grounded in a quotation of one of its sources.',
+    methods: [
+      {
+        signature: 'graph(project: RecordedProject, query: GraphQuery, signal: AbortSignal): Promise<Answered<RelationsPage>>',
+        description: 'Read the graph around an entity: its neighbourhood, the most connected entities and the rejected relations.',
+        parameters: [{ name: 'project', description: 'the record; its evidence text is not read.' }, { name: 'query', description: 'the entity (id, name or alias) and the neighbourhood\'s limits.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the page, and the neighbourhood described for the agent.',
+      },
+      {
+        signature: 'paths(project: RecordedProject, query: PathQuery, signal: AbortSignal): Promise<Answered<RelationPathsPage>>',
+        description: 'Find the best explained paths between two entities.',
+        parameters: [{ name: 'project', description: 'the record; its evidence text is not read.' }, { name: 'query', description: 'the two ends (ids, names or aliases) and the search limits.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the paths with the grounds of every hop, and the paths described for the agent.',
+      },
+      {
+        signature: 'gaps(project: RecordedProject, query: GapQuery, signal: AbortSignal): Promise<Answered<RelationGapPage>>',
+        description: 'Build the gap matrix of methods against tasks, datasets or settings over the project\'s own sources.',
+        parameters: [{ name: 'project', description: 'the record with evidence text loaded; the matrix reads its passages.' }, { name: 'query', description: 'the axis, optionally the rows and columns (ids or names), and whether subtypes count; they do not by default.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the matrix with the wording keys, and the matrix described for the agent.',
+      },
+      {
+        signature: 'propose( project: RecordedProject, proposals: readonly RelationProposalInput[], by: Actor, signal: AbortSignal, ): Promise<Answered<RelationProposalOutcomeView[]> & { repaired: string[] }>',
+        description: 'Check and record proposed relations, each on its own.',
+        parameters: [{ name: 'project', description: 'the record with evidence text loaded; quotations are searched in it.' }, { name: 'proposals', description: 'at most 50 relations with their grounds.' }, { name: 'by', description: 'who proposes; the agent\'s quotations face the strict grounding rule, the person\'s the lighter one.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'one outcome per proposal in order, and the repair done to a damaged stored file.',
+      },
+      {
+        signature: 'decide( project: ProjectRoot, change: { verb: \'reject\' | \'restore\'; relation: string; ground?: string | undefined; reason?: string | undefined }, by: Actor, signal: AbortSignal, ): Promise<RelationDecisionOutcomeView>',
+        description: 'Reject or restore a relation, or one of its grounds.',
+        parameters: [{ name: 'project', description: 'the record (only its root is used).' }, { name: 'change', description: '`reject` or `restore`, the relation, the ground when only one is meant, and a reason for a rejection.' }, { name: 'by', description: 'who decides; the person\'s rejection stands against the agent until the person restores it.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the outcome.',
+      },
+      {
+        signature: 'entity( project: ProjectRoot, input: { kind: \'method\' | \'task\' | \'dataset\' | \'metric\'; name: string; aliases?: string[] | undefined }, by: Actor, signal: AbortSignal, ): Promise<RelationEntityOutcomeView>',
+        description: 'Create an entity, or add aliases to the one a name already names.',
+        parameters: [{ name: 'project', description: 'the record (only its root is used).' }, { name: 'input', description: 'the kind, name and aliases.' }, { name: 'by', description: 'who acts.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the outcome.',
+      },
+      {
+        signature: 'merge( project: ProjectRoot, input: { from: string; into: string }, by: Actor, signal: AbortSignal, ): Promise<RelationMergeOutcomeView>',
+        description: 'Merge one entity into another of its kind; no operation undoes it.',
+        parameters: [{ name: 'project', description: 'the record (only its root is used).' }, { name: 'input', description: 'the merged entity and the survivor, by id.' }, { name: 'by', description: 'who merges.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the outcome.',
+      },
+      {
+        signature: 'suggestions(project: ProjectRoot, signal: AbortSignal): Promise<Answered<RelationMergeSuggestionView[]>>',
+        description: 'Pairs of entities that may be one.',
+        parameters: [{ name: 'project', description: 'the record (only its root is used).' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the suggestions and the same described for the agent.',
+      },
+      {
+        signature: 'reground(project: RecordedProject, signal: AbortSignal): Promise<RelationRegroundView>',
+        description: 'Check the quotations whose source moved to a new revision against it, and move those that still hold.',
+        parameters: [{ name: 'project', description: 'the record with evidence text loaded.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'how many quotations moved and how many no longer hold.',
+      },
+      {
+        signature: 'citations(project: RecordedProject, signal: AbortSignal): Promise<RelationCitationsView>',
+        description: 'Fetch the reference lists of the papers whose list is missing or older than the configured age from OpenAlex and Crossref, and record every citation among the project\'s papers. Cancelling stops the requests; nothing is written then.',
+        parameters: [{ name: 'project', description: 'the record.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'the papers asked for, the lists now cached, the citations added, and the failed requests.',
       },
     ],
   },
@@ -4670,6 +4762,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AccountWallet {\n    readonly currency: \'CNY\' | \'USD\';\n    readonly balance: string;\n}',
   },
   {
+    name: 'Actor',
+    declaration: 'export type Actor = \'user\' | \'agent\';',
+  },
+  {
     name: 'AdapterRegistrationHandle',
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
@@ -4748,6 +4844,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AnnotationWhy',
     declaration: 'export type AnnotationWhy = {\n    kind: \'pinned\';\n    mark: string;\n    by: \'user\' | \'agent\';\n    note?: string;\n    recalled: boolean;\n} | {\n    kind: \'demoted\' | \'boosted\';\n    shift: number;\n    penalty: number;\n    boost: number;\n    nearest: AnnotationLink;\n    counter?: AnnotationLink;\n    marks: number;\n} | {\n    kind: \'unchanged\';\n};',
+  },
+  {
+    name: 'Answered',
+    declaration: 'export interface Answered<T> {\n    page: T;\n    text: string;\n}',
   },
   {
     name: 'ApiKeyRecord',
@@ -5032,6 +5132,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'BundleRowInfo',
     declaration: 'export interface BundleRowInfo {\n    rowId: string;\n    moduleName: string;\n    meta?: PluginLocalizedMeta;\n    entryId?: PluginEntryId;\n}',
+  },
+  {
+    name: 'CarriedMemory',
+    declaration: 'export interface CarriedMemory {\n    carried: MemoryKind[];\n    researches: {\n        title: string;\n        finished: boolean;\n    }[];\n    literature?: MemoryList<Sourced<MemoryLiterature>>;\n    runs?: MemoryList<Sourced<MemoryRun>>;\n    environments?: MemoryList<Sourced<MemoryEnvironment>>;\n    writing?: MemoryList<Sourced<MemoryWriting>>;\n}',
   },
   {
     name: 'ChangeResult',
@@ -5730,6 +5834,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GallerySource {\n    name: string;\n    repository: string;\n    commit: string;\n    license: string;\n}',
   },
   {
+    name: 'GapQuery',
+    declaration: 'export interface GapQuery {\n    axis: \'task\' | \'dataset\' | \'setting\';\n    rows?: string[] | undefined;\n    columns?: string[] | undefined;\n    rollUp?: boolean | undefined;\n    limit?: number | undefined;\n}',
+  },
+  {
     name: 'GenerateOptions',
     declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: RequestMessage[];\n    system?: string;\n    tools?: ToolSchema[];\n    toolHistory?: ToolHistory;\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
   },
@@ -5788,6 +5896,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GraphFile',
     declaration: 'export type GraphFile = z.infer<typeof graphSchema>;',
+  },
+  {
+    name: 'GraphQuery',
+    declaration: 'export interface GraphQuery {\n    entity?: string | undefined;\n    kind?: RelationEntityKind | undefined;\n    hops?: 1 | 2 | undefined;\n    maxNodes?: number | undefined;\n    includeStale?: boolean | undefined;\n    kinds?: RelationKindId[] | undefined;\n}',
   },
   {
     name: 'GraphSource',
@@ -6059,7 +6171,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'KnowledgeModules',
-    declaration: 'export interface KnowledgeModules {\n    map: boolean;\n    evidence: boolean;\n}',
+    declaration: 'export interface KnowledgeModules {\n    map: boolean;\n    evidence: boolean;\n    memory: boolean;\n    relations: boolean;\n}',
   },
   {
     name: 'KnowledgeReference',
@@ -6215,7 +6327,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MapOverlayPage',
-    declaration: 'export type MapOverlayPage = {\n    built: false;\n} | {\n    built: true;\n    idea?: {\n        text: string;\n        source: \'recall\' | \'brief\';\n        placement?: MapPlacementView | undefined;\n        note?: string | undefined;\n    } | undefined;\n    library: {\n        evidenceId: string;\n        title: string;\n        placement?: MapPlacementView | undefined;\n    }[];\n    recalled: {\n        index: number;\n        title: string;\n        query: string;\n    }[];\n    marks: KnowledgeMarkView[];\n};',
+    declaration: 'export type MapOverlayPage = {\n    built: false;\n} | {\n    built: true;\n    idea?: {\n        text: string;\n        source: \'recall\' | \'brief\';\n        placement?: MapPlacementView | undefined;\n        note?: string | undefined;\n    } | undefined;\n    library: {\n        evidenceId: string;\n        title: string;\n        placement?: MapPlacementView | undefined;\n    }[];\n    recalled: {\n        index: number;\n        title: string;\n        query: string;\n    }[];\n    marks: KnowledgeMarkView[];\n    honour: boolean;\n};',
   },
   {
     name: 'MapPaperView',
@@ -6223,11 +6335,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MapPlacementView',
-    declaration: 'export interface MapPlacementView {\n    x: number;\n    y: number;\n    confidence: number;\n    region?: string | undefined;\n    alternatives: {\n        x: number;\n        y: number;\n        share: number;\n    }[];\n    nearest: {\n        index: number;\n        title: string;\n    }[];\n    crowding: number;\n    exact?: boolean | undefined;\n}',
+    declaration: 'export interface MapPlacementView {\n    x: number;\n    y: number;\n    confidence: number;\n    region?: string | undefined;\n    alternatives: {\n        x: number;\n        y: number;\n        share: number;\n    }[];\n    nearest: {\n        index: number;\n        title: string;\n        weight: number;\n    }[];\n    crowding: number;\n    exact?: boolean | undefined;\n}',
   },
   {
     name: 'MapRegionView',
     declaration: 'export interface MapRegionView {\n    index: number;\n    label: string;\n    keywords: string[];\n    papers: number;\n    domain: string;\n    x: number;\n    y: number;\n}',
+  },
+  {
+    name: 'MapSearchView',
+    declaration: 'export interface MapSearchView {\n    query: string;\n    basis: \'lexical\' | \'semantic+lexical\';\n    placement?: MapPlacementView | undefined;\n    papers: {\n        index: number;\n        title: string;\n    }[];\n    patterns: {\n        index: number;\n        name: string;\n        x: number;\n        y: number;\n    }[];\n}',
   },
   {
     name: 'MapViewPage',
@@ -6240,6 +6356,42 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'McpResourceRequest',
     declaration: 'export type McpResourceRequest = {\n    method: \'resources/list\' | \'resources/templates/list\';\n    cursor?: string;\n} | {\n    method: \'resources/read\';\n    uri: string;\n};',
+  },
+  {
+    name: 'MemoryEnvironment',
+    declaration: 'export interface MemoryEnvironment {\n    name: string;\n    kind: EnvironmentRecord[\'kind\'];\n    target: EnvironmentRecord[\'target\'];\n    host?: string | undefined;\n    python: string;\n    requirements: string[];\n    researches: ProjectId[];\n}',
+  },
+  {
+    name: 'MemoryKind',
+    declaration: 'export type MemoryKind = \'literature\' | \'runs\' | \'environments\' | \'writing\';',
+  },
+  {
+    name: 'MemoryLesson',
+    declaration: 'export type MemoryLesson = {\n    research: ProjectId;\n    at: string;\n} & ({\n    kind: \'failed-run\';\n    name: string;\n    reason: string;\n    exitCode?: number | undefined;\n} | {\n    kind: \'decision\';\n    question: string;\n    answer: string;\n    rationale: string;\n    by: \'user\' | \'agent\';\n});',
+  },
+  {
+    name: 'MemoryList',
+    declaration: 'export interface MemoryList<T> {\n    total: number;\n    items: T[];\n}',
+  },
+  {
+    name: 'MemoryLiterature',
+    declaration: 'export interface MemoryLiterature {\n    title: string;\n    doi?: string | undefined;\n    verified: boolean;\n    researches: ProjectId[];\n}',
+  },
+  {
+    name: 'MemoryOptions',
+    declaration: 'export interface MemoryOptions {\n    isExample: (root: string) => boolean;\n    finished: ReadonlySet<ProjectId>;\n    carry: Record<MemoryKind, boolean>;\n    venueName?: ((id: string) => string | undefined) | undefined;\n}',
+  },
+  {
+    name: 'MemoryResearch',
+    declaration: 'export interface MemoryResearch {\n    id: ProjectId;\n    title: string;\n    finished: boolean;\n    literature: number;\n    runs: number;\n    venue?: string | undefined;\n}',
+  },
+  {
+    name: 'MemoryRun',
+    declaration: 'export interface MemoryRun {\n    name: string;\n    runs: number;\n    metrics: Record<string, number>;\n    command: string;\n    at: string;\n    researches: ProjectId[];\n}',
+  },
+  {
+    name: 'MemoryWriting',
+    declaration: 'export interface MemoryWriting {\n    venue: string;\n    name?: string | undefined;\n    researches: ProjectId[];\n}',
   },
   {
     name: 'Message',
@@ -6474,6 +6626,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PackageResult {\n    exitCode: number;\n    output: string;\n    truncated: boolean;\n    logPath: string;\n    kind?: PluginInstallFailureKind;\n    timedOut?: boolean;\n    incompatible?: IncompatiblePlugin[];\n}',
   },
   {
+    name: 'PathQuery',
+    declaration: 'export interface PathQuery {\n    from: string;\n    to: string;\n    kind?: RelationEntityKind | undefined;\n    k?: number | undefined;\n    maxHops?: number | undefined;\n    includeStale?: boolean | undefined;\n    kinds?: RelationKindId[] | undefined;\n}',
+  },
+  {
     name: 'PeerAdmission',
     declaration: 'export type PeerAdmission = {\n    readonly peer: PeerScope;\n} | {\n    readonly rejection: 401 | 403;\n};',
   },
@@ -6650,6 +6806,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ProjectionSnapshot {\n    asOfSeq: SessionSeqCursor;\n    values: Partial<SessionProjectionMap>;\n}',
   },
   {
+    name: 'ProjectRoot',
+    declaration: 'export type ProjectRoot = Pick<RecordedProject, \'root\'>;',
+  },
+  {
     name: 'PromptAssembly',
     declaration: 'export interface PromptAssembly {\n    sections: AssembledSection[];\n    contexts: AssembledContext[];\n    tools: ToolSchema[];\n    variables: Record<string, string | undefined>;\n}',
   },
@@ -6762,6 +6922,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface RecallResult {\n    basis: \'lexical\' | \'semantic+lexical\';\n    note: string;\n    patterns: RecalledPattern[];\n    closestPapers: ClosePaper[];\n    annotations?: RecallAnnotations;\n}',
   },
   {
+    name: 'RecordedProject',
+    declaration: 'export type RecordedProject = RelationProject & {\n    root: string;\n};',
+  },
+  {
     name: 'RecurringScheduleRecord',
     declaration: 'export type RecurringScheduleRecord = EveryScheduleRecord | DailyScheduleRecord | WeeklyScheduleRecord | CronScheduleRecord;',
   },
@@ -6772,6 +6936,138 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'Registry',
     declaration: 'export type Registry = string | null;',
+  },
+  {
+    name: 'RelationAuthor',
+    declaration: 'export type RelationAuthor = \'user\' | \'agent\';',
+  },
+  {
+    name: 'RelationCitationsView',
+    declaration: 'export interface RelationCitationsView {\n    asked: number;\n    works: number;\n    added: number;\n    unchanged: number;\n    rejected: number;\n    failures: string[];\n}',
+  },
+  {
+    name: 'RelationDecisionOutcomeView',
+    declaration: 'export type RelationDecisionOutcomeView = {\n    status: \'changed\' | \'unchanged\';\n    relation: string;\n} | RelationRefusalView;',
+  },
+  {
+    name: 'RelationEdgeView',
+    declaration: 'export interface RelationEdgeView {\n    id: string;\n    kind: RelationKindId;\n    from: string;\n    to: string;\n    status: \'active\' | \'stale\';\n    confidence: number;\n    sources: Record<RelationGroundSource, number>;\n    best: RelationGroundView;\n    grounds: RelationGroundView[];\n    by: RelationAuthor;\n}',
+  },
+  {
+    name: 'RelationEndRef',
+    declaration: 'export type RelationEndRef = {\n    id: string;\n} | {\n    kind: \'paper\';\n    evidenceId: string;\n} | {\n    kind: \'method\' | \'task\' | \'dataset\' | \'metric\';\n    name: string;\n    aliases?: string[] | undefined;\n};',
+  },
+  {
+    name: 'RelationEntityKind',
+    declaration: 'export type RelationEntityKind = \'method\' | \'task\' | \'dataset\' | \'metric\' | \'paper\';',
+  },
+  {
+    name: 'RelationEntityOutcomeView',
+    declaration: 'export type RelationEntityOutcomeView = {\n    status: \'created\' | \'updated\' | \'unchanged\';\n    entity: RelationEntityView;\n} | RelationRefusalView;',
+  },
+  {
+    name: 'RelationEntityView',
+    declaration: 'export interface RelationEntityView {\n    id: string;\n    kind: RelationEntityKind;\n    name: string;\n    aliases: string[];\n    evidenceIds?: string[] | undefined;\n}',
+  },
+  {
+    name: 'RelationGapAxisEntry',
+    declaration: 'export interface RelationGapAxisEntry {\n    id: string;\n    name: string;\n    passages: number;\n}',
+  },
+  {
+    name: 'RelationGapCell',
+    declaration: 'export interface RelationGapCell {\n    state: RelationGapState;\n    papers: number;\n    viaSubtypes: number;\n    runs: number;\n    files: number;\n    stale: number;\n    passages: number;\n    rejected: number;\n    relations: string[];\n}',
+  },
+  {
+    name: 'RelationGapPage',
+    declaration: 'export interface RelationGapPage {\n    axis: \'task\' | \'dataset\' | \'setting\';\n    rows: RelationGapAxisEntry[];\n    columns: RelationGapAxisEntry[];\n    cells: RelationGapCell[][];\n    basis: {\n        literature: number;\n        fullText: number;\n        abstractOnly: number;\n        metadataOnly: number;\n        files: number;\n    };\n    wording: {\n        heading: string;\n        states: Record<RelationGapState, string>;\n    };\n}',
+  },
+  {
+    name: 'RelationGapState',
+    declaration: 'export type RelationGapState = \'reported\' | \'project-only\' | \'stale\' | \'mentioned\' | \'absent\' | \'uncovered\';',
+  },
+  {
+    name: 'RelationGroundInput',
+    declaration: 'export type RelationGroundInput = {\n    type: \'quote\';\n    evidenceId: string;\n    revision: number;\n    quote: string;\n    locator?: SourceLocator | undefined;\n    setting?: string | undefined;\n} | {\n    type: \'run\';\n    runId: string;\n    from: string;\n    to: string;\n    baselineRunId?: string | undefined;\n    setting?: string | undefined;\n};',
+  },
+  {
+    name: 'RelationGroundSource',
+    declaration: 'export type RelationGroundSource = \'full-text\' | \'abstract\' | \'file\' | \'run\' | \'citation\';',
+  },
+  {
+    name: 'RelationGroundView',
+    declaration: 'export interface RelationGroundView {\n    id: string;\n    type: \'quote\' | \'run\' | \'citation\';\n    source: RelationGroundSource;\n    status: \'current\' | \'outdated\' | \'rejected\';\n    title: string;\n    evidenceId?: string | undefined;\n    locator?: SourceLocator | undefined;\n    quote?: string | undefined;\n    runId?: string | undefined;\n    setting?: string | undefined;\n    by?: RelationAuthor | undefined;\n    rejection?: RelationRejection | undefined;\n}',
+  },
+  {
+    name: 'RelationHopView',
+    declaration: 'export interface RelationHopView {\n    relation: string;\n    kind: RelationKindId;\n    from: string;\n    to: string;\n    direction: \'forward\' | \'backward\';\n    status: \'active\' | \'stale\';\n    confidence: number;\n    grounds: RelationGroundView[];\n    parallel: {\n        relation: string;\n        kind: RelationKindId;\n    }[];\n}',
+  },
+  {
+    name: 'RelationKindId',
+    declaration: 'export type RelationKindId = \'cites\' | \'introduces\' | \'is-a\' | \'extends\' | \'improves-on\' | \'compares-with\' | \'applied-to\' | \'evaluated-on\' | \'measured-by\';',
+  },
+  {
+    name: 'RelationMergeOutcomeView',
+    declaration: 'export type RelationMergeOutcomeView = {\n    status: \'merged\';\n    entity: RelationEntityView;\n    dropped: string[];\n} | RelationRefusalView;',
+  },
+  {
+    name: 'RelationMergeSuggestionView',
+    declaration: 'export interface RelationMergeSuggestionView {\n    a: string;\n    b: string;\n    reason: \'acronym\' | \'spelling\';\n    names: [\n        string,\n        string\n    ];\n}',
+  },
+  {
+    name: 'RelationNeighbourhoodView',
+    declaration: 'export interface RelationNeighbourhoodView {\n    center: string;\n    nodes: RelationNodeView[];\n    edges: RelationEdgeView[];\n    omitted: {\n        nodes: number;\n        edges: number;\n    };\n}',
+  },
+  {
+    name: 'RelationNodeSummary',
+    declaration: 'export interface RelationNodeSummary {\n    id: string;\n    kind: RelationEntityKind;\n    name: string;\n    aliases: string[];\n    status: \'active\' | \'orphaned\';\n    degree: number;\n}',
+  },
+  {
+    name: 'RelationNodeView',
+    declaration: 'export interface RelationNodeView extends RelationNodeSummary {\n    ring: 0 | 1 | 2;\n    core: boolean;\n    parent?: string | undefined;\n    slot: number;\n    evidenceIds?: string[] | undefined;\n}',
+  },
+  {
+    name: 'RelationOutcomeView',
+    declaration: 'export type RelationOutcomeView = RelationProposalOutcomeView | RelationDecisionOutcomeView;',
+  },
+  {
+    name: 'RelationPathsPage',
+    declaration: 'export interface RelationPathsPage {\n    from: string;\n    to: string;\n    paths: RelationPathView[];\n    none?: \'unknown-node\' | \'ambiguous-node\' | \'same-node\' | \'no-path\' | undefined;\n    nodes: RelationNodeSummary[];\n    candidates?: {\n        from: RelationNodeSummary[];\n        to: RelationNodeSummary[];\n    } | undefined;\n}',
+  },
+  {
+    name: 'RelationPathView',
+    declaration: 'export interface RelationPathView {\n    nodes: string[];\n    hops: RelationHopView[];\n    cost: number;\n    confidence: number;\n    stale: boolean;\n}',
+  },
+  {
+    name: 'RelationProject',
+    declaration: 'export type RelationProject = Pick<ResearchProject, \'evidence\' | \'experiments\'>;',
+  },
+  {
+    name: 'RelationProposalInput',
+    declaration: 'export interface RelationProposalInput {\n    kind: RelationKindId;\n    from: RelationEndRef;\n    to: RelationEndRef;\n    ground: RelationGroundInput;\n}',
+  },
+  {
+    name: 'RelationProposalOutcomeView',
+    declaration: 'export type RelationProposalOutcomeView = {\n    status: \'added\' | \'unchanged\' | \'regrounded\';\n    relation: string;\n    ground: string;\n    created: string[];\n    locatorCorrected: boolean;\n    warnings: string[];\n    restored: boolean;\n} | RelationRefusalView;',
+  },
+  {
+    name: 'RelationRefusalView',
+    declaration: 'export interface RelationRefusalView {\n    status: \'refused\';\n    code: string;\n    message: string;\n}',
+  },
+  {
+    name: 'RelationRegroundView',
+    declaration: 'export interface RelationRegroundView {\n    regrounded: number;\n    lapsed: number;\n}',
+  },
+  {
+    name: 'RelationRejectedView',
+    declaration: 'export interface RelationRejectedView {\n    id: string;\n    kind: RelationKindId;\n    from: string;\n    to: string;\n    fromName: string;\n    toName: string;\n    rejection?: RelationRejection | undefined;\n}',
+  },
+  {
+    name: 'RelationRejection',
+    declaration: 'export interface RelationRejection {\n    by: RelationAuthor;\n    at: string;\n    reason?: string | undefined;\n}',
+  },
+  {
+    name: 'RelationsPage',
+    declaration: 'export interface RelationsPage {\n    problems: string[];\n    counts: {\n        entities: number;\n        relations: number;\n        stale: number;\n        rejected: number;\n        citationLists: number;\n    };\n    match: \'none\' | \'found\' | \'unknown\' | \'ambiguous\';\n    hubs: RelationNodeSummary[];\n    candidates: RelationNodeSummary[];\n    neighbourhood?: RelationNeighbourhoodView | undefined;\n    rejected: RelationRejectedView[];\n}',
   },
   {
     name: 'Reload',
@@ -6854,12 +7150,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResearchGoal {\n    sessionId: string;\n    objective: string;\n    phase: \'active\' | \'paused\' | \'blocked\';\n    roundsStarted: number;\n    updatedAt: number;\n}',
   },
   {
+    name: 'ResearchMemoryPage',
+    declaration: 'export interface ResearchMemoryPage {\n    researches: MemoryResearch[];\n    literature: MemoryList<MemoryLiterature>;\n    runs: MemoryList<MemoryRun>;\n    environments: MemoryList<MemoryEnvironment>;\n    writing: MemoryList<MemoryWriting>;\n    lessons: MemoryList<MemoryLesson>;\n    carry: Record<MemoryKind, boolean>;\n}',
+  },
+  {
     name: 'ResearchModeEvent',
     declaration: 'export interface ResearchModeEvent {\n    projectId: ProjectId;\n    root: string;\n    mode: string;\n    route?: string | undefined;\n}',
   },
   {
     name: 'ResearchPreferences',
-    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    embedding?: EmbeddingBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n    researchHome?: string | undefined;\n    showExamples?: boolean | undefined;\n}',
+    declaration: 'export interface ResearchPreferences {\n    main?: ModelBinding | undefined;\n    vision?: ModelBinding | undefined;\n    image?: ImageBinding | undefined;\n    embedding?: EmbeddingBinding | undefined;\n    python?: string | undefined;\n    uv?: string | undefined;\n    texBin?: string | undefined;\n    researchHome?: string | undefined;\n    showExamples?: boolean | undefined;\n    memoryCarry?: Partial<Record<MemoryKind, boolean | undefined>> | undefined;\n}',
   },
   {
     name: 'ResearchProgress',
@@ -6871,7 +7171,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchResponse',
-    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    mapPapers?: MapPaperView[] | undefined;\n    marks?: KnowledgeMarkView[] | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: string | undefined;\n    outcome?: \'moved\' | \'existing\' | \'needs-confirm\' | \'nested\' | \'example\' | undefined;\n}',
+    declaration: 'export interface ResearchResponse {\n    project?: ResearchProject | undefined;\n    jobId?: string | undefined;\n    message: string;\n    content?: string | undefined;\n    binary?: boolean | undefined;\n    path?: string | undefined;\n    paths?: string[] | undefined;\n    literature?: LiteratureItem[] | undefined;\n    gallery?: GalleryPage | undefined;\n    knowledgeGraph?: KnowledgeGraphPage | undefined;\n    evidenceGraph?: EvidenceGraphPage | undefined;\n    memory?: ResearchMemoryPage | undefined;\n    mapView?: MapViewPage | undefined;\n    mapOverlay?: MapOverlayPage | undefined;\n    mapPapers?: MapPaperView[] | undefined;\n    mapSearch?: MapSearchView | undefined;\n    relations?: RelationsPage | undefined;\n    relationPaths?: RelationPathsPage | undefined;\n    relationGaps?: RelationGapPage | undefined;\n    relationOutcomes?: RelationOutcomeView[] | undefined;\n    relationEntity?: RelationEntityOutcomeView | undefined;\n    relationMerge?: RelationMergeOutcomeView | undefined;\n    relationSuggestions?: RelationMergeSuggestionView[] | undefined;\n    relationReground?: RelationRegroundView | undefined;\n    relationCitations?: RelationCitationsView | undefined;\n    marks?: KnowledgeMarkView[] | undefined;\n    honour?: boolean | undefined;\n    board?: BoardSnapshot | undefined;\n    check?: CheckReport | undefined;\n    runs?: {\n        id: ExperimentId;\n        status: RunStatus;\n        message: string;\n        metrics: Record<string, number>;\n    }[] | undefined;\n    sessionId?: st /* …truncated — full shape in source */',
   },
   {
     name: 'ResearchSnapshot',
@@ -7784,6 +8084,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkippedItem',
     declaration: 'export interface SkippedItem {\n    kind: \'pattern\' | \'paper\';\n    graph: GraphSource;\n    index: number;\n    mark: string;\n    title: string;\n    note?: string;\n    by: \'user\' | \'agent\';\n    before: number;\n}',
+  },
+  {
+    name: 'Sourced',
+    declaration: 'export type Sourced<T extends {\n    researches: readonly ProjectId[];\n}> = Omit<T, \'researches\'> & {\n    from: string[];\n};',
   },
   {
     name: 'SourceLocator',

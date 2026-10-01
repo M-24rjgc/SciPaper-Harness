@@ -13,7 +13,21 @@ Run `research_knowledge` `graph-status` to inspect available sources. `recall` t
 
 For novelty comparison, send `novelty` with `claim` and optional `references: [{title, text, url}]`. Supply verified abstracts or source passages. No Spark files are required. Existing Spark projects may instead pass `story` and use their `retrieved_papers.json`. Similarity is a retrieval signal, not proof of novelty. Inspect the closest work and report the evidence coverage.
 
+## The person's marks and their map
+
+The person marks papers and patterns on the Domain map as relevant (pin) or not relevant (irrelevant); you may mark too, on their request or with a reason you state. `recall` follows the marks: pinned results come first, irrelevant ones leave the results and are listed under `annotations.skipped` with the reason, nearby results move a few places, and each result carries `why`. Tell the person which marks shaped a recall (`annotations.applied`). `marks` lists them and says when the person paused them; then `recall` applies none and its note says so, and you rank by the graph alone. Only the person turns that switch. The person's marks win over yours; `unmark {id}` removes one.
+
+The Domain map places the research's idea from your latest `recall`, so recall with an English query that states the idea; a brief written in another language is not placed until you do. The map shows distances only where papers are near each other, and its sparse areas say where the drawing holds few papers, not that nobody has worked there; never report one as an unexplored topic.
+
 With no embedding endpoint or a failed endpoint, retrieval and clustering use words and report that basis. If a graph is unavailable, continue with the healthy sources and literature search. If the plugin or tool is absent, use `research_evidence` and web search; do not repeatedly call a missing tool, claim that the graph was consulted or stop the research workflow.
+
+## Relations of methods, tasks, datasets and papers
+
+The research keeps its own relation graph: which method extends or beats another, which method was applied to a task or evaluated on a dataset, which paper introduces what. Read before you propose: `relations-neighbourhood` lists the relations around a method, task, dataset, metric or paper with the source of each, `relations-paths` explains how two of them connect, and `relations-suggestions` lists entities that may be one. Propose with `relations-propose`, a few relations at a time, when a source you imported states them.
+
+Quote the source's own words. Search the evidence (`research_evidence` `search-evidence`) for the passage and copy one or two sentences of it, with the evidence id and revision it returned; the quotation must itself name both ends of the relation, by name or by an acronym the source defines, and must say how they relate. Do not paraphrase, and do not quote a sentence that names only one end. The tool's description states the whole rule; a refusal says which part failed, and a quotation that stays refused means the source does not state the relation, so leave it out. A proposal is recorded at once and the person can reject it, so propose only what the source says. Reject a relation you find wrong with `relations-reject` and a reason; a relation the person rejected stays rejected. You cannot merge entities: tell the person which suggested ones may be one.
+
+`relations-gaps` shows methods against tasks, datasets or settings as the project's own literature covers them. `absent` means no imported paper reports the pair; `uncovered` means the imported papers do not name the method or the column at all. Neither says anything about work outside the project: never write that nobody has tested a pair or that the field has a gap. Search the literature, import what you find, and read the matrix again before you draw a conclusion.
 
 ## Build a project graph
 

@@ -57,12 +57,24 @@
       "types": "./lib/types/knowledge-evidence-plugin.d.ts",
       "default": "./lib/types/knowledge-evidence-plugin.js"
     },
+    "./knowledge-memory-plugin": {
+      "types": "./lib/types/knowledge-memory-plugin.d.ts",
+      "default": "./lib/types/knowledge-memory-plugin.js"
+    },
+    "./knowledge-relations-plugin": {
+      "types": "./lib/types/knowledge-relations-plugin.d.ts",
+      "default": "./lib/types/knowledge-relations-plugin.js"
+    },
     "./knowledge-plugin/locale/*.json": "./locale/knowledge-plugin/*.json",
     "./knowledge-map-plugin/locale/*.json": "./locale/knowledge-map-plugin/*.json",
-    "./knowledge-evidence-plugin/locale/*.json": "./locale/knowledge-evidence-plugin/*.json"
+    "./knowledge-evidence-plugin/locale/*.json": "./locale/knowledge-evidence-plugin/*.json",
+    "./knowledge-relations-plugin/locale/*.json": "./locale/knowledge-relations-plugin/*.json",
+    "./knowledge-memory-plugin/locale/*.json": "./locale/knowledge-memory-plugin/*.json"
   },
   "files": [
     "locale/knowledge-evidence-plugin/*.json",
+    "locale/knowledge-relations-plugin/*.json",
+    "locale/knowledge-memory-plugin/*.json",
     "locale/knowledge-map-plugin/*.json",
     "locale/knowledge-plugin/*.json",
     "lib/index.js",

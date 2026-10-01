@@ -155,6 +155,7 @@ describe('what one research call did', () => {
     ['research_project', { action: 'set-autonomy', autonomy: 'sometimes' }, '设定自主程度'],
     ['research_project', { action: 'record-decision', question: '模式与路线\n（第二行不显示）', answer: 'spark-to-paper · data' }, '记录决策：模式与路线'],
     ['research_project', { action: 'rename', title: '长文摘要一致性' }, '重命名研究：长文摘要一致性'],
+    ['research_project', { action: 'memory' }, '读取以往研究留下的记忆'],
     ['research_check', { scope: 'cite' }, '引用'],
     ['research_check', {}, '全部'],
     ['research_evidence', { action: 'import', paths: ['data/results/consistency.csv', 'data/results/by_length.csv', 'data/notes.md'] }, '导入 3 个文件'],
@@ -202,6 +203,15 @@ describe('what one research call did', () => {
     ['research_knowledge', { action: 'novelty' }, '新颖性比对'],
     ['research_knowledge', { action: 'build-graph', papers: 'corpus.jsonl', domain: 'hci' }, '用语料构建图谱'],
     ['research_knowledge', { action: 'name-patterns' }, '为模式命名'],
+    ['research_knowledge', { action: 'mark', verdict: 'pin' }, '标注论文或模式'],
+    ['research_knowledge', { action: 'unmark', id: 'ai:paper:p1' }, '撤销一条标注'],
+    ['research_knowledge', { action: 'marks' }, '查看标注'],
+    ['research_knowledge', { action: 'relations-propose' }, '提出关系'],
+    ['research_knowledge', { action: 'relations-reject', relation: 'is-a:method:a>method:b' }, '否定一条关系'],
+    ['research_knowledge', { action: 'relations-neighbourhood', entity: 'MoBA' }, '查看相关关系：MoBA'],
+    ['research_knowledge', { action: 'relations-paths', from: 'MoBA', to: 'NSA' }, '查找两者的联系'],
+    ['research_knowledge', { action: 'relations-gaps', axis: 'dataset' }, '查看空白矩阵'],
+    ['research_knowledge', { action: 'relations-suggestions' }, '列出可能相同的条目'],
     ['research_task', { jobId: '6f1c' }, '查询后台操作'],
   ]
 

@@ -5,3 +5,7 @@
       name: '@deepseek-ai/dsh-research-workbench/knowledge-map-plugin'
     - id: research-knowledge-evidence
       name: '@deepseek-ai/dsh-research-workbench/knowledge-evidence-plugin'
+    - id: research-knowledge-memory
+      name: '@deepseek-ai/dsh-research-workbench/knowledge-memory-plugin'
+    - id: research-knowledge-relations
+      name: '@deepseek-ai/dsh-research-workbench/knowledge-relations-plugin'

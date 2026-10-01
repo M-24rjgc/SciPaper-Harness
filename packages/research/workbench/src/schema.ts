@@ -3,18 +3,16 @@ import { isAbsolute } from 'node:path'
 import { z } from 'zod'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { annotationTargetSchema, MAX_NOTE_LENGTH } from './knowledge-annotations.ts'
+import { decisionInputSchema, entityInputSchema, mergeInputSchema, proposalSchema, MAX_PROPOSALS } from './knowledge-relations.ts'
+import { ENTITY_KINDS, RELATION_KINDS } from './knowledge-relations-grounding.ts'
+import { MAX_GAP_AXIS, MAX_HOPS, MAX_NEIGHBOURHOOD, MAX_PATHS } from './knowledge-relations-queries.ts'
+import { locatorSchema } from './locator-schema.ts'
 import type { Autonomy, CheckId, ProjectId, ResearchProject, ResearchPreferences, ResearchTask } from './types.ts'
 
 const id = z.string().min(1)
 const integer = z.number().int().nonnegative()
 
-/** Accepted passage coordinates for an evidence source; numeric coordinates must be nonnegative integers. */
-export const locatorSchema = z.object({
-  page: integer.optional(),
-  paragraph: integer.optional(),
-  line: integer.optional(),
-  key: z.string().optional(),
-})
+export { locatorSchema }
 /** Citation fields pinned to one evidence revision; source existence and quotation matching are checked by the service. */
 export const evidenceLinkSchema = z.object({ evidenceId: id, revision: integer, locator: locatorSchema, quote: z.string() })
 /** Artifact categories accepted by persisted records and file-registration commands. */
@@ -97,6 +95,9 @@ export const preferencesSchema = z.object({
   texBin: z.string().optional(),
   researchHome: z.string().refine(path => isAbsolute(path), 'the research location must be an absolute path').optional(),
   showExamples: z.boolean().optional(),
+  memoryCarry: z.object({
+    literature: z.boolean().optional(), runs: z.boolean().optional(), environments: z.boolean().optional(), writing: z.boolean().optional(),
+  }).optional(),
 }) satisfies z.ZodType<ResearchPreferences>
 
 const evidenceSchema = z.object({
@@ -364,6 +365,9 @@ export const boardPatchSchema = z.preprocess(withoutNulls, z.object({
 }))
 
 const base = { projectId: id }
+/** An entity of the relation graph by id or by name; the service resolves a name. */
+const relationNode = z.string().trim().min(1).max(256)
+const relationKinds = z.array(z.enum(RELATION_KINDS)).max(RELATION_KINDS.length)
 const artifact = {
   path: id, kind: z.enum(artifactKinds),
   evidence: z.array(evidenceLinkSchema).default([]),
@@ -443,13 +447,41 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ ...base, action: z.literal('build-graph'), papers: id, domain: id }),
   z.object({ ...base, action: z.literal('name-patterns'), names: id.optional() }),
   z.object({ ...base, action: z.literal('evidence-graph') }),
+  z.object({ ...base, action: z.literal('memory') }),
+  z.object({ ...base, action: z.literal('memory-carry'), kind: z.enum(['literature', 'runs', 'environments', 'writing']), on: z.boolean() }),
   z.object({ ...base, action: z.literal('map-view') }),
   z.object({ ...base, action: z.literal('map-overlay') }),
   z.object({ ...base, action: z.literal('map-papers'), indices: z.array(z.number().int().min(0)).min(1).max(64) }),
+  z.object({ ...base, action: z.literal('map-search'), query: z.string().trim().min(1).max(500) }),
+  // `by` is never read from a command: the caller (the desktop or the agent's tool) sets it, so the schemas below omit it.
+  z.object({
+    ...base, action: z.literal('relations-graph'), entity: relationNode.optional(), kind: z.enum(ENTITY_KINDS).optional(),
+    hops: z.union([z.literal(1), z.literal(2)]).optional(), maxNodes: z.number().int().min(1).max(MAX_NEIGHBOURHOOD).optional(),
+    includeStale: z.boolean().optional(), kinds: relationKinds.optional(),
+  }),
+  z.object({
+    ...base, action: z.literal('relations-paths'), from: relationNode, to: relationNode, kind: z.enum(ENTITY_KINDS).optional(),
+    k: z.number().int().min(1).max(MAX_PATHS).optional(), maxHops: z.number().int().min(1).max(MAX_HOPS).optional(),
+    includeStale: z.boolean().optional(), kinds: relationKinds.optional(),
+  }),
+  z.object({
+    ...base, action: z.literal('relations-gaps'), axis: z.enum(['task', 'dataset', 'setting']),
+    rows: z.array(relationNode).max(MAX_GAP_AXIS).optional(), columns: z.array(relationNode).max(MAX_GAP_AXIS).optional(),
+    rollUp: z.boolean().optional(), limit: z.number().int().min(1).max(MAX_GAP_AXIS).optional(),
+  }),
+  z.object({ ...base, action: z.literal('relations-propose'), proposals: z.array(proposalSchema.omit({ by: true })).min(1).max(MAX_PROPOSALS) }),
+  z.object({ ...base, ...decisionInputSchema.omit({ by: true }).shape, action: z.literal('relations-reject') }),
+  z.object({ ...base, ...decisionInputSchema.omit({ by: true, reason: true }).shape, action: z.literal('relations-restore') }),
+  z.object({ ...base, ...entityInputSchema.omit({ by: true }).shape, action: z.literal('relations-entity') }),
+  z.object({ ...base, action: z.literal('relations-reground') }),
+  z.object({ ...base, action: z.literal('relations-citations') }),
+  z.object({ ...base, ...mergeInputSchema.omit({ by: true }).shape, action: z.literal('relations-merge') }),
+  z.object({ ...base, action: z.literal('relations-suggestions') }),
   z.object({ ...base, action: z.literal('mark'), target: annotationTargetSchema, verdict: z.enum(['pin', 'irrelevant']),
     note: z.string().max(MAX_NOTE_LENGTH).optional() }),
   z.object({ ...base, action: z.literal('unmark'), id: id.max(600) }),
   z.object({ ...base, action: z.literal('marks') }),
+  z.object({ ...base, action: z.literal('honour-marks'), honour: z.boolean() }),
   z.object({ action: z.literal('start-new') }),
   z.object({ ...base, action: z.literal('relocate'), root: id, confirmNonEmpty: z.boolean().optional() }),
   z.object({ ...base, action: z.literal('discard-draft') }),

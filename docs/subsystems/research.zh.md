@@ -68,7 +68,7 @@
 
 快照和命令答复把已移出的研究标为 `archived: true`，它由 `archivedAt` 推导得出，从不存储。它的运行照常进行，但后台观测会跳过它们，直到研究恢复；`experiment-wait` 与 `experiment-refresh` 在被调用时仍会观测运行。已移出的研究永远不会是草稿。
 
-`showExamples` 偏好（设置 › 科研 › 显示示例研究）决定侧边栏是否列出示例。没有设置时视为 true。
+`showExamples` 偏好（设置 › 科研 › 显示示例研究）决定侧边栏是否列出示例。没有设置时视为 true。`memoryCarry` 偏好保存记忆视图的开关，每类记忆一个；未出现的类别视为开启。
 
 ## 模式包
 
@@ -119,9 +119,13 @@ CCFA 模式包沿用 CCFA-Skills：十六个专职技能，每个都在两个前
 
 排序使用对模式与论文文本的 BM25，再加上图谱里的论文近邻。配置了嵌入接口（`preferences.embedding`，密钥 `RESEARCH_EMBEDDING_API_KEY`）后，对模式文本的余弦相似度通过倒数排名融合加入排序；新颖性检查在嵌入空间里把故事与最接近的工作比较，沿用上游 0.88 / 0.82 的分档；项目图谱改用平均链接聚类而不是 k-means。每个结果都会注明依据。图谱在首次使用时加载，闲置十分钟后释放。
 
-图谱是可选的，由知识图谱 bundle 的三个插件分担，各有独立开关：`research_knowledge` 背后的引擎、领域地图和证据图。领域地图注入引擎；证据图只读取项目记录。已关闭插件的命令会报错并写明插件名，`graph-status` 和快照里的 `knowledge.modules` 报告哪些已开启，关闭插件不会删除 `.research` 下的任何文件。
+图谱是可选的，由知识图谱 bundle 的五个插件分担，各有独立开关：`research_knowledge` 背后的引擎、领域地图、证据图、研究记忆和关系图。领域地图注入引擎；证据图、研究记忆和关系图只读取项目记录。已关闭插件的命令会报错并写明插件名，`graph-status` 和快照里的 `knowledge.modules` 报告哪些已开启，关闭插件不会删除 `.research` 下的任何文件。
 
 证据图（`evidence-graph`）是项目记录的纯投影，由 `src/knowledge-evidence.ts` 计算，不存放在任何地方。它返回研究问题（简介，简介为空时用标题）、每条结论及其状态、写有该结论的文件和它的引用，以及这些结论引用的运行、文献和文件；一次运行不论有多少输出被引用，都只是一个节点。结论的状态只由记录中的字段推出。记录为 `contradicted` 的结论就是 `contradicted`。没有引用任何来源的结论，是假设时为 `proposed`，否则为 `missing`。引用的来源已不存在、被记录为过期、或版本与引用时不同，或者结论本身被记录为 `stale`，则为 `stale`。记录为 `proposed` 的结论保持 `proposed`，其余结论为 `supported`。没有引用任何来源、而又能由运行检验的结论（实证结论或假设），会连上进行中、或已结束但没有收集结果的运行，最多三个，因为记录并不把计划中的运行与某条结论关联起来；没有这样的运行时，它带一个“没有引用，也没有进行中的运行”的标记。领域地图的 `map-view` 返回内置图谱中论文的位置及其区域和稀疏区域，`map-papers` 按下标返回论文详情，`map-overlay` 把研究的想法、导入的文献、最近召回的论文和标记放到地图上。读不到随附的布局时命令失败，下一次地图命令会重新读取。`mark`、`unmark` 和 `marks` 修改并列出召回所遵从的标记。
+
+研究记忆（`memory`、`memory-carry`）是这台电脑上各项研究的纯投影，由 `src/knowledge-memory.ts` 计算，除了用户的开关外不存放在任何地方。示例、已移出列表的研究和未动过的草稿不留下记忆。文献按规范化后的标题在各项研究之间合并（`src/title-key.ts`）。已完成的实验按研究、按名称列出，附上最新一次运行的命令和指标；记录里没有基线标记，所以不把任何一个叫作基线。可用的环境会合并（本机 `uv` 环境合为一个，SSH 环境按主机和解释器合并），会议模板按会议计数，经验则是记录了原因或退出码的失败运行，以及选择模式之外的决定，每条截断为 240 个字符。每一类在总数之外最多列出 100 项。`memory-carry` 把 `memoryCarry` 存入研究偏好，未出现的类别视为开启；它是用户自己的命令，agent 会被拒绝。agent 的 `research_project memory` 在 `content` 中只返回已开启的类别，来自它所在研究之外的研究，每类最多 40 项，用研究标题代替 id，不含经验。
+
+关系图在 `.research/kg/relations.json` 中保存一项研究的方法、任务、数据集、指标和论文之间有类型、有方向的关系；`src/knowledge-relations.ts` 是存储及其修改，`src/knowledge-relations-grounding.ts` 是依据规则，`src/knowledge-relations-queries.ts` 是各项查询，[Agent Note](../../.agents/notes/proposed/feature/2026-10-01-knowledge-graph-relations.zh.md) 记录规则及其评测。每条关系都有依据：某条资料记录某个版本中的一段原文、已完成的运行，或来自 OpenAlex 或 Crossref 的引用记录。agent 的引文适用工具描述中写明的严格规则，用户的引文只需存在并含四个词。`relations-graph` 返回一个节点的邻域及布局提示，`relations-paths` 返回解释得最好的几条路径，`relations-gaps` 返回方法与任务、数据集或设置的矩阵，只谈项目自己的来源。`relations-propose`、`relations-reject` 和 `relations-restore` 既供桌面端也供 agent 使用，作者由调用方设定，绝不取自输入；用户的否定对 agent 一直有效。`relations-entity`、`relations-merge`、`relations-reground` 和 `relations-citations` 是用户的命令，最后一个作为后台任务运行，向 OpenAlex 和 Crossref 发出的只读请求按插件的 `pauseMs` 间隔发出，结果保留 `citationMaxAgeDays` 天。`relations-suggestions` 列出可能是同一个对象的实体。示例研究回答读取，拒绝其余命令。
 
 ## 检查
 
@@ -242,9 +246,9 @@ standing(project: ResearchProject): Promise<ResearchStanding>
 async createProject(request: CreateProjectRequest, sessionId?: string): Promise<ResearchProject>
 
 /**
- * Save model roles, explicitly bound tool locations, the research home and
- * whether examples are listed, never model secrets. A research home among
- * the examples is refused.
+ * Save model roles, explicitly bound tool locations, the research home,
+ * whether examples are listed and which kinds of memory new researches
+ * carry, never model secrets. A research home among the examples is refused.
  * @param preferences - the complete preference record.
  * @returns the preferences as stored.
  */
@@ -385,6 +389,17 @@ view(signal: AbortSignal): Promise<MapViewPage>
 papers(indices: readonly number[], signal: AbortSignal): Promise<MapPaperView[]>
 
 /**
+ * Where a search text lands on the map, with the papers and patterns it matched. Nothing is recorded: a search is
+ * the person's, not a recall of the agent's.
+ * @param root - the project root, whose marks recall honours.
+ * @param query - the search text.
+ * @param embedder - semantic pattern ranking, when configured.
+ * @param signal - caller cancellation.
+ * @returns the search's placement and matches.
+ */
+search(root: string, query: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapSearchView>
+
+/**
  * What a research places over the map: its idea (the agent's latest recall query, else the brief), its
  * imported literature, the papers its recent recalls returned, and its marks.
  * @param project - the research record.
@@ -396,6 +411,133 @@ overlay(project: Pick<ResearchProject, 'root' | 'brief' | 'evidence'>, embedder:
 ```
 
 Source: [`packages/research/workbench/src/knowledge-map-plugin.ts`](../../packages/research/workbench/src/knowledge-map-plugin.ts)
+
+<a id="ctxresearchknowledgememory--researchknowledgememory"></a>
+
+### `ctx.researchKnowledgeMemory` — `ResearchKnowledgeMemory`
+
+What the researches on this computer leave for the next one, shared by all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Project the researches into the memory a new research can carry. Nothing is stored or written.
+ * @param projects - every research record the host holds.
+ * @param options - the examples to leave out, the finished researches, the person's switches and the venue names.
+ * @returns the researches that left memory, and their literature, finished experiments, environments, venue templates and lessons.
+ */
+page(projects: readonly ResearchProject[], options: MemoryOptions): ResearchMemoryPage
+
+/**
+ * Reduce a page to what the agent reads.
+ * @param page - the memory of the researches other than the one the agent works in.
+ * @returns only the kinds the person switched on, each cut to the agent's limit, with research titles in place of ids.
+ */
+carried(page: ResearchMemoryPage): CarriedMemory
+```
+
+Source: [`packages/research/workbench/src/knowledge-memory-plugin.ts`](../../packages/research/workbench/src/knowledge-memory-plugin.ts)
+
+<a id="ctxresearchknowledgerelations--researchknowledgerelations"></a>
+
+### `ctx.researchKnowledgeRelations` — `ResearchKnowledgeRelations`
+
+The relation graph of a research: typed relations between its methods, tasks, datasets, metrics and papers, each grounded in a quotation of one of its sources.
+
+```ts cordis-catalog
+/**
+ * Read the graph around an entity: its neighbourhood, the most connected entities and the rejected relations.
+ * @param project - the record; its evidence text is not read.
+ * @param query - the entity (id, name or alias) and the neighbourhood's limits.
+ * @param signal - caller cancellation.
+ * @returns the page, and the neighbourhood described for the agent.
+ */
+graph(project: RecordedProject, query: GraphQuery, signal: AbortSignal): Promise<Answered<RelationsPage>>
+
+/**
+ * Find the best explained paths between two entities.
+ * @param project - the record; its evidence text is not read.
+ * @param query - the two ends (ids, names or aliases) and the search limits.
+ * @param signal - caller cancellation.
+ * @returns the paths with the grounds of every hop, and the paths described for the agent.
+ */
+paths(project: RecordedProject, query: PathQuery, signal: AbortSignal): Promise<Answered<RelationPathsPage>>
+
+/**
+ * Build the gap matrix of methods against tasks, datasets or settings over the project's own sources.
+ * @param project - the record with evidence text loaded; the matrix reads its passages.
+ * @param query - the axis, optionally the rows and columns (ids or names), and whether subtypes count; they do not by default.
+ * @param signal - caller cancellation.
+ * @returns the matrix with the wording keys, and the matrix described for the agent.
+ */
+gaps(project: RecordedProject, query: GapQuery, signal: AbortSignal): Promise<Answered<RelationGapPage>>
+
+/**
+ * Check and record proposed relations, each on its own.
+ * @param project - the record with evidence text loaded; quotations are searched in it.
+ * @param proposals - at most 50 relations with their grounds.
+ * @param by - who proposes; the agent's quotations face the strict grounding rule, the person's the lighter one.
+ * @param signal - caller cancellation.
+ * @returns one outcome per proposal in order, and the repair done to a damaged stored file.
+ */
+propose( project: RecordedProject, proposals: readonly RelationProposalInput[], by: Actor, signal: AbortSignal, ): Promise<Answered<RelationProposalOutcomeView[]> & { repaired: string[] }>
+
+/**
+ * Reject or restore a relation, or one of its grounds.
+ * @param project - the record (only its root is used).
+ * @param change - `reject` or `restore`, the relation, the ground when only one is meant, and a reason for a rejection.
+ * @param by - who decides; the person's rejection stands against the agent until the person restores it.
+ * @param signal - caller cancellation.
+ * @returns the outcome.
+ */
+decide( project: ProjectRoot, change: { verb: 'reject' | 'restore'; relation: string; ground?: string | undefined; reason?: string | undefined }, by: Actor, signal: AbortSignal, ): Promise<RelationDecisionOutcomeView>
+
+/**
+ * Create an entity, or add aliases to the one a name already names.
+ * @param project - the record (only its root is used).
+ * @param input - the kind, name and aliases.
+ * @param by - who acts.
+ * @param signal - caller cancellation.
+ * @returns the outcome.
+ */
+entity( project: ProjectRoot, input: { kind: 'method' | 'task' | 'dataset' | 'metric'; name: string; aliases?: string[] | undefined }, by: Actor, signal: AbortSignal, ): Promise<RelationEntityOutcomeView>
+
+/**
+ * Merge one entity into another of its kind; no operation undoes it.
+ * @param project - the record (only its root is used).
+ * @param input - the merged entity and the survivor, by id.
+ * @param by - who merges.
+ * @param signal - caller cancellation.
+ * @returns the outcome.
+ */
+merge( project: ProjectRoot, input: { from: string; into: string }, by: Actor, signal: AbortSignal, ): Promise<RelationMergeOutcomeView>
+
+/**
+ * Pairs of entities that may be one.
+ * @param project - the record (only its root is used).
+ * @param signal - caller cancellation.
+ * @returns the suggestions and the same described for the agent.
+ */
+suggestions(project: ProjectRoot, signal: AbortSignal): Promise<Answered<RelationMergeSuggestionView[]>>
+
+/**
+ * Check the quotations whose source moved to a new revision against it, and move those that still hold.
+ * @param project - the record with evidence text loaded.
+ * @param signal - caller cancellation.
+ * @returns how many quotations moved and how many no longer hold.
+ */
+reground(project: RecordedProject, signal: AbortSignal): Promise<RelationRegroundView>
+
+/**
+ * Fetch the reference lists of the papers whose list is missing or older than the configured age from OpenAlex and
+ * Crossref, and record every citation among the project's papers. Cancelling stops the requests; nothing is written then.
+ * @param project - the record.
+ * @param signal - caller cancellation.
+ * @returns the papers asked for, the lists now cached, the citations added, and the failed requests.
+ */
+citations(project: RecordedProject, signal: AbortSignal): Promise<RelationCitationsView>
+```
+
+Source: [`packages/research/workbench/src/knowledge-relations-plugin.ts`](../../packages/research/workbench/src/knowledge-relations-plugin.ts)
 
 <a id="research-events"></a>
 

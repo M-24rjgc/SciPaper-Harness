@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Relations",
+    "description": "Records how the methods, tasks, datasets, metrics and papers of a research relate. Every relation rests on a quotation of a source you imported, or on a completed run, and lapses when that source changes. Reads only the research record, so it works without the knowledge graph engine."
+  }
+}

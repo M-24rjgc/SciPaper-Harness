@@ -37,9 +37,13 @@ import { builtinIndices, createEmbedder, PROJECT_CLUSTERS, PROJECT_GRAPH, type E
 import { locateTarget, readAnnotations, removeAnnotation, setAnnotation } from './knowledge-annotations.ts'
 import { markViews } from './knowledge-map-view.ts'
 import { appendRecall } from './knowledge-recall-log.ts'
+import { readHonour, writeHonour } from './knowledge-marks-state.ts'
 import type {} from './knowledge-plugin.ts'
 import type {} from './knowledge-map-plugin.ts'
 import type {} from './knowledge-evidence-plugin.ts'
+import type { ResearchKnowledgeRelations } from './knowledge-relations-plugin.ts'
+import type { ResearchKnowledgeMemory } from './knowledge-memory-plugin.ts'
+import { leavesMemory, memoryCarry } from './knowledge-memory.ts'
 import { applyVenue, listVenues, loadVenues, type VenueLibrary } from './venues.ts'
 import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from './literature.ts'
 import {
@@ -55,8 +59,8 @@ import {
 import type {
   ArtifactId, CreateProjectRequest, EvidenceId, EvidenceRecord, ExperimentRecord, KnowledgeMarkView, KnowledgeModules, LiteratureItem,
   ProjectId,
-  ResearchCommand, ResearchGoal, ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot,
-  ResearchStanding, ResearchTask, VisualReview,
+  ResearchCommand, ResearchGoal, ResearchMemoryPage, ResearchModeEvent, ResearchPreferences, ResearchProject, ResearchResponse,
+  ResearchSnapshot, ResearchStanding, ResearchTask, VisualReview,
 } from './types.ts'
 export type * from './types.ts'
 
@@ -93,22 +97,45 @@ const LONG_ACTIONS = new Set<ResearchCommand['action']>([
 
 type ReadOnlyAction = 'search-evidence' | 'read-artifact' | 'experiment-logs' | 'check' | 'experiment-wait' | 'find-reference-figures'
   | 'board-get' | 'board-update' | 'board-refresh' | 'board-view'
-type KnowledgeAction = 'graph-status' | 'graph-view' | 'recall' | 'novelty' | 'build-graph' | 'name-patterns' | 'mark' | 'unmark' | 'marks'
+type KnowledgeAction = 'graph-status' | 'graph-view' | 'recall' | 'novelty' | 'build-graph' | 'name-patterns' | 'mark' | 'unmark' | 'marks' | 'honour-marks'
 type KnowledgeCommand = Extract<ResearchCommand, { action: KnowledgeAction }>
 const KNOWLEDGE_ACTIONS: ReadonlySet<string> = new Set<KnowledgeAction>([
-  'graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns', 'mark', 'unmark', 'marks',
+  'graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns', 'mark', 'unmark', 'marks', 'honour-marks',
 ])
 /** Graph commands an example research answers: they read and record nothing in it. */
 const EXAMPLE_KNOWLEDGE_READS: ReadonlySet<string> = new Set<KnowledgeAction>(['graph-status', 'graph-view', 'marks'])
 function isKnowledgeCommand(request: ResearchCommand): request is KnowledgeCommand { return KNOWLEDGE_ACTIONS.has(request.action) }
 /** The commands of the optional knowledge sub-plugins; each one refuses by name while its plugin is off. */
-type ModuleAction = 'evidence-graph' | 'map-view' | 'map-overlay' | 'map-papers'
+type RelationsAction = 'relations-graph' | 'relations-paths' | 'relations-gaps' | 'relations-propose' | 'relations-reject' | 'relations-restore'
+  | 'relations-entity' | 'relations-reground' | 'relations-citations' | 'relations-merge' | 'relations-suggestions'
+type RelationsCommand = Extract<ResearchCommand, { action: RelationsAction }>
+type ModuleAction = 'evidence-graph' | 'memory' | 'memory-carry' | 'map-view' | 'map-overlay' | 'map-papers' | 'map-search' | RelationsAction
 type ModuleCommand = Extract<ResearchCommand, { action: ModuleAction }>
-const MODULE_ACTIONS: ReadonlySet<string> = new Set<ModuleAction>(['evidence-graph', 'map-view', 'map-overlay', 'map-papers'])
+const RELATIONS_ACTIONS: ReadonlySet<string> = new Set<RelationsAction>([
+  'relations-graph', 'relations-paths', 'relations-gaps', 'relations-propose', 'relations-reject', 'relations-restore',
+  'relations-entity', 'relations-reground', 'relations-citations', 'relations-merge', 'relations-suggestions',
+])
+/** The relation commands that record something; an example research refuses them. */
+const RELATIONS_WRITES: ReadonlySet<string> = new Set<RelationsAction>([
+  'relations-propose', 'relations-reject', 'relations-restore', 'relations-entity', 'relations-reground', 'relations-citations', 'relations-merge',
+])
+/** The relation commands the agent is refused: entities, merges, reference fetching and re-checking are the person's. */
+const RELATIONS_PERSON_ONLY: ReadonlySet<string> = new Set<RelationsAction>(['relations-entity', 'relations-reground', 'relations-citations', 'relations-merge'])
+const MODULE_ACTIONS: ReadonlySet<string> = new Set<string>([
+  'evidence-graph', 'memory', 'memory-carry', 'map-view', 'map-overlay', 'map-papers', 'map-search', ...RELATIONS_ACTIONS,
+])
 function isModuleCommand(request: ResearchCommand): request is ModuleCommand { return MODULE_ACTIONS.has(request.action) }
+function isRelationsCommand(request: ModuleCommand): request is RelationsCommand { return RELATIONS_ACTIONS.has(request.action) }
+/** Nodes of a neighbourhood the agent reads when it names no limit; the person's view asks for more. */
+const AGENT_NEIGHBOURHOOD = 20
 /** Why a command of a sub-plugin that is not mounted is refused. */
 const EVIDENCE_DISABLED = 'Evidence graph plugin is disabled. Enable Evidence graph in Plugins to read the question, conclusions and evidence of a research.'
 const MAP_DISABLED = 'Domain map plugin is disabled. Enable Domain map in Plugins (it also needs Knowledge graph).'
+const MEMORY_DISABLED = 'Research memory plugin is disabled. Enable Research memory in Plugins to read what earlier researches left.'
+const RELATIONS_DISABLED = 'Relation graph plugin is disabled. Enable Relations in Plugins to read or record how the methods, tasks, datasets and papers of a research relate.'
+/** Why the agent is refused memory-carry: which kinds a new research carries is the person's choice. */
+const HONOUR_PERSON_ONLY = 'honour-marks is the person\'s switch (the marks card of the Domain map); the agent only reads it with marks'
+const MEMORY_PERSON_ONLY = 'memory-carry is the person\'s switch (the Memory view of the Knowledge tab); the agent only reads memory'
 /**
  * The person's commands: open, move or remove the untouched draft research,
  * and remove a research from the list or restore it; the agent never sends them.
@@ -250,7 +277,12 @@ export class ResearchWorkbench extends TypertRemoteService {
   get knowledgeEnabled(): boolean { return this.ctx.get('researchKnowledge') !== undefined }
   /** Which optional knowledge sub-plugins are mounted in this profile. */
   get knowledgeModules(): KnowledgeModules {
-    return { map: this.ctx.get('researchKnowledgeMap') !== undefined, evidence: this.ctx.get('researchKnowledgeEvidence') !== undefined }
+    return {
+      map: this.ctx.get('researchKnowledgeMap') !== undefined,
+      evidence: this.ctx.get('researchKnowledgeEvidence') !== undefined,
+      memory: this.ctx.get('researchKnowledgeMemory') !== undefined,
+      relations: this.ctx.get('researchKnowledgeRelations') !== undefined,
+    }
   }
   /** Published papers' Figure 1s to study before drawing, fetched on demand into the product home's cache. */
   readonly gallery: FigureGallery
@@ -589,9 +621,9 @@ export class ResearchWorkbench extends TypertRemoteService {
   }
 
   /**
-   * Save model roles, explicitly bound tool locations, the research home and
-   * whether examples are listed, never model secrets. A research home among
-   * the examples is refused.
+   * Save model roles, explicitly bound tool locations, the research home,
+   * whether examples are listed and which kinds of memory new researches
+   * carry, never model secrets. A research home among the examples is refused.
    * @param preferences - the complete preference record.
    * @returns the preferences as stored.
    */
@@ -809,7 +841,14 @@ export class ResearchWorkbench extends TypertRemoteService {
         ? this.begin(request.action, project.id, signal => this.runKnowledge(request, signal, actor))
         : this.clipped(await this.runKnowledge(request, signal, actor))
     }
-    if (isModuleCommand(request)) return this.runModule(request, project, signal)
+    if (isModuleCommand(request)) {
+      if (request.action === 'relations-citations' && actor === 'user') {
+        // Fetching reference lists takes a while, so the person follows it as a job; a refusal still answers at once.
+        this.relationsProvider(request.action, project, actor)
+        return this.begin(request.action, project.id, scoped => this.runModule(request, project, scoped, actor))
+      }
+      return this.runModule(request, project, signal, actor)
+    }
     switch (request.action) {
       case 'search-evidence': return this.clipped(searchEvidence(this.getProject(project.id), request.query, this.config.maxSourceBytes))
       case 'read-artifact': {
@@ -1393,7 +1432,14 @@ export class ResearchWorkbench extends TypertRemoteService {
         }
         case 'marks': {
           const marks = await this.markList(knowledge, root)
-          return { message: `${marks.length} mark(s)`, marks, content: JSON.stringify(marks) }
+          const honour = await readHonour(root)
+          return { message: `${marks.length} mark(s)${honour ? '' : '; the person paused them, so recall does not apply them'}`,
+            marks, honour, content: JSON.stringify(marks) }
+        }
+        case 'honour-marks': {
+          if (actor !== 'user') throw new Error(HONOUR_PERSON_ONLY)
+          await writeHonour(root, request.honour)
+          return { message: request.honour ? 'The agent follows the marks' : 'The marks are paused; recall does not apply them', honour: request.honour }
         }
       }
     })
@@ -1408,8 +1454,23 @@ export class ResearchWorkbench extends TypertRemoteService {
     return markViews(annotations, { ...ai === undefined ? {} : { ai }, ...project === undefined ? {} : { project } })
   }
 
+  /**
+   * The memory of the researches on this computer, with the person's switches and the venue names.
+   * A research counts as finished when its standing says so.
+   */
+  private async memoryPage(provider: ResearchKnowledgeMemory, projects: readonly ResearchProject[]): Promise<ResearchMemoryPage> {
+    const remembered = projects.filter(item => leavesMemory(item, isExampleRoot))
+    const standings = await Promise.all(remembered.map(async item => ({ id: item.id, finished: (await this.standing(item)).finished })))
+    const library = await this.venues()
+    return provider.page(remembered, {
+      isExample: isExampleRoot, finished: new Set(standings.filter(item => item.finished).map(item => item.id)),
+      carry: memoryCarry(this.domain.global.get()), venueName: id => library.venues.find(venue => venue.id === id)?.name,
+    })
+  }
+
   /** Execute a command of an optional knowledge sub-plugin; a plugin that is not mounted refuses by its name. */
-  private async runModule(request: ModuleCommand, project: ResearchProject, signal: AbortSignal): Promise<ResearchResponse> {
+  private async runModule(request: ModuleCommand, project: ResearchProject, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse> {
+    if (isRelationsCommand(request)) return this.runRelations(request, project, signal, actor)
     switch (request.action) {
       case 'evidence-graph': {
         const provider = this.ctx.get('researchKnowledgeEvidence')
@@ -1417,6 +1478,31 @@ export class ResearchWorkbench extends TypertRemoteService {
         const evidenceGraph = provider.graph(project)
         const { claims, supported, stale, missing } = evidenceGraph.summary
         return { message: `Evidence graph: ${claims} claim(s), ${supported} supported, ${stale} to re-check, ${missing} without evidence`, evidenceGraph }
+      }
+      case 'memory': {
+        const provider = this.ctx.get('researchKnowledgeMemory')
+        if (!provider) throw new Error(MEMORY_DISABLED)
+        if (actor === 'user') {
+          const memory = await this.memoryPage(provider, this.projects())
+          return { message: `Memory of ${memory.researches.length} research(es)`, memory }
+        }
+        // The agent works in one research and has its record in front of it, so it reads what the others left.
+        const carried = provider.carried(await this.memoryPage(provider, this.projects().filter(item => item.id !== project.id)))
+        return {
+          message: `Memory of ${carried.researches.length} earlier research(es); kinds switched on: ${JSON.stringify(carried.carried)}`,
+          content: JSON.stringify(carried),
+        }
+      }
+      case 'memory-carry': {
+        const provider = this.ctx.get('researchKnowledgeMemory')
+        if (!provider) throw new Error(MEMORY_DISABLED)
+        if (actor !== 'user') throw new Error(MEMORY_PERSON_ONLY)
+        const preferences = this.domain.global.get()
+        await this.domain.global.set({ ...preferences, memoryCarry: { ...preferences.memoryCarry, [request.kind]: request.on } })
+        return {
+          message: `New researches ${request.on ? 'carry' : 'no longer carry'} ${request.kind}`,
+          memory: await this.memoryPage(provider, this.projects()),
+        }
       }
       case 'map-view': {
         const provider = this.ctx.get('researchKnowledgeMap')
@@ -1435,6 +1521,94 @@ export class ResearchWorkbench extends TypertRemoteService {
         if (!provider) throw new Error(MAP_DISABLED)
         const mapPapers = await provider.papers(request.indices, signal)
         return { message: `${mapPapers.length} paper(s)`, mapPapers }
+      }
+      case 'map-search': {
+        const provider = this.ctx.get('researchKnowledgeMap')
+        if (!provider) throw new Error(MAP_DISABLED)
+        const mapSearch = await provider.search(project.root, request.query, await this.embedder(), signal)
+        return { message: `${mapSearch.papers.length} paper(s) and ${mapSearch.patterns.length} pattern(s) matched`, mapSearch }
+      }
+    }
+  }
+
+  /**
+   * The relation graph provider for a command, after the refusals: the plugin is off, the agent sends one of the
+   * person's commands, or the research is an example and the command records something.
+   */
+  private relationsProvider(action: RelationsAction, project: ResearchProject, actor: 'user' | 'agent'): ResearchKnowledgeRelations {
+    const provider = this.ctx.get('researchKnowledgeRelations')
+    if (!provider) throw new Error(RELATIONS_DISABLED)
+    if (actor !== 'user' && RELATIONS_PERSON_ONLY.has(action)) {
+      throw new Error(`${action} is the person's command (the Relations view of the Knowledge tab); the agent proposes and rejects relations`)
+    }
+    if (RELATIONS_WRITES.has(action) && isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
+    return provider
+  }
+
+  /**
+   * Execute a command of the relation graph. The caller decides who acts: the desktop's proposals and corrections are
+   * the person's, the agent's tool calls the agent's, and no command input names an author. The desktop receives the
+   * structured page; the agent receives the backend's description of it in `content`.
+   */
+  private async runRelations(request: RelationsCommand, project: ResearchProject, signal: AbortSignal, actor: 'user' | 'agent'): Promise<ResearchResponse> {
+    const provider = this.relationsProvider(request.action, project, actor)
+    switch (request.action) {
+      case 'relations-graph': {
+        const { page, text } = await provider.graph(project, { ...request, maxNodes: request.maxNodes ?? (actor === 'agent' ? AGENT_NEIGHBOURHOOD : undefined) }, signal)
+        const message = page.neighbourhood === undefined ? text : `${page.neighbourhood.nodes.length} node(s) and ${page.neighbourhood.edges.length} relation(s) around ${page.neighbourhood.center}`
+        return actor === 'user' ? { message, relations: page } : { message: 'Relation graph', content: text }
+      }
+      case 'relations-paths': {
+        const { page, text } = await provider.paths(project, request, signal)
+        const message = `${page.paths.length} path(s) from ${page.from} to ${page.to}`
+        return actor === 'user' ? { message, relationPaths: page } : { message, content: text }
+      }
+      case 'relations-gaps': {
+        const { page, text } = await provider.gaps(this.getProject(project.id), request, signal)
+        const message = `Gap matrix of ${page.rows.length} method(s) against ${page.columns.length} ${request.axis}(s) in this project's sources`
+        return actor === 'user' ? { message, relationGaps: page } : { message, content: text }
+      }
+      case 'relations-propose': {
+        const { page, text, repaired } = await provider.propose(this.getProject(project.id), request.proposals, actor, signal)
+        const refused = page.filter(outcome => outcome.status === 'refused').length
+        const message = `${page.length} proposal(s): ${page.length - refused} grounded, ${refused} refused${repaired.map(note => `; ${note}`).join('')}`
+        return actor === 'user' ? { message, relationOutcomes: page } : { message, content: text }
+      }
+      case 'relations-reject':
+      case 'relations-restore': {
+        const reject = request.action === 'relations-reject'
+        const outcome = await provider.decide(project, {
+          verb: reject ? 'reject' : 'restore', relation: request.relation, ground: request.ground, reason: reject ? request.reason : undefined,
+        }, actor, signal)
+        const message = outcome.status === 'refused' ? outcome.message
+          : outcome.status === 'unchanged' ? `Nothing changed: ${outcome.relation} was already ${reject ? 'rejected' : 'standing'}`
+            : `${outcome.relation} ${reject ? 'rejected' : 'restored'}`
+        return actor === 'user' ? { message, relationOutcomes: [outcome] } : { message, content: message }
+      }
+      case 'relations-entity': {
+        const outcome = await provider.entity(project, request, actor, signal)
+        return { message: outcome.status === 'refused' ? outcome.message : `${outcome.status} ${outcome.entity.id}`, relationEntity: outcome }
+      }
+      case 'relations-merge': {
+        const outcome = await provider.merge(project, request, actor, signal)
+        return { message: outcome.status === 'refused' ? outcome.message : `Merged ${request.from} into ${outcome.entity.id}`, relationMerge: outcome }
+      }
+      case 'relations-suggestions': {
+        const { page, text } = await provider.suggestions(project, signal)
+        const message = `${page.length} pair(s) of entities that may be one`
+        return actor === 'user' ? { message, relationSuggestions: page } : { message, content: text }
+      }
+      case 'relations-reground': {
+        const relationReground = await provider.reground(this.getProject(project.id), signal)
+        return { message: `${relationReground.regrounded} quotation(s) moved to the current revision, ${relationReground.lapsed} no longer hold`, relationReground }
+      }
+      case 'relations-citations': {
+        const relationCitations = await provider.citations(this.getProject(project.id), signal)
+        const failed = relationCitations.failures.length
+        return {
+          message: `${relationCitations.added} citation(s) recorded from ${relationCitations.works} reference list(s)${failed === 0 ? '' : `; ${failed} request(s) failed`}`,
+          relationCitations,
+        }
       }
     }
   }

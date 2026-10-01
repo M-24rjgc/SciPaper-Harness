@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { downloadPdf, openAccessPdf, searchLiterature, verifyLiterature } from '../src/literature.ts'
+import { downloadPdf, getJson, openAccessPdf, searchLiterature, verifyLiterature } from '../src/literature.ts'
 import type { LiteratureItem } from '../src/types.ts'
 
 const signal = new AbortController().signal
@@ -153,5 +153,18 @@ describe('open-access full text is located without identifying the user', () => 
     await expect(downloadPdf('https://oa.example/declared.pdf', signal, 100)).rejects.toThrow(/size limit/)
     await expect(downloadPdf('https://oa.example/large.pdf', signal, 100)).rejects.toThrow(/size limit/)
     await expect(downloadPdf('https://oa.example/landing', signal, 100)).rejects.toThrow(/did not return a PDF/)
+  })
+})
+
+describe('a provider document read for the relation graph', () => {
+  it('is fetched with the literature client\'s headers and fails on an HTTP error', async () => {
+    const calls: { url: string; headers: unknown }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: { headers: unknown }) => {
+      calls.push({ url, headers: init.headers })
+      return url.endsWith('/missing') ? new Response('no', { status: 404 }) : new Response('{"results":[]}')
+    }))
+    expect(await getJson('https://api.openalex.org/works?filter=doi:x', signal)).toEqual({ results: [] })
+    expect(calls[0]?.headers).toEqual({ 'User-Agent': 'ResearchWorkbench/0.1 (scholarly metadata client)' })
+    await expect(getJson('https://api.openalex.org/missing', signal)).rejects.toThrow('HTTP 404')
   })
 })

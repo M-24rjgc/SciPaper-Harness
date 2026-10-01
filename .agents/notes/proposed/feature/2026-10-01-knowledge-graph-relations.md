@@ -102,16 +102,16 @@ On a full-text project of 157 passages and 84,615 tokens, 61 proposals take 226 
 
 **SQLite instead of a JSON file.** The graph is at most a few megabytes and is read whole for every query; a JSON file follows the marks file and needs no schema migration.
 
-## Open questions
+## Decisions on the open questions
 
-- Whether a person's quotation should meet the same rule as the agent's, instead of being kept with warnings.
-- Whether the agent may merge entities, or only suggest merges, since no operation undoes a merge.
-- How long a cached reference list is kept before it is fetched again, and whether fetching references needs the person's approval each time.
-- Whether built-in graph papers may be nodes; their story fields are model-written summaries and cannot ground a relation.
-- Whether the gap matrix's roll-up over `is-a` subtypes is on by default.
-- Whether re-grounding runs automatically after a source's refresh, or only on request.
-- Whether the agent's `measured-by` from a run covers every metric the run recorded or only those named.
-
+- A person's quotation keeps the lighter rule: it must exist in the cited revision and hold four words, and the rules it misses are stored as warnings with the ground. The agent's quotation meets the strict rule.
+- The agent may only suggest merges (`mergeSuggestions`). Merging is the person's command, because no operation undoes it.
+- A cached reference list is kept 30 days (`citationMaxAgeDays`) and requests are 120 ms apart (`pauseMs`). Fetching is a read-only GET to OpenAlex and Crossref, like the literature search, and runs only as the person's job (`relations-citations`), never from the agent.
+- Papers of the built-in graph are not nodes.
+- The roll-up over `is-a` subtypes is off in the gap matrix unless the request turns it on.
+- Re-grounding runs on request (`relations-reground`, the person's command); the graph read flags outdated grounds meanwhile.
+- A `measured-by` ground from a run covers only the metric the proposal names.
+- Under every autonomy the agent's proposals are recorded without review, with their quotation and `by: 'agent'`, and the person can reject them.
 ## Acceptance criteria
 
 - The research service exposes commands for the graph (read, propose, reject, restore, merge, entity aliases, citations, re-ground, neighbourhood, paths, gap matrix), validates their input with the exported zod schemas, refuses changes in example projects, and passes projects with their evidence text loaded.

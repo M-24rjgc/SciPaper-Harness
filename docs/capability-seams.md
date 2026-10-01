@@ -136,6 +136,8 @@ flowchart LR
   svc_researchKnowledge["ctx.researchKnowledge<br/>Optional research knowledge graph"]
   svc_researchKnowledgeMap["ctx.researchKnowledgeMap<br/>Optional domain map"]
   svc_researchKnowledgeEvidence["ctx.researchKnowledgeEvidence<br/>Optional evidence graph"]
+  svc_researchKnowledgeMemory["ctx.researchKnowledgeMemory<br/>Optional research memory"]
+  svc_researchKnowledgeRelations["ctx.researchKnowledgeRelations<br/>Optional relation graph"]
   svc_research["ctx.research<br/>Research project ledger and operations"]
   pkg_client_ui_research["client-ui-research"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
@@ -375,6 +377,8 @@ flowchart LR
   pkg_research_workbench --> svc_researchKnowledge
   pkg_research_workbench --> svc_researchKnowledgeEvidence
   pkg_research_workbench --> svc_researchKnowledgeMap
+  pkg_research_workbench --> svc_researchKnowledgeMemory
+  pkg_research_workbench --> svc_researchKnowledgeRelations
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
   pkg_sandbox_policy --> svc_sandboxPolicy
@@ -507,6 +511,8 @@ flowchart LR
   svc_researchKnowledge --> pkg_research_workbench
   svc_researchKnowledgeEvidence --> pkg_research_workbench
   svc_researchKnowledgeMap --> pkg_research_workbench
+  svc_researchKnowledgeMemory --> pkg_research_workbench
+  svc_researchKnowledgeRelations --> pkg_research_workbench
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -646,6 +652,8 @@ flowchart LR
 | `ctx.researchKnowledge` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | Owns the shared graph engine, caches and cancellation for graph operations across research modes. Its optional bundle controls availability without deleting project graph files. |
 | `ctx.researchKnowledgeMap` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | Owns the domain map work and its cancellation, and injects the graph engine, so it is available only while the engine is. Its own switch controls availability without deleting project files. |
 | `ctx.researchKnowledgeEvidence` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | Projects a research record into its question, conclusions and evidence. It reads only the record, needs no graph engine, and its own switch controls availability without deleting project files. |
+| `ctx.researchKnowledgeMemory` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | Projects the records of all researches into the literature, finished experiments, environments and venue templates a new research can carry, and the compact view the agent reads. It reads only the records, needs no graph engine, and its own switch controls availability without deleting project files. |
+| `ctx.researchKnowledgeRelations` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | Records and queries typed relations between the methods, tasks, datasets, metrics and papers of a research, each grounded in a quotation of an imported source or a completed run, and fetches the papers' reference lists on request. It reads and writes only the project, needs no graph engine, and its own switch controls availability and cancels its work without deleting project files. |
 | `ctx.research` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench), [`client-ui-research`](../packages/client/ui-research) | - | Owns durable research projects, evidence, artifact revisions, decisions, experiment records, and checks. Its agent-tools entry consumes the host-wide service in research agents; the research UI calls its generated Remote methods. |
 | `ctx.sessionQuery` | `seam` | [`session-query`](../packages/session-query/session-query) | [`session-query-sqlite`](../packages/session-query/session-query-sqlite) | [`session-reference`](../packages/context/session-reference), [`tool-session-query`](../packages/session-query/tool-session-query) | - | The interface supplies exact reads, filters, and traces; its concrete backend adds full-text reconciliation, ranking, snippets, and cursor generations, while the model consumer owns workspace authority and cursor-free rendering. |
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | [`api-session-controller`](../packages/api/session-controller) | - | The interface returns path-only completion candidates within an Agent cwd; providers own namespace access and ranking without reading file contents. |

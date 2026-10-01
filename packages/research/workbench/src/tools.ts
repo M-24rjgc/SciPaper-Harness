@@ -14,6 +14,7 @@ import { errorText, isAttachment, isExampleRoot, isInside, sameDirectory } from 
 import type { ModeRegistry, ResolvedMode } from './modes.ts'
 import { runView } from './project.ts'
 import { remoteResearchAt } from './session-project.ts'
+import { RELATION_GROUNDING_RULE, RELATION_KINDS } from './knowledge-relations-grounding.ts'
 import { autonomies, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
 import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchResponse, ResearchStanding } from './types.ts'
 
@@ -199,7 +200,10 @@ const FAMILIES: Family[] = [
   {
     name: 'research_knowledge',
     title: 'Research knowledge graph',
-    actions: ['graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns', 'mark', 'unmark', 'marks'],
+    actions: [
+      'graph-status', 'graph-view', 'recall', 'novelty', 'build-graph', 'name-patterns', 'mark', 'unmark', 'marks',
+      'relations-propose', 'relations-reject', 'relations-neighbourhood', 'relations-paths', 'relations-gaps', 'relations-suggestions',
+    ],
     description: 'Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers '
       + 'machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. '
       + 'recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; '
@@ -211,8 +215,20 @@ const FAMILIES: Family[] = [
       + 'project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which. '
       + 'Marks: the person (and you) can mark a paper or pattern {target: {kind, graph, id}, verdict: pin|irrelevant, note?}; recall honours every '
       + 'mark: pins come first, irrelevant targets leave the results (annotations.skipped says why), nearby results move a few places, and each '
-      + 'result carries `why`. Tell the person which marks shaped a recall (annotations.applied). marks lists them; unmark {id} removes one. '
-      + 'Mark only on the person\'s request or with a stated reason; the person\'s marks win over yours.',
+      + 'result carries `why`. Tell the person which marks shaped a recall (annotations.applied). marks lists them and says when the person paused them, in which case recall applies none; unmark {id} removes one. '
+      + 'Mark only on the person\'s request or with a stated reason; the person\'s marks win over yours. '
+      + 'Relations: the research\'s own graph of methods, tasks, datasets, metrics and papers, in which every relation is grounded in the project\'s sources. '
+      + 'relations-neighbourhood {entity?, kind?, hops?, maxNodes?}: the relations around an entity (an id, name or alias; without one, around the most connected), '
+      + 'one line each with the source of its weightiest ground. relations-paths {from, to, k?, maxHops?}: the best explained paths between two entities, each hop with its quotation. '
+      + 'relations-gaps {axis: task|dataset|setting, rows?, columns?, rollUp?}: methods against tasks, datasets or settings as THIS project\'s sources cover them; '
+      + 'absent and uncovered say nothing about work outside the project, so never tell the person that nobody has tested a pair or that the field has a gap; '
+      + 'search the literature first. relations-suggestions: pairs of entities that may be one, for the person to merge. '
+      + 'Read the neighbourhood before you propose, and propose with relations-propose {proposals: [{kind, from, to, ground}]}, at most 50, each checked on its own: '
+      + 'kind is introduces, is-a, extends, improves-on, compares-with, applied-to, evaluated-on or measured-by (cites comes only from citation records). '
+      + 'from and to are {kind: method|task|dataset|metric, name, aliases?}, {kind: paper, evidenceId} or {id}. '
+      + 'ground is {type: quote, evidenceId, revision, quote, setting?} or {type: run, runId, from, to, baselineRunId?, setting?}. '
+      + `${RELATION_GROUNDING_RULE} `
+      + 'relations-reject {relation, ground?, reason?}: reject a relation, or only one ground of it, that is wrong; a rejection by the person is not yours to lift.',
     fields: {
       query: text('recall / graph-view: the idea as a search-friendly English query'),
       topK: { type: 'integer', description: 'recall: how many patterns (default 8, at most 20)' },
@@ -224,7 +240,7 @@ const FAMILIES: Family[] = [
       } },
       source: { type: 'string', enum: ['all', 'ai', 'project'], description: 'graph-view: graph source' },
       pattern: text('graph-view: a pattern node id from an earlier graph-view result'),
-      limit: { type: 'integer', description: 'graph-view: patterns per page, 1–12 (default 8)' },
+      limit: { type: 'integer', description: 'graph-view: patterns per page, 1–12 (default 8); relations-gaps: rows and columns chosen when none are given, 1–30 (default 12)' },
       offset: { type: 'integer', description: 'graph-view: number of patterns to skip' },
       papers: text('build-graph: the extracted corpus, JSON lines'),
       domain: text('build-graph: the corpus domain label, e.g. hci'),
@@ -237,6 +253,24 @@ const FAMILIES: Family[] = [
       verdict: { type: 'string', enum: ['pin', 'irrelevant'], description: 'mark: pin keeps it in recall; irrelevant takes it out' },
       note: text('mark: why, in a few words (at most 280 characters)'),
       id: text('unmark: the mark id, <graph>:<kind>:<id>'),
+      proposals: json('relations-propose: [{kind, from, to, ground}], at most 50'),
+      relation: text('relations-reject: the relation id, as relations-neighbourhood lists it in brackets'),
+      ground: text('relations-reject: the id of one ground, when only that ground is wrong'),
+      reason: text('relations-reject: why, in a few words (at most 280 characters)'),
+      entity: text('relations-neighbourhood: an entity id, name or alias'),
+      kind: { type: 'string', enum: ['method', 'task', 'dataset', 'metric', 'paper'], description: 'relations-neighbourhood / relations-paths: restrict a name to one kind of entity' },
+      kinds: { type: 'array', items: { type: 'string', enum: [...RELATION_KINDS] }, description: 'relations-neighbourhood / relations-paths: walk only these kinds of relation' },
+      hops: { type: 'integer', description: 'relations-neighbourhood: 1 or 2 (default 2)' },
+      maxNodes: { type: 'integer', description: 'relations-neighbourhood: nodes returned (default 20, at most 80)' },
+      includeStale: { type: 'boolean', description: 'relations-neighbourhood / relations-paths: false leaves out relations whose sources changed (default true, marked [stale])' },
+      from: text('relations-paths: an entity id, name or alias'),
+      to: text('relations-paths: an entity id, name or alias'),
+      k: { type: 'integer', description: 'relations-paths: paths returned, 1–5 (default 3)' },
+      maxHops: { type: 'integer', description: 'relations-paths: hops per path, 1–6 (default 4)' },
+      axis: { type: 'string', enum: ['task', 'dataset', 'setting'], description: 'relations-gaps: what the columns are' },
+      rows: list('relations-gaps: method ids or names (default: the methods with most relations)'),
+      columns: list('relations-gaps: task or dataset ids or names, or setting labels such as 32K (default: those with most relations)'),
+      rollUp: { type: 'boolean', description: 'relations-gaps: count a row\'s and a column\'s subtypes (is-a) toward them (default false)' },
     },
   },
 ]
@@ -490,9 +524,13 @@ export function registerResearchTools(
       + 'set-autonomy {autonomy: checkpoints|automatic}: only when the user asks you to in words; autonomy is the user\'s. '
       + 'record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user\'s answer at a checkpoint, '
       + 'agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred '
-      + 'defers a phase that allows it (spark-to-paper\'s experiments), which then shows as deferred and never as done.',
+      + 'defers a phase that allows it (spark-to-paper\'s experiments), which then shows as deferred and never as done. '
+      + 'memory: what the user\'s other researches on this computer left — the literature they imported (merged by title), the experiments they finished '
+      + '(by name, with their command and metrics; the record does not mark baselines), their ready environments and the venue templates they used — '
+      + 'only the kinds the user lets new researches carry. Read it when a research starts, before searching literature or setting up an environment; '
+      + 'it is read-only, needs the Research memory plugin, and the current research\'s own record is not in it.',
     parameters: {
-      action: { type: 'string', enum: ['current', 'create', 'rename', 'list', 'modes', 'set-mode', 'set-autonomy', 'record-decision'], required: true },
+      action: { type: 'string', enum: ['current', 'create', 'rename', 'list', 'modes', 'set-mode', 'set-autonomy', 'record-decision', 'memory'], required: true },
       projectId,
       title: text('create / rename: a short title for the research'),
       brief: text('create: the idea or the material in a few sentences'),
@@ -560,10 +598,12 @@ export function registerResearchTools(
           ? { action: 'set-autonomy', projectId: project.id, autonomy: args.autonomy }
           : args.action === 'rename'
             ? { action: 'rename', projectId: project.id, title: args.title }
-            : {
-              action: 'record-decision', projectId: project.id, question: args.question, answer: args.answer,
-              rationale: args.rationale, decidedBy: args.decidedBy, key: args.key,
-            }
+            : args.action === 'memory'
+              ? { action: 'memory', projectId: project.id }
+              : {
+                action: 'record-decision', projectId: project.id, question: args.question, answer: args.answer,
+                rationale: args.rationale, decidedBy: args.decidedBy, key: args.key,
+              }
       return compact(await service.execute(commandSchema.parse(request) as ResearchCommand, exec.signal, 'agent', sessionId))
     },
     presentCall: () => ({ card: 'generic', title: 'Research project', kind: 'read' }),
@@ -598,7 +638,9 @@ export function registerResearchTools(
       const { action, projectId: requested, ...fields } = args as Record<string, unknown> & { action: string }
       const project = await projectFor(service, requested, exec)
       await rejectRemoteFilePaths(action, fields, exec)
-      const request = commandSchema.parse({ ...fields, action, projectId: project.id }) as ResearchCommand
+      // The agent reads the relation graph by neighbourhood; the service's command for it is relations-graph.
+      // No author is passed: the service sets it from the caller.
+      const request = commandSchema.parse({ ...fields, action: action === 'relations-neighbourhood' ? 'relations-graph' : action, projectId: project.id }) as ResearchCommand
       if (request.action === 'complete-visual-review' && exec.agent?.session.id !== request.sessionId) {
         throw new Error('Only the assigned visual-review session can record these findings')
       }

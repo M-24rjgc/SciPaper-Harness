@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyCitationWorks, applyProposals, emptyRelations, rejectRelation, relationGraph, upsertEntity,
-  type EntityRef, type RelationProject, type RelationProposal, type RelationsFile,
+  type EntityRef, type Relation, type RelationProject, type RelationProposal, type RelationsFile,
 } from '../src/knowledge-relations.ts'
 import {
   MAX_HOPS, MAX_PATHS, describeGapMatrix, describeNeighbourhood, describePath, findEntities, gapMatrix, neighbourhood, passageIndex,
@@ -113,6 +113,29 @@ describe('neighbourhoods', () => {
     })
     expect(view?.edges.find(edge => edge.from === 'method:kappa')?.best).toMatchObject({ type: 'run', runId: 'run1', setting: '32K', title: 'bench-32k-kappa · seed 3' })
     expect(view?.omitted).toEqual({ nodes: 0, edges: 0 })
+  })
+
+  it('names who recorded a relation and each ground, and lists every ground of an edge with the rejected one last and why', () => {
+    const rejectedGround = (file: RelationsFile): RelationsFile => {
+      const grounds = file.relations.find(relation => relation.id === 'evaluated-on:method:alpha>dataset:bench')?.grounds as { id: string; rejected?: unknown }[]
+      grounds[0]!.rejected = { by: 'user', at: NOW.toISOString(), reason: 'wrong table' }
+      return file
+    }
+    const edge = (view: Neighbourhood | undefined) => view?.edges.find(item => item.id === 'evaluated-on:method:alpha>dataset:bench')
+    const plain = edge(neighbourhood(graphOf(), { center: 'method:alpha' }))
+    expect(plain).toMatchObject({ by: 'agent', best: { by: 'agent' } })
+    expect(plain?.grounds.map(ground => [ground.status, ground.by, ground.rejection])).toEqual([['current', 'agent', undefined]])
+    expect(edge(neighbourhood(graphOf(), { center: 'method:kappa' }))?.best.by).toBe('agent')
+    expect(edge(neighbourhood(graphOf(rejectedGround), { center: 'method:alpha' }))).toBeUndefined()
+    // Two grounds: the rejected one stays in the list, after the current one, for a view that offers to restore it.
+    const twoGrounds = (file: RelationsFile): RelationsFile => {
+      const relation = file.relations.find(item => item.id === 'evaluated-on:method:alpha>dataset:bench') as Relation
+      relation.grounds.push({ ...relation.grounds[0] as Relation['grounds'][number], id: 'extra', rejected: { by: 'user', at: NOW.toISOString(), reason: 'wrong table' } })
+      return file
+    }
+    const listed = edge(neighbourhood(graphOf(twoGrounds), { center: 'method:alpha' }))
+    expect(listed?.grounds.map(ground => [ground.id === 'extra' ? 'extra' : 'own', ground.status, ground.rejection?.reason])).toEqual([['own', 'current', undefined], ['extra', 'rejected', 'wrong table']])
+    expect(listed?.sources['full-text']).toBe(1)
   })
 
   it('cuts ring 2 before ring 1 and caps the edges, and draws a star with only its centre as core', () => {

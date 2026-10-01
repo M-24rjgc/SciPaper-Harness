@@ -493,6 +493,11 @@ export interface ResearchPreferences {
    * 显示示例研究, Show example researches); absent reads as true.
    */
   showExamples?: boolean | undefined
+  /**
+   * Which kinds of memory a new research carries (the switches of the Memory
+   * view); a kind that is absent reads as on.
+   */
+  memoryCarry?: Partial<Record<MemoryKind, boolean | undefined>> | undefined
 }
 /** Detected availability, executable path and version of one research runtime component. */
 export interface ComponentStatus {
@@ -812,6 +817,10 @@ export interface KnowledgeModules {
   map: boolean
   /** The evidence graph (`research-knowledge-evidence`); it reads only the project's own record. */
   evidence: boolean
+  /** The research memory (`research-knowledge-memory`); it reads only the records of the researches on this computer. */
+  memory: boolean
+  /** The relation graph (`research-knowledge-relations`); it reads only the project's own record and works without the engine. */
+  relations: boolean
 }
 
 /**
@@ -896,6 +905,105 @@ export interface EvidenceGraphPage {
   summary: { claims: number } & Record<EvidenceClaimStatus, number>
 }
 
+/** What a new research can carry from the earlier ones; each kind has a switch in the Memory view. */
+export type MemoryKind = 'literature' | 'runs' | 'environments' | 'writing'
+
+/** A research that left memory: not an example, not removed from the list, and not the untouched draft. */
+export interface MemoryResearch {
+  id: ProjectId
+  title: string
+  /** The whole-paper check is clean and nothing changed since (`ResearchStanding.finished`). */
+  finished: boolean
+  /** Distinct literature items it imported. */
+  literature: number
+  /** Distinct experiments it finished, by name. */
+  runs: number
+  /** The venue whose template it uses: the library's name for it, else its id. */
+  venue?: string | undefined
+}
+
+/** A literature item that one or several researches imported, merged by title. */
+export interface MemoryLiterature {
+  title: string
+  doi?: string | undefined
+  /** The host verified at least one of the records. */
+  verified: boolean
+  /** The researches that imported it, oldest first. */
+  researches: ProjectId[]
+}
+
+/** The finished runs of one experiment name in one research; one per seed. */
+export interface MemoryRun {
+  name: string
+  /** How many runs of that name finished. */
+  runs: number
+  /** The metrics of the run that finished last. */
+  metrics: Record<string, number>
+  /** The command of that run, as recorded. */
+  command: string
+  /** When that run was last observed. */
+  at: string
+  /** The research that ran it; always one. */
+  researches: ProjectId[]
+}
+
+/** A ready environment of one or several researches. Local `uv` environments are merged, SSH ones by host and interpreter. */
+export interface MemoryEnvironment {
+  name: string
+  kind: EnvironmentRecord['kind']
+  target: EnvironmentRecord['target']
+  /** The SSH alias; absent for a local environment. */
+  host?: string | undefined
+  /** The interpreter; empty for a local `uv` environment, which each research creates inside its own folder. */
+  python: string
+  requirements: string[]
+  researches: ProjectId[]
+}
+
+/** A venue whose template one or several researches use. */
+export interface MemoryWriting {
+  /** The venue's id in the template library. */
+  venue: string
+  /** The library's name for it, when it has one. */
+  name?: string | undefined
+  researches: ProjectId[]
+}
+
+/** A fact a research recorded about what went wrong or what it decided; nothing here is inferred. */
+export type MemoryLesson = { research: ProjectId; at: string } & (
+  | {
+    kind: 'failed-run'
+    /** The experiment's name. */
+    name: string
+    /** The reason the run recorded; empty when it recorded only an exit code. */
+    reason: string
+    exitCode?: number | undefined
+  }
+  | { kind: 'decision'; question: string; answer: string; rationale: string; by: 'user' | 'agent' }
+)
+
+/** The items of one kind, newest or most shared first, and how many there are in all. */
+export interface MemoryList<T> {
+  total: number
+  /** At most 100 of them. */
+  items: T[]
+}
+
+/**
+ * What the researches on this computer leave for the next one, derived from their records alone: the researches
+ * that left memory, oldest first, and their literature, finished experiments, environments, venue templates and recorded lessons.
+ */
+export interface ResearchMemoryPage {
+  researches: MemoryResearch[]
+  literature: MemoryList<MemoryLiterature>
+  runs: MemoryList<MemoryRun>
+  environments: MemoryList<MemoryEnvironment>
+  writing: MemoryList<MemoryWriting>
+  lessons: MemoryList<MemoryLesson>
+  /** Which kinds a new research carries: the person's switches, on unless switched off. */
+  carry: Record<MemoryKind, boolean>
+}
+
 /** A labelled region of the domain map. */
 export interface MapRegionView {
   index: number
@@ -953,8 +1061,8 @@ export interface MapPlacementView {
   region?: string | undefined
   /** Other concentrations of the evidence, largest share first. */
   alternatives: { x: number; y: number; share: number }[]
-  /** The papers that put it there, heaviest first (at most five). */
-  nearest: { index: number; title: string }[]
+  /** The papers that put it there, heaviest first (at most five); `weight` is relative to the heaviest, which weighs 1. */
+  nearest: { index: number; title: string; weight: number }[]
   /** Share of the corpus's papers whose surroundings are at most this crowded (0 sparse, 1 crowded). */
   crowding: number
   /** The text matched a paper of the map by title and sits exactly on it. */
@@ -986,6 +1094,21 @@ export type MapOverlayPage = { built: false } | {
   recalled: { index: number; title: string; query: string }[]
   /** The research's marks on built-in papers and patterns. */
   marks: KnowledgeMarkView[]
+  /** Whether recall applies the marks; the person can pause them. */
+  honour: boolean
+}
+
+/** Where a search text lands on the domain map, ranked the way recall ranks the built-in graph. */
+export interface MapSearchView {
+  query: string
+  /** How the patterns were ranked; papers are always matched by their words. */
+  basis: 'lexical' | 'semantic+lexical'
+  /** Absent when nothing in the built-in graph matched. */
+  placement?: MapPlacementView | undefined
+  /** The papers whose words matched, best first (at most ten). */
+  papers: { index: number; title: string }[]
+  /** The closest patterns with the centre of their papers on the map, best first (at most five). */
+  patterns: { index: number; name: string; x: number; y: number }[]
 }
 
 /** A paper of the domain map, for its hover card and detail. */
@@ -999,6 +1122,328 @@ export interface MapPaperView {
   pattern?: string | undefined
   region?: string | undefined
   score: number | null
+}
+
+// ── Relation graph (research-knowledge-relations) ──
+// Hand-written for the client; knowledge-relations-plugin.ts returns the backend's values under these annotations, so the
+// compiler rejects a backend change these interfaces do not follow.
+
+/** The kinds of node of the relation graph; a paper is always one of the research's literature records. */
+export type RelationEntityKind = 'method' | 'task' | 'dataset' | 'metric' | 'paper'
+/** The kinds of directed relation, each read as `from <kind> to`. */
+export type RelationKindId = 'cites' | 'introduces' | 'is-a' | 'extends' | 'improves-on' | 'compares-with' | 'applied-to' | 'evaluated-on' | 'measured-by'
+/** Who put an entry in the relation graph or decided about it. */
+export type RelationAuthor = 'user' | 'agent'
+/** Where a ground comes from: the pages of a full-text record, a provider abstract, a project file, a run or a citation record. */
+export type RelationGroundSource = 'full-text' | 'abstract' | 'file' | 'run' | 'citation'
+
+/** A rejection of a relation or of one ground. */
+export interface RelationRejection {
+  by: RelationAuthor
+  at: string
+  reason?: string | undefined
+}
+
+/** What a relation rests on, for display: a quotation of a source, a run, or a citation record. */
+export interface RelationGroundView {
+  id: string
+  type: 'quote' | 'run' | 'citation'
+  source: RelationGroundSource
+  /** `outdated`: its source changed since the ground was checked, so the relation weighs less until it is checked again. */
+  status: 'current' | 'outdated' | 'rejected'
+  /** The evidence record's title, the run's name and seed, or the citing paper. */
+  title: string
+  evidenceId?: string | undefined
+  locator?: SourceLocator | undefined
+  /** The source's own words, cut to 200 characters. */
+  quote?: string | undefined
+  runId?: string | undefined
+  setting?: string | undefined
+  /** Who recorded a quotation or run ground; absent for a citation. */
+  by?: RelationAuthor | undefined
+  /** Present when `status` is `rejected`. */
+  rejection?: RelationRejection | undefined
+}
+
+/** A node of the relation graph in a list. */
+export interface RelationNodeSummary {
+  id: string
+  kind: RelationEntityKind
+  name: string
+  aliases: string[]
+  /** `orphaned`: a paper none of whose records the research still holds. */
+  status: 'active' | 'orphaned'
+  /** Relations it has that are not rejected. */
+  degree: number
+}
+
+/** A node of a neighbourhood with its layout hint, so that a view draws the same picture for the same graph. */
+export interface RelationNodeView extends RelationNodeSummary {
+  /** 0 for the centre, 1 for its neighbours, 2 for theirs. */
+  ring: 0 | 1 | 2
+  /** The centre and the densest group around it; a view draws them nearest the centre. */
+  core: boolean
+  /** For ring 2: the ring-1 node it hangs from. */
+  parent?: string | undefined
+  /** Place around its ring. */
+  slot: number
+  /** A paper's literature records. */
+  evidenceIds?: string[] | undefined
+}
+
+/** A relation of a neighbourhood: `from <kind> to`, read in that direction. */
+export interface RelationEdgeView {
+  id: string
+  kind: RelationKindId
+  from: string
+  to: string
+  /** `stale`: every ground rests on a source that changed. */
+  status: 'active' | 'stale'
+  confidence: number
+  /** Grounds that are not rejected, by where they come from. */
+  sources: Record<RelationGroundSource, number>
+  /** Its weightiest ground. */
+  best: RelationGroundView
+  /** Every ground, the heaviest first and the rejected ones last. */
+  grounds: RelationGroundView[]
+  /** Who first recorded the relation. */
+  by: RelationAuthor
+}
+
+/** The nodes and relations around one node. */
+export interface RelationNeighbourhoodView {
+  center: string
+  nodes: RelationNodeView[]
+  edges: RelationEdgeView[]
+  /** What the size limits left out. */
+  omitted: { nodes: number; edges: number }
+}
+
+/** A relation that is rejected, listed so that the person can restore it. */
+export interface RelationRejectedView {
+  id: string
+  kind: RelationKindId
+  from: string
+  to: string
+  fromName: string
+  toName: string
+  /** Absent when the relation stands but every one of its grounds was rejected. */
+  rejection?: RelationRejection | undefined
+}
+
+/** The relation graph around one node, with what the view needs to start from; the answer of `relations-graph`. */
+export interface RelationsPage {
+  /** Problems of the stored file, each naming what it keeps from being honored. */
+  problems: string[]
+  counts: { entities: number; relations: number; stale: number; rejected: number; citationLists: number }
+  /**
+   * `found`: the request's entity resolved and `neighbourhood` is its neighbourhood; `none`: no entity was asked for,
+   * so `neighbourhood` is the most connected entity's, when the graph has one; `unknown`: nothing matched the request;
+   * `ambiguous`: several entities matched and `candidates` lists them.
+   */
+  match: 'none' | 'found' | 'unknown' | 'ambiguous'
+  /** The most connected entities, most connected first (at most 12). */
+  hubs: RelationNodeSummary[]
+  candidates: RelationNodeSummary[]
+  neighbourhood?: RelationNeighbourhoodView | undefined
+  /** Rejected relations (at most 50), the latest first. */
+  rejected: RelationRejectedView[]
+}
+
+/** One hop of a path, read in the direction the path walks it. */
+export interface RelationHopView {
+  relation: string
+  kind: RelationKindId
+  /** The relation's own ends; `direction` says whether the path walks it from `from` to `to`. */
+  from: string
+  to: string
+  direction: 'forward' | 'backward'
+  status: 'active' | 'stale'
+  confidence: number
+  /** Its two weightiest grounds. */
+  grounds: RelationGroundView[]
+  /** Other relations between the same two nodes. */
+  parallel: { relation: string; kind: RelationKindId }[]
+}
+
+/** A path between two nodes with the grounds of every hop. */
+export interface RelationPathView {
+  nodes: string[]
+  hops: RelationHopView[]
+  cost: number
+  /** The chance that every hop holds. */
+  confidence: number
+  /** Some hop is stale. */
+  stale: boolean
+}
+
+/** The answer of `relations-paths`. */
+export interface RelationPathsPage {
+  /** The ids the request's ends resolved to, or the text when they did not. */
+  from: string
+  to: string
+  paths: RelationPathView[]
+  /**
+   * `unknown-node`: an end matched no entity; `ambiguous-node`: an end matched several (see `candidates`); `same-node`;
+   * `no-path`: nothing joins them within the hop limit.
+   */
+  none?: 'unknown-node' | 'ambiguous-node' | 'same-node' | 'no-path' | undefined
+  /** The nodes on the paths. */
+  nodes: RelationNodeSummary[]
+  /** Set when `none` is `ambiguous-node`. */
+  candidates?: { from: RelationNodeSummary[]; to: RelationNodeSummary[] } | undefined
+}
+
+/**
+ * What the project's own sources say about one method and one column. `reported`: a literature record's quotation
+ * grounds it; `project-only`: only the project's runs or files do; `stale`: only grounds whose source changed;
+ * `mentioned`: no ground, but some passage names both; `absent`: both are named in the sources, never in one
+ * passage; `uncovered`: the sources never name one of them. Every state is about the project's literature, never the field.
+ */
+export type RelationGapState = 'reported' | 'project-only' | 'stale' | 'mentioned' | 'absent' | 'uncovered'
+
+/** One cell of the gap matrix. */
+export interface RelationGapCell {
+  state: RelationGapState
+  /** Literature records with a current quotation grounding the pair. */
+  papers: number
+  /** Of those, the ones that ground it only through a subtype of the row or the column. */
+  viaSubtypes: number
+  runs: number
+  files: number
+  stale: number
+  /** Passages naming both, counted when no ground supports the pair. */
+  passages: number
+  /** Sources whose grounds were rejected and that support the pair no other way; they never count toward the state. */
+  rejected: number
+  /** The relations that ground it, at most eight. */
+  relations: string[]
+}
+
+/** One row or column of the gap matrix. */
+export interface RelationGapAxisEntry {
+  /** An entity id, or a setting's grouping key. */
+  id: string
+  name: string
+  /** Passages of the project's sources that name it. */
+  passages: number
+}
+
+/**
+ * The gap matrix of methods against tasks, datasets or settings, as the project's own sources cover them. The view's
+ * heading reads 本项目文献中的空白 with the coverage (`basis`); the states read `reported` 本项目文献中有 N 篇报告,
+ * `project-only` 仅见于本项目的实验或笔记, `stale` 依据已更新，需重新核对, `mentioned` 有 N 处同时提到，尚未核实,
+ * `absent` 本项目文献中没有报告, `uncovered` 本项目文献未涉及，结论前请先检索. It never says nobody has tested a pair or that the field has a gap.
+ */
+export interface RelationGapPage {
+  axis: 'task' | 'dataset' | 'setting'
+  rows: RelationGapAxisEntry[]
+  columns: RelationGapAxisEntry[]
+  /** cells[row][column]. */
+  cells: RelationGapCell[][]
+  /** The coverage the matrix rests on: literature records by what was extracted, and project files. */
+  basis: { literature: number; fullText: number; abstractOnly: number; metadataOnly: number; files: number }
+  /** The client's locale keys for the heading and for each state. */
+  wording: { heading: string; states: Record<RelationGapState, string> }
+}
+
+/** Why a proposal or a correction was refused, with the message the proposer reads. */
+export interface RelationRefusalView {
+  status: 'refused'
+  /** What to change: `quote-not-found`, `missing-mention`, `rejected`, `not-yours` … */
+  code: string
+  message: string
+}
+
+/** The outcome of one proposal: a relation or a ground added, found already recorded, or moved to the current revision. */
+export type RelationProposalOutcomeView =
+  | {
+    status: 'added' | 'unchanged' | 'regrounded'
+    relation: string
+    ground: string
+    /** Entities this proposal created. */
+    created: string[]
+    /** The proposer's locator did not hold the quotation and was replaced. */
+    locatorCorrected: boolean
+    /** Rules a person's quotation did not meet, kept with the ground. */
+    warnings: string[]
+    /** The proposal lifted an earlier rejection. */
+    restored: boolean
+  }
+  | RelationRefusalView
+
+/** The outcome of rejecting or restoring a relation or one of its grounds. */
+export type RelationDecisionOutcomeView = { status: 'changed' | 'unchanged'; relation: string } | RelationRefusalView
+
+/** One outcome of `relations-propose` (one per proposal, in order), `relations-reject` or `relations-restore` (one). */
+export type RelationOutcomeView = RelationProposalOutcomeView | RelationDecisionOutcomeView
+
+/** A node created or found by `relations-entity`, or the survivor of a merge. */
+export interface RelationEntityView {
+  id: string
+  kind: RelationEntityKind
+  name: string
+  aliases: string[]
+  evidenceIds?: string[] | undefined
+}
+
+/** The outcome of `relations-entity`. */
+export type RelationEntityOutcomeView = { status: 'created' | 'updated' | 'unchanged'; entity: RelationEntityView } | RelationRefusalView
+
+/** The outcome of `relations-merge`; no operation undoes a merge. */
+export type RelationMergeOutcomeView = { status: 'merged'; entity: RelationEntityView; dropped: string[] } | RelationRefusalView
+
+/** Two entities that may be one, for the person to merge or keep apart. */
+export interface RelationMergeSuggestionView {
+  a: string
+  b: string
+  /** `acronym`: one's name is the initials of the other's; `spelling`: their names differ in one letter. */
+  reason: 'acronym' | 'spelling'
+  /** The two names that matched. */
+  names: [string, string]
+}
+
+/** What `relations-reground` did. */
+export interface RelationRegroundView {
+  /** Quotations found again in their source's current revision and moved to it. */
+  regrounded: number
+  /** Quotations whose source changed and that no longer hold in the current revision. */
+  lapsed: number
+}
+
+/** What `relations-citations` did: reference lists fetched and the citations among the research's papers they gave. */
+export interface RelationCitationsView {
+  /** Papers whose list was missing or older than the configured age. */
+  asked: number
+  /** Reference lists now cached. */
+  works: number
+  /** `cites` grounds added. */
+  added: number
+  /** Citations already recorded. */
+  unchanged: number
+  /** Citations not recorded because the relation or the ground is rejected. */
+  rejected: number
+  /** One message per request that failed. */
+  failures: string[]
+}
+
+/** A node a relation proposal names: by id, by a paper's literature record, or by kind and name. */
+export type RelationEndRef =
+  | { id: string }
+  | { kind: 'paper'; evidenceId: string }
+  | { kind: 'method' | 'task' | 'dataset' | 'metric'; name: string; aliases?: string[] | undefined }
+
+/** What a proposed relation rests on: a quotation of one revision of an evidence record, or completed project runs. */
+export type RelationGroundInput =
+  | { type: 'quote'; evidenceId: string; revision: number; quote: string; locator?: SourceLocator | undefined; setting?: string | undefined }
+  | { type: 'run'; runId: string; from: string; to: string; baselineRunId?: string | undefined; setting?: string | undefined }
+
+/** A relation to propose; who proposes it is set by the caller, never by this input. */
+export interface RelationProposalInput {
+  kind: RelationKindId
+  from: RelationEndRef
+  to: RelationEndRef
+  ground: RelationGroundInput
 }
 
 /** Command result or acknowledgement; `jobId` identifies asynchronous work whose result appears in a ResearchTask. */
@@ -1015,10 +1460,26 @@ export interface ResearchResponse {
   gallery?: GalleryPage | undefined
   knowledgeGraph?: KnowledgeGraphPage | undefined
   evidenceGraph?: EvidenceGraphPage | undefined
+  /** memory and memory-carry, for the desktop; the agent receives the carried kinds in `content`. */
+  memory?: ResearchMemoryPage | undefined
   mapView?: MapViewPage | undefined
   mapOverlay?: MapOverlayPage | undefined
   mapPapers?: MapPaperView[] | undefined
+  mapSearch?: MapSearchView | undefined
+  /** relations-graph. */
+  relations?: RelationsPage | undefined
+  relationPaths?: RelationPathsPage | undefined
+  relationGaps?: RelationGapPage | undefined
+  /** relations-propose (one per proposal), relations-reject and relations-restore (one). */
+  relationOutcomes?: RelationOutcomeView[] | undefined
+  relationEntity?: RelationEntityOutcomeView | undefined
+  relationMerge?: RelationMergeOutcomeView | undefined
+  relationSuggestions?: RelationMergeSuggestionView[] | undefined
+  relationReground?: RelationRegroundView | undefined
+  relationCitations?: RelationCitationsView | undefined
   marks?: KnowledgeMarkView[] | undefined
+  /** marks, honour-marks: whether the agent follows the marks. */
+  honour?: boolean | undefined
   board?: BoardSnapshot | undefined
   check?: CheckReport | undefined
   runs?: { id: ExperimentId; status: RunStatus; message: string; metrics: Record<string, number> }[] | undefined
@@ -1173,18 +1634,95 @@ export type ResearchCommand =
   | { action: 'name-patterns'; projectId: ProjectId; names?: string | undefined }
   /** The question, conclusions and evidence of the research record as a graph; needs the evidence graph plugin. */
   | { action: 'evidence-graph'; projectId: ProjectId }
+  /**
+   * What the researches on this computer leave for the next one; needs the memory plugin. The desktop receives the
+   * whole page with the person's switches; the agent receives, in `content`, the kinds switched on, from the researches
+   * other than the one it works in.
+   */
+  | { action: 'memory'; projectId: ProjectId }
+  /** Switch one kind of memory on or off for new researches; needs the memory plugin. The person's command only; answers with the page. */
+  | { action: 'memory-carry'; projectId: ProjectId; kind: MemoryKind; on: boolean }
   /** The domain map of the research field; needs the domain map plugin. */
   | { action: 'map-view'; projectId: ProjectId }
   /** The research's idea, library and recall placed over the domain map; needs the domain map plugin. */
   | { action: 'map-overlay'; projectId: ProjectId }
   /** Details of up to 64 papers of the domain map, by their index in the built-in graph; needs the domain map plugin. */
   | { action: 'map-papers'; projectId: ProjectId; indices: number[] }
+  /** Where a search text lands on the domain map and what it matched; needs the domain map plugin. */
+  | { action: 'map-search'; projectId: ProjectId; query: string }
+  /**
+   * The relation graph around an entity, named by id or by name or alias (`kind` narrows a name); without one, around
+   * the most connected entity, with the most connected entities listed. Needs the relation graph plugin.
+   */
+  | {
+    action: 'relations-graph'
+    projectId: ProjectId
+    entity?: string | undefined
+    kind?: RelationEntityKind | undefined
+    /** 2 when absent. */
+    hops?: 1 | 2 | undefined
+    /** At most 80; 40 when absent. */
+    maxNodes?: number | undefined
+    /** Stale relations are shown, marked, unless this is false. */
+    includeStale?: boolean | undefined
+    kinds?: RelationKindId[] | undefined
+  }
+  /** The best explained paths between two entities, each hop with its grounds; the ends are ids or names. Needs the relation plugin. */
+  | {
+    action: 'relations-paths'
+    projectId: ProjectId
+    from: string
+    to: string
+    /** Narrows both names to one kind of entity. */
+    kind?: RelationEntityKind | undefined
+    /** At most 5; 3 when absent. */
+    k?: number | undefined
+    /** At most 6; 4 when absent. */
+    maxHops?: number | undefined
+    includeStale?: boolean | undefined
+    kinds?: RelationKindId[] | undefined
+  }
+  /**
+   * Methods against tasks, datasets or settings, as the project's own sources cover them. Subtypes are not counted
+   * unless `rollUp` is true. Rows and columns are ids or names; settings are labels. Needs the relation graph plugin.
+   */
+  | {
+    action: 'relations-gaps'
+    projectId: ProjectId
+    axis: 'task' | 'dataset' | 'setting'
+    rows?: string[] | undefined
+    columns?: string[] | undefined
+    rollUp?: boolean | undefined
+    /** Rows and columns chosen when none are given, at most 30; 12 when absent. */
+    limit?: number | undefined
+  }
+  /**
+   * Propose up to 50 relations, each with its ground; each is checked on its own. The desktop's proposals are the
+   * person's (`by: user`, a lighter rule), the agent's are the agent's (the strict rule); the caller sets `by`, never the input.
+   */
+  | { action: 'relations-propose'; projectId: ProjectId; proposals: RelationProposalInput[] }
+  /** Reject a relation, or one ground of it, with a reason; the person's rejection stands against the agent until restored. */
+  | { action: 'relations-reject'; projectId: ProjectId; relation: string; ground?: string | undefined; reason?: string | undefined }
+  /** Lift a rejection; the agent may lift only its own. */
+  | { action: 'relations-restore'; projectId: ProjectId; relation: string; ground?: string | undefined }
+  /** Create a method, task, dataset or metric, or add aliases to the one a name already names. The person's command only. */
+  | { action: 'relations-entity'; projectId: ProjectId; kind: 'method' | 'task' | 'dataset' | 'metric'; name: string; aliases?: string[] | undefined }
+  /** Check the quotations whose source moved to a new revision against it and move those that still hold. The person's command only. */
+  | { action: 'relations-reground'; projectId: ProjectId }
+  /** Fetch the papers' reference lists from OpenAlex and Crossref and record the citations among them; a job. The person's command only. */
+  | { action: 'relations-citations'; projectId: ProjectId }
+  /** Merge one entity into another of its kind; no operation undoes it. The person's command only. */
+  | { action: 'relations-merge'; projectId: ProjectId; from: string; into: string }
+  /** Pairs of entities that may be one; nothing is merged. */
+  | { action: 'relations-suggestions'; projectId: ProjectId }
   /** Mark a paper or pattern of a knowledge graph: `pin` keeps it in recall, `irrelevant` takes it out; replaces an earlier mark on it. */
   | { action: 'mark'; projectId: ProjectId; target: { kind: 'pattern' | 'paper'; graph: 'ai' | 'project'; id: string }; verdict: 'pin' | 'irrelevant'; note?: string | undefined }
   /** Remove a mark by its id (`<graph>:<kind>:<id>`); removing one that is gone is not an error. */
   | { action: 'unmark'; projectId: ProjectId; id: string }
   /** The research's marks with the names of what they mark. */
   | { action: 'marks'; projectId: ProjectId }
+  /** The person's switch: whether the agent follows the marks. Pausing keeps every mark; only the person turns it. */
+  | { action: 'honour-marks'; projectId: ProjectId; honour: boolean }
   /**
    * The person's 新研究 (New research): the one untouched draft research, or a
    * new one at `<research home>/<yyyy-mm-dd>-<n>` (the next free `n`) with a

@@ -68,7 +68,7 @@ Archival checks the selected conversations through `workspace/session-activity` 
 
 Snapshots and command answers mark a removed research `archived: true`, derived from `archivedAt` and never stored. Its runs keep running, but background observation skips them until the research is restored; `experiment-wait` and `experiment-refresh` still observe a run when asked. A removed research is never the draft.
 
-The `showExamples` preference (设置 › 科研 › 显示示例研究, Show example researches) says whether the sidebar lists the examples. When it is absent, it reads as true.
+The `showExamples` preference (设置 › 科研 › 显示示例研究, Show example researches) says whether the sidebar lists the examples. When it is absent, it reads as true. The `memoryCarry` preference holds the switches of the Memory view, one per kind of memory; a kind that is absent reads as on.
 
 ## Mode packs
 
@@ -119,9 +119,13 @@ A read runs three kinds of script: `board-view` with `refresh` starts one at mos
 
 Ranking is BM25 over pattern and paper text plus the graph's paper neighbours. With an embedding endpoint configured (`preferences.embedding`, key `RESEARCH_EMBEDDING_API_KEY`), cosine similarity over pattern texts joins in by reciprocal-rank fusion, novelty compares the story with the closest works in embedding space against the upstream 0.88 / 0.82 bands, and a project graph clusters by average linkage instead of k-means. Every result names its basis. Graphs load on first use and are released after ten idle minutes.
 
-The graph is optional and split across three plugins of the knowledge bundle, each with its own switch: the engine behind `research_knowledge`, the domain map and the evidence graph. The domain map injects the engine; the evidence graph reads only the project record. A command of a plugin that is off fails with an error naming it, `graph-status` and the snapshot's `knowledge.modules` report which are on, and disabling a plugin deletes no file under `.research`.
+The graph is optional and split across five plugins of the knowledge bundle, each with its own switch: the engine behind `research_knowledge`, the domain map, the evidence graph, the research memory and the relation graph. The domain map injects the engine; the evidence graph, the memory and the relation graph read only project records. A command of a plugin that is off fails with an error naming it, `graph-status` and the snapshot's `knowledge.modules` report which are on, and disabling a plugin deletes no file under `.research`.
 
 The evidence graph (`evidence-graph`) is a pure projection of the project record, computed by `src/knowledge-evidence.ts` and stored nowhere. It returns the research question (the brief, else the title), each claim with its status, the files that carry it and its citations, and the runs, literature and files the claims cite; a run is one node however many of its outputs are cited. A claim's status derives from recorded fields alone. A claim recorded `contradicted` is `contradicted`. A claim that cites nothing is `proposed` when it is a hypothesis and `missing` otherwise. A claim that cites a source that is gone, recorded stale or on another revision than the one cited, or that is recorded `stale`, is `stale`. A claim recorded `proposed` stays `proposed`, and every other claim is `supported`. A claim that cites nothing and that a run can test, an empirical claim or a hypothesis, is shown with the runs that are in progress or finished without collected results, at most three, because the record does not tie a planned run to a claim; without such a run it carries a marker that nothing is cited or under way. The domain map's `map-view` returns the built-in graph's paper positions with their regions and sparse areas, `map-papers` details papers by index, and `map-overlay` places the research's idea, imported literature, recently recalled papers and marks on the map. A shipped layout that cannot be read fails the command, and the next map command reads it again. `mark`, `unmark` and `marks` edit and list the marks that recall honours.
+
+The research memory (`memory`, `memory-carry`) is a pure projection of the researches on this computer, computed by `src/knowledge-memory.ts` and stored nowhere except the person's switches. A research leaves memory unless it is an example, is removed from the list or is the untouched draft. Literature merges across researches by normalized title (`src/title-key.ts`). Finished experiments are listed per research by name, with the newest run's command and metrics; the record marks no baseline, so none is called one. Ready environments merge (local `uv` environments into one, SSH ones by host and interpreter), venue templates are counted by venue, and the lessons are the failed runs that recorded a reason or an exit code and the decisions other than the choice of mode, each cut to 240 characters. Each kind lists at most 100 items beside its total. `memory-carry` stores `memoryCarry` in the research preferences, where a kind that is absent is on; it is the person's command and the agent is refused it. The agent's `research_project memory` returns, in `content`, only the kinds switched on, from the researches other than the one it works in, at most 40 items of each kind, with research titles instead of ids and without lessons.
+
+The relation graph keeps typed, directed relations between a research's methods, tasks, datasets, metrics and papers in `.research/kg/relations.json`; `src/knowledge-relations.ts` holds the store and its edits, `src/knowledge-relations-grounding.ts` the grounding rule and `src/knowledge-relations-queries.ts` the queries, and [the Agent Note](../../.agents/notes/proposed/feature/2026-10-01-knowledge-graph-relations.md) records the rule and its evaluation. Every relation rests on a ground: a quotation of one revision of an evidence record, completed runs, or a citation record from OpenAlex or Crossref. The agent's quotations face the strict rule that the tool description states, and the person's need only exist and hold four words. `relations-graph` returns a node's neighbourhood with a layout hint, `relations-paths` the best explained paths, and `relations-gaps` a matrix of methods against tasks, datasets or settings that speaks only of the project's own sources. `relations-propose`, `relations-reject` and `relations-restore` act for the desktop or the agent, and the caller sets the author, never the input; a rejection by the person stands against the agent. `relations-entity`, `relations-merge`, `relations-reground` and `relations-citations` are the person's commands, the last as a job whose read-only requests to OpenAlex and Crossref are paced by the plugin's `pauseMs` and kept `citationMaxAgeDays` days. `relations-suggestions` lists entities that may be one. An example research answers the reads and refuses the rest.
 
 ## Checks
 
@@ -242,9 +246,9 @@ standing(project: ResearchProject): Promise<ResearchStanding>
 async createProject(request: CreateProjectRequest, sessionId?: string): Promise<ResearchProject>
 
 /**
- * Save model roles, explicitly bound tool locations, the research home and
- * whether examples are listed, never model secrets. A research home among
- * the examples is refused.
+ * Save model roles, explicitly bound tool locations, the research home,
+ * whether examples are listed and which kinds of memory new researches
+ * carry, never model secrets. A research home among the examples is refused.
  * @param preferences - the complete preference record.
  * @returns the preferences as stored.
  */
@@ -385,6 +389,17 @@ view(signal: AbortSignal): Promise<MapViewPage>
 papers(indices: readonly number[], signal: AbortSignal): Promise<MapPaperView[]>
 
 /**
+ * Where a search text lands on the map, with the papers and patterns it matched. Nothing is recorded: a search is
+ * the person's, not a recall of the agent's.
+ * @param root - the project root, whose marks recall honours.
+ * @param query - the search text.
+ * @param embedder - semantic pattern ranking, when configured.
+ * @param signal - caller cancellation.
+ * @returns the search's placement and matches.
+ */
+search(root: string, query: string, embedder: Embedder | undefined, signal: AbortSignal): Promise<MapSearchView>
+
+/**
  * What a research places over the map: its idea (the agent's latest recall query, else the brief), its
  * imported literature, the papers its recent recalls returned, and its marks.
  * @param project - the research record.
@@ -396,6 +411,133 @@ overlay(project: Pick<ResearchProject, 'root' | 'brief' | 'evidence'>, embedder:
 ```
 
 Source: [`packages/research/workbench/src/knowledge-map-plugin.ts`](../../packages/research/workbench/src/knowledge-map-plugin.ts)
+
+<a id="ctxresearchknowledgememory--researchknowledgememory"></a>
+
+### `ctx.researchKnowledgeMemory` — `ResearchKnowledgeMemory`
+
+What the researches on this computer leave for the next one, shared by all research modes in one profile.
+
+```ts cordis-catalog
+/**
+ * Project the researches into the memory a new research can carry. Nothing is stored or written.
+ * @param projects - every research record the host holds.
+ * @param options - the examples to leave out, the finished researches, the person's switches and the venue names.
+ * @returns the researches that left memory, and their literature, finished experiments, environments, venue templates and lessons.
+ */
+page(projects: readonly ResearchProject[], options: MemoryOptions): ResearchMemoryPage
+
+/**
+ * Reduce a page to what the agent reads.
+ * @param page - the memory of the researches other than the one the agent works in.
+ * @returns only the kinds the person switched on, each cut to the agent's limit, with research titles in place of ids.
+ */
+carried(page: ResearchMemoryPage): CarriedMemory
+```
+
+Source: [`packages/research/workbench/src/knowledge-memory-plugin.ts`](../../packages/research/workbench/src/knowledge-memory-plugin.ts)
+
+<a id="ctxresearchknowledgerelations--researchknowledgerelations"></a>
+
+### `ctx.researchKnowledgeRelations` — `ResearchKnowledgeRelations`
+
+The relation graph of a research: typed relations between its methods, tasks, datasets, metrics and papers, each grounded in a quotation of one of its sources.
+
+```ts cordis-catalog
+/**
+ * Read the graph around an entity: its neighbourhood, the most connected entities and the rejected relations.
+ * @param project - the record; its evidence text is not read.
+ * @param query - the entity (id, name or alias) and the neighbourhood's limits.
+ * @param signal - caller cancellation.
+ * @returns the page, and the neighbourhood described for the agent.
+ */
+graph(project: RecordedProject, query: GraphQuery, signal: AbortSignal): Promise<Answered<RelationsPage>>
+
+/**
+ * Find the best explained paths between two entities.
+ * @param project - the record; its evidence text is not read.
+ * @param query - the two ends (ids, names or aliases) and the search limits.
+ * @param signal - caller cancellation.
+ * @returns the paths with the grounds of every hop, and the paths described for the agent.
+ */
+paths(project: RecordedProject, query: PathQuery, signal: AbortSignal): Promise<Answered<RelationPathsPage>>
+
+/**
+ * Build the gap matrix of methods against tasks, datasets or settings over the project's own sources.
+ * @param project - the record with evidence text loaded; the matrix reads its passages.
+ * @param query - the axis, optionally the rows and columns (ids or names), and whether subtypes count; they do not by default.
+ * @param signal - caller cancellation.
+ * @returns the matrix with the wording keys, and the matrix described for the agent.
+ */
+gaps(project: RecordedProject, query: GapQuery, signal: AbortSignal): Promise<Answered<RelationGapPage>>
+
+/**
+ * Check and record proposed relations, each on its own.
+ * @param project - the record with evidence text loaded; quotations are searched in it.
+ * @param proposals - at most 50 relations with their grounds.
+ * @param by - who proposes; the agent's quotations face the strict grounding rule, the person's the lighter one.
+ * @param signal - caller cancellation.
+ * @returns one outcome per proposal in order, and the repair done to a damaged stored file.
+ */
+propose( project: RecordedProject, proposals: readonly RelationProposalInput[], by: Actor, signal: AbortSignal, ): Promise<Answered<RelationProposalOutcomeView[]> & { repaired: string[] }>
+
+/**
+ * Reject or restore a relation, or one of its grounds.
+ * @param project - the record (only its root is used).
+ * @param change - `reject` or `restore`, the relation, the ground when only one is meant, and a reason for a rejection.
+ * @param by - who decides; the person's rejection stands against the agent until the person restores it.
+ * @param signal - caller cancellation.
+ * @returns the outcome.
+ */
+decide( project: ProjectRoot, change: { verb: 'reject' | 'restore'; relation: string; ground?: string | undefined; reason?: string | undefined }, by: Actor, signal: AbortSignal, ): Promise<RelationDecisionOutcomeView>
+
+/**
+ * Create an entity, or add aliases to the one a name already names.
+ * @param project - the record (only its root is used).
+ * @param input - the kind, name and aliases.
+ * @param by - who acts.
+ * @param signal - caller cancellation.
+ * @returns the outcome.
+ */
+entity( project: ProjectRoot, input: { kind: 'method' | 'task' | 'dataset' | 'metric'; name: string; aliases?: string[] | undefined }, by: Actor, signal: AbortSignal, ): Promise<RelationEntityOutcomeView>
+
+/**
+ * Merge one entity into another of its kind; no operation undoes it.
+ * @param project - the record (only its root is used).
+ * @param input - the merged entity and the survivor, by id.
+ * @param by - who merges.
+ * @param signal - caller cancellation.
+ * @returns the outcome.
+ */
+merge( project: ProjectRoot, input: { from: string; into: string }, by: Actor, signal: AbortSignal, ): Promise<RelationMergeOutcomeView>
+
+/**
+ * Pairs of entities that may be one.
+ * @param project - the record (only its root is used).
+ * @param signal - caller cancellation.
+ * @returns the suggestions and the same described for the agent.
+ */
+suggestions(project: ProjectRoot, signal: AbortSignal): Promise<Answered<RelationMergeSuggestionView[]>>
+
+/**
+ * Check the quotations whose source moved to a new revision against it, and move those that still hold.
+ * @param project - the record with evidence text loaded.
+ * @param signal - caller cancellation.
+ * @returns how many quotations moved and how many no longer hold.
+ */
+reground(project: RecordedProject, signal: AbortSignal): Promise<RelationRegroundView>
+
+/**
+ * Fetch the reference lists of the papers whose list is missing or older than the configured age from OpenAlex and
+ * Crossref, and record every citation among the project's papers. Cancelling stops the requests; nothing is written then.
+ * @param project - the record.
+ * @param signal - caller cancellation.
+ * @returns the papers asked for, the lists now cached, the citations added, and the failed requests.
+ */
+citations(project: RecordedProject, signal: AbortSignal): Promise<RelationCitationsView>
+```
+
+Source: [`packages/research/workbench/src/knowledge-relations-plugin.ts`](../../packages/research/workbench/src/knowledge-relations-plugin.ts)
 
 <a id="research-events"></a>
 

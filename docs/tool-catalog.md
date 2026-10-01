@@ -3054,7 +3054,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_knowledge`
 
-Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. graph-view {query?, source?, domain?, pattern?}: inspect patterns, papers and their recorded relationships. novelty {claim, references?, path?}: compares a research claim with references [{title,text,url?}] and the closest graph papers in any mode. Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which. Marks: the person (and you) can mark a paper or pattern {target: {kind, graph, id}, verdict: pin|irrelevant, note?}; recall honours every mark: pins come first, irrelevant targets leave the results (annotations.skipped says why), nearby results move a few places, and each result carries `why`. Tell the person which marks shaped a recall (annotations.applied). marks lists them; unmark {id} removes one. Mark only on the person's request or with a stated reason; the person's marks win over yours.
+Research-pattern knowledge graphs: reusable problem → solution → story patterns mined from papers. A built-in graph covers machine-learning papers from OpenReview; a project can build its own. graph-status: the graphs and whether ranking is semantic. recall {query, topK?, path?}: patterns and papers closest to an idea (write the query in English), with exemplars and why each was recalled; path saves the result. graph-view {query?, source?, domain?, pattern?}: inspect patterns, papers and their recorded relationships. novelty {claim, references?, path?}: compares a research claim with references [{title,text,url?}] and the closest graph papers in any mode. Alternatively novelty {story?, path?} reads story.json and retrieved_papers.json for a Spark to Paper project; it writes novelty_report.json. build-graph {papers, domain}: cluster a corpus you extracted (JSON lines with paper_id, title, story, base_problem, solution_pattern) into candidate patterns. name-patterns {names?}: read your cluster names (cluster_meta.json) and write the project graph. Ranking is lexical unless an embedding endpoint is configured in the research settings; each result says which. Marks: the person (and you) can mark a paper or pattern {target: {kind, graph, id}, verdict: pin|irrelevant, note?}; recall honours every mark: pins come first, irrelevant targets leave the results (annotations.skipped says why), nearby results move a few places, and each result carries `why`. Tell the person which marks shaped a recall (annotations.applied). marks lists them and says when the person paused them, in which case recall applies none; unmark {id} removes one. Mark only on the person's request or with a stated reason; the person's marks win over yours. Relations: the research's own graph of methods, tasks, datasets, metrics and papers, in which every relation is grounded in the project's sources. relations-neighbourhood {entity?, kind?, hops?, maxNodes?}: the relations around an entity (an id, name or alias; without one, around the most connected), one line each with the source of its weightiest ground. relations-paths {from, to, k?, maxHops?}: the best explained paths between two entities, each hop with its quotation. relations-gaps {axis: task|dataset|setting, rows?, columns?, rollUp?}: methods against tasks, datasets or settings as THIS project's sources cover them; absent and uncovered say nothing about work outside the project, so never tell the person that nobody has tested a pair or that the field has a gap; search the literature first. relations-suggestions: pairs of entities that may be one, for the person to merge. Read the neighbourhood before you propose, and propose with relations-propose {proposals: [{kind, from, to, ground}]}, at most 50, each checked on its own: kind is introduces, is-a, extends, improves-on, compares-with, applied-to, evaluated-on or measured-by (cites comes only from citation records). from and to are {kind: method|task|dataset|metric, name, aliases?}, {kind: paper, evidenceId} or {id}. ground is {type: quote, evidenceId, revision, quote, setting?} or {type: run, runId, from, to, baselineRunId?, setting?}. Every relation needs a ground; a relation without one is refused. A quote ground is copied from the current revision of one of the project's evidence records (spacing, hyphenation, ligatures and letter case may differ): one or two sentences, at least 4 words and at most 500 characters, that themselves name both ends by name, alias, or an acronym the source defines; in a quote of the paper that introduces an end, "we", "our" or "this paper" may stand for that end. introduces is quoted from the paper itself and names what it introduces. is-a, extends, improves-on, compares-with and evaluated-on need a word that states the relation (is a / such as; extends / builds on / based on; outperforms / better than; compared with / baseline; evaluated / results / accuracy). improves-on is refused when negated or reversed: the improving method is named before "outperforms" or after "outperformed by". A setting such as 32K must occur in the quote. A literature record with full text is quoted from its pages: its provider abstract alone is refused, because providers sometimes attach another work's abstract. A run ground names a completed run with collected results and the word of its name or command that names each end (for measured-by, one of its recorded metrics; for compares-with, a word of the baseline's run). cites edges come only from OpenAlex or Crossref citation records. A relation or ground the person rejected stays rejected until the person restores it. relations-reject {relation, ground?, reason?}: reject a relation, or only one ground of it, that is wrong; a rejection by the person is not yours to lift.
 
 ```json
 {
@@ -3071,7 +3071,13 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
         "name-patterns",
         "mark",
         "unmark",
-        "marks"
+        "marks",
+        "relations-propose",
+        "relations-reject",
+        "relations-neighbourhood",
+        "relations-paths",
+        "relations-gaps",
+        "relations-suggestions"
       ]
     },
     "projectId": {
@@ -3135,7 +3141,7 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
     },
     "limit": {
       "type": "integer",
-      "description": "graph-view: patterns per page, 1–12 (default 8)"
+      "description": "graph-view: patterns per page, 1–12 (default 8); relations-gaps: rows and columns chosen when none are given, 1–30 (default 12)"
     },
     "offset": {
       "type": "integer",
@@ -3195,6 +3201,109 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
     "id": {
       "type": "string",
       "description": "unmark: the mark id, <graph>:<kind>:<id>"
+    },
+    "proposals": {
+      "description": "relations-propose: [{kind, from, to, ground}], at most 50"
+    },
+    "relation": {
+      "type": "string",
+      "description": "relations-reject: the relation id, as relations-neighbourhood lists it in brackets"
+    },
+    "ground": {
+      "type": "string",
+      "description": "relations-reject: the id of one ground, when only that ground is wrong"
+    },
+    "reason": {
+      "type": "string",
+      "description": "relations-reject: why, in a few words (at most 280 characters)"
+    },
+    "entity": {
+      "type": "string",
+      "description": "relations-neighbourhood: an entity id, name or alias"
+    },
+    "kind": {
+      "type": "string",
+      "description": "relations-neighbourhood / relations-paths: restrict a name to one kind of entity",
+      "enum": [
+        "method",
+        "task",
+        "dataset",
+        "metric",
+        "paper"
+      ]
+    },
+    "kinds": {
+      "type": "array",
+      "description": "relations-neighbourhood / relations-paths: walk only these kinds of relation",
+      "items": {
+        "type": "string",
+        "enum": [
+          "cites",
+          "introduces",
+          "is-a",
+          "extends",
+          "improves-on",
+          "compares-with",
+          "applied-to",
+          "evaluated-on",
+          "measured-by"
+        ]
+      }
+    },
+    "hops": {
+      "type": "integer",
+      "description": "relations-neighbourhood: 1 or 2 (default 2)"
+    },
+    "maxNodes": {
+      "type": "integer",
+      "description": "relations-neighbourhood: nodes returned (default 20, at most 80)"
+    },
+    "includeStale": {
+      "type": "boolean",
+      "description": "relations-neighbourhood / relations-paths: false leaves out relations whose sources changed (default true, marked [stale])"
+    },
+    "from": {
+      "type": "string",
+      "description": "relations-paths: an entity id, name or alias"
+    },
+    "to": {
+      "type": "string",
+      "description": "relations-paths: an entity id, name or alias"
+    },
+    "k": {
+      "type": "integer",
+      "description": "relations-paths: paths returned, 1–5 (default 3)"
+    },
+    "maxHops": {
+      "type": "integer",
+      "description": "relations-paths: hops per path, 1–6 (default 4)"
+    },
+    "axis": {
+      "type": "string",
+      "description": "relations-gaps: what the columns are",
+      "enum": [
+        "task",
+        "dataset",
+        "setting"
+      ]
+    },
+    "rows": {
+      "type": "array",
+      "description": "relations-gaps: method ids or names (default: the methods with most relations)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "columns": {
+      "type": "array",
+      "description": "relations-gaps: task or dataset ids or names, or setting labels such as 32K (default: those with most relations)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "rollUp": {
+      "type": "boolean",
+      "description": "relations-gaps: count a row's and a column's subtypes (is-a) toward them (default false)"
     }
   },
   "required": [
@@ -3375,7 +3484,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_project`
 
-The research around your working directory. current: the brief — the mode and whether it was chosen (modeChosen, modeSetBy, routingSettled), autonomy, where each phase stands, any goal already running in a conversation of this research (activeGoal), decisions, files, sources and runs; outside a research it returns project null with a hint. Call it when a conversation starts and after the mode changes. create {title, brief?, mode?, route?, autonomy?}: make this conversation's folder a research; it never makes one elsewhere. rename {title}: give the research a short title once the topic is clear. list: all researches. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason, decidedBy?}: switch the mode and record the choice as a decision — decidedBy user when the user chose it, agent (the default) when you did; its skills follow, and the phases start unchecked when the mode or route changes. set-autonomy {autonomy: checkpoints|automatic}: only when the user asks you to in words; autonomy is the user's. record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred defers a phase that allows it (spark-to-paper's experiments), which then shows as deferred and never as done.
+The research around your working directory. current: the brief — the mode and whether it was chosen (modeChosen, modeSetBy, routingSettled), autonomy, where each phase stands, any goal already running in a conversation of this research (activeGoal), decisions, files, sources and runs; outside a research it returns project null with a hint. Call it when a conversation starts and after the mode changes. create {title, brief?, mode?, route?, autonomy?}: make this conversation's folder a research; it never makes one elsewhere. rename {title}: give the research a short title once the topic is clear. list: all researches. modes: the installed modes, their routes and phases — general has every tool and no pipeline; a mode adds its own skills, phases and checks. set-mode {mode, route?, reason, decidedBy?}: switch the mode and record the choice as a decision — decidedBy user when the user chose it, agent (the default) when you did; its skills follow, and the phases start unchecked when the mode or route changes. set-autonomy {autonomy: checkpoints|automatic}: only when the user asks you to in words; autonomy is the user's. record-decision {question, answer, rationale?, decidedBy?, key?}: log a settled decision — decidedBy user for the user's answer at a checkpoint, agent (the default) for your own call in automatic mode. key is a short slug naming what the decision settles: experiments-deferred defers a phase that allows it (spark-to-paper's experiments), which then shows as deferred and never as done. memory: what the user's other researches on this computer left — the literature they imported (merged by title), the experiments they finished (by name, with their command and metrics; the record does not mark baselines), their ready environments and the venue templates they used — only the kinds the user lets new researches carry. Read it when a research starts, before searching literature or setting up an environment; it is read-only, needs the Research memory plugin, and the current research's own record is not in it.
 
 ```json
 {
@@ -3391,7 +3500,8 @@ The research around your working directory. current: the brief — the mode and 
         "modes",
         "set-mode",
         "set-autonomy",
-        "record-decision"
+        "record-decision",
+        "memory"
       ]
     },
     "projectId": {

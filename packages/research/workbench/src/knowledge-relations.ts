@@ -24,7 +24,7 @@ import {
   ENTITY_KINDS, MAX_SETTING_LENGTH, RELATION_KINDS, RELATION_RULES, foldText, groundQuote, groundRun, nameKey, nameKeys,
   type EntityKind, type GroundingCode, type GroundingEnd, type Introduction, type RelationKind,
 } from './knowledge-relations-grounding.ts'
-import { locatorSchema } from './schema.ts'
+import { locatorSchema } from './locator-schema.ts'
 import type { EvidenceRecord, ResearchProject } from './types.ts'
 
 /** Project-relative file holding a project's relation graph. */

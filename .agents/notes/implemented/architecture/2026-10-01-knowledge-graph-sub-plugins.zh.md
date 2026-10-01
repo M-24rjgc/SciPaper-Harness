@@ -10,17 +10,19 @@ Status: implemented
 
 ## 决策
 
-**一个 bundle 的四行。** 知识图谱 bundle 插入四行，各在插件页上有独立开关：`research-knowledge-provider`（`ctx.researchKnowledge`：召回、新颖性与构建，保持不变）、`research-knowledge-map`（`ctx.researchKnowledgeMap`，注入 `researchKnowledge`）、`research-knowledge-evidence`（`ctx.researchKnowledgeEvidence`，不注入任何服务）和 `research-knowledge-memory`（`ctx.researchKnowledgeMemory`，不注入任何服务）。四者都是工作台包的子路径模块，并各自导出自己的 `locale/*.json`，因为插件页从行所在的模块而不是从 bundle 读取行的名称和说明。
+**一个 bundle 的五行。** 知识图谱 bundle 插入五行，各在插件页上有独立开关：`research-knowledge-provider`（`ctx.researchKnowledge`：召回、新颖性与构建，保持不变）、`research-knowledge-map`（`ctx.researchKnowledgeMap`，注入 `researchKnowledge`）、`research-knowledge-evidence`（`ctx.researchKnowledgeEvidence`，不注入任何服务）`research-knowledge-memory`（`ctx.researchKnowledgeMemory`，不注入任何服务）和 `research-knowledge-relations`（`ctx.researchKnowledgeRelations`，不注入任何服务）。五者都是工作台包的子路径模块，并各自导出自己的 `locale/*.json`，因为插件页从行所在的模块而不是从 bundle 读取行的名称和说明。
 
-**关闭的插件按名称拒绝。** `evidence-graph`、`memory`、`memory-carry`、`map-view` 和 `map-overlay` 用 `ctx.get` 查找各自的服务，找不到时抛出写明插件名及开启位置的错误。地图因为注入了引擎，会随引擎一起关闭。`graph-status` 报告 `modules: { map, evidence, memory }`，快照也在 `knowledge.modules` 中带有同样的标志，所以引擎关闭时知识图谱标签页仍然可用，并且只显示已开启插件的视图。关闭不会删除任何东西：投影是算出来的，引擎的文件仍在 `.research/kg` 下。
+**关闭的插件按名称拒绝。** `evidence-graph`、`memory`、`memory-carry`、`map-view`、`map-overlay` 和各个 `relations-*` 命令用 `ctx.get` 查找各自的服务，找不到时抛出写明插件名及开启位置的错误。地图因为注入了引擎，会随引擎一起关闭。`graph-status` 报告 `modules: { map, evidence, memory, relations }`，快照也在 `knowledge.modules` 中带有同样的标志，所以引擎关闭时知识图谱标签页仍然可用，并且只显示已开启插件的视图。关闭不会删除任何东西：投影是算出来的，引擎的文件仍在 `.research/kg` 下。
 
-**一个生命周期辅助类。** `OperationScope` 持有原先 `ResearchKnowledge.run` 持有的中止控制器和进行中的操作集合。引擎和地图都在各自的 `OperationScope` 下运行任务，因此关闭任一插件都会以写明插件名的原因中止任务，并等待任务结束。
+**一个生命周期辅助类。** `OperationScope` 持有原先 `ResearchKnowledge.run` 持有的中止控制器和进行中的操作集合。引擎、地图和关系图都在各自的 `OperationScope` 下运行任务，因此关闭其中任何一个都会以写明插件名的原因中止任务，并等待任务结束。
 
 **证据图是一个投影。** `buildEvidenceGraph` 是项目记录的纯函数，不存储任何东西。结论的状态来自记录中的字段：记录为矛盾的保持矛盾；没有引用任何来源的结论，是假设时为 `proposed`，否则为 `missing`；引用的来源已不存在、已过期或版本不同，或者结论本身被记录为过期，则为 `stale`；记录为提议的保持 `proposed`；其余为 `supported`。记录并不把计划中的运行与某条结论关联起来，所以只为没有引用任何来源、而又能由运行检验的结论画出虚线的预期证据占位，来源是进行中、或已结束但没有收集结果的运行，最多三个。详情面板的句子（写在哪里、什么支撑它、什么会让它失效、下一步）由客户端根据这一结构和词典选出，没有任何内容由模型生成。
 
 **地图读取一份随附的布局。** `map-view` 从 `runtime/kg/ai-map.bin`（[格式](../../../../packages/research/workbench/runtime/kg/MAP-FORMAT.md)）读出内置图谱中各篇论文的位置，以 base64 字节返回，并附上它们所在的区域和稀疏区域，每次加载地图只编码一次；`map-papers` 返回指针下论文的详情。`map-overlay` 把研究持有的内容放到地图上：想法取 agent 最近一次召回的查询，读自 `.research/kg/recalls.json`（每个非示例项目的每次召回都会追加到这里），没有时取研究简介；导入的参考文献在图谱收有其标题时落在对应论文上，否则用词匹配召回来定位，最多 80 篇；然后是最近三次召回的论文和标记。叠加层只依赖召回日志这一个文件；它是派生数据，损坏的日志会被下一次召回替换。
 
 **记忆是对每份记录的投影，由用户的开关决定 agent 读到什么。** `buildResearchMemory` 是对研究记录的纯函数，对象是那些不是示例、没有被移出列表、也不是未动过的草稿的研究，它不存储任何东西。文献按与地图相同的标题规范化合并，这一规范化放在 `title-key.ts` 中，这样两个插件都不必为了比较标题而加载对方。记录里没有基线标记，所以已完成的实验按名称列出，附上命令和指标，不把任何一个叫作基线。经验就是记录里有的事实：记录了原因或退出码的失败运行，以及选择模式之外的决定；记录里没有这样的事实时就不显示经验。新研究带上什么是用户的偏好，即研究偏好中的 `memoryCarry`，未出现的类别视为开启；`memory-carry` 写入它，并拒绝 agent。agent 通过 `research_project memory` 读取已开启的类别，来自它所在研究之外的研究，因为这个工具无论引擎是否开启都会挂载，而 `research_knowledge` 不是。不会向新研究复制任何东西：agent 看到记忆并自行决定，它导入或创建的内容仍适用通常的审批规则。
+
+**关系图只读写项目。** 它的存储是 `.research/kg/relations.json`，关系以项目自己的来源中的原文或已完成的运行为依据，数据模型、依据规则和空白矩阵的措辞由[关系图的 Agent Note](../../proposed/feature/2026-10-01-knowledge-graph-relations.zh.md) 负责说明。服务把纯函数的后端包在一个 `OperationScope` 里，所以关闭这一行会中止进行中的参考文献列表获取；获取只作为用户的后台任务（`relations-citations`）运行，绝不由 agent 触发。每次提案和更正的作者由调用方设定：桌面端是用户，agent 的工具是 agent，命令的输入和工具的参数结构都不带作者。实体、合并、重新核对引文和获取是用户的命令，在操作内部拒绝 agent；示例研究回答读取，拒绝写入。agent 通过 `research_knowledge` 使用 `relations-*`，该工具只在引擎开启时挂载。
 
 **知识图谱标签页。** 分段控件列出已开启插件的视图，证据图开启时默认打开它，工具结果带着搜索词打开时默认打开目录。证据视图把每张卡片放在三列固定高度的算好的位置上，所以连线直接由布局画出，不需要测量页面；面板窄于 440 px 时三列改为上下排列。
 
@@ -50,7 +52,7 @@ Status: implemented
 
 ## 后果
 
-四个开关相互独立：证据视图和记忆只靠记录就能工作，地图可以撤下而不丢失召回，引擎可以撤下而证据视图和记忆仍在。bundle 的插件页由一行变为四行。
+五个开关相互独立：证据视图、记忆和关系图只靠记录就能工作，地图可以撤下而不丢失召回，引擎可以撤下而证据视图和记忆仍在。bundle 的插件页由一行变为五行。
 
 研究设置表单按它展示的字段构造偏好，所以像对 `showExamples` 一样重新带上 `memoryCarry`；漏掉它的表单会让所有开关变回开启。记忆只显示记录里有的东西：从未记录过决定或失败的人看不到经验，只有一项研究留下记忆时，记忆视图会明说这一点。
 
@@ -58,4 +60,4 @@ Status: implemented
 
 `ResearchSnapshot.knowledge` 新增了必填的 `modules` 字段，知识图谱标签页的视图由它得出，而不是由某个命令得出。
 
-由 `loader.spec.ts` 中逐行开关的真实组合测试、`knowledge-evidence.spec.ts` 和 `knowledge-memory.spec.ts` 中的投影测试，以及布局、面板句子和知识图谱标签页的客户端测试固定。
+由 `loader.spec.ts` 中逐行开关并通过服务使用关系图的真实组合测试、`knowledge-evidence.spec.ts` 和 `knowledge-memory.spec.ts` 中的投影测试，以及布局、面板句子和知识图谱标签页的客户端测试固定。

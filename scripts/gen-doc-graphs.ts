@@ -501,6 +501,22 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Projects a research record into its question, conclusions and evidence. It reads only the record, needs no graph engine, and its own switch controls availability without deleting project files.',
   },
   {
+    key: 'researchKnowledgeMemory',
+    pkg: 'research-workbench',
+    title: 'Optional research memory',
+    mode: 'core',
+    consumers: ['research-workbench'],
+    note: 'Projects the records of all researches into the literature, finished experiments, environments and venue templates a new research can carry, and the compact view the agent reads. It reads only the records, needs no graph engine, and its own switch controls availability without deleting project files.',
+  },
+  {
+    key: 'researchKnowledgeRelations',
+    pkg: 'research-workbench',
+    title: 'Optional relation graph',
+    mode: 'core',
+    consumers: ['research-workbench'],
+    note: 'Records and queries typed relations between the methods, tasks, datasets, metrics and papers of a research, each grounded in a quotation of an imported source or a completed run, and fetches the papers\' reference lists on request. It reads and writes only the project, needs no graph engine, and its own switch controls availability and cancels its work without deleting project files.',
+  },
+  {
     key: 'research',
     pkg: 'research-workbench',
     title: 'Research project ledger and operations',

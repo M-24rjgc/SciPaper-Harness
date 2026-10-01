@@ -138,6 +138,8 @@ flowchart LR
   svc_researchKnowledge["ctx.researchKnowledge<br/>Optional research knowledge graph"]
   svc_researchKnowledgeMap["ctx.researchKnowledgeMap<br/>Optional domain map"]
   svc_researchKnowledgeEvidence["ctx.researchKnowledgeEvidence<br/>Optional evidence graph"]
+  svc_researchKnowledgeMemory["ctx.researchKnowledgeMemory<br/>Optional research memory"]
+  svc_researchKnowledgeRelations["ctx.researchKnowledgeRelations<br/>Optional relation graph"]
   svc_research["ctx.research<br/>Research project ledger and operations"]
   pkg_client_ui_research["client-ui-research"]
   svc_sessionQuery["ctx.sessionQuery<br/>Session reads, traces, filters, and search"]
@@ -377,6 +379,8 @@ flowchart LR
   pkg_research_workbench --> svc_researchKnowledge
   pkg_research_workbench --> svc_researchKnowledgeEvidence
   pkg_research_workbench --> svc_researchKnowledgeMap
+  pkg_research_workbench --> svc_researchKnowledgeMemory
+  pkg_research_workbench --> svc_researchKnowledgeRelations
   pkg_sandbox --> svc_sandbox
   pkg_sandbox_local --> svc_sandbox
   pkg_sandbox_policy --> svc_sandboxPolicy
@@ -509,6 +513,8 @@ flowchart LR
   svc_researchKnowledge --> pkg_research_workbench
   svc_researchKnowledgeEvidence --> pkg_research_workbench
   svc_researchKnowledgeMap --> pkg_research_workbench
+  svc_researchKnowledgeMemory --> pkg_research_workbench
+  svc_researchKnowledgeRelations --> pkg_research_workbench
   svc_sandbox --> pkg_bash_sandbox
   svc_sandbox --> pkg_terminal_bash
   svc_sandboxPolicy --> pkg_bash_sandbox
@@ -648,6 +654,8 @@ flowchart LR
 | `ctx.researchKnowledge` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | 负责各研究模式共享的图谱引擎、缓存和任务取消。可选插件控制能力是否可用，关闭时保留项目图谱文件。 |
 | `ctx.researchKnowledgeMap` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | 负责领域地图的任务及其取消，并注入图谱引擎，因此只在引擎可用时可用。它自己的开关控制能力是否可用，关闭时保留项目文件。 |
 | `ctx.researchKnowledgeEvidence` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | 把研究记录投影成研究问题、结论和证据。只读取记录，不需要图谱引擎；它自己的开关控制能力是否可用，关闭时保留项目文件。 |
+| `ctx.researchKnowledgeMemory` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | 把全部研究的记录投影成新研究可以带上的文献、已完成的实验、环境和会议模板，以及 agent 读取的精简视图。只读取记录，不需要图谱引擎；它自己的开关控制能力是否可用，关闭时保留项目文件。 |
+| `ctx.researchKnowledgeRelations` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench) | - | 记录并查询一项研究的方法、任务、数据集、指标和论文之间有类型的关系，每条关系都以导入来源中的一段原文或一次已完成的运行为依据，并按需获取论文的参考文献列表。只读写项目，不需要图谱引擎；它自己的开关控制能力是否可用并取消它的任务，关闭时保留项目文件。 |
 | `ctx.research` | `core` | [`research-workbench`](../packages/research/workbench) | - | [`research-workbench`](../packages/research/workbench), [`client-ui-research`](../packages/client/ui-research) | - | 负责持久化的研究项目、证据、产物版本、决策、实验记录和检查。包内的 agent-tools 入口在研究 agent 中消费此宿主范围的服务；研究界面调用其生成的 Remote 方法。 |
 | `ctx.sessionQuery` | `seam` | [`session-query`](../packages/session-query/session-query) | [`session-query-sqlite`](../packages/session-query/session-query-sqlite) | [`session-reference`](../packages/context/session-reference), [`tool-session-query`](../packages/session-query/tool-session-query) | - | 该接口提供精确读取、过滤和追踪；具体后端还提供全文协调、排序、摘要片段和游标世代，而模型消费方负责工作区权限与不含游标的渲染。 |
 | `ctx.fileReferences` | `seam` | [`file-reference`](../packages/context/file-reference) | [`file-reference-local`](../packages/context/file-reference-local) | [`api-session-controller`](../packages/api/session-controller) | - | 该接口返回 Agent cwd 内仅含路径的补全候选；提供方负责命名空间访问与排序，但不读取文件内容。 |

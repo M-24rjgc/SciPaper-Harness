@@ -9,6 +9,9 @@ import ResearchKnowledgeMap, { MAX_LIBRARY } from '../src/knowledge-map-plugin.t
 import { appendRecall } from '../src/knowledge-recall-log.ts'
 import { PROJECT_GRAPH } from '../src/knowledge.ts'
 import ResearchKnowledgeEvidence from '../src/knowledge-evidence-plugin.ts'
+import ResearchKnowledgeMemory from '../src/knowledge-memory-plugin.ts'
+import ResearchKnowledgeRelations from '../src/knowledge-relations-plugin.ts'
+import type { CarriedMemory } from '../src/knowledge-memory.ts'
 import { pathToFileURL } from 'node:url'
 import Storage, { storageBackendServiceKey } from '@deepseek-ai/dsh-storage'
 import * as DomainPlugin from '@deepseek-ai/dsh-storage-domain'
@@ -211,6 +214,8 @@ interface BootOptions {
   /** Whether the domain map and evidence graph rows are in the composition; both are by default. */
   knowledgeMap?: boolean
   knowledgeEvidence?: boolean
+  knowledgeMemory?: boolean
+  knowledgeRelations?: boolean
   componentRoot?: boolean
   /** Sessions already live when the service starts. */
   live?: FakeSession[]
@@ -271,6 +276,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
   const modules = new Map<string, unknown>([
     ['storage', Storage], ['domain', DomainPlugin], ['research', ResearchWorkbench], ['research-tools', AgentTools], ['research-mode-skills', ModeSkills], ['research-knowledge-provider', ResearchKnowledge],
     ['research-knowledge-map', ResearchKnowledgeMap], ['research-knowledge-evidence', ResearchKnowledgeEvidence],
+    ['research-knowledge-memory', ResearchKnowledgeMemory], ['research-knowledge-relations', ResearchKnowledgeRelations],
     ['skills', SkillRegistry], ['system-prompt', SystemPrompt], ['tools', ToolRuntime],
     ['adapters', { inject: ['storage'], apply(c: Context) {
       const backend = new MemoryStorageBackend(pool)
@@ -385,6 +391,8 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
     ...(options.knowledge === false ? [] : ['- id: knowledge-provider', '  name: research-knowledge-provider']),
     ...(options.knowledgeMap === false ? [] : ['- id: knowledge-map', '  name: research-knowledge-map']),
     ...(options.knowledgeEvidence === false ? [] : ['- id: knowledge-evidence', '  name: research-knowledge-evidence']),
+    ...(options.knowledgeMemory === false ? [] : ['- id: knowledge-memory', '  name: research-knowledge-memory']),
+    ...(options.knowledgeRelations === false ? [] : ['- id: knowledge-relations', '  name: research-knowledge-relations', '  config:', '    pauseMs: 1']),
     ...(options.toolModules ?? [[...RESEARCH_TOOL_MODULES]]).flatMap((modules, index) => [
       `- id: research-tools-${index}`, '  name: research-tools', '  config:', `    modules: ${JSON.stringify(modules)}`,
     ]),
@@ -655,7 +663,8 @@ describe('the research service records; it never drives the agent', () => {
     expect(tools()).toContain('research_project')
     expect(await skills()).not.toContain('research-knowledge')
     // The domain map builds on the engine and goes with it; the evidence graph reads only the record and stays.
-    expect((await service.snapshot()).knowledge).toEqual({ enabled: false, modules: { map: false, evidence: true } })
+    expect((await service.snapshot()).knowledge)
+      .toEqual({ enabled: false, modules: { map: false, evidence: true, memory: true, relations: true } })
     await expect(service.execute({ action: 'graph-view', projectId: project.id }, signal, 'agent')).rejects.toThrow(/disabled|enable/i)
     expect(await readFile(marker, 'utf8')).toBe('retained research data')
     await provider.update({ disabled: false }); await ctx!.loader.await()
@@ -683,7 +692,7 @@ describe('the research service records; it never drives the agent', () => {
     }
     const run = (action: 'evidence-graph' | 'map-view' | 'map-overlay' | 'graph-status') => service.execute({ action, projectId: project.id }, signal, 'user')
     const modules = async () => (await service.snapshot()).knowledge
-    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true } })
+    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true, memory: true, relations: true } })
     expect(JSON.parse((await run('graph-status')).content ?? '{}')).toMatchObject({ modules: { map: true, evidence: true } })
     expect((await run('evidence-graph')).evidenceGraph).toMatchObject({ question: 'Does it scale?', claims: [], sources: [] })
     const view = (await run('map-view')).mapView
@@ -696,17 +705,25 @@ describe('the research service records; it never drives the agent', () => {
     expect((await run('map-overlay')).mapOverlay).toMatchObject({ built: true, idea: { text: 'Does it scale?', source: 'brief' }, library: [], recalled: [], marks: [] })
     const papers = await service.execute({ action: 'map-papers', projectId: project.id, indices: [0, 99999] }, signal, 'user')
     expect(papers.mapPapers).toEqual([expect.objectContaining({ index: 0, title: expect.any(String) as unknown })])
+    // A search lands on the map without being recorded as the research's idea.
+    const query = 'block sparse attention for long context'
+    const search = (await service.execute({ action: 'map-search', projectId: project.id, query }, signal, 'user')).mapSearch
+    expect(search).toMatchObject({ query, basis: 'lexical', placement: { confidence: expect.any(Number) as number } })
+    expect(search?.papers.length).toBeGreaterThan(0)
+    expect(search?.patterns.length).toBeGreaterThan(0)
+    expect((await run('map-overlay')).mapOverlay).toMatchObject({ idea: { source: 'brief' } })
 
     await toggle('knowledge-evidence', true)
-    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: false } })
+    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: false, memory: true, relations: true } })
     await expect(run('evidence-graph')).rejects.toThrow(/Evidence graph plugin is disabled/)
     expect((await run('map-view')).mapView).toMatchObject({ built: true })
     await toggle('knowledge-evidence', false)
 
     await toggle('knowledge-map', true)
-    expect(await modules()).toEqual({ enabled: true, modules: { map: false, evidence: true } })
+    expect(await modules()).toEqual({ enabled: true, modules: { map: false, evidence: true, memory: true, relations: true } })
     for (const action of ['map-view', 'map-overlay'] as const) await expect(run(action)).rejects.toThrow(/Domain map plugin is disabled/)
     await expect(service.execute({ action: 'map-papers', projectId: project.id, indices: [0] }, signal, 'user')).rejects.toThrow(/Domain map plugin is disabled/)
+    await expect(service.execute({ action: 'map-search', projectId: project.id, query: 'x' }, signal, 'user')).rejects.toThrow(/Domain map plugin is disabled/)
     expect((await run('evidence-graph')).evidenceGraph?.question).toBe('Does it scale?')
     await toggle('knowledge-map', false)
 
@@ -724,12 +741,12 @@ describe('the research service records; it never drives the agent', () => {
 
     // Without the engine the map goes too, because it injects the engine; the evidence graph reads only the record and stays.
     await toggle('knowledge-provider', true)
-    expect(await modules()).toEqual({ enabled: false, modules: { map: false, evidence: true } })
+    expect(await modules()).toEqual({ enabled: false, modules: { map: false, evidence: true, memory: true, relations: true } })
     await expect(run('map-view')).rejects.toThrow(/Domain map plugin is disabled/)
     await expect(run('graph-status')).rejects.toThrow(/Knowledge graph plugin is disabled/)
     expect((await run('evidence-graph')).evidenceGraph).toBeDefined()
     await toggle('knowledge-provider', false)
-    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true } })
+    expect(await modules()).toEqual({ enabled: true, modules: { map: true, evidence: true, memory: true, relations: true } })
     expect(await readFile(marker, 'utf8')).toBe('retained research data')
   })
 
@@ -739,19 +756,19 @@ describe('the research service records; it never drives the agent', () => {
     const project = await service.create({ title: 'Overlay', root: join(root, 'paper'), brief: '' })
     const map = ctx!.researchKnowledgeMap
     // Without a recall or a brief there is no idea to place.
-    expect(await map.overlay({ root: project.root, brief: '', evidence: [] }, undefined, signal)).toEqual({ built: true, library: [], recalled: [], marks: [] })
+    expect(await map.overlay({ root: project.root, brief: '', evidence: [] }, undefined, signal)).toEqual({ built: true, library: [], recalled: [], marks: [], honour: true })
     const recall = await service.execute({ action: 'recall', projectId: project.id, query: 'block sparse attention long context accuracy' }, signal, 'agent')
     const hits = (JSON.parse(recall.content ?? '{}') as { closestPapers: { id: string; title: string }[] }).closestPapers
     const first = hits[0]!
     const overlay = await map.overlay({ root: project.root, brief: 'ignored once a recall exists', evidence: [] }, undefined, signal)
     if (!overlay.built) throw new Error('the map is built')
-    expect(overlay.idea).toMatchObject({ text: 'block sparse attention long context accuracy', source: 'recall', placement: { confidence: expect.any(Number) as unknown } })
+    expect(overlay.idea).toMatchObject({ text: 'block sparse attention long context accuracy', source: 'recall', placement: { confidence: expect.any(Number) as number } })
     expect(overlay.recalled.length).toBeGreaterThan(0)
     expect(overlay.recalled[0]?.query).toBe('block sparse attention long context accuracy')
 
     // Marks are recorded with who made them, named, and shown on the map.
     const marked = await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: first.id }, verdict: 'pin', note: 'closest' }, signal, 'user')
-    expect(marked.marks).toEqual([expect.objectContaining({ id: `ai:paper:${first.id}`, verdict: 'pin', by: 'user', note: 'closest', title: first.title, index: expect.any(Number) as unknown })])
+    expect(marked.marks).toEqual([expect.objectContaining({ id: `ai:paper:${first.id}`, verdict: 'pin', by: 'user', note: 'closest', title: first.title, index: expect.any(Number) as number })])
     expect((await service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: first.id }, verdict: 'pin', note: 'closest' }, signal, 'user')).message).toMatch(/^Already marked/)
     await expect(service.execute({ action: 'mark', projectId: project.id, target: { kind: 'paper', graph: 'ai', id: 'no-such-paper' }, verdict: 'irrelevant' }, signal, 'agent'))
       .rejects.toThrow(/No paper "no-such-paper" in the built-in graph/)
@@ -759,6 +776,16 @@ describe('the research service records; it never drives the agent', () => {
       .rejects.toThrow(/in the project graph/)
     expect((await map.overlay({ root: project.root, brief: '', evidence: [] }, undefined, signal) as { marks: unknown[] }).marks).toHaveLength(1)
     expect((await service.execute({ action: 'marks', projectId: project.id }, signal, 'agent')).message).toBe('1 mark(s)')
+    // Only the person pauses the marks: the agent is told, the map shows it, and the marks stay.
+    await expect(service.execute({ action: 'honour-marks', projectId: project.id, honour: false }, signal, 'agent')).rejects.toThrow(/person's switch/)
+    expect(await service.execute({ action: 'honour-marks', projectId: project.id, honour: false }, signal, 'user')).toMatchObject({ honour: false, message: expect.stringMatching(/paused/) as string })
+    expect(await service.execute({ action: 'marks', projectId: project.id }, signal, 'agent')).toMatchObject({ honour: false, message: expect.stringMatching(/^1 mark\(s\); the person paused them/) as string })
+    expect(await map.overlay({ root: project.root, brief: '', evidence: [] }, undefined, signal)).toMatchObject({ honour: false, marks: [expect.anything()] })
+    const quiet = JSON.parse((await service.execute({ action: 'recall', projectId: project.id, query: 'block sparse attention long context accuracy' }, signal, 'agent')).content ?? '{}') as { annotations?: unknown; note: string }
+    expect(quiet.annotations).toBeUndefined()
+    expect(quiet.note).toMatch(/paused their marks/)
+    expect(await service.execute({ action: 'honour-marks', projectId: project.id, honour: true }, signal, 'user')).toMatchObject({ honour: true, message: expect.stringMatching(/follows/) as string })
+    expect(await service.execute({ action: 'marks', projectId: project.id }, signal, 'agent')).toMatchObject({ honour: true, message: '1 mark(s)' })
     expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${first.id}` }, signal, 'user')).marks).toEqual([])
     expect((await service.execute({ action: 'unmark', projectId: project.id, id: `ai:paper:${first.id}` }, signal, 'user')).message).toMatch(/^No mark/)
 
@@ -787,14 +814,14 @@ describe('the research service records; it never drives the agent', () => {
       ...Array.from({ length: MAX_LIBRARY }, (_, at) => literature(`n${at}`, `Reference ${at}`, 'sparse attention')),
     ] as never }, undefined, signal)
     if (!unplaced.built) throw new Error('the map is built')
-    expect(unplaced.idea).toMatchObject({ source: 'brief', note: expect.stringMatching(/too few words/) as unknown })
+    expect(unplaced.idea).toMatchObject({ source: 'brief', note: expect.stringMatching(/too few words/) as string })
     expect(unplaced.idea).not.toHaveProperty('placement')
     expect(unplaced.library[0]).not.toHaveProperty('placement')
     expect(unplaced.library.at(-1)).not.toHaveProperty('placement')
     expect(unplaced.library[1]?.placement).toBeDefined()
     // A brief the map can place stands for the idea until the agent recalls.
     const placed = await map.overlay({ root: words, brief: 'block sparse attention for long context', evidence: [] }, undefined, signal)
-    expect(placed).toMatchObject({ idea: { source: 'brief', placement: { confidence: expect.any(Number) as unknown } } })
+    expect(placed).toMatchObject({ idea: { source: 'brief', placement: { confidence: expect.any(Number) as number } } })
 
     // A recall that matched nothing leaves the idea unplaced; papers repeated across recalls, or gone from the graph, show once.
     await appendRecall(words, 'zzqx', { papers: [], patterns: [] })
@@ -811,10 +838,9 @@ describe('the research service records; it never drives the agent', () => {
     expect((await map.overlay({ root: words, brief: '', evidence: [] }, undefined, signal) as { marks: { title?: string }[] }).marks[0]?.title).toBe('Own pattern')
 
     // A damaged map asset fails the read and is loaded again on the next one.
-    const internals = map as unknown as { assetPath: string; map: unknown; encoded: unknown }
-    const asset = internals.assetPath
+    const asset = Reflect.get(map, 'assetPath') as string
     Object.defineProperty(map, 'assetPath', { value: join(root, 'missing.bin'), configurable: true })
-    internals.map = undefined; internals.encoded = undefined
+    Reflect.set(map, 'map', undefined); Reflect.set(map, 'encoded', undefined)
     await expect(map.view(signal)).rejects.toThrow(/ENOENT/)
     Object.defineProperty(map, 'assetPath', { value: asset, configurable: true })
     expect(await map.view(signal)).toMatchObject({ built: true })
@@ -822,11 +848,320 @@ describe('the research service records; it never drives the agent', () => {
 
   it('composes without the sub-plugins: the snapshot reports them off and the project is untouched', async () => {
     root = await temporaryRoot('research-graph-no-modules-')
-    const { service } = await boot(new MemoryMediaPool(), { knowledgeMap: false, knowledgeEvidence: false })
+    const { service } = await boot(new MemoryMediaPool(), {
+      knowledgeMap: false, knowledgeEvidence: false, knowledgeMemory: false, knowledgeRelations: false,
+    })
     const project = await service.create({ title: 'Plain', root: join(root, 'paper'), brief: '' })
-    expect((await service.snapshot()).knowledge).toEqual({ enabled: true, modules: { map: false, evidence: false } })
+    expect((await service.snapshot()).knowledge)
+      .toEqual({ enabled: true, modules: { map: false, evidence: false, memory: false, relations: false } })
     await expect(service.execute({ action: 'evidence-graph', projectId: project.id }, signal, 'user')).rejects.toThrow(/Evidence graph plugin is disabled/)
     await expect(service.execute({ action: 'map-view', projectId: project.id }, signal, 'user')).rejects.toThrow(/Domain map plugin is disabled/)
+    await expect(service.execute({ action: 'memory', projectId: project.id }, signal, 'user')).rejects.toThrow(/Research memory plugin is disabled/)
+  })
+
+  it('reads what the researches on this computer left, keeps the person\'s switches, and gives the agent only what is carried', async () => {
+    root = await temporaryRoot('research-memory-')
+    const pool = new MemoryMediaPool()
+    let { service } = await boot(pool)
+    const alpha = await service.create({ title: 'Alpha', root: join(root, 'alpha'), brief: 'First' })
+    const beta = await service.create({ title: 'Beta', root: join(root, 'beta'), brief: 'Second' })
+    const gamma = await service.create({ title: 'Gamma', root: join(root, 'gamma'), brief: 'Third' })
+    await ctx!.fiber.dispose(); ctx = undefined
+    const source = (id: string, title: string, patch: Record<string, unknown> = {}) => ({
+      id, title, kind: 'literature', path: `.research/sources/${id}.json`, sha256: 'x', revision: 1, importedAt: '2026-08-01T00:00:00.000Z',
+      chunks: [], coverage: 'abstract', verified: true, stale: false, ...patch,
+    })
+    const environment = (id: string, patch: Record<string, unknown> = {}) => ({
+      id, name: id, kind: 'uv', target: 'local', python: '', requirements: [], fingerprint: '', status: 'ready', details: '', isDefault: false, ...patch,
+    })
+    const experiment = (id: string, name: string, patch: Record<string, unknown> = {}) => ({
+      id, status: 'completed', createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-02T00:00:00.000Z', directory: `runs/${id}`, inputRevision: 1,
+      environmentFingerprint: '', metrics: {}, message: '', snapshotPath: '', collected: true,
+      spec: { environmentId: 'e', name, argv: ['{python}', 'code/train.py'], cwd: '.', seed: 1, maxSeconds: 60, gpuIds: [], dataEvidenceIds: [], codeArtifactIds: [], metricsPath: 'm.json' },
+      ...patch,
+    })
+    const edits: Record<string, Partial<ResearchProject>> = {
+      [alpha.id]: {
+        createdAt: '2026-08-01T00:00:00.000Z', venue: 'aaai',
+        // A whole-paper check that is clean and later than every file marks the research as finished.
+        progress: { mode: 'general', phases: {}, findings: {}, full: { clean: true, errors: 0, warnings: 0, checkedAt: '2999-01-01T00:00:00.000Z' } },
+        evidence: [
+          source('a1', 'Longformer: The Long-Document Transformer', { doi: '10.1/long' }), source('a2', 'Big Bird'),
+          source('a3', 'data.csv', { kind: 'file', coverage: 'data' }),
+        ] as never,
+        environments: [environment('ea', { kind: 'existing', target: 'ssh', sshHost: 'gpu', python: '/usr/bin/python3' }), environment('eb', { requirements: ['numpy'] })] as never,
+        experiments: [
+          experiment('ra', 'ruler-32k-full', { metrics: { accuracy: 0.9 } }),
+          experiment('rb', 'ruler-32k-fixed', { status: 'failed', message: 'CUDA out of memory', exitCode: 1, finishedAt: '2026-08-03T00:00:00.000Z' }),
+        ] as never,
+        decisions: [
+          { id: 'd1', question: '模式与路线', answer: 'general', by: 'user', rationale: '', at: '2026-08-01T00:00:00.000Z', key: 'mode' },
+          { id: 'd2', question: 'Which dataset?', answer: 'RULER', by: 'user', rationale: 'standard', at: '2026-08-04T00:00:00.000Z' },
+        ],
+      },
+      [beta.id]: {
+        createdAt: '2026-08-10T00:00:00.000Z', venue: 'neurips',
+        evidence: [source('b1', 'Longformer - the long document transformer'), source('b2', 'Reformer')] as never,
+        environments: [environment('ec', { requirements: ['torch'] })] as never,
+        experiments: [experiment('rc', 'ruler-64k', { metrics: { accuracy: 0.7 }, updatedAt: '2026-08-12T00:00:00.000Z' })] as never,
+      },
+      [gamma.id]: { createdAt: '2026-09-01T00:00:00.000Z', evidence: [source('g1', 'Gamma only paper')] as never },
+    }
+    for (const medium of pool.media.values()) {
+      const projects = medium.tables.get('projects')
+      for (const [id, patch] of Object.entries(edits)) {
+        const stored = projects?.get(id) as ResearchProject | undefined
+        if (projects && stored) projects.set(id, { ...stored, ...patch })
+      }
+    }
+    service = (await boot(pool)).service
+    // Seeding the shipped examples first: they leave no memory.
+    await service.snapshot()
+    const user = (request: Record<string, unknown>) => service.execute({ projectId: alpha.id, ...request } as never, signal, 'user')
+    const agent = (request: Record<string, unknown>) => service.execute({ projectId: gamma.id, ...request } as never, signal, 'agent')
+
+    const { memory } = await user({ action: 'memory' })
+    if (memory === undefined) throw new Error('the page is served')
+    expect(memory.researches.map(item => [item.title, item.finished, item.literature, item.runs])).toEqual([
+      ['Alpha', true, 2, 1], ['Beta', false, 2, 1], ['Gamma', false, 1, 0],
+    ])
+    expect(memory.researches.map(item => item.venue))
+      .toEqual([expect.stringMatching(/AAAI/i), expect.stringMatching(/NeurIPS/i), undefined])
+    expect(memory.literature.items.map(item => item.title))
+      .toEqual(['Longformer: The Long-Document Transformer', 'Big Bird', 'Reformer', 'Gamma only paper'])
+    expect(memory.literature.items[0]?.researches).toEqual([alpha.id, beta.id])
+    expect(memory.runs.items.map(item => item.name)).toEqual(['ruler-64k', 'ruler-32k-full'])
+    expect(memory.environments.items.map(item => [item.name, item.target, item.researches.length])).toEqual([['eb', 'local', 2], ['ea', 'ssh', 1]])
+    expect(memory.writing.items.map(item => item.venue)).toEqual(['aaai', 'neurips'])
+    expect(memory.lessons.items.map(item => item.kind)).toEqual(['decision', 'failed-run'])
+    expect(memory.carry).toEqual({ literature: true, runs: true, environments: true, writing: true })
+
+    // The person's switches are saved in the preferences and survive the plugin being switched off and on.
+    const off = await user({ action: 'memory-carry', kind: 'literature', on: false })
+    expect(off.memory?.carry).toEqual({ literature: false, runs: true, environments: true, writing: true })
+    expect((await user({ action: 'memory-carry', kind: 'runs', on: false })).message).toMatch(/no longer carry runs/)
+    expect((await user({ action: 'memory-carry', kind: 'runs', on: true })).message).toMatch(/carry runs/)
+    expect((await service.snapshot()).preferences.memoryCarry).toEqual({ literature: false, runs: true })
+    await expect(user({ action: 'memory-carry', kind: 'datasets', on: true })).rejects.toThrow()
+
+    // The agent reads the kinds that are on, from the researches other than the one it works in, and cannot move a switch.
+    const read = await agent({ action: 'memory' })
+    expect(read.memory).toBeUndefined()
+    expect(read.message).toBe('Memory of 2 earlier research(es); kinds switched on: ["runs","environments","writing"]')
+    const carried = JSON.parse(read.content ?? '{}') as CarriedMemory
+    expect(carried).toMatchObject({
+      carried: ['runs', 'environments', 'writing'], researches: [{ title: 'Alpha', finished: true }, { title: 'Beta', finished: false }],
+    })
+    expect(carried).not.toHaveProperty('literature')
+    expect(carried).not.toHaveProperty('lessons')
+    expect(carried.runs?.items.map(item => [item.name, item.from])).toEqual([['ruler-64k', ['Beta']], ['ruler-32k-full', ['Alpha']]])
+    expect(carried.writing?.items.map(item => [item.venue, item.from])).toEqual([['aaai', ['Alpha']], ['neurips', ['Beta']]])
+    await expect(agent({ action: 'memory-carry', kind: 'runs', on: false })).rejects.toThrow(/person's switch/)
+
+    const toggle = async (disabled: boolean): Promise<void> => {
+      await [...ctx!.loader.entries()].find(entry => entry.options.id === 'knowledge-memory')!.update({ disabled })
+      await ctx!.loader.await()
+    }
+    await toggle(true)
+    expect((await service.snapshot()).knowledge?.modules).toEqual({ map: true, evidence: true, memory: false, relations: true })
+    for (const request of [{ action: 'memory' }, { action: 'memory-carry', kind: 'runs', on: false }]) {
+      await expect(user(request)).rejects.toThrow(/Research memory plugin is disabled/)
+    }
+    await expect(agent({ action: 'memory' })).rejects.toThrow(/Research memory plugin is disabled/)
+    await toggle(false)
+    expect((await user({ action: 'memory' })).memory?.carry.literature).toBe(false)
+    // Nothing was deleted by switching the plugin off: the researches' own records are untouched.
+    expect(service.getProject(alpha.id).evidence).toHaveLength(3)
+  })
+
+  it('mounts the relation graph as a row of its own: grounded proposals, queries, corrections, the person\'s commands, and cancellation', async () => {
+    root = await temporaryRoot('research-relations-')
+    const { service } = await boot(new MemoryMediaPool())
+    const project = await service.create({ title: 'Relations', root: join(root, 'paper'), brief: '' })
+    const toggle = async (disabled: boolean): Promise<void> => {
+      await [...ctx!.loader.entries()].find(entry => entry.options.id === 'knowledge-relations')!.update({ disabled })
+      await ctx!.loader.await()
+    }
+    const user = (request: Record<string, unknown>) => service.execute({ projectId: project.id, ...request } as never, signal, 'user')
+    const agent = (request: Record<string, unknown>) => service.execute({ projectId: project.id, ...request } as never, signal, 'agent')
+    expect((await service.snapshot()).knowledge?.modules.relations).toBe(true)
+    expect(JSON.parse((await agent({ action: 'graph-status' })).content ?? '{}')).toMatchObject({ modules: { relations: true } })
+
+    // A real imported source: the relations below are quotations of it at its current revision.
+    await write(join(project.root, 'paper.md'), 'Alpha outperforms Beta on Bench at 32K. Alpha is evaluated on Bench. Gamma outperforms Beta on Bench. '
+      + 'Gamma Method is a variant of Gamma. Alpha is a kind of sparse attention.')
+    await agent({ action: 'import', paths: ['paper.md'] })
+    const source = service.getProject(project.id).evidence[0]!
+    const quote = (text: string, setting?: string) => ({ type: 'quote', evidenceId: source.id, revision: source.revision, quote: text, ...setting === undefined ? {} : { setting } })
+    const method = (name: string) => ({ kind: 'method', name })
+    const alpha = {
+      kind: 'improves-on', from: method('Alpha'), to: method('Beta'), ground: quote('Alpha outperforms Beta on Bench at 32K.'),
+      // The author is the caller's, never the input's.
+      by: 'user',
+    }
+    const proposals = [
+      alpha,
+      { kind: 'improves-on', from: method('Gamma'), to: method('Beta'), ground: quote('Gamma outperforms Beta on Bench.') },
+      { kind: 'evaluated-on', from: method('Alpha'), to: { kind: 'dataset', name: 'Bench' }, ground: quote('Alpha is evaluated on Bench.') },
+      { kind: 'improves-on', from: method('Beta'), to: method('Alpha'), ground: quote('Beta clearly beats Alpha on every benchmark we ran.') },
+    ]
+    const proposed = await agent({ action: 'relations-propose', proposals })
+    expect(proposed.message).toBe('4 proposal(s): 3 grounded, 1 refused')
+    expect(proposed.relationOutcomes).toBeUndefined()
+    expect(proposed.content?.split('\n').map(line => line.replace(/\[ground [0-9a-f]+\]/, '[ground]'))).toEqual([
+      '1. added improves-on:method:alpha>method:beta [ground]',
+      '2. added improves-on:method:gamma>method:beta [ground]',
+      '3. added evaluated-on:method:alpha>dataset:bench [ground]',
+      expect.stringMatching(/^4\. refused \(quote-not-found\): /),
+    ])
+    const around = (entity: string) => user({ action: 'relations-graph', entity })
+    const beta = (await around('Beta')).relations
+    expect(beta).toMatchObject({ match: 'found', counts: { entities: 4, relations: 3, stale: 0, rejected: 0 } })
+    expect(beta?.neighbourhood?.edges.filter(edge => edge.kind === 'improves-on').map(edge => [edge.id, edge.by, edge.grounds[0]?.by, edge.best.source, edge.best.quote])).toEqual([
+      ['improves-on:method:alpha>method:beta', 'agent', 'agent', 'file', 'Alpha outperforms Beta on Bench at 32K.'],
+      ['improves-on:method:gamma>method:beta', 'agent', 'agent', 'file', 'Gamma outperforms Beta on Bench.'],
+    ])
+    // The agent reads the neighbourhood as text, with the relation ids it can reject.
+    const read = await agent({ action: 'relations-graph', entity: 'beta' })
+    expect(read.relations).toBeUndefined()
+    expect(read.content).toContain('Alpha (method) —improves-on→ Beta (method), 0.7, paper.md [improves-on:method:alpha>method:beta]')
+
+    const paths = (await user({ action: 'relations-paths', from: 'Alpha', to: 'Gamma' })).relationPaths
+    expect(paths?.paths[0]?.hops.map(hop => [hop.kind, hop.direction, hop.grounds[0]?.quote])).toEqual([
+      ['improves-on', 'forward', 'Alpha outperforms Beta on Bench at 32K.'], ['improves-on', 'backward', 'Gamma outperforms Beta on Bench.'],
+    ])
+    expect((await agent({ action: 'relations-paths', from: 'Alpha', to: 'Gamma' })).content).toContain('Alpha —improves-on→ Beta')
+
+    // The gap matrix speaks of this project's sources only; a project file is not a paper.
+    const gaps = (await user({ action: 'relations-gaps', axis: 'dataset', rows: ['Alpha', 'Gamma'], columns: ['Bench'] })).relationGaps
+    expect(gaps?.cells.map(row => row.map(cell => [cell.state, cell.files]))).toEqual([[['project-only', 1]], [['mentioned', 0]]])
+    expect(gaps?.basis).toEqual({ literature: 0, fullText: 0, abstractOnly: 0, metadataOnly: 0, files: 1 })
+    expect((await agent({ action: 'relations-gaps', axis: 'dataset' })).content).toContain('only in this project\'s own runs or files: Alpha × Bench')
+    // Subtypes are not counted unless asked.
+    await user({ action: 'relations-propose', proposals: [{
+      kind: 'is-a', from: method('Alpha'), to: method('sparse attention'), ground: quote('Alpha is a kind of sparse attention.'),
+    }] })
+    expect((await user({ action: 'relations-gaps', axis: 'dataset', rows: ['sparse attention'], columns: ['Bench'] })).relationGaps?.cells[0]?.[0]?.state).toBe('mentioned')
+    expect((await user({ action: 'relations-gaps', axis: 'dataset', rows: ['sparse attention'], columns: ['Bench'], rollUp: true })).relationGaps?.cells[0]?.[0]?.state).toBe('project-only')
+
+    // The person's rejection stands against the agent until the person lifts it.
+    const rejected = 'improves-on:method:gamma>method:beta'
+    expect((await user({ action: 'relations-reject', relation: rejected, reason: 'the table is another dataset' })).relationOutcomes).toEqual([{ status: 'changed', relation: rejected }])
+    expect((await agent({ action: 'relations-reject', relation: rejected })).message).toBe(`Nothing changed: ${rejected} was already rejected`)
+    expect((await agent({ action: 'relations-restore', relation: rejected })).message).toMatch(/only the person can restore it/)
+    expect((await agent({ action: 'relations-propose', proposals: [proposals[1]] })).content).toMatch(/refused \(rejected\): .*only the person can restore it/)
+    expect((await user({ action: 'relations-graph' })).relations?.rejected.map(item => item.id)).toEqual([rejected])
+    expect((await user({ action: 'relations-restore', relation: rejected })).message).toBe(`${rejected} restored`)
+    expect((await user({ action: 'relations-restore', relation: rejected })).message).toBe(`Nothing changed: ${rejected} was already standing`)
+    expect((await agent({ action: 'relations-reject', relation: 'cites:a>b' })).message).toMatch(/No relation has the id/)
+
+    // Entities, merging and re-checking are the person's.
+    await user({ action: 'relations-entity', kind: 'method', name: 'Gamma Method' })
+    await user({ action: 'relations-entity', kind: 'method', name: 'GM' })
+    expect((await agent({ action: 'relations-suggestions' })).content).toContain('Gamma Method (method:gamma-method) and GM (method:gm): acronym')
+    expect((await user({ action: 'relations-suggestions' })).relationSuggestions).toEqual([{ a: 'method:gamma-method', b: 'method:gm', reason: 'acronym', names: ['Gamma Method', 'GM'] }])
+    expect((await user({ action: 'relations-entity', kind: 'method', name: 'GM', aliases: ['Generalized Method'] })).relationEntity).toMatchObject({ status: 'updated' })
+    expect((await user({ action: 'relations-merge', from: 'method:gm', into: 'method:gamma-method' })).message).toBe('Merged method:gm into method:gamma-method')
+    expect((await user({ action: 'relations-merge', from: 'method:gm', into: 'method:gamma-method' })).message).toBe('An entity cannot be merged into itself.')
+    for (const request of [
+      { action: 'relations-entity', kind: 'method', name: 'Delta' }, { action: 'relations-merge', from: 'method:alpha', into: 'method:beta' },
+      { action: 'relations-reground' }, { action: 'relations-citations' },
+    ]) await expect(agent(request)).rejects.toThrow(/is the person's command/)
+    expect((await user({ action: 'relations-reground' })).relationReground).toEqual({ regrounded: 0, lapsed: 0 })
+    expect((await user({ action: 'relations-entity', kind: 'method', name: 'method' })).message).toMatch(/too general to identify one entity/)
+    // A damaged file is copied aside before it is rewritten, and the person is told.
+    const stored = join(project.root, '.research', 'kg', 'relations.json')
+    const intact = await readFile(stored, 'utf8')
+    await write(stored, '{ not json')
+    const repaired = await user({ action: 'relations-propose', proposals: [alpha] })
+    expect(repaired.message).toMatch(/^1 proposal\(s\): 1 grounded, 0 refused; .*relations\.json.*; The damaged file was copied to /)
+    expect(repaired.message).toMatch(/\.research\/kg\/relations\.json\..*\.bak before it was rewritten\.$/)
+    expect((await readdir(join(project.root, '.research', 'kg'))).some(name => name.endsWith('.bak'))).toBe(true)
+    await write(stored, intact)
+    await write(join(project.root, 'paper.md'), 'Alpha outperforms Beta on Bench at 32K. Alpha is evaluated on Bench. Gamma Method is a variant of Gamma. Alpha is a kind of sparse attention.')
+    await agent({ action: 'refresh-evidence', evidenceId: source.id })
+    expect((await around('Beta')).relations?.neighbourhood?.edges.map(edge => edge.status)).toEqual(['stale', 'stale', 'stale', 'stale'])
+    expect((await user({ action: 'relations-reground' })).message).toBe('3 quotation(s) moved to the current revision, 1 no longer hold')
+
+    // Reference lists are fetched as the person's job; the providers are the only thing mocked.
+    const providers = Promise.withResolvers<undefined>()
+    let hold = false
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: { signal: AbortSignal }) => {
+      const doi = /works\/(10\.\d+%2F\w+)$/.exec(url)?.[1]
+      if (doi) return new Response(JSON.stringify({ message: { DOI: decodeURIComponent(doi), title: [`Paper ${decodeURIComponent(doi)}`], abstract: 'Open abstract' } }))
+      if (url.includes('/works/doi:')) return new Response(JSON.stringify({ best_oa_location: null }))
+      if (hold) {
+        providers.resolve(undefined)
+        return new Promise<Response>((_resolve, reject) => { init.signal.addEventListener('abort', () => { reject(init.signal.reason as Error) }, { once: true }) })
+      }
+      if (down) return new Response('unavailable', { status: 503 })
+      const wanted = decodeURIComponent(url).match(/filter=doi:([^&]*)/)?.[1] ?? ''
+      const known: Record<string, { id: string; referenced_works: string[] }> = {
+        '10.1000/a': { id: 'https://openalex.org/W1', referenced_works: ['https://openalex.org/W2'] }, '10.1000/b': { id: 'https://openalex.org/W2', referenced_works: [] },
+      }
+      return new Response(JSON.stringify({ results: wanted.split('|').flatMap(doi => known[doi] === undefined ? [] : [{ ...known[doi], doi: `https://doi.org/${doi}` }]) }))
+    }))
+    let down = false
+    const item = (doi: string) => ({ id: doi, provider: 'crossref', title: 'T', authors: [], doi, url: `https://doi.org/${doi}`, abstract: 'About', bibtex: '' })
+    await agent({ action: 'literature-import', item: item('10.1000/a') })
+    await agent({ action: 'literature-import', item: item('10.1000/b') })
+    const job = await user({ action: 'relations-citations' })
+    expect(job).toMatchObject({ message: 'relations-citations started' })
+    await vi.waitFor(() => { expect(service.tasks().find(task => task.id === job.jobId)?.status).toBe('completed') })
+    expect(service.tasks().find(task => task.id === job.jobId)?.result).toMatchObject({
+      message: '1 citation(s) recorded from 2 reference list(s)', relationCitations: { asked: 2, works: 2, added: 1, failures: [] },
+    })
+    expect((await user({ action: 'relations-graph' })).relations?.counts.citationLists).toBe(2)
+
+    // A provider that is down fails its requests, not the job; the papers stay due.
+    await agent({ action: 'literature-import', item: item('10.1000/c') })
+    down = true
+    const failing = await user({ action: 'relations-citations' })
+    await vi.waitFor(() => { expect(service.tasks().find(task => task.id === failing.jobId)?.status).toBe('completed') })
+    expect(service.tasks().find(task => task.id === failing.jobId)?.result).toMatchObject({
+      message: '0 citation(s) recorded from 2 reference list(s); 1 request(s) failed', relationCitations: { asked: 1, failures: [expect.stringContaining('HTTP 503')] },
+    })
+    down = false
+
+    // Disabling the plugin cancels the job in flight and removes the commands; the file stays.
+    hold = true
+    const stuck = await user({ action: 'relations-citations' })
+    await providers.promise
+    await toggle(true)
+    await vi.waitFor(() => { expect(service.tasks().find(task => task.id === stuck.jobId)).toMatchObject({ status: 'failed', message: 'The relation graph plugin was disabled' }) })
+    expect((await service.snapshot()).knowledge?.modules.relations).toBe(false)
+    for (const request of [{ action: 'relations-graph' }, { action: 'relations-paths', from: 'a', to: 'b' }, { action: 'relations-gaps', axis: 'task' }, { action: 'relations-suggestions' }, { action: 'relations-citations' }]) {
+      await expect(user(request)).rejects.toThrow(/Relation graph plugin is disabled/)
+    }
+    await expect(agent({ action: 'relations-propose', proposals: [alpha] })).rejects.toThrow(/Relation graph plugin is disabled/)
+    expect((await readFile(join(project.root, '.research', 'kg', 'relations.json'), 'utf8')).includes('Alpha outperforms Beta')).toBe(true)
+    await toggle(false)
+    expect((await user({ action: 'relations-graph', entity: 'Beta' })).relations?.match).toBe('found')
+  })
+
+  it('answers the relation graph of an example research and refuses to change it', async () => {
+    root = await temporaryRoot('research-relations-example-')
+    const { service } = await boot(new MemoryMediaPool())
+    const example = await service.create({ title: 'Example', root: join(root, 'demo', 'shipped'), brief: '' })
+    vi.stubEnv('DSH_HOME', root)
+    try {
+      const run = (request: Record<string, unknown>, actor: 'user' | 'agent') => service.execute({ projectId: example.id, ...request } as never, signal, actor)
+      for (const actor of ['user', 'agent'] as const) {
+        const read = await run({ action: 'relations-graph' }, actor)
+        expect(actor === 'user' ? read.message : read.content).toMatch(/no relations yet/)
+        expect((await run({ action: 'relations-suggestions' }, actor)).message).toBe('0 pair(s) of entities that may be one')
+        await expect(run({ action: 'relations-propose', proposals: [{
+          kind: 'is-a', from: { kind: 'method', name: 'Alpha' }, to: { kind: 'method', name: 'Beta' }, ground: { type: 'quote', evidenceId: 'x', revision: 1, quote: 'Alpha is a Beta.' },
+        }] }, actor)).rejects.toThrow('这是示例研究，只能查看 / This is an example research and is read-only')
+        await expect(run({ action: 'relations-reject', relation: 'x' }, actor)).rejects.toThrow(/read-only/)
+      }
+      for (const request of [{ action: 'relations-entity', kind: 'method', name: 'Alpha' }, { action: 'relations-reground' }, { action: 'relations-citations' }, { action: 'relations-merge', from: 'a', into: 'b' }]) {
+        await expect(run(request, 'user')).rejects.toThrow(/read-only/)
+      }
+      expect(existsSync(join(example.root, '.research', 'kg', 'relations.json'))).toBe(false)
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 
   it('shows a project\'s sessions the skills of its mode, and swaps them when the mode changes', async () => {
@@ -1128,7 +1463,7 @@ describe('the research service records; it never drives the agent', () => {
     expect(chosen.progress).not.toHaveProperty('full')
     expect(chosen.decisions).toEqual([{
       id: expect.any(String) as unknown, question: '模式与路线', answer: 'spark-to-paper · data', by: 'user', rationale: 'Results exist',
-      at: expect.any(String) as unknown, key: 'mode',
+      at: expect.any(String) as string, key: 'mode',
     }])
     // Choosing the same mode and route again keeps what was checked; its decision still records who chose it.
     await run({ action: 'check', scope: 'data' })
