@@ -58,6 +58,8 @@ interface Host {
   pending?: [string, string][]
   /** What the composer holds. */
   draft?: string
+  /** What the snapshot says about the knowledge plugins; nothing by default. */
+  knowledge?: { enabled: boolean; modules: { map: boolean; evidence: boolean } }
 }
 
 /** The Chinese dictionary, interpolating `{name}` the way the locale seat does. */
@@ -86,7 +88,13 @@ const goal = (sessionId: string, phase: ResearchGoal['phase']): ResearchGoal => 
 
 function seat(projects: ResearchProject[], host: Host): { props: ResearchTabProps; log: Log } {
   const log: Log = { commands: [], opened: [], tabs: [], revealed: [], conversations: [], drafts: [], resets: 0 }
-  const view = { snapshot: { projects, preferences: {}, components: [], modes: MODES }, tasks: [] }
+  const view = {
+    snapshot: {
+      projects, preferences: {}, components: [], modes: MODES,
+      ...host.knowledge === undefined ? {} : { knowledge: host.knowledge },
+    },
+    tasks: [],
+  }
   const sessions = host.sessions ?? [session(SESSION, { displayTitle: '稀疏注意力' })]
   const list: SessionListState = {
     ids: sessions.map(item => item.id), byId: Object.fromEntries(sessions.map(item => [item.id, item])),
@@ -117,6 +125,7 @@ function seat(projects: ResearchProject[], host: Host): { props: ResearchTabProp
     openFiles: () => { log.tabs.push('files'); host.openFiles?.() },
     openBoard: () => { log.tabs.push('board') },
     openGallery: () => { log.tabs.push('gallery') },
+    openKnowledge: () => { log.tabs.push('knowledge') },
     openSources: (section?: string) => { log.tabs.push(section === undefined ? 'sources' : `sources:${section}`) },
     reveal: (path: string) => { log.revealed.push(path); return host.reveal?.() ?? Promise.resolve() },
     openConversation: (sessionId: string, workspaceId: string) => {
@@ -577,6 +586,16 @@ describe('the record counts what the research holds and opens its tools', () => 
     await settle()
     expect(log.tabs).toEqual(['board', 'gallery', 'files'])
     expect(rail.queryByRole('alert')).toBeNull()
+  })
+
+  it('offers the knowledge graph from its tools row only while a knowledge plugin is on', () => {
+    expect(mount([project()]).rail.queryByRole('button', { name: zh.kgTitle })).toBeNull()
+    cleanup()
+    expect(mount([project()], { knowledge: { enabled: false, modules: { map: false, evidence: false } } }).rail.queryByRole('button', { name: zh.kgTitle })).toBeNull()
+    cleanup()
+    const { rail, log } = mount([project()], { knowledge: { enabled: false, modules: { map: false, evidence: true } } })
+    fireEvent.click(rail.getByRole('button', { name: zh.kgTitle }))
+    expect(log.tabs).toEqual(['knowledge'])
   })
 
   it('says why the research files could not be shown, from the files count and from the tools row', async () => {

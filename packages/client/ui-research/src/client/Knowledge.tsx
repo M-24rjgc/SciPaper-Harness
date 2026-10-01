@@ -1,14 +1,45 @@
 /** Knowledge graph exploration and configuration over the shared research service. */
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import type { KnowledgeGraphNode, KnowledgeGraphPage, KnowledgeGraphQuery, ProjectId, ResearchPreferences, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
+import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
+import type {
+  KnowledgeGraphNode, KnowledgeGraphPage, KnowledgeGraphQuery, ProjectId, ResearchPreferences, ResearchProject, ResearchSnapshot,
+} from '@deepseek-ai/dsh-research-workbench/types'
 import type { PluginConfigViewProps } from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { WorkbenchProps } from './contract.ts'
 import { sessionProject, useSessionProject } from './contract.ts'
 import type { ResearchTabProps } from './Tabs.tsx'
 import { ActionError, useAction } from './Action.tsx'
+import { EvidenceView } from './EvidenceGraph.tsx'
+import { MapView } from './KnowledgeMap.tsx'
+import type { ResearchKey } from './locales.ts'
 import styles from './Knowledge.module.css'
+import shell from './KnowledgeViews.module.css'
 
 type GraphProps = WorkbenchProps & { project: ResearchProject; initial?: KnowledgeGraphQuery | undefined }
+
+/** The views of the Knowledge tab; each one belongs to a plugin of the knowledge bundle. */
+export type KnowledgeViewId = 'map' | 'evidence' | 'catalog'
+
+/** The tab names of the views. */
+const VIEW_LABELS: Record<KnowledgeViewId, ResearchKey> = { map: 'kgViewMap', evidence: 'kgViewEvidence', catalog: 'kgViewCatalog' }
+
+/** At least one view, in the order the segmented control lists them. */
+export type KnowledgeViewList = readonly [KnowledgeViewId, ...KnowledgeViewId[]]
+
+/**
+ * The views the knowledge plugins of this profile offer, in the order the control lists them: a plugin that is off
+ * contributes none. The catalog belongs to the graph engine, the map to the domain map, the evidence view to the evidence graph.
+ * @param knowledge - what the snapshot says about the knowledge plugins.
+ * @returns the views to offer, or undefined when no knowledge plugin is on.
+ */
+export function knowledgeViews(knowledge: ResearchSnapshot['knowledge']): KnowledgeViewList | undefined {
+  const [first, ...rest] = knowledge === undefined ? [] : [
+    ...knowledge.modules.map ? ['map' as const] : [],
+    ...knowledge.modules.evidence ? ['evidence' as const] : [],
+    ...knowledge.enabled ? ['catalog' as const] : [],
+  ]
+  return first === undefined ? undefined : [first, ...rest]
+}
 
 /** A source URL may open a paper, never execute a graph record's URL as code. */
 function paperLink(url: string | undefined): string | undefined {
@@ -85,12 +116,14 @@ function Explorer(props: GraphProps): ReactNode {
   useEffect(() => { load({ source: 'all', ...props.initial }); return () => { latest.current++ } }, [project.id])
   const submit = (event: FormEvent): void => { event.preventDefault(); load({ ...filters, query, pattern: undefined, offset: 0 }) }
   const link = paperLink(selected?.url)
+  /* v8 ignore next -- every load sets a source, so the default only types the optional field */
+  const source = filters.source ?? 'all'
   const patterns = page?.nodes.filter(node => node.kind === 'pattern') ?? []
   return <section className={styles.explorer} data-knowledge-explorer aria-busy={pending}>
     <form className={styles.filters} onSubmit={submit} role="search">
       <input type="search" aria-label={t('kgSearch')} placeholder={t('kgSearch')} value={query} onChange={(event) => { setQuery(event.target.value) }} />
       <button type="submit" disabled={pending}>{t(pending ? 'kgLoading' : 'kgSearchButton')}</button>
-      <label><span>{t('kgSource')}</span><select value={filters.source ?? 'all'} onChange={(event) => {
+      <label><span>{t('kgSource')}</span><select value={source} onChange={(event) => {
         load({ source: event.target.value as 'all' | 'ai' | 'project', query })
       }}>
         <option value="all">{t('kgAll')}</option><option value="ai">{t('kgBuiltin')}</option><option value="project">{t('kgProject')}</option>
@@ -134,8 +167,35 @@ function Explorer(props: GraphProps): ReactNode {
   </section>
 }
 
+/**
+ * The views one research offers, behind a segmented control when there are several. The catalog is the explorer over
+ * the graph engine; the others come from the sub-plugins that are on.
+ */
+function KnowledgeViews(props: GraphProps & { views: KnowledgeViewList }): ReactNode {
+  const { project, views, t } = props
+  const [chosen, setChosen] = useState<KnowledgeViewId | undefined>()
+  // A tool card that opens the graph with a query or a pattern means the catalog, which is the only view that searches.
+  const searching = props.initial?.query !== undefined || props.initial?.pattern !== undefined
+  // Otherwise the tab opens on the person's own research when the evidence graph is on, and on the first view offered if not.
+  const opening = views.includes('evidence') ? 'evidence' : views[0]
+  const active = [chosen, ...searching ? ['catalog' as const] : []].find(view => view !== undefined && views.includes(view)) ?? opening
+  const tabbed = views.length > 1
+  return <div className={shell.views} data-knowledge-views>
+    {tabbed && <div className={shell.bar}>
+      <SegmentedControl id="kg-views" label={t('kgViews')} value={active} onChange={setChosen}
+        options={views.map(view => ({ value: view, label: t(VIEW_LABELS[view]) }))} />
+    </div>}
+    <div className={shell.panel} {...tabbed ? { role: 'tabpanel', id: `kg-views-${active}-panel`, 'aria-labelledby': `kg-views-${active}` } : {}}>
+      {active === 'map' && <div className={shell.pad}><MapView {...props} key={project.id} project={project} /></div>}
+      {active === 'evidence' && <div className={shell.pad}><EvidenceView {...props} key={project.id} project={project} /></div>}
+      {active === 'catalog' && <div className={styles.tab}><Explorer {...props} key={project.id} project={project} /></div>}
+    </div>
+  </div>
+}
+
 function formText(data: FormData, name: string): string {
   const value = data.get(name)
+  /* v8 ignore next -- the forms hold only text inputs, so a value is a string */
   return typeof value === 'string' ? value.trim() : ''
 }
 
@@ -154,6 +214,7 @@ function EmbeddingSettings(props: WorkbenchProps & { preferences: ResearchPrefer
       else delete next.embedding
       await props.configure(next, { image: '', embedding: key })
       const input = form.elements.namedItem('key')
+      /* v8 ignore next -- the form's key field is always an input */
       if (input instanceof HTMLInputElement) input.value = ''
     })
   }
@@ -214,22 +275,26 @@ function KnowledgePage(props: WorkbenchProps): ReactNode {
   useEffect(() => { void props.refresh() }, [])
   if (!snapshot) return <p role="status">{props.t('kgLoading')}</p>
   const project = snapshot.projects.find(project => project.id === selected) ?? current ?? snapshot.projects[0]
-  return <section className={styles.root} data-knowledge-plugin>
-    <p className={styles.muted}>{props.t('kgShared')}</p>
-    <EmbeddingSettings {...props} preferences={snapshot.preferences} />
-    {!snapshot.knowledge?.enabled ? <p className={styles.empty} role="status">{props.t('kgDisabled')}</p> : <>
-      <div className={styles.toolbar}>
+  const views = knowledgeViews(snapshot.knowledge)
+  // The views stand between two sections of the page rather than inside one: the page's own button and input rules
+  // address every descendant of `root`, and would restyle the views' controls.
+  return <div className={shell.page} data-knowledge-plugin>
+    <section className={styles.root}>
+      <p className={styles.muted}>{props.t('kgShared')}</p>
+      <EmbeddingSettings {...props} preferences={snapshot.preferences} />
+      {views === undefined ? <p className={styles.empty} role="status">{props.t('kgDisabled')}</p> : <div className={styles.toolbar}>
         <label>{props.t('kgResearch')}<select value={project?.id ?? ''} onChange={(event) => { setSelected(event.target.value as ProjectId) }}>
           {snapshot.projects.map(project => <option key={project.id} value={project.id}>{project.title}</option>)}
         </select></label>
         <button type="button" onClick={() => { setOpened(value => !value) }} disabled={!project}>{props.t(opened ? 'kgClose' : 'kgOpen')}</button>
         {current && <button type="button" onClick={() => { props.openKnowledge() }}>{props.t('kgBesideChat')}</button>}
-      </div>
-      {opened && project && <Explorer {...props} key={`${project.id}:${revision}`} project={project} />}
-      {project && !project.example && <BuildGraph {...props} project={project}
-        onComplete={() => { setRevision(value => value + 1); setOpened(true) }} />}
-    </>}
-  </section>
+      </div>}
+    </section>
+    {views !== undefined && opened && project && <KnowledgeViews {...props} key={`${project.id}:${revision}`} project={project} views={views} />}
+    {views !== undefined && project && !project.example && snapshot.knowledge?.enabled && <section className={styles.root}>
+      <BuildGraph {...props} project={project} onComplete={() => { setRevision(value => value + 1); setOpened(true) }} />
+    </section>}
+  </div>
 }
 
 /** The current conversation's graph tab. */
@@ -242,6 +307,8 @@ export function KnowledgeTab(props: ResearchTabProps): ReactNode {
     query: typeof params === 'object' && 'query' in params && typeof params.query === 'string' ? params.query : undefined,
     pattern: typeof params === 'object' && 'pattern' in params && typeof params.pattern === 'string' ? params.pattern : undefined,
   }
-  return <div className={styles.tab}>{!snapshot?.knowledge?.enabled ? <p>{props.t('kgDisabled')}</p>
-    : project ? <Explorer {...props} key={`${project.id}:${navigation.revision}`} project={project} initial={initial} /> : <p>{props.t('railNoProject')}</p>}</div>
+  const views = knowledgeViews(snapshot?.knowledge)
+  if (views === undefined) return <div className={styles.tab}><p>{props.t('kgDisabled')}</p></div>
+  if (project === undefined) return <div className={styles.tab}><p>{props.t('railNoProject')}</p></div>
+  return <KnowledgeViews {...props} key={`${project.id}:${navigation.revision}`} project={project} initial={initial} views={views} />
 }

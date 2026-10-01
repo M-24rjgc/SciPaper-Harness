@@ -1,0 +1,8 @@
+/* The Knowledge tab's frame: a bar for the view switch above one panel that fills the rest of the right panel and scrolls itself. */
+.views { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.bar { flex: none; display: flex; padding: 14px 16px 0; }
+.panel { flex: 1 1 auto; min-height: 0; overflow: auto; --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }
+.pad { padding: 14px 16px 20px; }
+
+/* The plugin page: its sections and the views stacked with the spacing the page always had. */
+.page { display: flex; flex-direction: column; gap: 18px; min-width: 0; }

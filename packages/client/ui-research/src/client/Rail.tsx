@@ -17,6 +17,7 @@ import { ResearchHeroMark } from './Hero.tsx'
 import { nowLine, researchActivity, type NowLine, type ResearchActivity } from './activity.ts'
 import { appendedDraft, autonomyName, checkedText, counted, findingCounts, modeName, modePhases, packText, type Translate } from './format.ts'
 import type { ResearchKey } from './locales.ts'
+import { knowledgeViews } from './Knowledge.tsx'
 import { NoResearch, type ResearchTabProps } from './Tabs.tsx'
 import styles from './Rail.module.css'
 
@@ -390,14 +391,19 @@ function Counts(props: RecordProps): ReactNode {
   </section>
 }
 
-/** The research's secondary tools: the experiment board, the figure gallery and the research folder's files. */
+/**
+ * The research's secondary tools: the experiment board, the figure gallery, the knowledge graph while a knowledge
+ * plugin is on, and the research folder's files.
+ */
 function Tools(props: RecordProps): ReactNode {
   const { t } = props
+  const knowledge = props.useResearch(state => state.snapshot?.knowledge)
   const opening = useAction()
   return <section className={styles.tools}>
     <div className={styles.toolRow}>
       <button type="button" className={styles.tool} onClick={() => { props.openBoard() }}>{t('boardTitle')}</button>
       <button type="button" className={styles.tool} onClick={() => { props.openGallery() }}>{t('gallery')}</button>
+      {knowledgeViews(knowledge) !== undefined && <button type="button" className={styles.tool} onClick={() => { props.openKnowledge() }}>{t('kgTitle')}</button>}
       <button type="button" className={styles.tool} onClick={() => { opening.start(() => { props.openFiles() }) }}>{t('researchFiles')}</button>
     </div>
     <ActionError t={t} error={opening.error} />
