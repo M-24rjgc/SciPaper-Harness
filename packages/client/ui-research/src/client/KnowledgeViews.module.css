@@ -2,6 +2,8 @@
 .views { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .bar { flex: none; display: flex; padding: 14px 16px 0; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .bar > * { flex: 1 0 auto; }
+/* Six views must fit the tab at its usual width, so the last one is never pushed out of sight: tighter padding and type. */
+.bar [role='tab'] { padding-inline: 8px; font-size: 12px; }
 .panel { flex: 1 1 auto; min-height: 0; overflow: auto; --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }
 .pad { padding: 14px 16px 20px; }
 

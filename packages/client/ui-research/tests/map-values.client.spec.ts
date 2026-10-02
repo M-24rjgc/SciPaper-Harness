@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { MapRegionView } from '@deepseek-ai/dsh-research-workbench/types'
 import {
   MAX_ZOOM, MIN_ZOOM, REGION_COLOURS, base64Bytes, buildPointIndex, clampCamera, clipped, colourGroups, crowdingOf, decodeMap, drawPoints,
-  fitScale, gapRadius, labelWidth, nearestPoint, panBy, placeLabels, pointRadius, regionColours, safeLink, transformOf, wholeMap, zoomAt,
+  fitScale, gapRadius, labelWidth, nearestPoint, panBy, placeLabels, pointRadius, regionColours, safeLink, stageFurniture,
+  transformOf, wholeMap, zoomAt,
   type BuiltMap, type PointCanvas,
 } from '../src/client/mapValues.ts'
 
@@ -123,6 +124,26 @@ describe('labels and words', () => {
       { key: 'low-edge', x: 150, y: 95, width: 20, height: 20, priority: 8 },
     ], viewport)
     expect([...shown].sort()).toEqual(['below', 'beside', 'high'])
+  })
+  it('keeps labels out of the stage furniture, even a caption wider than the stage', () => {
+    const viewport = { width: 360, height: 300 }
+    // A 700px caption cannot fit a 360px stage; it is capped to the width the stylesheet allows, or it would block nothing.
+    const furniture = stageFurniture(viewport, 700, [120, 150, 90])
+    expect(furniture.map(item => item.key)).toEqual(['caption', 'legend', 'controls'])
+    expect(furniture[0]).toMatchObject({ x: 180, y: 21, width: 336, height: 22 })
+    expect(furniture[1]).toMatchObject({ x: 12 + 85, width: 170, height: 78 })
+    expect(furniture[1]?.y).toBe(300 - 12 - 39)
+    expect(furniture[2]).toMatchObject({ x: 332, y: 234, width: 32, height: 108 })
+    const label = (key: string, x: number, y: number) => ({ key, x, y, width: 80, height: 22, priority: 1 })
+    const shown = placeLabels([
+      ...furniture,
+      label('under caption', 200, 30), label('right of caption row', 200, 60),
+      label('over legend', 60, 255), label('over zoom buttons', 330, 200),
+      label('free', 200, 150),
+    ], viewport)
+    expect([...shown].filter(key => !furniture.some(item => item.key === key)).sort()).toEqual(['free', 'right of caption row'])
+    // A stage narrower than the margins leaves the furniture no negative width.
+    expect(stageFurniture({ width: 10, height: 40 }, 700, []).map(item => item.width)).toEqual([0, 0, 32])
   })
   it('measures CJK and full-width characters at a full em and the rest at a little over half', () => {
     expect(labelWidth('ab', 10, 0)).toBeCloseTo(11.6)

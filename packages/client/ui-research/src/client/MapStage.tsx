@@ -7,7 +7,8 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent, typ
 import type { MapGapView, MapPaperView, MapRegionView } from '@deepseek-ai/dsh-research-workbench/types'
 import type { Translate } from './format.ts'
 import {
-  REGION_COLOURS, drawPoints, fitScale, gapRadius, labelWidth, nearestPoint, panBy, placeLabels, pointRadius, transformOf, zoomAt,
+  REGION_COLOURS, drawPoints, fitScale, gapRadius, labelWidth, nearestPoint, panBy, placeLabels, pointRadius, stageFurniture,
+  transformOf, zoomAt,
   type DecodedMap, type LabelCandidate, type MapCamera, type PointIndex, type Viewport,
 } from './mapValues.ts'
 import styles from './KnowledgeMap.module.css'
@@ -153,10 +154,9 @@ export function MapStage(props: StageProps): ReactNode {
   const regions = props.regions.map(region => ({ region, at: screen(region.x, region.y) }))
   const gaps = (props.gaps ?? []).map(gap => ({ gap, at: screen(gap.x, gap.y), radius: gapRadius(gap.area) * transform.scale }))
   const gapTitle = (gap: MapGapView): string => `${t('kmGapLabel', { regions: gap.borders.slice(0, 2).join(' · ') })} · ${t('kmGapRecurs', { recurs: gap.recurs, others: gap.runs - 1 })}`
-  // The caption keeps its corner: it takes room from the labels first and is never drawn by them.
-  const captionWidth = labelWidth(props.caption, 11.5, 16)
+  // The caption, the legend and the zoom buttons keep their corners: they take room from the labels first and are never drawn by them.
   const candidates: LabelCandidate[] = [
-    { key: 'caption', x: 12 + captionWidth / 2, y: 21, width: captionWidth, height: 22, priority: Infinity },
+    ...stageFurniture(viewport, labelWidth(props.caption, 11.5, 16), props.legend.map(item => labelWidth(t(LEGEND_KEYS[item]), 11.5, 36))),
     ...markers.flatMap(({ marker, at }) => {
       if (marker.label === undefined) return []
       const width = labelWidth(marker.label, 11, 12)

@@ -311,6 +311,26 @@ export function placeLabels(candidates: readonly LabelCandidate[], viewport: Vie
   return new Set(shown.map(label => label.key))
 }
 
+/**
+ * The room the stage's own furniture takes in its corners, as label candidates no label may overlap: the caption along the top,
+ * the legend at the bottom left and the zoom buttons at the bottom right. Each is capped to the width the stylesheet allows it;
+ * an uncapped one that is wider than the stage would fail the fit test of {@link placeLabels} and so block nothing.
+ * @param viewport - the drawing area.
+ * @param captionWidth - the caption's natural width.
+ * @param legendWidths - the natural width of each legend row.
+ * @returns the candidates, each of a priority no label can reach.
+ */
+export function stageFurniture(viewport: Viewport, captionWidth: number, legendWidths: readonly number[]): LabelCandidate[] {
+  const caption = Math.min(captionWidth, Math.max(0, viewport.width - 24))
+  const legend = Math.min(Math.max(0, ...legendWidths) + 20, Math.max(0, viewport.width - 84))
+  const legendHeight = 16 + legendWidths.length * 18 + Math.max(0, legendWidths.length - 1) * 4
+  return [
+    { key: 'caption', x: 12 + caption / 2, y: 21, width: caption, height: 22, priority: Number.MAX_VALUE },
+    { key: 'legend', x: 12 + legend / 2, y: viewport.height - 12 - legendHeight / 2, width: legend, height: legendHeight, priority: Number.MAX_VALUE },
+    { key: 'controls', x: viewport.width - 28, y: viewport.height - 66, width: 32, height: 108, priority: Number.MAX_VALUE },
+  ]
+}
+
 /** Code point ranges a label sets a full em wide: CJK radicals to unified ideographs, compatibility ideographs, full-width forms. */
 const WIDE_RANGES: readonly (readonly [number, number])[] = [[0x2e80, 0x9fff], [0xf900, 0xfaff], [0xff00, 0xffef]]
 
