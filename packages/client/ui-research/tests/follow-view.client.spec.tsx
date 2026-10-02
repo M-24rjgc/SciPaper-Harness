@@ -37,6 +37,12 @@ interface Seat {
   language?: Record<string, string>
 }
 
+/** Give a loosely typed test double the props type its view promises. */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- the type is only the caller's claim about a test double
+function typed<T>(value: unknown): T {
+  return value as T
+}
+
 function harness(seat: Seat = {}) {
   const project = newProject({ root: '/research/follow', title: 'Follow study', brief: '' }, 'workspace' as WorkspaceId)
   project.example = seat.example === true
@@ -49,11 +55,11 @@ function harness(seat: Seat = {}) {
   })
   const readMarks = vi.fn()
   const release = vi.fn()
-  const props = {
+  const props = typed<FollowViewProps>({
     t: translate(seat.language ?? zh), project, run, readMarks,
     useMarks: (select: (value: KnowledgeMarksState) => unknown) => select(state),
     calls: [], knowledge: { enabled: seat.enabled ?? true, modules: seat.modules ?? everything },
-  } as FollowViewProps
+  })
   return { props, project, commands, run, readMarks, release }
 }
 

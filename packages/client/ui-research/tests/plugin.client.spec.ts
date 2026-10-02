@@ -371,6 +371,10 @@ async function bench(services: BenchServices = {}) {
   }
 }
 
+/** Read a registered seat's value as the type its owner promises; the seat itself is typed loosely. */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- the type is only the caller's claim about a test double
+const typed = <T>(value: unknown): T => value as T
+
 /** Dispose a bench's fiber once, and keep the shared teardown from repeating it. */
 async function stop(target: { fiber: { dispose: () => Promise<void> } }): Promise<void> {
   live.splice(live.indexOf(target.fiber), 1)
@@ -1046,7 +1050,7 @@ describe('the face a research seat acts through', () => {
 
   it('keeps the marks the cards and views read in one store, which every command that changes a mark updates', async () => {
     const b = await bench({ current: 'session-a' })
-    const card = (b.seat('tool.call.toolview', 'research_knowledge').inject as () => ResearchToolInjected)()
+    const card = typed<() => ResearchToolInjected>(b.seat('tool.call.toolview', 'research_knowledge').inject)()
     expect(card.hooks.marks).toBe(b.face.hooks.marks)
     expect(b.face.hooks.marks.getSnapshot()).toEqual({})
     const project = PROJECT.id
@@ -1096,7 +1100,7 @@ describe('the face a research seat acts through', () => {
 
   it('opens the graph of a call or of one of its nodes beside the conversation', async () => {
     const b = await bench({ current: 'session-a' })
-    const card = (b.seat('tool.call.toolview', 'research_knowledge').inject as () => ResearchToolInjected)()
+    const card = typed<() => ResearchToolInjected>(b.seat('tool.call.toolview', 'research_knowledge').inject)()
     card.openKnowledge({ call: 'call-1', node: 'ai:paper:moba' })
     expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: { call: 'call-1', node: 'ai:paper:moba' } })
     expect(b.layout.setInitialRightbarWidth).toHaveBeenLastCalledWith(560)
@@ -1111,7 +1115,7 @@ describe('the face a research seat acts through', () => {
 
   it('hands a kg link in a reply the record, the marks the cards read and the same way into the graph', async () => {
     const b = await bench({ current: 'session-a' })
-    const link = (b.seat('conversation.message.link', 'kg').inject as () => ResearchLinkInjected)()
+    const link = typed<() => ResearchLinkInjected>(b.seat('conversation.message.link', 'kg').inject)()
     expect(link.hooks).toEqual({ research: b.face.hooks.research, directories: b.face.hooks.directories, marks: b.face.hooks.marks })
     expect(link.hooks.marks).toBe(b.face.hooks.marks)
     link.openKnowledge({ call: 'call-1', node: 'ai:paper:moba' })
