@@ -309,6 +309,23 @@ export interface ResearchToolInjected {
   openKnowledge(params?: ResearchKnowledgeParams): void
 }
 
+/**
+ * What a `kg:` link in an assistant reply reads besides the conversation's own calls: the record, for the research the
+ * conversation belongs to, and the marks that decide how a chip looks; and the way to bring a node into focus in the graph.
+ */
+export interface ResearchLinkInjected {
+  hooks: {
+    research: ObservableSnapshot<ResearchView>
+    directories: ObservableSnapshot<SessionDirectories>
+    /** The marks last read for each research. */
+    marks: ObservableSnapshot<KnowledgeMarksState>
+  }
+  /** Read a research's marks again; a chip is struck through while its node is marked not relevant. */
+  readMarks(projectId: ProjectId): void
+  /** Open the graph beside the conversation on a call's turn, with a node in focus. */
+  openKnowledge(params?: ResearchKnowledgeParams): void
+}
+
 /** Composed props of every research slot entry: the dictionary plus the injected face. */
 export type WorkbenchProps = PropsLocale<'research'> & InjectFace<ResearchInjected>
 

@@ -88,6 +88,10 @@ describe('matching a session to its project', () => {
     expect(sessionProject([bound, ready], 'ssh', remote('srv/paper'))).toBeUndefined()
     expect(sessionProject([bound, ready], 'ssh', remote('/'))).toBeUndefined()
     expect(localResearchFileSession(ready, remote('/srv/paper'))).toBeUndefined()
+    // An SSH conversation with no host names no environment, and without a record it matches no project.
+    expect(sessionProject([bound, ready], 'ssh', { ssh: { kind: 'ssh', host: '', cwd: '/srv/paper/code' } })).toBeUndefined()
+    expect(sessionProject(undefined, 'ssh', remote('/srv/paper/code'))).toBeUndefined()
+    expect(sessionProject([{ root: '/srv/paper' }], 'ssh', remote('/srv/paper/code'))).toBeUndefined()
   })
 
   it('reads the installed modes from the record, and none before it arrives', () => {

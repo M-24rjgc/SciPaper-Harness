@@ -1,0 +1,6 @@
+/* A node or relation of the knowledge graph named inside an assistant reply: the tool card's chips, set in running text. */
+.chip { display: inline; max-width: 100%; margin: 0 1px; padding: 1px 8px; border: 0; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-brand-primary); font: inherit; font-weight: 600; line-height: inherit; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; cursor: pointer; }
+.chip[data-look='pinned'] { box-shadow: inset 0 0 0 1.5px var(--dsw-alias-brand-primary); }
+.chip[data-look='struck'] { background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-tertiary); text-decoration: line-through; }
+.chip[data-look='relation'] { background: var(--dsw-alias-state-ongoing-tertiary); color: var(--dsw-alias-state-ongoing-primary); }
+.chip:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }

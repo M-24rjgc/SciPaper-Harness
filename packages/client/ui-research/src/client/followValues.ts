@@ -33,7 +33,7 @@ export interface KnowledgeChat {
  * @param turn - the turn's number.
  * @returns the calls' results.
  */
-function turnCalls(snapshot: KnowledgeChat, turn: number): ToolResultNode[] {
+export function turnCalls(snapshot: KnowledgeChat, turn: number): ToolResultNode[] {
   const calls: ToolResultNode[] = []
   for (const key of snapshot.locations.getTurn(turn)) {
     const node = snapshot.nodes.get(key) as ChatNode | undefined

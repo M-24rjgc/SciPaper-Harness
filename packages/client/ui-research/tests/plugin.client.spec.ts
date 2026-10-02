@@ -46,9 +46,12 @@ import { SkipHarnessNotice } from '../src/client/Onboarding.tsx'
 import { EmptyCell } from '../src/client/EmptyCell.tsx'
 import { AutonomyChip } from '../src/client/AutonomyChip.tsx'
 import { ResearchCheckCard, ResearchToolCard } from '../src/client/ResearchToolView.tsx'
+import { KnowledgeLink } from '../src/client/KnowledgeLink.tsx'
+import { KnowledgePluginPage } from '../src/client/Knowledge.tsx'
 import { RESEARCH_TOOLS } from '../src/client/toolCallValues.ts'
 import type {
-  ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView, WorkbenchProps,
+  ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchLinkInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView,
+  WorkbenchProps,
 } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 
@@ -201,6 +204,8 @@ async function bench(services: BenchServices = {}) {
       'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
       'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
       'tool.call.toolview': { kind: 'keyed', scope: 'session' },
+      'conversation.message.link': { kind: 'keyed', scope: 'session' },
+      'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
     },
   } as never, () => null)
 
@@ -508,6 +513,12 @@ describe('the research plugin', () => {
       expect(entry).toMatchObject({ locale: 'research', component: entry.options.key === 'research_check' ? ResearchCheckCard : ResearchToolCard })
     }
 
+    // The research claims the kg scheme of the links in assistant replies, and no other.
+    expect(b.ctx.slots.entriesOfSlot('conversation.message.link').map(entry => entry.options.key)).toEqual(['kg'])
+    expect(b.seat('conversation.message.link', 'kg')).toMatchObject({ locale: 'research', component: KnowledgeLink })
+    // The knowledge bundle's plugin page is the research's, keyed by the bundle's package name.
+    expect(b.seat('plugins.bundle.config', '@deepseek-ai/dsh-research-knowledge-bundle')).toMatchObject({ locale: 'research', component: KnowledgePluginPage })
+
     // The entry screen carries no cards, intro, promises or folder button, the composer no folder button,
     // and the header no file, board or gallery buttons.
     expect(b.ctx.slots.entriesOfSlot('conversation.hero.welcome').map(entry => entry.options.id)).toEqual(['research-entry'])
@@ -560,7 +571,7 @@ describe('the research plugin', () => {
       'sidebar.brand.name', 'sidebar.brand.mark', 'conversation.session.header.actions',
       'conversation.hero.welcome', 'conversation.hero.brand.mark', 'conversation.input.dock',
       'shell.overlay', 'settings.section', 'settings.onboarding', 'sidebar.right.pane.tab', 'sidebar.right.pane.tab.title',
-      'tool.call.toolview',
+      'tool.call.toolview', 'conversation.message.link', 'plugins.bundle.config',
     ]) {
       expect(b.ctx.slots.entriesOfSlot(name as never)).toHaveLength(0)
     }
@@ -987,6 +998,9 @@ describe('the face a research seat acts through', () => {
     const b = await bench({ current: 'session-a' })
     b.face.openFile('C:\\research\\sparse', 'paper\\main.pdf')
     expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/session/session-a/C:/research/sparse/paper/main.pdf')
+    // The research's file tab opens for a conversation that works in a local folder.
+    b.face.openFiles()
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('files')
     b.sidebarRight.openResource.mockImplementationOnce(() => { throw new Error('no session is bound') })
     expect(() => { b.face.openFile('/r', 'x.pdf') }).toThrow('no session is bound')
     // With no conversation on screen there is no sidebar to show it in.
@@ -1013,6 +1027,8 @@ describe('the face a research seat acts through', () => {
     })
     b.face.openFile(project.root, 'paper/main.pdf')
     expect(b.sidebarRight.openResource).toHaveBeenCalledWith('dsh-resource://file/session/local/C:/research/sparse/paper/main.pdf')
+    // A folder that is not the research the conversation maps to is not read through it.
+    expect(() => { b.face.openFile('C:\\research\\other', 'paper/main.pdf') }).toThrow(en.localResearchFileUnavailable)
     expect(() => { b.face.openFiles() }).toThrow(en.localResearchFilesTabUnavailable)
     expect(b.sidebarRight.openTab).not.toHaveBeenCalledWith('files')
     b.publishSessions({ remote: { cwd: '/srv/sparse/code', execution: { kind: 'ssh', host: 'lab' } } })
@@ -1091,6 +1107,18 @@ describe('the face a research seat acts through', () => {
     expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: { query: 'sparse' } })
     b.face.openKnowledge()
     expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: {} })
+  })
+
+  it('hands a kg link in a reply the record, the marks the cards read and the same way into the graph', async () => {
+    const b = await bench({ current: 'session-a' })
+    const link = (b.seat('conversation.message.link', 'kg').inject as () => ResearchLinkInjected)()
+    expect(link.hooks).toEqual({ research: b.face.hooks.research, directories: b.face.hooks.directories, marks: b.face.hooks.marks })
+    expect(link.hooks.marks).toBe(b.face.hooks.marks)
+    link.openKnowledge({ call: 'call-1', node: 'ai:paper:moba' })
+    expect(b.sidebarRight.openTab).toHaveBeenLastCalledWith('research-knowledge', { params: { call: 'call-1', node: 'ai:paper:moba' } })
+    expect(b.layout.setInitialRightbarWidth).toHaveBeenLastCalledWith(560)
+    link.readMarks(PROJECT.id)
+    expect(b.remote.command.mock.calls.at(-1)?.[0]).toEqual({ action: 'marks', projectId: PROJECT.id })
   })
 
   it('reads a literature source\'s authors and year once per revision, and leaves them out when its record cannot be read', async () => {
@@ -1211,6 +1239,13 @@ describe('where startup and 新研究 go', () => {
     expect(carry).toHaveBeenCalledWith('w-moved')
     expect(release).toHaveBeenCalledTimes(1)
     expect(b.uiWorkspace.openSession).not.toHaveBeenCalled()
+  })
+
+  it('moves a draft that no conversation shows without holding a conversation open, and reports the host\'s refusal', async () => {
+    const b = await bench({ snapshot: snapshotOf([draft]) })
+    b.remote.command.mockResolvedValueOnce(bad('The folder is not available'))
+    expect(await b.entry.move({ projectId: draft.id, root: '/picked' }, vi.fn())).toBeUndefined()
+    expect(b.sessions.retain).not.toHaveBeenCalled()
   })
 
   it('opens another research with the draft and then discards the draft, through the same face', async () => {

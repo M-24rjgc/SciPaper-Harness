@@ -21,8 +21,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path'
 import type {
-  EntryView, FolderPick, KnowledgeMarksState, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchToolInjected,
-  ResearchTreeInjected, ResearchView, SessionDirectories, SourceReference,
+  EntryView, FolderPick, KnowledgeMarksState, ResearchEntryInjected, ResearchFocus, ResearchInjected, ResearchKnowledgeParams,
+  ResearchLinkInjected, ResearchToolInjected, ResearchTreeInjected, ResearchView, SessionDirectories, SourceReference,
 } from './contract.ts'
 import { localResearchFileSession, sessionDirectoriesOf, sessionProject, sshWorkspaceErrorOf } from './contract.ts'
 import { createResearchEntry, until } from './entry.ts'
@@ -48,6 +48,8 @@ import { AutonomyChip } from './AutonomyChip.tsx'
 import { guardExampleComposers, knownExampleFile } from './examples.ts'
 import { ResearchCheckCard, ResearchToolCard } from './ResearchToolView.tsx'
 import { KnowledgePluginPage, KnowledgeTab } from './Knowledge.tsx'
+import { KnowledgeLink } from './KnowledgeLink.tsx'
+import { KNOWLEDGE_SCHEME } from './linkValues.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import { en, zh, type ResearchKey } from './locales.ts'
 
@@ -292,6 +294,11 @@ export function apply(ctx: Context): void {
       // The graph engine is off or the research is gone; there are no marks to show.
     }).finally(() => { readingMarks.delete(projectId) })
   }
+  /** Open the graph beside the conversation; the panel's width is suggested only while it has none yet. */
+  const openKnowledge = (params?: ResearchKnowledgeParams): void => {
+    ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
+    ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })
+  }
   const injected = (): ResearchInjected => ({
     hooks: { currentSession, research: state, focus, directories, canReveal, presets, marks }, refresh, readMarks,
     openFile: openProjectFile,
@@ -338,10 +345,7 @@ export function apply(ctx: Context): void {
       ctx.sidebarRight.openTab(SOURCES_TAB.kind, section === undefined ? {} : { params: { section } })
     },
     openGallery: () => { openTab(GALLERY_TAB.kind, WIDE_TAB_PX) },
-    openKnowledge: (params) => {
-      ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
-      ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })
-    },
+    openKnowledge,
     startNew: () => { ctx.uiWorkspace.startSession() },
   })
   // Where startup and 新研究 go (ui-workspace's entry policy), and the untouched draft's moves.
@@ -434,11 +438,14 @@ export function apply(ctx: Context): void {
   // A claim's sources open over the whole frame; the Sources tab puts one in focus.
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-claim', order: 20, locale: 'research', inject: injected }, ResearchClaimSheet))
   // The research tools' calls read in the reader's language inside the conversation, a research check as its own card.
-  const toolInjected = (): ResearchToolInjected => ({ hooks: { currentSession, research: state, marks }, readMarks, openProjectFile,
-    openKnowledge: (params) => {
-      ctx.layout.setInitialRightbarWidth(WIDE_TAB_PX)
-      ctx.sidebarRight.openTab(KNOWLEDGE_TAB.kind, { params: params ?? {} })
-    } })
+  const toolInjected = (): ResearchToolInjected => ({
+    hooks: { currentSession, research: state, marks }, readMarks, openProjectFile, openKnowledge,
+  })
+  // A node or relation the agent names in a reply as a `kg:` link is a chip, when a knowledge call of the conversation touched it.
+  const linkInjected = (): ResearchLinkInjected => ({ hooks: { research: state, directories, marks }, readMarks, openKnowledge })
+  ctx.slots.inject('conversation.message.link', () => ctx.slots.register({
+    name: 'conversation.message.link', key: KNOWLEDGE_SCHEME, locale: 'research', inject: linkInjected,
+  }, KnowledgeLink))
   ctx.slots.inject('tool.call.toolview', function* () {
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_check', locale: 'research', inject: toolInjected }, ResearchCheckCard)
     yield ctx.slots.register({ name: 'tool.call.toolview', key: 'research_project', locale: 'research', inject: toolInjected }, ResearchToolCard)
