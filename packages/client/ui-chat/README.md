@@ -39,6 +39,8 @@ Standalone Markdown images show contained previews and open the shared image lig
 
 Settings → General → Open chat links in selects the destination for ordinary clicks on Chat HTTP(S) links: In-App Sidebar (default) opens a new right-Sidebar Browser tab, while Default Browser opens an external tab. The setting follows Keyboard shortcuts and is shown only while the Sidebar Browser is available. If the Sidebar Browser is not registered, both choices use the external browser; modified clicks retain native behavior. The `ui-chat.linkOpening` preference persists on loopback browsers and stays process-local when settings cannot persist writes. Sent file references and skills confirmed by the message’s logged invocation also open in the right Sidebar. File paths use the viewed Session; skill names resolve through its current input-trigger source. Both use the prose file-link dotted underline on hover or focus. Sessions, directories, and command labels remain non-navigating references.
 
+A link in a settled assistant message whose destination uses a scheme the Markdown renderer drops (neither HTTP(S), mailto nor a local file) is offered to the keyed slot `conversation.message.link`, keyed by that scheme in lower case, with the scheme, the authored destination and the link's plain text as owner values. A feature claims a scheme by registering its key and draws the link inline, since the cell renders inside the paragraph in an inline outlet; a scheme with no cell keeps the link's text, and streaming text is never offered. The destination is untrusted model text, so a cell looks it up in its own records and draws the label as plain text when it finds nothing; the renderer never makes an anchor from it.
+
 <a id="system-prompt-row"></a>
 ## Hidden Chat rows
 

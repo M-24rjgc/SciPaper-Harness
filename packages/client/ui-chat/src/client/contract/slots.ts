@@ -11,7 +11,7 @@ import type {
   PropsStore, SlotHookFactory, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownFileMentions, MarkdownSchemeLink } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createChatStore } from '../stores.ts'
 import type { ChatPresentationPolicy } from '../presentation-policy.ts'
@@ -278,10 +278,19 @@ export interface ChatViewInjected {
   knownFilePath?: ((path: string) => boolean) | undefined
 }
 
+/**
+ * Owner currency of one link in settled assistant text whose scheme the Markdown renderer drops: the scheme that keys
+ * the slot, the destination as authored (inert text, never a URL to follow) and the link's plain label.
+ */
+export type MessageLinkOwnerProps = MarkdownSchemeLink
+
+/** Full props of a registered message-link renderer: the owner share and the standard Session hooks. */
+export type MessageLinkProps = PropsRuntime<'conversation.message.link'>
+
 /** Full Chat view props. */
 export type ChatViewSlotProps =
   PropsRuntime<'conversation.view'>
-  & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images'>
+  & PropsRenderSlots<'conversation.chat.node' | 'conversation.message.images' | 'conversation.message.link'>
   & PropsStore<ChatStore>
   & InjectFace<ChatViewInjected>
   & PropsLocale<'chat'>
@@ -320,6 +329,15 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * registration replaces the shipped gallery; without one, images are omitted.
      */
     'conversation.message.images': { kind: 'single'; scope: 'session'; owner: MessageImagesOwnerProps }
+    /**
+     * Renderer for a link in a settled assistant message whose destination uses a scheme the Markdown renderer
+     * drops, keyed by that scheme in lower case (`kg` for `kg:ai:paper:42`). A feature claims a scheme by
+     * registering its key and draws the link inline; the cell renders inside the paragraph, so it must return
+     * inline content. A scheme nobody claims keeps the link's text, and streaming text is never offered. The
+     * destination is untrusted model text: a cell resolves it against its own records and draws the label as
+     * plain text when it names nothing there.
+     */
+    'conversation.message.link': { kind: 'keyed'; scope: 'session'; owner: MessageLinkOwnerProps }
     /**
      * Command row keyed by the command name. The component receives the folded
      * command lifecycle and linked compaction when present. Reusing a key

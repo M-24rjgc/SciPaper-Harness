@@ -43,6 +43,19 @@ describe('Markdown file links', () => {
     expect(view.getByText('paper/main.pdf', { selector: 'code' })).toBeTruthy()
   })
 
+  it('links a registered path that opens the text, without a text run before it', () => {
+    const openFile = vi.fn()
+    const view = render(
+      <MarkdownDelegateProvider openFile={openFile} knownFilePath={path => path === 'paper/main.pdf'}>
+        <MarkdownText text="paper/main.pdf is final" />
+      </MarkdownDelegateProvider>,
+    )
+    expect(view.container.querySelector('p')?.firstElementChild?.textContent).toBe('paper/main.pdf')
+    fireEvent.click(view.getByRole('button', { name: 'paper/main.pdf' }))
+    expect(openFile).toHaveBeenCalledExactlyOnceWith('paper/main.pdf', undefined)
+    expect(view.container.querySelector('p')?.textContent).toBe('paper/main.pdf is final')
+  })
+
   it('does not promote plain paths while streaming or in an ordinary conversation', () => {
     const openFile = vi.fn()
     const text = 'See paper/main.pdf'

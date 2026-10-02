@@ -59,6 +59,8 @@ The slot declaration fixes two independent axes.
 
 `priority` is a shadowing rank for `single`, `list`, and `keyed` cells and an election order for `chain`. Lower values run or render first. Ordinary additive contributions should choose a fresh list `id` or keyed `key`; intentionally reusing a shipped cell replaces its presentation.
 
+Every render site is wrapped in a layout-neutral `[data-slot]` anchor element, a `div` by default. A site inside inline content, such as the paragraph of a Markdown message, passes `inline: true` in its `renderSlot` options and gets a `span`, so the page keeps valid nesting.
+
 ## Component inputs
 
 A registered component receives inputs assembled at its binding site. Components derive these types rather than copying their members.
@@ -150,6 +152,7 @@ root
 │     │     │     ├─ tool.call.images
 │     │     │     └─ tool.view.cordis
 │     │     ├─ conversation.message.images
+│     │     ├─ conversation.message.link
 │     │     ├─ conversation.trajectory.images
 │     │     └─ conversation.trajectory.toolbar
 │     ├─ conversation.header

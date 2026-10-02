@@ -39,6 +39,8 @@ Chat 在节点列表外通过一个 `MarkdownDelegateProvider` 提供文件及 H
 
 设置 → 通用设置 → 网页链接默认打开方式控制普通点击 Chat HTTP(S) 链接时的目标：「应用内侧边栏」（默认）打开新的右侧 Sidebar Browser tab，「默认浏览器」打开外部标签页。该设置项位于快捷键之后，仅在 Sidebar Browser 可用时显示。若 Sidebar Browser 未注册，两种选择均使用外部浏览器；带修饰键的点击保留原生行为。`ui-chat.linkOpening` 偏好在回环地址浏览器中持久化，设置无法持久化写入时仅在当前进程内生效。已发送的文件引用及消息日志确认调用的 skill 也可在右侧栏打开预览。文件路径使用当前查看的 Session；skill 名称由该 Session 当前的输入触发源解析。两者悬停或聚焦时均使用正文文件链接的虚线下划线。会话、目录和命令标签仍只作为引用展示。
 
+落定的 assistant 消息中，目标使用 Markdown 渲染器会丢弃的协议（既非 HTTP(S)、mailto，也不是本地文件）的链接，会交给按该小写协议为键的 keyed slot `conversation.message.link`，owner 值为协议、作者书写的目标和链接的纯文本。功能通过注册该键认领协议并以行内方式绘制链接，因为该单元通过行内 outlet 渲染在段落内；没有单元的协议保留链接文本，流式文本不会被提供。目标是不可信的模型文本，所以单元要在自己的记录中查找它，找不到就把标签绘制为纯文本；渲染器不会为它生成 anchor。
+
 <a id="system-prompt-row"></a>
 ## Chat 隐藏的行
 

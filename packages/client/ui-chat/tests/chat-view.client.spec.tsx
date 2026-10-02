@@ -3144,6 +3144,39 @@ describe('ChatView', () => {
     expect(view.queryByRole('button', { name: 'data/results.csv' })).toBeNull()
   })
 
+  it('offers links with a feature scheme in settled assistant text to the keyed message-link slot, inline', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'question'), assistant(2, 'Use [MoBA](kg:ai:paper:42), [that](ftp://example.org/a) and [web](https://example.org/w).')],
+      turnEnds: new Map([[1, 3]]),
+    })
+    const baseRenderSlot = h.props.renderSlot
+    const offered: { owner: unknown; opts: unknown }[] = []
+    const renderSlot = ((key: string, owner: object, opts?: { fallback?: React.ReactNode; entryKey?: string }) => {
+      if (key !== 'conversation.message.link') return baseRenderSlot(key as never, owner as never, opts as never)
+      offered.push({ owner, opts: { entryKey: opts?.entryKey, inline: (opts as { inline?: boolean }).inline } })
+      return opts?.entryKey === 'kg' ? <button type="button">{(owner as { label: string }).label}</button> : opts?.fallback
+    }) as ChatViewSlotProps['renderSlot']
+    const view = render(<h.ChatView {...{ ...h.props, renderSlot }} />)
+    expect(offered).toEqual([
+      { owner: { scheme: 'kg', destination: 'kg:ai:paper:42', label: 'MoBA' }, opts: { entryKey: 'kg', inline: true } },
+      { owner: { scheme: 'ftp', destination: 'ftp://example.org/a', label: 'that' }, opts: { entryKey: 'ftp', inline: true } },
+    ])
+    expect(view.getByRole('button', { name: 'MoBA' })).toBeTruthy()
+    expect(view.getByRole('link', { name: 'web' }).getAttribute('href')).toBe('https://example.org/w')
+    expect(view.container.textContent).toContain('Use MoBA, that and web.')
+  })
+
+  it('keeps the text of a link whose scheme no slot cell claims', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'question'), assistant(2, 'Use [MoBA](kg:ai:paper:42) here.')],
+      turnEnds: new Map([[1, 3]]),
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.container.textContent).toContain('Use MoBA here.')
+    expect(view.queryByRole('button', { name: 'MoBA' })).toBeNull()
+    expect(view.queryByRole('link', { name: 'MoBA' })).toBeNull()
+  })
+
   it('disables fork when the indexed Turn has a later steering Node', () => {
     const base = chatSnapshotFixture({
       nodes: [user(1, 'question'), assistant(2, 'answer')],

@@ -367,6 +367,22 @@ describe('child outlets and the renderSlot binding', () => {
     expect(view.container.querySelector('footer')!.textContent).toBe('fb')
   })
 
+  it('draws the outlet anchor as a span inside inline content and as a div elsewhere', () => {
+    const h = makeHost()
+    h.declare('k.keyed', { kind: 'keyed', scope: 'root' })
+    h.add('k.keyed', { component: () => <b>goal</b>, options: { key: 'goal' } })
+    const children = { 'k.keyed': { kind: 'keyed', scope: 'root' } as DeclaredSpec }
+    const { view } = mountRoot(h, children, renderSlot => <>
+      <p>{renderSlot('k.keyed', {}, { entryKey: 'goal', inline: true })}</p>
+      <p>{renderSlot('k.keyed', {}, { entryKey: 'nope', fallback: 'fb', inline: true })}</p>
+      <section>{renderSlot('k.keyed', {}, { entryKey: 'goal' })}</section>
+    </>)
+    const paragraphs = view.container.querySelectorAll('p')
+    expect(paragraphs[0]!.innerHTML).toBe('<span data-slot="k.keyed" style="display: contents;"><b>goal</b></span>')
+    expect(paragraphs[1]!.innerHTML).toBe('<span data-slot="k.keyed" style="display: contents;">fb</span>')
+    expect(view.container.querySelector('section')!.innerHTML).toBe('<div data-slot="k.keyed" style="display: contents;"><b>goal</b></div>')
+  })
+
   it('keeps the binding identity-stable across re-renders and throws SlotOwnershipError off-declaration', () => {
     const h = makeHost()
     h.declare('k.single', SINGLE_ROOT)

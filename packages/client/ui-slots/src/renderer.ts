@@ -119,6 +119,8 @@ export interface RenderOpts {
   entryKey?: string
   only?: string
   fallback?: ReactNode
+  /** Draw the outlet's anchor as a `span` instead of a `div`, for a slot rendered inside inline content. */
+  inline?: boolean
   /** Opaque occurrence context consumed only by function-valued injected Hooks. */
   hookContext?: unknown
 }

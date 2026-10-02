@@ -10,6 +10,7 @@ import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/
 import {
   Button, IconChevronDownOutlineRegular, MarkdownDelegateProvider, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MarkdownDelegate } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
@@ -213,6 +214,12 @@ export function ChatView({
     [loadImage, renderSlot],
   )
 
+  // A link whose scheme a feature claims is drawn inline in the paragraph; an unclaimed scheme keeps the link's text.
+  const renderSchemeLink = useCallback<NonNullable<MarkdownDelegate['renderSchemeLink']>>(
+    (link, fallback) => renderSlot('conversation.message.link', link, { entryKey: link.scheme, fallback, inline: true }),
+    [renderSlot],
+  )
+
   const firstKey = order[0]
   const firstSeq = firstKey === undefined ? null : nodeStore.get(firstKey)?.anchorSeq ?? null
   const lastKey = order.at(-1) ?? null
@@ -256,7 +263,7 @@ export function ChatView({
               </div>
             )}
             <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile} fileImages={fileImages}
-              knownFilePath={readOnly ? knownFilePath : undefined}>
+              knownFilePath={readOnly ? knownFilePath : undefined} renderSchemeLink={renderSchemeLink}>
               <ChatNodeList
                 entries={entries}
                 pendingInputs={pendingInputs}

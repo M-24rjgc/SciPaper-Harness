@@ -262,6 +262,8 @@ export interface RenderOpts<EntryKey extends string = string> {
   entryKey?: EntryKey
   only?: string
   fallback?: ReactNode
+  /** Draw the outlet's anchor as a `span` instead of a `div`, for a slot rendered inside inline content such as a paragraph. */
+  inline?: boolean
   /** Type-erased runtime seat; PropsRenderSlots narrows or removes it per slot declaration. */
   hookContext?: unknown
 }

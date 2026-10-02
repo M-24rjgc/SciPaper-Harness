@@ -59,6 +59,8 @@ Slot 声明固定两个相互独立的维度。
 
 对于 `single`、`list` 和 `keyed` cell，`priority` 是遮蔽优先级；对于 `chain`，它是选举顺序。数值越小越先运行或渲染。普通增量贡献应选用新的 list `id` 或 keyed `key`；复用已有 cell 表示有意替换其展示。
 
+每个渲染位置都由一个不影响布局的 `[data-slot]` 锚点元素包裹，默认是 `div`。位于行内内容（例如 Markdown 消息的段落）中的渲染位置在 `renderSlot` 选项里传入 `inline: true`，得到 `span`，使页面保持合法的嵌套。
+
 ## 组件输入
 
 注册组件会在 binding 位置收到组装后的输入。组件应从这些类型推导 props，不要重新抄写成员。
@@ -150,6 +152,7 @@ root
 │     │     │     ├─ tool.call.images
 │     │     │     └─ tool.view.cordis
 │     │     ├─ conversation.message.images
+│     │     ├─ conversation.message.link
 │     │     ├─ conversation.trajectory.images
 │     │     └─ conversation.trajectory.toolbar
 │     ├─ conversation.header

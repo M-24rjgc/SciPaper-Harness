@@ -9,6 +9,19 @@ import type { ImageLightboxLabels } from '../ImageLightbox.tsx'
  */
 export type MarkdownExternalLinkHandler = (href: string) => void
 
+/**
+ * A link whose destination uses a scheme the renderer never turns into an anchor, offered to the owner of the
+ * Markdown scope so that a feature can draw its own inline element.
+ */
+export interface MarkdownSchemeLink {
+  /** The destination's scheme in lower case, without the colon (`kg` for `kg:ai:paper:42`). */
+  readonly scheme: string
+  /** The destination exactly as the author wrote it, after Markdown escapes were resolved. */
+  readonly destination: string
+  /** The plain text of the link's content, without formatting. */
+  readonly label: string
+}
+
 /** Navigation capabilities supplied by the nearest Markdown owner. */
 export interface MarkdownDelegate {
   /** Image previews for decoded local paths in this owner's workspace. */
@@ -26,6 +39,15 @@ export interface MarkdownDelegate {
   readonly openFile?: ((path: string, options?: { line?: number }) => void) | undefined
   /** Resolve an authored plain-text path only when its owner knows that exact file. */
   readonly knownFilePath?: ((path: string) => boolean) | undefined
+  /**
+   * Draw a link whose scheme the renderer drops (anything but HTTP(S), mailto and local file destinations) in
+   * settled content. The result replaces the dropped link's text and is never an anchor made by the renderer;
+   * an owner that claims no scheme returns `fallback`. Absent handlers leave the link's text, as before.
+   * @param link - the scheme, destination and plain text of the link.
+   * @param fallback - the link's content as the renderer draws it without a handler.
+   * @returns the node to draw in place of the link's content.
+   */
+  readonly renderSchemeLink?: ((link: MarkdownSchemeLink, fallback: ReactNode) => ReactNode) | undefined
 }
 
 const MarkdownDelegateContext = createContext<MarkdownDelegate>({})
@@ -38,7 +60,7 @@ export interface MarkdownDelegateProviderProps extends MarkdownDelegate {
 /**
  * Scope Markdown navigation without threading callbacks through renderers.
  * Nested providers replace the enclosing capabilities. Handler changes reach cached links.
- * @param props - Child tree and its file and HTTP(S) link handlers.
+ * @param props - Child tree and its file, HTTP(S) and scheme-link handlers.
  * @returns the scoped child tree.
  */
 export function MarkdownDelegateProvider({
@@ -47,10 +69,11 @@ export function MarkdownDelegateProvider({
   openFile,
   fileImages,
   knownFilePath,
+  renderSchemeLink,
 }: MarkdownDelegateProviderProps): ReactNode {
   const delegate = useMemo(
-    () => ({ openExternalLink, openFile, fileImages, knownFilePath }),
-    [openExternalLink, openFile, fileImages, knownFilePath],
+    () => ({ openExternalLink, openFile, fileImages, knownFilePath, renderSchemeLink }),
+    [openExternalLink, openFile, fileImages, knownFilePath, renderSchemeLink],
   )
   return (
     <MarkdownDelegateContext.Provider value={delegate}>

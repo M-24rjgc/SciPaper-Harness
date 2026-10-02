@@ -34,7 +34,8 @@ export type { ChatPresentationPolicy } from './presentation-policy.ts'
 export type {
   AssistantActionOwnerProps, ChatFileMentions, ChatKnownFilePaths, ChatNodeHookContext, ChatNodeInjected, ChatNodeOwnerProps,
   ChatNodeViewProps, ChatScrollPosition, ChatStore, ChatViewInjected, ChatViewSlotProps,
-  CommandRowOwnerProps, CommandRowProps, MessageImagesProps, OpenFileOptions, PresentationInjected,
+  CommandRowOwnerProps, CommandRowProps, MessageImagesProps, MessageLinkOwnerProps, MessageLinkProps, OpenFileOptions,
+  PresentationInjected,
   QuotaNoticeCode, QuotaNoticeHostProps, QuotaNoticeInjected, QuotaNoticeOwnerProps, QuotaNoticeState,
   TurnProcessOwnerProps, TurnTailOwnerProps, UseChat, UseChatNodeTurnData, UseDisclosure, UsePresentation,
 } from './contract/slots.ts'

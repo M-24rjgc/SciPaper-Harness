@@ -9,6 +9,7 @@ import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type * as Md from 'mdast'
 import { MarkdownText } from './markdown-test-components.tsx'
+import { MarkdownDelegateProvider } from '../src/markdown/MarkdownDelegate.tsx'
 import { markdownLabels } from './labels.client.ts'
 import {
   collectReferenceTargets, createReferenceTargets, renderBlocks, renderFootnoteSection,
@@ -54,6 +55,23 @@ describe('renderBlocks over hand-built trees', () => {
     ])
     expect(container.textContent).toBe('[one][two][][three][C]![pic][d]![]')
     expect(container.querySelector('a')).toBeNull()
+  })
+
+  it('reads the plain label of a dropped link from an image without alternative text', () => {
+    const labels: string[] = []
+    const container = render(
+      <MarkdownDelegateProvider renderSchemeLink={(link, fallback) => { labels.push(link.label); return fallback }}>
+        <div>{renderBlocks([{
+          node: {
+            type: 'paragraph',
+            children: [{ type: 'link', url: 'kg:x', children: [text('a'), { type: 'image', url: 'https://example.org/i.png', alt: null }, text('b')] }],
+          },
+          key: 0,
+        }], makeContext())}</div>
+      </MarkdownDelegateProvider>,
+    ).container
+    expect(labels).toEqual(['ab'])
+    expect(container.querySelector('img')).not.toBeNull()
   })
 
   it('keeps the first definition when identifiers repeat', () => {

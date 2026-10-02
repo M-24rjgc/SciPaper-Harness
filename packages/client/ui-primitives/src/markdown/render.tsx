@@ -28,6 +28,7 @@ import { parseFileLink } from './file-link.ts'
 import { renderTexToReact } from './katex.tsx'
 import { LinkIconMedium, classifyLinkPath } from '../LinkIcon.tsx'
 import { useMarkdownDelegate } from './MarkdownDelegate.tsx'
+import type { MarkdownSchemeLink } from './MarkdownDelegate.tsx'
 import { HoverCard } from '../HoverCard.tsx'
 import { ImageLightbox } from '../ImageLightbox.tsx'
 import { ImagePreview } from '../ImagePreview.tsx'
@@ -353,7 +354,7 @@ function renderNode(node: Md.RootContent, key: Key, context: MarkdownRenderConte
     case 'link':
       return renderAnchor(
         node.url, renderChildren(node.children, { ...context, inLink: true }), key,
-        !anchorWrapsOnlyImages(node.children), context.streaming,
+        !anchorWrapsOnlyImages(node.children), context.streaming, node.children,
       )
     case 'linkReference':
       return renderLinkReference(node, key, context)
@@ -573,13 +574,50 @@ function MarkdownAnchor({ href, glyph, children }: {
   )
 }
 
-/** Local destinations use the scoped file delegate after settlement. */
-function renderAnchor(url: string, children: ReactNode[], key: Key, glyph = true, streaming = false): ReactNode {
+/** Schemes the renderer owns: a malformed destination of one of them stays dropped, never offered to an owner. */
+const OWN_SCHEMES: ReadonlySet<string> = new Set(['http', 'https', 'mailto'])
+
+/** The lower-case scheme an authored destination starts with, or undefined when it names none or the renderer owns it. */
+function schemeOf(url: string): string | undefined {
+  const scheme = /^([A-Za-z][A-Za-z\d+.-]*):/u.exec(url)?.[1]?.toLowerCase()
+  return scheme === undefined || OWN_SCHEMES.has(scheme) ? undefined : scheme
+}
+
+/** The text of inline content without formatting: text, code and image alternatives in document order. */
+function plainText(nodes: readonly Md.PhrasingContent[]): string {
+  let text = ''
+  for (const node of nodes) {
+    if ('children' in node) text += plainText(node.children)
+    else if ('value' in node) text += node.value
+    else if ('alt' in node) text += node.alt ?? ''
+  }
+  return text
+}
+
+/**
+ * Local destinations use the scoped file delegate after settlement. A destination the allowlist drops and that names
+ * a scheme other than HTTP(S) and mailto goes to the scope's scheme-link handler in settled content; without a handler
+ * it draws as the link's content, as every dropped destination does.
+ */
+function renderAnchor(
+  url: string, children: ReactNode[], key: Key, glyph = true, streaming = false, content: readonly Md.PhrasingContent[] = [],
+): ReactNode {
   const file = streaming ? undefined : parseFileLink(url)
   if (file !== undefined) {
     return <MarkdownFileLink key={key} file={file} glyph={glyph}>{children}</MarkdownFileLink>
   }
-  return renderSafeLink(normalizeUri(url), children, key, glyph)
+  const href = normalizeUri(url)
+  const scheme = streaming || sanitizeUrl(href) !== '' ? undefined : schemeOf(url)
+  if (scheme !== undefined) {
+    return <SchemeLink key={key} link={{ scheme, destination: url, label: plainText(content) }}>{children}</SchemeLink>
+  }
+  return renderSafeLink(href, children, key, glyph)
+}
+
+/** A dropped link's content, replaced by the scope's scheme-link handler when it has one. */
+function SchemeLink({ link, children }: { readonly link: MarkdownSchemeLink; readonly children: ReactNode[] }): ReactNode {
+  const { renderSchemeLink } = useMarkdownDelegate()
+  return <>{renderSchemeLink === undefined ? children : renderSchemeLink(link, children)}</>
 }
 
 // A path must be one complete plain-text token. Exact existence is decided by
@@ -715,7 +753,7 @@ function renderLinkReference(
     return <Fragment key={key}>{'['}{renderChildren(node.children, context)}{referenceSuffix(node)}</Fragment>
   }
   const rendered = renderChildren(node.children, { ...context, inLink: true })
-  return renderAnchor(definition.url, rendered, key, !anchorWrapsOnlyImages(node.children), context.streaming)
+  return renderAnchor(definition.url, rendered, key, !anchorWrapsOnlyImages(node.children), context.streaming, node.children)
 }
 
 function renderImageReference(

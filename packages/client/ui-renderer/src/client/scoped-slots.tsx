@@ -1084,10 +1084,11 @@ function SlotOutlet({ slotKey, ownerProps, opts }: {
   // rides the outlet, not the dispatch outcome: fallback, crash-face, and
   // undeclared-empty states all render inside it, so the anchor's presence
   // never flickers with registration churn.
+  const Anchor = opts?.inline === true ? 'span' : 'div'
   return (
-    <div data-slot={slotKey} style={ANCHOR_STYLE}>
+    <Anchor data-slot={slotKey} style={ANCHOR_STYLE}>
       {renderOutletContent(host, slotKey, ownerProps, opts, scopeBinding)}
-    </div>
+    </Anchor>
   )
 }
 

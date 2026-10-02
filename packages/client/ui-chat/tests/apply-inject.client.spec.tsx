@@ -223,7 +223,9 @@ describe('Chat inject API', () => {
       await vi.waitFor(() => {
         expect(b.openSession).toHaveBeenCalledWith(ROOT)
       })
-      expect(fork).toHaveBeenCalledExactlyOnceWith({ sessionId: ROOT, atSeq: 18, increaseTitle: true })
+      expect(fork).toHaveBeenCalledExactlyOnceWith({
+        sessionId: ROOT, atSeq: 18, increaseTitle: true, onCreated: expect.any(Function) as (childId: SessionId) => void,
+      })
     } finally {
       await b.runtime.dispose()
     }
@@ -441,6 +443,13 @@ describe('Chat inject API', () => {
     b.runtime.ctx.provide('chatFileMentions', { forClosing } as never)
     expect(injected.fileMentions(owner)).toBe(mentions)
     expect(forClosing).toHaveBeenCalledWith(owner, ROOT)
+
+    expect(injected.knownFilePath?.('data/results.csv')).toBe(false)
+    const has = vi.fn((_sessionId: SessionId, path: string) => path === 'data/results.csv')
+    b.runtime.ctx.provide('chatKnownFilePaths', { has } as never)
+    expect(injected.knownFilePath?.('data/results.csv')).toBe(true)
+    expect(injected.knownFilePath?.('data/other.csv')).toBe(false)
+    expect(has).toHaveBeenCalledWith(ROOT, 'data/results.csv')
 
     expect(injected.chatScroll.read()).toBeNull()
     const position = { anchorKey: 'node-1', anchorTop: 4, scrollTop: 12 }
