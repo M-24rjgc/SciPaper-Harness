@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { KNOWLEDGE_SCHEME, knowledgeTargetOf, linkIds, sameTarget } from '../src/client/linkValues.ts'
-import { AROUND, chatOf, knowledgeCall, MARKS_READ, PATHS, RECALL } from './fixtures/trace.ts'
+import { AROUND, chatOf, knowledgeCall, MARKS_READ, PATHS, RECALL } from './fixtures/trace.client.ts'
 
 describe('the ids a link destination can name', () => {
   it('claims the kg scheme', () => {

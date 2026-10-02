@@ -8,7 +8,7 @@ import {
   chipWidth, DRAWN_NODES, edgeState, FOLLOW_HEIGHT, FOLLOW_WIDTH, followLayout, IDEA, knowledgeCallsOf, SCANNED_TURNS, sameCalls,
   turnTrace, verdictOf, type FollowNode,
 } from '../src/client/followValues.ts'
-import { AROUND, chatOf, knowledgeCall, markOn, MARKS_READ, PATHS, RECALL } from './fixtures/trace.ts'
+import { AROUND, chatOf, knowledgeCall, markOn, MARKS_READ, PATHS, RECALL } from './fixtures/trace.client.ts'
 
 describe('the knowledge calls of the latest turn', () => {
   it('finds the latest turn that has any, in the order the conversation shows them', () => {

@@ -19,7 +19,7 @@ import type { KnowledgeMarksState, ResearchView } from '../src/client/contract.t
 import { en, zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 import { standingOf } from './fixtures/standing.ts'
-import { AROUND, knowledgeCall, markOn, MARKS_READ, RECALL } from './fixtures/trace.ts'
+import { AROUND, knowledgeCall, markOn, MARKS_READ, RECALL } from './fixtures/trace.client.ts'
 
 afterEach(() => { cleanup() })
 

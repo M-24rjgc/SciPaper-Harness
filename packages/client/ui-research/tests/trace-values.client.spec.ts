@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import type { KnowledgeTrace } from '@deepseek-ai/dsh-research-workbench/types'
 import { readTrace, recalledCounts } from '../src/client/traceValues.ts'
-import { AROUND, MARKS_READ, PATHS, RECALL } from './fixtures/trace.ts'
+import { AROUND, MARKS_READ, PATHS, RECALL } from './fixtures/trace.client.ts'
 
 describe('reading a trace from the result metadata', () => {
   it('reads every trace the host writes back as it was written', () => {

@@ -18,7 +18,7 @@ import {
 import { en, zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
 import { standingOf } from './fixtures/standing.ts'
-import { knowledgeCall, MARKS_READ, PATHS, RECALL } from './fixtures/trace.ts'
+import { knowledgeCall, MARKS_READ, PATHS, RECALL } from './fixtures/trace.client.ts'
 
 /** A dictionary lookup that interpolates `{name}` the way the locale seat does. */
 function lookup(dictionary: Record<string, string>): NameContext['t'] {

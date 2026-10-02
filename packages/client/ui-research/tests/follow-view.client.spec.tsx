@@ -14,7 +14,7 @@ import { FollowView, type FollowViewProps } from '../src/client/FollowView.tsx'
 import type { KnowledgeMarksState } from '../src/client/contract.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { translate } from './fixtures/translate.tsx'
-import { AROUND, knowledgeCall, markOn, MARKS_READ, PATHS, RECALL } from './fixtures/trace.ts'
+import { AROUND, knowledgeCall, markOn, MARKS_READ, PATHS, RECALL } from './fixtures/trace.client.ts'
 
 afterEach(cleanup)
 

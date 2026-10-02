@@ -15,7 +15,7 @@ import type { KnowledgeMarksState, ResearchView } from '../src/client/contract.t
 import type { KnowledgeChat } from '../src/client/followValues.ts'
 import { en, zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
-import { chatOf, knowledgeCall, markOn, PATHS, RECALL } from './fixtures/trace.ts'
+import { chatOf, knowledgeCall, markOn, PATHS, RECALL } from './fixtures/trace.client.ts'
 
 afterEach(() => { cleanup() })
 

@@ -10,7 +10,7 @@ import { KnowledgePluginPage, KnowledgeTab } from '../src/client/Knowledge.tsx'
 import type { KnowledgeChat } from '../src/client/followValues.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
-import { chatOf } from './fixtures/trace.ts'
+import { chatOf } from './fixtures/trace.client.ts'
 import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)

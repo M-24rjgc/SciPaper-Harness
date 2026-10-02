@@ -14,7 +14,7 @@ import type { KnowledgeChat } from '../src/client/followValues.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import { zh } from '../src/client/locales.ts'
 import { page } from './fixtures/memory.ts'
-import { chatOf, knowledgeCall, PATHS, RECALL } from './fixtures/trace.ts'
+import { chatOf, knowledgeCall, PATHS, RECALL } from './fixtures/trace.client.ts'
 import { translate } from './fixtures/translate.tsx'
 
 afterEach(cleanup)
