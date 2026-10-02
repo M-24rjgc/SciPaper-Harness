@@ -263,7 +263,7 @@ describe('the sparse-attention demo project', () => {
       [['method:dynamic-block-selection', 'dataset:ruler', 'method:full-attention', 'method:nsa', 'method:sparse-attention', 'method:bigbird', 'task:question-answering'], 0.585, 2.037],
       [['method:dynamic-block-selection', 'method:full-attention', 'method:nsa', 'method:sparse-attention', 'method:bigbird', 'method:longformer', 'task:question-answering'], 0.531, 2.132],
     ])
-    expect(describePath(graph, result.paths[0] as NonNullable<typeof result.paths[0]>).split('\n')[1]).toBe('dynamic block selection —compares-with→ full attention — run ruler-32k-dynamic · seed 42')
+    expect(describePath(graph, result.paths[0] as NonNullable<typeof result.paths[0]>).split('\n')[1]).toBe('dynamic block selection —compares-with→ full attention — run ruler-32k-dynamic · seed 42 [compares-with:method:dynamic-block-selection>method:full-attention]')
     // The project's own framing, block-sparse attention, has no grounded relation: its only proposal lacked an is-a word.
     expect(graph.entities.has('method:block-sparse-attention')).toBe(false)
     expect(findEntities(graph, 'block-sparse attention')).toEqual(['method:fixed-block-sparse-attention'])

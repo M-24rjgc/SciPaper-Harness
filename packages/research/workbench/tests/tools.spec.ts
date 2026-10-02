@@ -266,6 +266,9 @@ describe('research tools find the project from the working directory', () => {
     expect(tool.description).toContain(RELATION_GROUNDING_RULE)
     expect(tool.description).not.toMatch(/relations-(merge|entity|citations|reground|restore)/)
     expect(tool.description).toContain('never tell the person that nobody has tested a pair')
+    // The agent is told how to name an item in its reply, and that only ids a call returned may be used.
+    expect(tool.description).toContain('write it as a Markdown link [name](kg:<id>)')
+    expect(tool.description).toContain('Use only ids this tool returned in this conversation and never invent one; otherwise write the name as plain text')
 
     const proposal = {
       kind: 'improves-on', from: { kind: 'method', name: 'Alpha' }, to: { kind: 'method', name: 'Beta' },

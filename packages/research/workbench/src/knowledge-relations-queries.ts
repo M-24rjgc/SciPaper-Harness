@@ -463,7 +463,8 @@ export function relationPaths(graph: RelationGraphView, request: PathRequest, tu
 }
 
 /**
- * A path as the agent reads it: one line per hop with the ground that carries it.
+ * A path as the agent reads it: one line per hop with the ground that carries it and, in brackets, the hop's relation id,
+ * as the neighbourhood lists it.
  * @param graph - the derived view, for names.
  * @param path - a path from relationPaths.
  * @returns the description.
@@ -476,7 +477,7 @@ export function describePath(graph: RelationGraphView, path: RelationPath): stri
       ? ` — ${ground.title}, ${describeLocator(ground.locator as SourceLocator)}: "${ground.quote as string}"`
       : ground.type === 'run' ? ` — run ${ground.title}` : ` — ${ground.title} cites it (${ground.source})`
     const arrow = hop.direction === 'forward' ? `${name(hop.from)} —${hop.kind}→ ${name(hop.to)}` : `${name(hop.to)} ←${hop.kind}— ${name(hop.from)}`
-    return `${arrow}${hop.status === 'stale' ? ' [stale]' : ''}${where}`
+    return `${arrow}${hop.status === 'stale' ? ' [stale]' : ''}${where} [${hop.relation}]`
   })
   return [`${path.hops.length} hop${path.hops.length === 1 ? '' : 's'}, confidence ${path.confidence}:`, ...lines].join('\n')
 }

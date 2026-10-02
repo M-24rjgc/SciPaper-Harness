@@ -220,8 +220,8 @@ describe('paths', () => {
     expect(first?.cost).toBe(0.711)
     expect(describePath(graph, first as NonNullable<typeof first>)).toBe([
       '2 hops, confidence 0.81:',
-      'Alpha —evaluated-on→ Bench — a paper, page 1: "Alpha outperforms Dense on Bench at 32K."',
-      'Bench ←evaluated-on— Delta — c paper, page 1: "Delta is evaluated on Bench at 8K."',
+      'Alpha —evaluated-on→ Bench — a paper, page 1: "Alpha outperforms Dense on Bench at 32K." [evaluated-on:method:alpha>dataset:bench]',
+      'Bench ←evaluated-on— Delta — c paper, page 1: "Delta is evaluated on Bench at 8K." [evaluated-on:method:delta>dataset:bench]',
     ].join('\n'))
     expect(relationPaths(graph, { from: 'method:alpha', to: 'method:delta', k: 99, maxHops: 99 }).paths.length).toBeLessThanOrEqual(MAX_PATHS)
     expect(MAX_HOPS).toBe(6)
@@ -241,9 +241,9 @@ describe('paths', () => {
     const withPaper = applyProposals(cited, data, [r('introduces', { kind: 'paper', evidenceId: 'c' }, m('Gamma'), q('c', 'Gamma outperforms Beta on every task.'), 'user')], NOW).file
     const citations = relationGraph(withPaper, data)
     const throughCitation = relationPaths(citations, { from: 'paper:a', to: 'paper:c', k: 1 })
-    expect(describePath(citations, throughCitation.paths[0] as NonNullable<typeof throughCitation.paths[0]>)).toBe(['1 hop, confidence 0.5:', 'a paper —cites→ c paper — a paper cites it (citation)'].join('\n'))
+    expect(describePath(citations, throughCitation.paths[0] as NonNullable<typeof throughCitation.paths[0]>)).toBe(['1 hop, confidence 0.5:', 'a paper —cites→ c paper — a paper cites it (citation) [cites:paper:a>paper:c]'].join('\n'))
     const kappa = relationPaths(citations, { from: 'method:kappa', to: 'dataset:bench' })
-    expect(describePath(citations, kappa.paths[0] as NonNullable<typeof kappa.paths[0]>)).toBe(['1 hop, confidence 0.9:', 'Kappa —evaluated-on→ Bench — run bench-32k-kappa · seed 3'].join('\n'))
+    expect(describePath(citations, kappa.paths[0] as NonNullable<typeof kappa.paths[0]>)).toBe(['1 hop, confidence 0.9:', 'Kappa —evaluated-on→ Bench — run bench-32k-kappa · seed 3 [evaluated-on:method:kappa>dataset:bench]'].join('\n'))
     const twice = applyProposals(withPaper, data, [r('compares-with', m('Alpha'), m('Dense'), q('a', 'Alpha outperforms Dense on Bench at 32K.'))], NOW).file
     const parallel = relationPaths(relationGraph(twice, data), { from: 'method:dense', to: 'method:alpha', k: 1 })
     expect(parallel.paths[0]?.hops[0]).toMatchObject({ direction: 'backward', parallel: [{ relation: 'improves-on:method:alpha>method:dense', kind: 'improves-on' }] })

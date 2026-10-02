@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { createEmbedder, KnowledgeBase, MAX_CORPUS, PROJECT_CLUSTERS, PROJECT_GRAPH, returnedItems, type Embedder, type GraphFile } from '../src/knowledge.ts'
+import {
+  createEmbedder, KnowledgeBase, KNOWLEDGE_LINK, MAX_CORPUS, PROJECT_CLUSTERS, PROJECT_GRAPH, returnedItems, type Embedder, type GraphFile,
+} from '../src/knowledge.ts'
+import { recallTrace } from '../src/knowledge-trace.ts'
 import { writeHonour } from '../src/knowledge-marks-state.ts'
 import { ANNOTATIONS_FILE, setAnnotation } from '../src/knowledge-annotations.ts'
 
@@ -129,6 +132,15 @@ describe('recall', () => {
     expect(result.patterns[0]?.matchedPapers).toContain('Block sparse attention kernels')
     expect(result.closestPapers[0]).toMatchObject({ graph: 'ai', id: 'p0', pattern: 'Sparse attention at scale' })
     expect(result.closestPapers.find(item => item.id === 'p3')?.pattern).toBeNull()
+    // Each item names itself by the id the Conversation view's traces hold, so the agent can cite it as a `kg:` link.
+    expect(result.patterns[0]?.link).toBe('kg:ai:pattern:pattern_0')
+    expect(result.closestPapers[0]?.link).toBe('kg:ai:paper:p0')
+    expect(returnedItems(result).patterns.map(item => `${KNOWLEDGE_LINK}${item.graph}:pattern:${item.id}`))
+      .toEqual(result.patterns.map(item => item.link))
+    expect(returnedItems(result).papers.map(item => `${KNOWLEDGE_LINK}${item.graph}:paper:${item.id}`))
+      .toEqual(result.closestPapers.map(item => item.link))
+    const linked = [...result.patterns, ...result.closestPapers].map(item => item.link.slice(KNOWLEDGE_LINK.length))
+    expect(recallTrace('sparse attention', result, returnedItems(result)).nodes.map(node => node.id).sort()).toEqual([...new Set(linked)].sort())
     // The graph source and index that the result's own fields lack stay beside it.
     expect(returnedItems(result).patterns[0]).toEqual({ graph: 'ai', index: 0, id: 'pattern_0', label: 'Sparse attention at scale' })
     expect(returnedItems(result).papers[0]).toEqual({ graph: 'ai', index: 0, id: 'p0', label: 'Block sparse attention kernels' })

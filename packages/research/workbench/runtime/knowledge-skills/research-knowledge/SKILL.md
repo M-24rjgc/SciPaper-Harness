@@ -21,6 +21,10 @@ The Domain map places the research's idea from your latest `recall`, so recall w
 
 With no embedding endpoint or a failed endpoint, retrieval and clustering use words and report that basis. If a graph is unavailable, continue with the healthy sources and literature search. If the plugin or tool is absent, use `research_evidence` and web search; do not repeatedly call a missing tool, claim that the graph was consulted or stop the research workflow.
 
+## Naming results in your reply
+
+Write a pattern, paper, entity or relation that a call returned as a Markdown link with the `kg:` scheme, such as `[MoBA](kg:ai:paper:42)`. The person sees a chip that opens the item in the graph beside the conversation, struck through when they marked it not relevant. A `recall` result carries each item's `link`. A mark's link is `kg:` and its `id`. A relation's link is `kg:` and the id in brackets from `relations-neighbourhood` or `relations-paths`; an entity's id is the `<from>` or `<to>` part of `<kind>:<from>><to>`. Use only ids that a call returned in this conversation, and never invent or edit one. Any other link shows as plain text, so write a name you did not read in a result without a link. Keep the link text short: the item's name, or `A —kind→ B` for a relation.
+
 ## Relations of methods, tasks, datasets and papers
 
 The research keeps its own relation graph: which method extends or beats another, which method was applied to a task or evaluated on a dataset, which paper introduces what. Read before you propose: `relations-neighbourhood` lists the relations around a method, task, dataset, metric or paper with the source of each, `relations-paths` explains how two of them connect, and `relations-suggestions` lists entities that may be one. Propose with `relations-propose`, a few relations at a time, when a source you imported states them.

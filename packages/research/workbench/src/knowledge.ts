@@ -183,10 +183,18 @@ export function paperUrl(graph: GraphFile, paper: GraphPaper): string | undefine
   return paper.url ?? graph.paperUrl?.replace('{id}', encodeURIComponent(paper.id))
 }
 
+/**
+ * The scheme of a link destination that names a graph node or relation in the reply to the person. The client draws such
+ * a link as a chip only for an id that a knowledge call of the conversation returned; the id is the one the trace holds.
+ */
+export const KNOWLEDGE_LINK = 'kg:'
+
 /** One ranked pattern, as recall reports it. */
 export interface RecalledPattern {
   graph: string
   id: string
+  /** The link destination that names this pattern in the reply to the person: `kg:<graph>:pattern:<id>`. */
+  link: string
   name: string
   tier: string
   domain: string
@@ -209,6 +217,8 @@ export interface RecalledPattern {
 export interface ClosePaper {
   graph: string
   id: string
+  /** The link destination that names this paper in the reply to the person: `kg:<graph>:paper:<id>`. */
+  link: string
   title: string
   idea: string
   story: string
@@ -660,7 +670,7 @@ export class KnowledgeBase {
       const { file } = byName.get(source) as LoadedGraph
       const pattern = file.patterns[at] as GraphPattern
       return {
-        graph: file.name, id: pattern.id, name: pattern.name, tier: pattern.tier, domain: file.domains[pattern.domain] as string,
+        graph: file.name, id: pattern.id, link: `${KNOWLEDGE_LINK}${source}:pattern:${pattern.id}`, name: pattern.name, tier: pattern.tier, domain: file.domains[pattern.domain] as string,
         subDomains: pattern.subDomains.slice(0, 8), size: pattern.size, coherence: pattern.coherence, score: Math.round(score * 1e5) / 1e5,
         summary: pattern.summary, details: pattern.details, ideas: pattern.ideas,
         worksWellIn: pattern.works.slice(0, 3)
@@ -948,7 +958,7 @@ function closePaper(graph: LoadedGraph, at: number): ClosePaper {
   const paper = graph.file.papers[at] as GraphPaper
   const url = paperUrl(graph.file, paper)
   return {
-    graph: graph.file.name, id: paper.id, title: paper.title, idea: paper.idea, story: paper.story,
+    graph: graph.file.name, id: paper.id, link: `${KNOWLEDGE_LINK}${graph.source}:paper:${paper.id}`, title: paper.title, idea: paper.idea, story: paper.story,
     pattern: graph.file.patterns[paper.pattern]?.name ?? null, ...url ? { url } : {}, score: paper.score,
   }
 }

@@ -154,7 +154,7 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 
 #### What the model sees
 
-生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、rename、list、modes、set-mode、set-autonomy、record-decision、memory）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。
+生成的[科研工具 schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-research-workbench)：共十个工具，`research_project`（current、create、rename、list、modes、set-mode、set-autonomy、record-decision、memory）、`research_check`（scope），以及按类别划分、各带 `action` 与类型化字段的工具：`research_evidence`、`research_artifact`、`research_environment`、`research_experiment`、`research_board`、`research_media`、`research_knowledge`，外加 `research_task`。描述用一行列出每个 action 的字段；`projectId` 可省略，因为项目由会话的工作目录确定。`research_knowledge` 的描述和 `research-knowledge` 技能告诉模型：在回复里把图谱中的条目写成 Markdown 链接 `[name](kg:<id>)`，只使用本对话中某次调用返回过的 id，绝不编造；用户的客户端在对话中有调用碰过该 id 时把这种链接画成小标签，否则只显示为纯文本。
 
 #### Token effect
 
@@ -168,11 +168,11 @@ TeX 优先使用显式绑定的 `texBin`，其次是已完成安装的托管发�
 
 #### What the model sees
 
-结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、模式是否已选定以及由谁选定（`modeChosen`、`modeSetBy`）、路线是否已定（`routingSettled`）、该模式的 `paperRoot`、自主度、这项研究某段已加载对话所持有的目标（`activeGoal`，读者自己的优先）、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、开始某阶段工作时要加载的该模式技能、不应重复创建的在运行目标，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。`research_knowledge recall` 为每个结果附上 `why`，研究中有标记时还附上 `annotations`（已应用和被跳过的标记）；非示例研究中的召回还会追加到 `.research/kg/recalls.json` 供领域地图使用，任何工具结果都不会返回它。`research_project memory` 返回用户允许新研究带上的各类记忆，来自其他研究，每类最多 40 项；插件关闭时则报错并写明插件名。不在任何研究中时，current 返回 `{project: null, hint}` 而不报错；`create` 只把本对话自己的文件夹设为研究，拒绝其他任何 root，并在消息中请 agent 让用户使用「新研究」和「更改位置」。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。导入用户附加到对话里的文件不会发起审批请求；从项目之外其他任何位置导入会先询问用户，而在 `automatic` 自主程度下请求会被直接拒绝，因为它的预设在这项研究的每段对话里都关闭了审批提示（审批策略的运行时上下文语句会告诉模型当前适用哪一种）。
+结果是精简的 JSON：只包含本次调用产生的内容（消息、路径、运行视图、检查报告、文献条目、按 `maxSourceBytes` 截断的资料摘录），从不返回整个项目。`research_project current` 返回项目简报：模式、路线及其理由、模式是否已选定以及由谁选定（`modeChosen`、`modeSetBy`）、路线是否已定（`routingSettled`）、该模式的 `paperRoot`、自主度、这项研究某段已加载对话所持有的目标（`activeGoal`，读者自己的优先）、每个阶段的状态（已完成、当前、未开始或已推迟）及其上次检查发现缺少的内容、最近一次检查的时间以及之后文件是否有改动、各阶段使用的技能、最近 20 条决策、全部已登记文件、最近 60 份资料、环境、最近 20 次运行与最近一次编译，并附上指引：下一阶段及其提示、已推迟的阶段、开始某阶段工作时要加载的该模式技能、不应重复创建的在运行目标，以及何时应当提问。这些阶段与研究记录给人看的是同一份 `standing`。`research_knowledge recall` 为每个结果附上 `why`，研究中有标记时还附上 `annotations`（已应用和被跳过的标记），并给每个模式和论文附上 `link`（`kg:ai:paper:42`），即在回复中指称它的链接目标；`marks` 列表本来就带每条标记的 `id`，`relations-neighbourhood` 和 `relations-paths` 把每条关系的 id 写在方括号里，路径中每一跳占一行；非示例研究中的召回还会追加到 `.research/kg/recalls.json` 供领域地图使用，任何工具结果都不会返回它。`research_project memory` 返回用户允许新研究带上的各类记忆，来自其他研究，每类最多 40 项；插件关闭时则报错并写明插件名。不在任何研究中时，current 返回 `{project: null, hint}` 而不报错；`create` 只把本对话自己的文件夹设为研究，拒绝其他任何 root，并在消息中请 agent 让用户使用「新研究」和「更改位置」。失败以抛出的错误呈现，并指明如何修正，例如 `Revision conflict: the file is at revision 2, not 1. Read it again and merge your changes`。导入用户附加到对话里的文件不会发起审批请求；从项目之外其他任何位置导入会先询问用户，而在 `automatic` 自主程度下请求会被直接拒绝，因为它的预设在这项研究的每段对话里都关闭了审批提示（审批策略的运行时上下文语句会告诉模型当前适用哪一种）。
 
 #### Token effect
 
-随每次调用的结果增长，直到压缩。资料检索与文件读取最大，按 `maxSourceBytes` 截断；检查报告列出带文件与行号的发现。
+随每次调用的结果增长，直到压缩。资料检索与文件读取最大，按 `maxSourceBytes` 截断；检查报告列出带文件与行号的发现。召回结果的 `link` 给每个模式或论文增加约 10 个 token（默认召回 16 项，最多 28 项），路径中每一跳的关系 id 增加约 10 个。
 
 #### KV Cache effect
 

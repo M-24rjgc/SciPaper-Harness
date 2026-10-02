@@ -5163,7 +5163,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ClosePaper',
-    declaration: 'export interface ClosePaper {\n    graph: string;\n    id: string;\n    title: string;\n    idea: string;\n    story: string;\n    pattern: string | null;\n    url?: string;\n    score: number | null;\n    why?: AnnotationWhy;\n}',
+    declaration: 'export interface ClosePaper {\n    graph: string;\n    id: string;\n    link: string;\n    title: string;\n    idea: string;\n    story: string;\n    pattern: string | null;\n    url?: string;\n    score: number | null;\n    why?: AnnotationWhy;\n}',
   },
   {
     name: 'CollectedOutput',
@@ -6931,7 +6931,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'RecalledPattern',
-    declaration: 'export interface RecalledPattern {\n    graph: string;\n    id: string;\n    name: string;\n    tier: string;\n    domain: string;\n    subDomains: string[];\n    size: number;\n    coherence: number | null;\n    score: number;\n    summary: string;\n    details: string;\n    ideas: string[];\n    worksWellIn: {\n        domain: string;\n        effectiveness: number;\n        confidence: number;\n    }[];\n    exemplars: {\n        title: string;\n        story: string;\n        url?: string;\n        score: number | null;\n    }[];\n    matchedPapers: string[];\n    why?: AnnotationWhy;\n}',
+    declaration: 'export interface RecalledPattern {\n    graph: string;\n    id: string;\n    link: string;\n    name: string;\n    tier: string;\n    domain: string;\n    subDomains: string[];\n    size: number;\n    coherence: number | null;\n    score: number;\n    summary: string;\n    details: string;\n    ideas: string[];\n    worksWellIn: {\n        domain: string;\n        effectiveness: number;\n        confidence: number;\n    }[];\n    exemplars: {\n        title: string;\n        story: string;\n        url?: string;\n        score: number | null;\n    }[];\n    matchedPapers: string[];\n    why?: AnnotationWhy;\n}',
   },
   {
     name: 'RecallResult',
