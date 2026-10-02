@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-02-knowledge-links-in-assistant-text.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-02-knowledge-links-in-assistant-text.md
+/agent-note-knowledge-items-as-links-in-the-assistant-s-reply:
+  en: ba8e056377f23bb9
+  zh: d3e13b718a67cbcf
+/agent-note-knowledge-items-as-links-in-the-assistant-s-reply/problem:
+  en: 35861f935100f900
+  zh: 6fef3dfb50b5de81
+/agent-note-knowledge-items-as-links-in-the-assistant-s-reply/decision:
+  en: 0b1f0455d5df772b
+  zh: eaf4df99a5ed5f13
+/agent-note-knowledge-items-as-links-in-the-assistant-s-reply/alternatives-considered:
+  en: 92e025988b6566d1
+  zh: f586a75985860754
+/agent-note-knowledge-items-as-links-in-the-assistant-s-reply/consequences:
+  en: 8cb24c029c0b5d59
+  zh: 49e60c565b17c489

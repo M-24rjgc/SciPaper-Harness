@@ -24,7 +24,7 @@ The Knowledge tab could show the whole graph, but not what the agent used in the
 
 **The 在图谱里看 link opens that call's turn.** A card of a traced call carries a link that opens the Knowledge tab on the Conversation view with `{ call, node }`, ringing the nodes that call touched; a card of a call without a trace keeps the 查看图谱 button it had. When the call belongs to an earlier turn the view says so and offers the way back to the latest.
 
-**Chips in the reply text were not built; they are in the tool card.** A chip in prose needs the markdown renderer to turn a token such as `kg:ai:paper:<id>` into a button that calls back into the research feature. No such extension point exists. The renderer in `ui-primitives` keeps only `http`, `https` and `mailto` links (`sanitizeUrl`), and its delegate offers `openExternalLink`, `openFile`, `fileImages` and `knownFilePath`; `ui-chat` extends only file mentions. Smuggling a custom scheme through the link sanitizer would bypass the rule that keeps untrusted model text from producing navigation, and a research-owned renderer would fork the chat's text rendering. The chips (outlined for a pinned node, struck through for one marked not relevant, at most eight with a count of the rest) are therefore drawn in the knowledge tool card, under the tool line, and each focuses its node in the Conversation view. What the extension would need is a link scheme registered by a feature through the delegate, with the renderer rendering the label as an inline element and handing the click to the feature, and the model told the tokens to write; that belongs to a change to `ui-primitives` and `ui-chat`, and the traces already hold everything it would draw.
+**The chips are drawn in the tool card, and in the reply text from the same traces.** The knowledge tool card draws the nodes of its call as chips under the tool line (outlined for a pinned node, struck through for one marked not relevant, at most eight with a count of the rest), and each focuses its node in the Conversation view. The agent's own reply names items as `kg:` links that the renderer hands to the research feature, which resolves each id against these traces; [that decision](2026-10-02-knowledge-links-in-assistant-text.md) records the link scheme, the renderer extension and what the model is told.
 
 **The tool lines say what was touched.** The line of a traced call reads the count from the trace (`读取你的 3 条标注`, `从你的想法出发，沿 2 条路径找基线`), and a call without a trace reads as it always did.
 
@@ -42,7 +42,7 @@ The Knowledge tab could show the whole graph, but not what the agent used in the
 
 **A `WeakMap` keyed by the result object.** See above: it fails when the module is loaded twice.
 
-**Parse chips out of the reply text.** The reply is the model's wording; matching names in it would guess, and a wrong guess would draw a chip for a node the agent did not use.
+**Parse chips out of the reply text.** The reply is the model's wording; matching names in it would guess, and a wrong guess would draw a chip for a node the agent did not use. A link the agent writes with an id it read is not a guess.
 
 ## Consequences
 
@@ -52,6 +52,6 @@ The Conversation view is offered when the map or the relations plugin is on. The
 
 The client reads the session's chat inside the Knowledge tab, so the view follows each turn as it settles without a command. The cost is a selector over the last 12 turns on every chat change; it returns the same list when nothing changed, so it does not render again.
 
-Chips in the reply text remain open work and wait on the extension above. Until then a person finds the nodes a reply refers to in the card above it.
+A reply's chips are only as old as the traces they resolve against: a session written before the traces were kept has none, and a link to an id no call of the conversation touched is plain text.
 
 Pinned by `knowledge-trace.spec.ts` (the builders and their limits), the recall, tools and loader specs (the trace beside the real tools, stripped from the model's text), the client specs for reading, folding and laying out a trace, the Conversation view and the card, and by running the product against recorded conversations in both languages.
