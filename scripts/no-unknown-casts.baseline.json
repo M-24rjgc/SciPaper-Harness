@@ -702,9 +702,6 @@
   "packages/client/ui-research/tests/research-settings.client.spec.tsx": {
     "9f5c6a42974c07c7d97bc676b49b7355ce22825ef93a8cf983fd9bc1799641e3": 1
   },
-  "packages/client/ui-research/tests/research-tool-view.client.spec.tsx": {
-    "6263a679b5f528b274843163ad001921177fc43c86d779fdc28afb410dbee5fe": 1
-  },
   "packages/client/ui-research/tests/research-tree.client.spec.tsx": {
     "23abf9f88b6f1e70f2f236d67dca81537e68973cc30ad07b3297ecec80d435e0": 1
   },
