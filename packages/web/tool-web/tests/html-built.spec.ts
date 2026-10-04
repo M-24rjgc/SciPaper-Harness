@@ -1,5 +1,6 @@
 /** Real TypeScript emit and Host bundling preserve the published HTML assets and Worker lifecycle. */
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -10,8 +11,24 @@ import { expect, it } from 'vitest'
 const packageRoot = fileURLToPath(new URL('..', import.meta.url))
 const repositoryRoot = resolve(packageRoot, '../../..')
 const execute = promisify(execFile)
+// Compilation requires referenced declarations; the plain Node probe also loads
+// these packages' runtime dependency closure. Source-only coverage builds neither.
+const requiredBuiltFiles = [
+  ...['vendor/cordis', 'vendor/cosmokit', 'vendor/schemastery', 'packages/core/tools',
+    'packages/core/system-prompt', 'packages/web/web', 'packages/llm/llm',
+    'packages/guard/timeout-policy', 'packages/util/timeout', 'packages/util/values']
+    .map(path => `${path}/lib/types/index.d.ts`),
+  ...['vendor/cordis', 'vendor/cosmokit', 'packages/core/tools', 'packages/core/system-prompt',
+    'packages/core/scope', 'packages/web/web', 'packages/llm/llm', 'packages/sandbox/sandbox',
+    'packages/util/timeout', 'packages/util/values', 'packages/util/crypto', 'packages/util/brand',
+    'packages/typert/protocol'].map(path => `${path}/lib/index.js`),
+  'vendor/schemastery/lib/index.mjs',
+]
+const missingBuiltFiles = requiredBuiltFiles.filter(path => !existsSync(join(repositoryRoot, path)))
+const requireBuilt = process.env.DSH_EXAMPLE_MODE === 'lib'
 
-it('bundles lib/types input and executes complete HTML pagination and cancellation from the published lib/assets layout', async () => {
+it.skipIf(missingBuiltFiles.length > 0 && !requireBuilt)('bundles lib/types input and executes complete HTML pagination and cancellation from the published lib/assets layout', async () => {
+  expect(missingBuiltFiles, 'Built HTML acceptance requires the complete Host artifacts').toEqual([])
   const fixture = await mkdtemp(join(packageRoot, '.html-built-'))
   let bundles: TsdownBundle[] = []
   try {

@@ -217,6 +217,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-skill-office': ['assets'],
   // web_fetch shares fixed conversion rules with its path-loaded HTML Worker.
   '@deepseek-ai/dsh-tool-web': ['assets/*.cjs'],
+  // The PDF decoder Worker is path-loaded from its fixed package asset.
+  '@deepseek-ai/dsh-web-fetch-http': ['assets/pdf-parser.cjs'],
   '@deepseek-ai/dsh-subprocess': ['lib/control.js'],
   // SSH launches a private helper and shares wire definitions and TLS setup
   // between that helper and the connection owner.

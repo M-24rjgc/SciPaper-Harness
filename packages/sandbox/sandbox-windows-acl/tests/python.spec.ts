@@ -12,6 +12,7 @@ const python = process.env.DSH_RESEARCH_TEST_PYTHON ?? 'python'
 const pythonAvailable = process.platform === 'win32'
   && spawnSync(python, ['-c', 'import pip'], { timeout: 5_000, stdio: 'ignore' }).status === 0
 const runnerEntry = fileURLToPath(new URL('../src/runner.ts', import.meta.url))
+const adminDaclRunnerEntry = fileURLToPath(new URL('./fixtures/admin-default-dacl-runner.ts', import.meta.url))
 
 describe.skipIf(!pythonAvailable)('windows-acl CPython', () => {
   it('emits one mkdir audit event with native arguments and honors audit-hook denial before protected creation', () => {
@@ -114,9 +115,12 @@ describe.skipIf(!pythonAvailable)('windows-acl CPython', () => {
     }
   }, 35_000)
 
-  it('installs a local wheel with offline pip and ignores a workspace sitecustomize of the same name', () => {
+  it('captures offline pip with an admin-only token default DACL and ignores a workspace sitecustomize of the same name', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'dsh-python-pip-ws-'))
     const temp = mkdtempSync(join(tmpdir(), 'dsh-python-pip-temp-'))
+    const outside = mkdtempSync(join(tmpdir(), 'dsh-python-pip-outside-'))
+    const outsideGrant = AclWriteGrant.create(workspaceWriteSid(outside))
+    outsideGrant.add(outside)
     const script = join(workspace, 'pip-probe.py')
     writeFileSync(join(workspace, 'sitecustomize.py'), 'raise RuntimeError("workspace sitecustomize was selected")\n')
     writeFileSync(join(workspace, 'sibling.py'), 'value = 42\n')
@@ -138,19 +142,28 @@ describe.skipIf(!pythonAvailable)('windows-acl CPython', () => {
       'import dsh_probe',
       'assert dsh_probe.value == 73',
       'print("OFFLINE-PIP: OK")',
+      'try: (pathlib.Path(sys.argv[2]) / "escaped.txt").write_text("escape")',
+      'except PermissionError: pass',
+      'else: raise AssertionError("pipe compatibility allowed a sibling write")',
+      'print("OUTSIDE: DENIED")',
     ].join('\n'))
     try {
       const result = spawnSync(process.execPath, [
-        '--import', 'tsx/esm', runnerEntry,
+        '--import', 'tsx/esm', adminDaclRunnerEntry,
         '--workspace', workspace, '--temp', temp, '--mode', 'workspace-write',
-        '--', python, script, workspace,
+        '--', python, script, workspace, outside,
       ], { timeout: 30_000, encoding: 'utf8' })
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
+      expect(result.stdout).toContain('DEFAULT-DACL: ADMIN/SYSTEM')
       expect(result.stdout).toContain('OFFLINE-PIP: OK')
+      expect(result.stdout).toContain('OUTSIDE: DENIED')
+      expect(existsSync(join(outside, 'escaped.txt'))).toBe(false)
       expect(readFileSync(join(workspace, 'installed', 'dsh_probe.py'), 'utf8')).toBe('value = 73\n')
     } finally {
       rmSync(workspace, { recursive: true })
       rmSync(temp, { recursive: true })
+      outsideGrant.dispose()
+      rmSync(outside, { recursive: true })
     }
   }, 35_000)
 })

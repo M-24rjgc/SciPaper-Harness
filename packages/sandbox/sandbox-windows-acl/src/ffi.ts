@@ -47,6 +47,15 @@ export interface Win32Bindings extends Win32ProcessBindings {
   getLengthSid(sid: NativePtr): number
   copySid(length: number, destination: NativePtr, source: NativePtr): number
   getTokenInformation(token: NativePtr, cls: number, info: Buffer | null, length: number, needed: NativePtr): number
+  getFileInformationByHandleEx(handle: NativePtr, cls: number, info: Buffer, length: number): number
+  getSecurityInfo(
+    handle: NativePtr, type: number, information: number, owner: NativePtr | null, group: NativePtr | null,
+    dacl: NativePtr, sacl: NativePtr | null, descriptor: NativePtr,
+  ): number
+  setSecurityInfo(
+    handle: NativePtr, type: number, information: number, owner: NativePtr | null, group: NativePtr | null,
+    dacl: NativePtr, sacl: NativePtr | null,
+  ): number
   setTokenInformation(token: NativePtr, cls: number, info: Buffer, length: number): number
   createRestrictedToken(
     existing: NativePtr,
@@ -250,6 +259,9 @@ function bindings(): Win32Bindings {
       PVOID, 'int', PVOID, 'uint32', koffi.pointer('uint32'),
     ]),
     setTokenInformation: bind(advapi32, 'SetTokenInformation', 'int', [PVOID, 'int', PVOID, 'uint32']),
+    getFileInformationByHandleEx: bind(kernel32, 'GetFileInformationByHandleEx', 'int', [PVOID, 'int', PVOID, 'uint32']),
+    getSecurityInfo: bind(advapi32, 'GetSecurityInfo', 'uint32', [PVOID, 'int', 'uint32', PVOID, PVOID, PPVOID, PPVOID, PPVOID]),
+    setSecurityInfo: bind(advapi32, 'SetSecurityInfo', 'uint32', [PVOID, 'int', 'uint32', PVOID, PVOID, PVOID, PVOID]),
     createRestrictedToken: bind(advapi32, 'CreateRestrictedToken', 'int', [
       PVOID, 'uint32', 'uint32', PVOID, 'uint32', PVOID, 'uint32', PVOID, PPVOID,
     ]),

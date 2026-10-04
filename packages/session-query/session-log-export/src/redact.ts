@@ -15,7 +15,10 @@ function discover(value: unknown, secrets: Set<string>, key = '', serializedDept
   if (typeof value === 'string') {
     if (SECRET_KEY.test(key)) remember(value, secrets, true)
     if (serializedDepth < 3 && value.length <= 4_000_000 && /^[\s]*[\[{]/u.test(value)) {
-      try { discover(JSON.parse(value) as unknown, secrets, '', serializedDepth + 1) } catch {}
+      try {
+        const decoded: unknown = JSON.parse(value)
+        discover(decoded, secrets, '', serializedDepth + 1)
+      } catch {}
     }
     for (const match of value.matchAll(ASSIGNMENT)) remember(match[1] ?? match[2] ?? match[3] ?? '', secrets)
     for (const match of value.matchAll(/密码\s*(?:[:=：]|是|为)?\s*["']?([A-Za-z0-9][^\s"'`;，。]{3,})/gu)) remember(match[1] ?? '', secrets)
@@ -64,7 +67,7 @@ function sanitize(value: unknown, secrets: readonly string[], serializedDepth = 
   if (typeof value === 'string') {
     if (serializedDepth < 3 && value.length <= 4_000_000 && /^[\s]*[\[{]/u.test(value)) {
       try {
-        const parsed = JSON.parse(value) as unknown
+        const parsed: unknown = JSON.parse(value)
         const cleaned = sanitize(parsed, secrets, serializedDepth + 1)
         if (JSON.stringify(parsed) !== JSON.stringify(cleaned)) return JSON.stringify(cleaned)
       } catch {}
@@ -104,7 +107,7 @@ function sanitize(value: unknown, secrets: readonly string[], serializedDepth = 
 export function discoverSessionLogSecrets(content: string, secrets: Set<string>): void {
   for (const line of content.split('\n')) {
     let value: unknown = line
-    try { value = JSON.parse(line) as unknown } catch {}
+    try { value = JSON.parse(line) } catch {}
     discover(value, secrets)
   }
 }
@@ -117,7 +120,10 @@ export function discoverSessionLogSecrets(content: string, secrets: Set<string>)
  */
 export function redactSessionLog(content: string, knownSecrets: Set<string> = new Set()): string {
   const lines = content.split('\n').map((line) => {
-    try { return { json: true, value: JSON.parse(line) as unknown } }
+    try {
+      const value: unknown = JSON.parse(line)
+      return { json: true, value }
+    }
     catch { return { json: false, value: line } }
   })
   for (const line of lines) discover(line.value, knownSecrets)

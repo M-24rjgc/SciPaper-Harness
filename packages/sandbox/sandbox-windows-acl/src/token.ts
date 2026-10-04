@@ -94,13 +94,13 @@ export function makeWellKnownSid(api: Win32Bindings, type: number): NativePtr {
 }
 
 /**
- * Merge one full-access allow ACE for `sidPtr` into the token's DEFAULT DACL
+ * Merge full-access allow ACEs for TokenUser and `sidPtr` into the token's DEFAULT DACL
  * — the DACL every NEW object the token holder creates (without an explicit
  * security descriptor) takes. The restricted token inherits the user's
- * default DACL verbatim, which names no restricting SID: a new anonymous pipe
- * (child stdio) therefore fails the write pass-2 check at creation
- * (ERROR_ACCESS_DENIED; Node surfaces it as spawn EPERM), breaking every
- * piped-stdio grandchild spawn. The merged ACE names a RESTRICTING SID (the
+ * default DACL verbatim, which can name only SYSTEM and Administrators.
+ * LUA_TOKEN disables the Administrators allow, so anonymous pipes need the
+ * signed-in user's ACE for their normal access check. The other merged ACE
+ * names a RESTRICTING SID (the
  * write SID under workspace-write, Everyone under read-only), so each new
  * object's own DACL passes pass-2 while object creation itself stays gated by
  * the parent container's DACL (files outside the granted trees remain
@@ -122,10 +122,26 @@ export function setTokenDefaultDaclGrant(api: Win32Bindings, token: NativePtr, s
   if (currentDacl === null) {
     throw new Error('setTokenDefaultDaclGrant: the token carries no default DACL to extend')
   }
+  const userNeededSlot = allocUint32()
+  api.getTokenInformation(token, abi.TokenUser, null, 0, userNeededSlot)
+  const userNeeded = decodeUint32(userNeededSlot)
+  if (userNeeded < abi.SID_AND_ATTRIBUTES_SIZE) {
+    throwLastError(api, 'GetTokenInformation', 'invalid TokenUser size')
+  }
+  const userInfo = Buffer.alloc(userNeeded)
+  if (api.getTokenInformation(token, abi.TokenUser, userInfo, userInfo.length, userNeededSlot) === 0) {
+    throwLastError(api, 'GetTokenInformation', 'TokenUser')
+  }
+  const userSid = decodePtrAt(userInfo, 0)
+  if (userSid === null) {
+    throw new Error('setTokenDefaultDaclGrant: the token carries no user SID')
+  }
+  const entries = Buffer.concat([userSid, sidPtr].map(sid =>
+    buildExplicitAccess(sid, abi.GRANT_ACCESS, abi.FILE_ALL_ACCESS)))
   const newDaclSlot = allocPtrSlot()
   const result = api.setEntriesInAclW(
-    1,
-    buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.FILE_ALL_ACCESS),
+    2,
+    entries,
     currentDacl,
     newDaclSlot,
   )

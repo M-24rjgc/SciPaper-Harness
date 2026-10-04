@@ -19,6 +19,13 @@ import { allocBytes, ptrAddress } from '../src/ffi.ts'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import * as abi from '../src/win32-abi.ts'
 
+// Tree preparation has its own real-directory tests; these tables isolate the single-object failure paths.
+vi.mock('../src/directory-deny.ts', () => ({
+  withDirectoryDenies: (
+    _api: Win32Bindings, _root: string, _entry: Buffer, _matches: (acl: NativePtr) => boolean, action: () => void,
+  ) => { action() },
+}))
+
 const PVOID = koffi.pointer('void')
 
 /** The stub the grant/revoke happy path needs; every call succeeds until a field is overridden per test. */

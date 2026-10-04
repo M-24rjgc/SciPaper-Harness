@@ -131,6 +131,13 @@ function setup(options: {
     helloEntered: helloEntered.promise, releaseHello: () => { releaseHello.resolve(undefined) }, release: () => { released.resolve(null) } }
 }
 
+it('rejects an unsupported client before starting SSH', () => {
+  const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('freebsd')
+  try { expect(() => setup()).toThrow('SSH runtime requires Linux, macOS, or Windows') }
+  finally { platform.mockRestore() }
+  expect(transport.spawn).not.toHaveBeenCalled()
+})
+
 describe.skipIf(process.platform === 'win32')('SSH connection startup', () => {
   it.each([
     { host: '-option' }, { host: 'alias; command' }, { node: 'relative' }, { helperHash: 'bad' },
@@ -139,13 +146,6 @@ describe.skipIf(process.platform === 'win32')('SSH connection startup', () => {
     { maxFrameBytes: 64 * 1024 * 1024 + 1 }, { maxPending: 129 }, { leaseMs: 2999 },
   ])('rejects invalid deployment configuration before SSH starts: %j', (invalid) => {
     expect(() => setup({ config: invalid })).toThrow()
-    expect(transport.spawn).not.toHaveBeenCalled()
-  })
-
-  it('rejects a non-POSIX client before starting SSH', () => {
-    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
-    try { expect(() => setup()).toThrow('POSIX client') }
-    finally { platform.mockRestore() }
     expect(transport.spawn).not.toHaveBeenCalled()
   })
 

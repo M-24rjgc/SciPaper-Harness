@@ -21,6 +21,13 @@ import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import { AclSandbox } from '../src/index.ts'
 import * as abi from '../src/win32-abi.ts'
 
+// Tree preparation has its own real-directory tests; these tables isolate the single-object failure paths.
+vi.mock('../src/directory-deny.ts', () => ({
+  withDirectoryDenies: (
+    _api: Win32Bindings, _root: string, _entry: Buffer, _matches: (acl: NativePtr) => boolean, action: () => void,
+  ) => { action() },
+}))
+
 const PVOID = koffi.pointer('void')
 
 type MockFn = ReturnType<typeof vi.fn>
@@ -110,13 +117,15 @@ function happyStubs(): HappyStubs {
   const addMandatoryAce = vi.fn(() => 1)
   const getTokenInformation = vi.fn((_token: unknown, cls: number, info: Buffer | null, _length: number, needed: NativePtr) => {
     if (info === null) {
-      koffi.encode(needed, 'uint32', cls === abi.TokenGroups ? 24 : 8)
+      koffi.encode(needed, 'uint32', cls === abi.TokenGroups ? 24 : cls === abi.TokenUser ? 16 : 8)
       return 0 // the size probe is expected to "fail"
     }
     if (cls === abi.TokenGroups) {
       info.writeUInt32LE(1, 0)
       info.writeBigUInt64LE(77n, abi.TOKEN_GROUPS_OFFSET)
       info.writeUInt32LE(abi.SE_GROUP_LOGON_ID, abi.TOKEN_GROUPS_OFFSET + 8)
+    } else if (cls === abi.TokenUser) {
+      info.writeBigUInt64LE(66n, 0)
     } else {
       info.writeBigUInt64LE(88n, 0) // the token's current default DACL
     }

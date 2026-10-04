@@ -13,6 +13,13 @@ import koffi from 'koffi'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import { AclWriteGrant } from '../src/index.ts'
 
+// Tree preparation has its own real-directory tests; these tables isolate the single-object failure paths.
+vi.mock('../src/directory-deny.ts', () => ({
+  withDirectoryDenies: (
+    _api: Win32Bindings, _root: string, _entry: Buffer, _matches: (acl: NativePtr) => boolean, action: () => void,
+  ) => { action() },
+}))
+
 const PVOID = koffi.pointer('void')
 
 /** Stub binding table: only the members a test drives, so the rest are never called. */

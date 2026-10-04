@@ -289,8 +289,9 @@ export class AclSandbox {
       )
       restrictTokenIntegrity(api, restrictedToken, lowLabelSid)
       this.token = restrictedToken
-      // The restricted token's default DACL still names only the user's
-      // ambient SIDs — none of the restricting SIDs. Every NEW object the
+      // The restricted token's default DACL can name only SYSTEM/Admins;
+      // LUA_TOKEN disables Admins, so add TokenUser for the normal check.
+      // Every NEW object the
       // confined process creates (anonymous stdio pipes, sync objects) takes
       // its DACL from that default, so the write pass-2 check would deny
       // pipe creation (ERROR_ACCESS_DENIED; Node EPERM) and break every

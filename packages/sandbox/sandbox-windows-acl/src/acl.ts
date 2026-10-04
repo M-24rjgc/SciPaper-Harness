@@ -28,6 +28,7 @@ import { dirname, join } from 'node:path'
 import { allocOverlapped, allocPtrSlot, decodePtr, decodeUint8At, decodeUint16At, decodeUint32At, getTempPath, isInvalidHandle, isNullPtr, ptrAddress, sameSidAt, throwLastError, throwWin32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import * as abi from './win32-abi.ts'
+import { withDirectoryDenies } from './directory-deny.ts'
 
 /**
  * Pack one EXPLICIT_ACCESS_W (48 bytes, layout verified by abi-probe.cpp):
@@ -411,12 +412,15 @@ function hasForeignGrant(oldAcl: NativePtr, sidPtr: NativePtr): boolean {
  * only delete authority inside the root, so a file whose own DACL grants no
  * DELETE is no longer deletable through its parent's rights.
  *
- * Idempotent: the exact ACE, deny, and label together SKIP the
+ * Every provision prepares real child directories with explicit denies before
+ * applying root authority; the directory scan does not follow reparse points.
+ * Idempotent: the root's exact ACE, deny, and label together SKIP the
  * SetNamedSecurityInfoW apply, which would otherwise re-propagate the
  * identical descriptor across the whole tree (eager inheritance; minutes on
- * large workspaces). Otherwise read-merge-write, so pre-existing explicit ACEs
+ * large workspaces). The directory scan still runs to prepare newly added
+ * directories. Otherwise read-merge-write, so pre-existing explicit ACEs
  * survive (same shape as {@link revokeWrite}). Runs under the per-path lock.
- * The directory must be owned by the caller AND grant WRITE_OWNER (the label
+ * The caller must hold WRITE_DAC and WRITE_OWNER on the directory (the label
  * lives in the SACL; owner-implicit rights cover only READ_CONTROL and
  * WRITE_DAC) — a Full-control workspace satisfies both. A directory that
  * refuses either right fails unchanged, and the error names the missing right
@@ -435,34 +439,38 @@ export function grantWrite(
   worldSidPtr: NativePtr,
 ): void {
   withPathLock(api, path, () => {
-    const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
-    if (oldAcl !== null && labelAcl !== null
-      && hasExactGrant(oldAcl, sidPtr) && hasExactDeny(oldAcl, worldSidPtr)
-      && hasExactLabel(labelAcl, lowLabelSidPtr)) {
-      // The exact ACE, deny, and label stand: releasing the descriptor is the whole operation.
-      if (descriptor !== null) {
-        const freed = api.localFree(descriptor)
-        if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWrite(${path}) descriptor`)
-      }
-      return
-    }
-    let label: NativePtr
-    try {
-      label = buildLowLabelAcl(api, lowLabelSidPtr)
-    } catch (error) {
-      // The read already owns a descriptor allocation; release it before the
-      // label failure propagates.
-      if (descriptor !== null) api.localFree(descriptor)
-      throw error
-    }
-    mergeAndApply(
-      api, path,
-      Buffer.concat([
-        buildExplicitAccess(worldSidPtr, abi.DENY_ACCESS, abi.FILE_DELETE_CHILD, abi.CONTAINER_INHERIT_ACE),
-        buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK),
-      ]),
-      oldAcl, { kind: 'apply', acl: label }, descriptor, 'grantWrite',
-    )
+    withDirectoryDenies(api, path,
+      buildExplicitAccess(worldSidPtr, abi.DENY_ACCESS, abi.FILE_DELETE_CHILD, abi.CONTAINER_INHERIT_ACE),
+      acl => hasExactDeny(acl, worldSidPtr), () => {
+        const { oldAcl, labelAcl, descriptor } = readCurrentSecurity(api, path)
+        if (oldAcl !== null && labelAcl !== null
+          && hasExactGrant(oldAcl, sidPtr) && hasExactDeny(oldAcl, worldSidPtr)
+          && hasExactLabel(labelAcl, lowLabelSidPtr)) {
+          // Child denies are already prepared; matching root edits need no re-propagation.
+          if (descriptor !== null) {
+            const freed = api.localFree(descriptor)
+            if (!isNullPtr(freed)) throwLastError(api, 'LocalFree', `grantWrite(${path}) descriptor`)
+          }
+          return
+        }
+        let label: NativePtr
+        try {
+          label = buildLowLabelAcl(api, lowLabelSidPtr)
+        } catch (error) {
+          // The read already owns a descriptor allocation; release it before the
+          // label failure propagates.
+          if (descriptor !== null) api.localFree(descriptor)
+          throw error
+        }
+        mergeAndApply(
+          api, path,
+          Buffer.concat([
+            buildExplicitAccess(worldSidPtr, abi.DENY_ACCESS, abi.FILE_DELETE_CHILD, abi.CONTAINER_INHERIT_ACE),
+            buildExplicitAccess(sidPtr, abi.GRANT_ACCESS, abi.GRANT_MASK),
+          ]),
+          oldAcl, { kind: 'apply', acl: label }, descriptor, 'grantWrite',
+        )
+      })
   })
 }
 

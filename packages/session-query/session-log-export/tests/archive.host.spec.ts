@@ -6,7 +6,7 @@
  * 404, missing descendant → errored stream).
  */
 
-import { SESSION_FORMAT_VERSION, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import { randomBytes } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -93,19 +93,23 @@ function imageEvent(id: string, mediaType: ImageAttachmentRef['mediaType'] = 'im
   } as unknown as SessionEvent
 }
 
-/** A read handle over one stored log; only what readSessionLogText touches. */
+/** A read-only handle over one stored log; unexpected mutations fail. */
 function readHandle(stored: StoredLog): SessionHandle {
+  const close = async (): Promise<void> => {}
   return {
     id: stored.header.id,
     header: stored.header,
     access: 'read',
-    inheritedEventCount: 0,
+    inheritedEventCount: SessionLogOffset(0),
     read: async (offset = 0, length?: number) => ({
       eventState: 'detached',
       events: structuredClone(stored.events.slice(offset, length === undefined ? undefined : offset + length)),
     }),
-    close: async () => {},
-  } as unknown as SessionHandle
+    append: async () => { throw new Error('Read-only export fixture cannot append') },
+    flush: async () => { throw new Error('Read-only export fixture cannot flush') },
+    close,
+    [Symbol.asyncDispose]: close,
+  }
 }
 
 /** A user/message event carrying one generic-file reference. */

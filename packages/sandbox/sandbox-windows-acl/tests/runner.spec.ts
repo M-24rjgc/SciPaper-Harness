@@ -5,7 +5,8 @@
  * production confined execution walks.
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { once } from 'node:events'
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -537,6 +538,9 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     const child = join(granted, 'child')
     mkdirSync(granted)
     mkdirSync(child)
+    const me = spawnSync('pwsh', ['-NoProfile', '-Command', '[Security.Principal.WindowsIdentity]::GetCurrent().User.Value'], { encoding: 'utf8' }).stdout.trim()
+    const explicit = spawnSync('icacls', [child, '/grant:r', `*${me}:(OI)(CI)(F)`], { encoding: 'utf8' })
+    expect(explicit.status, explicit.stderr).toBe(0)
     writeFileSync(join(granted, 'file.txt'), 'x')
     writeFileSync(join(child, 'deep.txt'), 'x')
     const grant = AclWriteGrant.create(workspaceWriteSid(granted))
@@ -549,7 +553,18 @@ Add-Type -Namespace P -Name F -MemberDefinition @'
 public static extern IntPtr CreateFileW(string n, uint a, uint s, IntPtr sa, uint d, uint f, IntPtr t);
 [DllImport("kernel32.dll", SetLastError=true)]
 public static extern bool CloseHandle(IntPtr h);
+[DllImport("kernel32.dll")]
+public static extern IntPtr GetCurrentProcess();
+[DllImport("advapi32.dll", SetLastError=true)]
+public static extern bool OpenProcessToken(IntPtr p, uint a, out IntPtr t);
+[DllImport("advapi32.dll", SetLastError=true)]
+public static extern bool AdjustTokenPrivileges(IntPtr t, bool all, IntPtr v, uint n, IntPtr old, IntPtr needed);
 '@ | Out-Null
+$token = [IntPtr]::Zero
+if (-not [P.F]::OpenProcessToken([P.F]::GetCurrentProcess(), 0x20, [ref]$token)) { throw 'OpenProcessToken failed' }
+try {
+  if (-not [P.F]::AdjustTokenPrivileges($token, $true, [IntPtr]::Zero, 0, [IntPtr]::Zero, [IntPtr]::Zero)) { throw 'Disable privileges failed' }
+} finally { [void][P.F]::CloseHandle($token) }
 function TryOpen([string]$label, [string]$path) {
   $h = [P.F]::CreateFileW($path, 0x10000000, 7, [IntPtr]::Zero, 3, 0x02000000, [IntPtr]::Zero)
   if ($h -eq [IntPtr]::new(-1)) { "$($label): DENIED" } else { [void][P.F]::CloseHandle($h); "$($label): OK" }
@@ -611,6 +626,60 @@ TryOpen 'DIRECTORY' '${child}'
       ])
       expect(result.status, `mode: ${mode}\nstderr: ${result.stderr}`).not.toBe(0)
       expect(existsSync(target), `mode: ${mode}`).toBe(false)
+    }
+  }, 30_000)
+
+  it.each(['root', 'nested'])('grants a workspace while another process holds its %s directory as cwd', async (held) => {
+    const root = join(scratchRoot, `held-cwd-${held}`)
+    const nested = join(root, 'nested')
+    mkdirSync(nested, { recursive: true })
+    writeFileSync(join(nested, 'existing.txt'), 'before')
+    const processHoldingCwd = spawn(process.execPath, ['-e', 'process.stdout.write("ready");setInterval(()=>{},1000)'], {
+      cwd: held === 'root' ? root : nested, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    })
+    const stopped = once(processHoldingCwd, 'exit')
+    try {
+      const grant = AclWriteGrant.create(workspaceWriteSid(root))
+      try {
+        await Promise.race([once(processHoldingCwd.stdout, 'data'), stopped.then(() => {
+          throw new Error('Working-directory holder exited before becoming ready')
+        })])
+        grant.add(root)
+        const result = runRunner(['--workspace', root, '--temp', isolatedTemp, '--mode', 'workspace-write', '--',
+          process.execPath, '-e', "require('node:fs').writeFileSync(process.argv[1], 'after')", join(nested, 'existing.txt')])
+        expect(result.status, result.stderr).toBe(0)
+        expect(readFileSync(join(nested, 'existing.txt'), 'utf8')).toBe('after')
+      } finally { grant.dispose() }
+    } finally {
+      try {
+        if (processHoldingCwd.exitCode === null && processHoldingCwd.signalCode === null) processHoldingCwd.kill()
+        await stopped
+      } finally { rmSync(root, { recursive: true }) }
+    }
+  }, 30_000)
+
+  it('preserves sibling files beneath explicit FullControl directories while permitting its own workspace writes', () => {
+    const other = join(scratchRoot, 'other-explicit-workspace')
+    const child = join(other, 'child')
+    mkdirSync(child, { recursive: true })
+    const me = spawnSync('pwsh', ['-NoProfile', '-Command', '[Security.Principal.WindowsIdentity]::GetCurrent().User.Value'], { encoding: 'utf8' }).stdout.trim()
+    const explicit = spawnSync('icacls', [child, '/grant:r', `*${me}:(OI)(CI)(F)`], { encoding: 'utf8' })
+    expect(explicit.status, explicit.stderr).toBe(0)
+    const victim = join(child, 'existing.txt')
+    writeFileSync(victim, 'preserved')
+    const grant = AclWriteGrant.create(workspaceWriteSid(other))
+    try {
+      grant.add(other)
+      const own = join(writableDir, 'own-write-control.txt')
+      const result = runRunner(['--workspace', writableDir, '--temp', isolatedTemp, '--mode', 'workspace-write', '--',
+        process.execPath, '-e', "const fs=require('node:fs');fs.writeFileSync(process.argv[2],'allowed');try{fs.unlinkSync(process.argv[1]);process.exitCode=9}catch(error){if(!['EPERM','EACCES'].includes(error.code))throw error;console.log('SIBLING: DENIED')}", victim, own])
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stdout).toContain('SIBLING: DENIED')
+      expect(readFileSync(victim, 'utf8')).toBe('preserved')
+      expect(readFileSync(own, 'utf8')).toBe('allowed')
+    } finally {
+      grant.dispose()
+      rmSync(other, { recursive: true })
     }
   }, 30_000)
 

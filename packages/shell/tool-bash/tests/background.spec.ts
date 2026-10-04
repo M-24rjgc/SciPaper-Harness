@@ -124,14 +124,16 @@ describe('background bash output', () => {
     expect(text(started)).toMatch(/^started background job bash-\d+$/)
     const jobs = ctx.jobs
     const job = jobs.list()[0]
-    await until(() => jobs.get(job!.id).status === 'killed' ? true : undefined)
+    await until(() => jobs.get(job!.id).status === 'failed' ? true : undefined)
+    const detail = jobs.get(job!.id).detail
+    expect(detail).toMatch(/^subprocess failed before reporting an outcome: /)
     const read = text(await ctx.tools.execute({
       signal: testToolSignal,
       callId: ToolCallId('background-spawn-failure-read'),
       name: 'job_output',
       arguments: { job_id: String(job!.id) },
     }))
-    expect(read).toMatch(/^\[stderr\]\nsubprocess failed before reporting an outcome: .*\n\[status: killed, killed before exit\]$/s)
+    expect(read).toBe(`[stderr]\n${detail}\n[status: failed, ${detail}]`)
   })
 
   it('labels stderr chunks with their channel', async () => {

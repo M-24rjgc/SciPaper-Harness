@@ -1606,9 +1606,6 @@
   "packages/research/workbench/tests/checks.spec.ts": {
     "18813a7551c84103df85f1a334441e128294fb052c1d1382bb61bbf7b654f592": 1
   },
-  "packages/research/workbench/tests/gates.spec.ts": {
-    "6074883bafa413936ef0f2227fe1b143b49e2d4792124387a0e25097ceba6303": 1
-  },
   "packages/research/workbench/tests/knowledge.spec.ts": {
     "0e577564de9e7c3ae36e13c120463733716713e06bf0957a380971049be514f4": 1,
     "0e6f6214382ff1774f877af1820eb0ea99e1b5d2b572cd8dec80a0b2d7b00e75": 1,
@@ -1696,8 +1693,6 @@
   },
   "packages/sandbox/sandbox-windows-acl/tests/token-failure-paths.spec.ts": {
     "066a1faa5764fd676db5c45c369ef588ede24ee6688d89b6d0d865a29f59a84b": 1,
-    "129aa0ac9d765035246bb53cce675ebed33b720f05117f8e6667a684f0bd4fac": 1,
-    "3d97999c7f3af6a2ff6e4fe2cfc2c36df20eb8ae3fcc099b680ec1af716db765": 2,
     "44dd57b109b91323d6bde000aa7837c629310d8612bac4b07f33c8e9dda6c191": 1,
     "45e6d751040a83192ce5709d5462d4cb0ed9a6e9c9780cfc6ab421c52ba9e83d": 1,
     "521bad366618caf96acb6b9617007c9196168fc64cae069ada14bb0b96f41ef4": 1,
@@ -1751,8 +1746,7 @@
     "320f1c3746b4407cb4fd0f57c8562f867acdda78622e7c4f00b9273034007898": 1,
     "7c851465d2c858c563c465843670f79f8f45f92ae05ea072c820d5882cff869a": 1,
     "8e85883fdd5cfd8a863b5baa6415c69477baec2b84756ce8079d14a45711dcc3": 1,
-    "cb524acd0159b942e7974d76b581b1f419b8653d1734946a3f154dda8e8f4762": 1,
-    "f10c6a0a3a762be54c2de87ab5d787e37a21a89c9d468bf81d0658c2bf15d581": 1
+    "cb524acd0159b942e7974d76b581b1f419b8653d1734946a3f154dda8e8f4762": 1
   },
   "packages/session-query/session-log-export/tests/client-apply.client.spec.tsx": {
     "04984a2ce1486250236e638e0197da0a1a840855ed3975c59130a85358c7e5fe": 1,

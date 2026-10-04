@@ -32,6 +32,22 @@ export const WRITE_OWNER = 0x00080000
 export const GRANT_MASK = (FILE_GENERIC_WRITE | DELETE | FILE_DELETE_CHILD) & ~STANDARD_RIGHTS_WRITE
 /** Full access used in the restricted token default DACL. */
 export const FILE_ALL_ACCESS = 0x1F01FF
+/** Directory open that returns permitted rights without requesting denied rights. */
+export const MAXIMUM_ALLOWED = 0x02000000
+/** Directory metadata access that does not request DELETE while another process uses its cwd. */
+export const DIRECTORY_METADATA_ACCESS = 0x00020080
+/** An existing open handle does not share one of the requested access rights. */
+export const ERROR_SHARING_VIOLATION = 32
+/** Open a reparse-point object instead of its target. */
+export const FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
+/** File-attribute bit identifying a directory. */
+export const FILE_ATTRIBUTE_DIRECTORY = 0x10
+/** File-attribute bit identifying a reparse point. */
+export const FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+/** FILE_INFO_BY_HANDLE_CLASS selecting attributes and reparse tag. */
+export const FileAttributeTagInfo = 9
+/** DWORD attributes followed by DWORD reparse tag. */
+export const FILE_ATTRIBUTE_TAG_INFO_SIZE = 8
 /** CreateRestrictedToken flag that disables maximum privileges. */
 export const DISABLE_MAX_PRIVILEGE = 0x1
 /** CreateRestrictedToken limited-user flag. */

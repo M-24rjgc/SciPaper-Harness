@@ -14,13 +14,13 @@ it('preserves existing graph access once, keeps a backup, and respects a later d
   const original = JSON.stringify({ name: 'existing', dsh: { profile: { bundles: [research] } } })
   await writeFile(path, original)
   await migrateResearchKnowledge(root)
-  const upgraded = JSON.parse(await readFile(path, 'utf8'))
+  const upgraded = JSON.parse(await readFile(path, 'utf8')) as { dsh: { profile: { bundles: string[] } } }
   expect(upgraded.dsh.profile.bundles).toEqual([research, graph])
   expect(await readFile(join(root, 'package.before-knowledge-plugin.json'), 'utf8')).toBe(original)
   upgraded.dsh.profile.bundles = [research]
   await writeFile(path, JSON.stringify(upgraded))
   await migrateResearchKnowledge(root)
-  expect(JSON.parse(await readFile(path, 'utf8')).dsh.profile.bundles).toEqual([research])
+  expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({ name: 'existing', dsh: { profile: { bundles: [research] } } })
 })
 it('does not opt a non-research profile into the graph', async () => {
   const root = await mkdtemp(join(tmpdir(), 'graph-nonresearch-')); roots.push(root)

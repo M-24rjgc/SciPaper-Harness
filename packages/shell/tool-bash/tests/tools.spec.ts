@@ -392,7 +392,7 @@ describe('bash tool', () => {
   it('registers the bash schema with run_in_background exposed while a job registry is composed', async () => {
     const ctx = await setupWithJobs()
     const schemas = ctx.tools.schemas()
-    expect(schemas.map(schema => schema.name).sort()).toEqual(['bash', 'job_kill', 'job_list', 'job_output'])
+    expect(schemas.map(schema => schema.name).sort()).toEqual(['bash', 'job_kill', 'job_list', 'job_output', 'job_stop_all'])
     const bashSchema = schemas.find(schema => schema.name === 'bash')!
     expect(bashSchema.parameters).toMatchObject({
       type: 'object',

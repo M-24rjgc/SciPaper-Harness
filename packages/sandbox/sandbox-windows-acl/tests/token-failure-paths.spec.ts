@@ -270,9 +270,21 @@ function daclApi(state: {
   mergeResult?: number
   newDacl: bigint
   setTokenInfo?: number
-}): Win32Bindings {
+  userNeeded?: number
+  userReadOk?: boolean
+  userSid?: bigint
+}) {
   const api = {
     getTokenInformation: vi.fn((_token: unknown, cls: number, info: Buffer | null, _length: number, needed: NativePtr) => {
+      if (cls === abi.TokenUser) {
+        if (info === null) {
+          koffi.encode(needed, 'uint32', state.userNeeded ?? 16)
+          return 0
+        }
+        if (state.userReadOk === false) return 0
+        info.writeBigUInt64LE(state.userSid ?? 66n, 0)
+        return 1
+      }
       if (cls !== abi.TokenDefaultDacl) throw new Error(`unexpected token information class ${cls}`)
       if (info === null) {
         koffi.encode(needed, 'uint32', state.needed)
@@ -282,17 +294,17 @@ function daclApi(state: {
       info.writeBigUInt64LE(state.currentDacl, 0)
       return 1
     }),
-    setEntriesInAclW: vi.fn((_count: unknown, _entries: unknown, _old: unknown, newAcl: NativePtr) => {
+    setEntriesInAclW: vi.fn((_count: number, _entries: Buffer, _old: NativePtr | null, newAcl: NativePtr) => {
       if (state.mergeResult !== undefined && state.mergeResult !== 0) return state.mergeResult
       koffi.encode(newAcl, PVOID, state.newDacl)
       return 0
     }),
     setTokenInformation: vi.fn(() => state.setTokenInfo ?? 1),
-    localFree: vi.fn(() => 0n),
+    localFree: vi.fn(() => 0n as NativePtr),
     getLastError: vi.fn(() => 5),
     formatMessageW: vi.fn(() => 0),
-  } as unknown as Win32Bindings
-  return api
+  } satisfies Partial<Win32Bindings>
+  return api as Win32Bindings & typeof api
 }
 
 describe('setTokenDefaultDaclGrant failure paths', () => {
@@ -328,6 +340,24 @@ describe('setTokenDefaultDaclGrant failure paths', () => {
     expect(() => { setTokenDefaultDaclGrant(api, token, sid) }).toThrow(/no default DACL/u)
   })
 
+  it.each([0, 8])('reports an invalid TokenUser size of %s', (userNeeded) => {
+    const api = daclApi({ needed: 8, currentDacl: 88n, newDacl: 99n, userNeeded })
+    expect(() => { setTokenDefaultDaclGrant(api, token, sid) }).toThrow(/invalid TokenUser size/u)
+    expect(vi.mocked(api).setEntriesInAclW).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed TokenUser read without changing the token', () => {
+    const api = daclApi({ needed: 8, currentDacl: 88n, newDacl: 99n, userReadOk: false })
+    expect(() => { setTokenDefaultDaclGrant(api, token, sid) }).toThrow(/TokenUser/u)
+    expect(vi.mocked(api).setTokenInformation).not.toHaveBeenCalled()
+  })
+
+  it('rejects a TokenUser record with no SID', () => {
+    const api = daclApi({ needed: 8, currentDacl: 88n, newDacl: 99n, userSid: 0n })
+    expect(() => { setTokenDefaultDaclGrant(api, token, sid) }).toThrow(/no user SID/u)
+    expect(vi.mocked(api).setEntriesInAclW).not.toHaveBeenCalled()
+  })
+
   it('reports a failed SetEntriesInAclW merge', () => {
     const api = daclApi({ needed: 8, currentDacl: 88n, mergeResult: 5, newDacl: 0n })
     let caught: unknown
@@ -353,9 +383,9 @@ describe('setTokenDefaultDaclGrant failure paths', () => {
   })
 
   it('frees the merged DACL and reports when SetTokenInformation fails', () => {
-    const localFree = vi.fn(() => 0n)
+    const localFree = vi.fn(() => 0n as NativePtr)
     const api = daclApi({ needed: 8, currentDacl: 88n, newDacl: 99n, setTokenInfo: 0 })
-    ;(api.localFree as unknown as ReturnType<typeof vi.fn>).mockImplementation(localFree)
+    vi.mocked(api).localFree.mockImplementation(localFree)
     let caught: unknown
     try {
       setTokenDefaultDaclGrant(api, token, sid)
@@ -368,10 +398,15 @@ describe('setTokenDefaultDaclGrant failure paths', () => {
   })
 
   it('frees the merged DACL after a successful apply', () => {
-    const localFree = vi.fn(() => 0n)
+    const localFree = vi.fn(() => 0n as NativePtr)
     const api = daclApi({ needed: 8, currentDacl: 88n, newDacl: 99n })
-    ;(api.localFree as unknown as ReturnType<typeof vi.fn>).mockImplementation(localFree)
+    vi.mocked(api).localFree.mockImplementation(localFree)
     setTokenDefaultDaclGrant(api, token, sid)
+    const [count, entries, previous] = vi.mocked(api).setEntriesInAclW.mock.calls[0]!
+    expect(count).toBe(2)
+    expect(previous).toBe(88n)
+    expect(entries.readBigUInt64LE(40)).toBe(66n)
+    expect(entries.readBigUInt64LE(abi.EXPLICIT_ACCESS_W_SIZE + 40)).toBe(77n)
     expect(localFree).toHaveBeenCalledWith(99n)
   })
 })
