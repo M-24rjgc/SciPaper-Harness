@@ -108,7 +108,7 @@ The package is built on one separation and one layered timeout:
 
 A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public (an answer made only of fake-ip placeholders is accepted when `allowFakeIpDns` is on), and pins the connection to the accepted addresses. It repeats that check for each permitted redirect; a disallowed redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
 
-PDF text extraction uses a separate Worker for each call, with a 256 MiB V8 old-generation limit and no ambient environment. This is a parser resource limit, not an operating-system memory sandbox. Cancellation terminates and joins the Worker. CMaps and fonts resolve from the installed PDF.js package; document scripts and OCR are not executed.
+PDF text extraction uses a separate Worker for each call, with a 256 MiB V8 old-generation limit. The Worker inherits no ambient environment and disables system-font discovery. This is a parser resource limit, not an operating-system memory sandbox. Cancellation terminates and joins the Worker, and is checked again before returning the result. CMaps and fonts resolve from the installed PDF.js package; document scripts and OCR are not executed.
 
 </details>
 

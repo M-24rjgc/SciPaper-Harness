@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { Worker } from 'node:worker_threads'
+import { describe, expect, it, vi } from 'vitest'
 import { extractPdfText } from '../src/pdf.ts'
 import { pdf } from './pdf-fixture.ts'
 
@@ -25,6 +26,48 @@ describe('PDF text retrieval with the real parser', () => {
   it('does not turn an empty PDF into success when the output bound cuts a page label', async () => {
     await expect(extractPdfText(pdf(''), 1, new AbortController().signal))
       .rejects.toMatchObject({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' })
+  })
+
+  it('honours caller cancellation while joining a Worker that already returned text', async () => {
+    const controller = new AbortController()
+    const reason = new Error('cancel during PDF Worker join')
+    const join = Promise.withResolvers<number>()
+    const stopping = Promise.withResolvers<{ worker: Worker; completion: Promise<number> }>()
+    const readiness = Promise.withResolvers<never>()
+    // oxlint-disable-next-line typescript/unbound-method -- each call supplies the actual Worker receiver.
+    const original = Worker.prototype.terminate
+    let stopped: { worker: Worker; completion: Promise<number> } | undefined
+    const stop = vi.spyOn(Worker.prototype, 'terminate').mockImplementation(function (this: Worker) {
+      stopped = { worker: this, completion: original.call(this) }
+      stopping.resolve(stopped)
+      return join.promise
+    })
+    const extraction = extractPdfText(pdf('PDF join cancellation fixture'), 1000, controller.signal)
+    const readinessTimer = setTimeout(() => {
+      const error = new Error('PDF Worker did not begin joining within 10 seconds')
+      readiness.reject(error)
+      controller.abort(error)
+    }, 10_000)
+    try {
+      const record = await Promise.race([
+        stopping.promise,
+        extraction.then(() => { throw new Error('PDF extraction settled before Worker join') }),
+        readiness.promise,
+      ])
+      controller.abort(reason)
+      join.resolve(await record.completion)
+      await expect(extraction).rejects.toBe(reason)
+      expect(record.worker.threadId).toBe(-1)
+    } finally {
+      clearTimeout(readinessTimer)
+      if (!controller.signal.aborted) controller.abort(reason)
+      stop.mockRestore()
+      if (stopped !== undefined) {
+        try { join.resolve(await stopped.completion) } catch (error) { join.reject(error) }
+        if (stopped.worker.threadId !== -1) await original.call(stopped.worker)
+      }
+      await extraction.catch(() => {})
+    }
   })
 
   it('keeps host cancellation responsive while parsing a tiny PDF with a large compressed text operation', async () => {

@@ -29,7 +29,8 @@ export async function extractPdfText(
   // This package-owned asset works from src/, the bundled lib/, and the installed runtime.
   const entry = fileURLToPath(new URL('../assets/pdf-parser.cjs', import.meta.url))
   const worker = new Worker(entry, {
-    execArgv: [], env: {}, stdout: true, stderr: true,
+    // Text extraction uses bundled PDF fonts; skip canvas's synchronous system-font scan.
+    execArgv: [], env: { DISABLE_SYSTEM_FONTS_LOAD: '1' }, stdout: true, stderr: true,
     resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 },
     workerData: {
       bytes: input, maxChars, moduleUrl: pathToFileURL(require.resolve('pdfjs-dist/legacy/build/pdf.mjs')).href,
@@ -42,8 +43,9 @@ export async function extractPdfText(
   let termination: Promise<number> | undefined
   const terminate = (): Promise<number> => termination ??= worker.terminate()
   let abort: (() => void) | undefined
+  let result: { content: string; truncated: boolean }
   try {
-    const result = await new Promise<{ content: string; truncated: boolean }>((resolve, reject) => {
+    result = await new Promise<{ content: string; truncated: boolean }>((resolve, reject) => {
       abort = () => {
         const reason: unknown = signal.reason
         reject(reason instanceof Error ? reason : new WebError('PDF parsing aborted', 'WEB_ABORTED', { cause: reason }))
@@ -68,11 +70,11 @@ export async function extractPdfText(
       worker.once('exit', (code) => { reject(new WebError(`PDF parser Worker exited before returning text (${code})`, 'WEB_PROVIDER_ERROR')) })
       if (signal.aborted) abort()
     })
-    signal.throwIfAborted()
-    return result
   } finally {
     if (abort !== undefined) signal.removeEventListener('abort', abort)
     await terminate()
     worker.removeAllListeners()
   }
+  signal.throwIfAborted()
+  return result
 }

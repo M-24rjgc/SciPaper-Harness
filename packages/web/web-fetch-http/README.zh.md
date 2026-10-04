@@ -108,7 +108,7 @@ Clash、mihomo 和 sing-box 的 fake-ip 模式会用 `198.18.0.0/15`（IPv4）�
 
 抓取先校验 URL，只解析一次主机名，结果中只要有非公开地址就拒绝（`allowFakeIpDns` 开启时，只由 fake-ip 占位地址组成的应答会被接受），并把连接固定到已接受地址。每次允许的重定向都重复该检查；不允许的重定向或非公开目标在接收响应字节前失败。最终响应按 `Content-Type` 分类、依声明的 charset 解码，并在字节上限内读取；解码后的文本再截断到字符上限。
 
-PDF 文本提取每次使用独立 Worker，V8 old-generation 上限为 256 MiB，不继承环境变量。这是解析器资源限制，不是操作系统内存沙箱。取消时会终止并等待 Worker 退出。CMap 与字体从已安装的 PDF.js 包读取；不执行文档脚本或 OCR。
+PDF 文本提取每次使用独立 Worker，V8 old-generation 上限为 256 MiB。Worker 不继承宿主环境，并禁用系统字体扫描。这是解析器资源限制，不是操作系统内存沙箱。取消时会终止并等待 Worker 退出，返回结果前会再次检查取消状态。CMap 与字体从已安装的 PDF.js 包读取；不执行文档脚本或 OCR。
 
 </details>
 
