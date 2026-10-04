@@ -10,6 +10,7 @@
   "references": [
     { "path": "../../util/atomic-write" },
     { "path": "../../core/agent" },
+    { "path": "../../jobs/jobs" },
     { "path": "../../goal/goal" },
     { "path": "../../interaction/permission-presets" },
     { "path": "../../core/system-prompt" },

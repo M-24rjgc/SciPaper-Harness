@@ -41,7 +41,7 @@ export type CompletionDelivery = 'quiet' | 'wakeup'
 export interface Config {
   /** Wait duration applied when `job_output` sets `wait` without `timeout_ms` (default 30s). */
   waitTimeoutMs?: number
-  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 10min). */
+  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 1min). */
   maxWaitTimeoutMs?: number
   /** Whether a completion opens a turn on an idle owner (default `wakeup`). */
   completionDelivery?: CompletionDelivery
@@ -58,7 +58,7 @@ export interface Config {
 
 export const Config: z<Config> = z.object({
   waitTimeoutMs: z.number().min(1).default(30_000),
-  maxWaitTimeoutMs: z.number().min(1).default(600_000),
+  maxWaitTimeoutMs: z.number().min(1).default(60_000),
   completionDelivery: z.union(['quiet', 'wakeup'] as const).default('wakeup'),
   maxConsecutiveWakes: z.number().min(1),
 })
@@ -163,7 +163,12 @@ function visibleOutputLimit(ctx: Context, exec: ToolExecution): number | undefin
   if (exec.name !== 'job_output' && exec.name !== 'job_kill') return undefined
   const jobId = (exec.arguments as { job_id?: unknown } | null | undefined)?.job_id
   if (typeof jobId !== 'string' || jobId.length === 0) return undefined
-  return ctx.jobs.list(exec.agent?.id).find(job => job.id === jobId)?.outputLimitBytes
+  return ctx.jobs.listTree(exec.agent?.id).find(job => job.id === jobId)?.outputLimitBytes
+}
+
+/** Resolve a job only through the caller's live ownership tree before using its owner's fenced operations. */
+function accessibleJob(ctx: Context, id: JobId, exec: { agent?: Agent }): JobView {
+  return ctx.jobs.getTree(id, exec.agent?.id)
 }
 
 /** Validate the non-empty constraint that ParameterSchemaSpec cannot express. */
@@ -190,7 +195,12 @@ function readBody(read: JobRead): { text: string; job: PublicJobSnapshot } {
 
 export function apply(ctx: Context, config: Config): void {
   const waitDefault = config.waitTimeoutMs ?? 30_000
-  const waitCap = config.maxWaitTimeoutMs ?? 600_000
+  const waitCap = config.maxWaitTimeoutMs ?? 60_000
+  const waitTimeout = (requested?: number): number => {
+    const timeout = requested ?? waitDefault
+    if (!Number.isFinite(timeout) || timeout <= 0) throw new Error('invalid wait timeout: expected positive finite milliseconds')
+    return Math.min(timeout, waitCap)
+  }
   const delivery = config.completionDelivery ?? 'wakeup'
   const wakeBudget = config.maxConsecutiveWakes
 
@@ -250,14 +260,8 @@ export function apply(ctx: Context, config: Config): void {
   ctx.systemPrompt.section({
     name: 'tool:jobs',
     order: ctx.systemPrompt.getSectionOrder('TOOL_JOBS'),
-    text: 'Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job\'s work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering.',
+    text: 'Track every background job id you start. Completion notices report actual settlement; do not busy-poll or duplicate running work. Collect relevant output with job_output, using wait: true only when blocked on the result. A cancelled or timed-out output wait leaves the job running. Use job_kill with wait: true to verify a stop, or job_stop_all when asked to stop all commands. Report stopping or failed stops honestly; a cancellation request alone does not mean the work has stopped.',
   })
-
-  // Live jobs whose kill the model itself requested through `job_kill`: that
-  // tool result is the model's delivery, so the settlement notice would only
-  // repeat it. A wait needs no entry here — the registry reports a settlement
-  // that released a live wait as `awaited`, whichever plugin was waiting.
-  const killedByModel = new Set<JobId>()
 
   // A busy owner is injected: the notice waits in its next-step inbox, which
   // the turn cannot close over, so jobs settling together cost one step. An
@@ -269,18 +273,12 @@ export function apply(ctx: Context, config: Config): void {
   // under, so a mount under one preset never sees another preset's agents;
   // this listener owns delivery, not the choice of whom to deliver to.
   ctx.jobs.events.subscribe({ owners: 'scope' }, (event) => {
-    if (event.type === 'removed') {
-      killedByModel.delete(event.job.id)
-      return
-    }
     if (event.type !== 'settled') return
-    const delivered = killedByModel.delete(event.job.id) || event.awaited
-    if (delivered || event.cause === 'teardown' || event.job.owner === undefined) return
-    // The destination is the agent registered for the owner session now. An
-    // owned job needed the agent registry to start, so the registry is only
-    // absent here when it left before settlement — and then no inbox is left.
+    if (event.awaited || event.cause === 'teardown' || event.job.owner === undefined) return
+    // Retained jobs cannot notify a replacement runtime using the owner's id.
     const owner = ctx.get('agents')?.get(event.job.owner)
     if (owner === undefined) return
+    try { ctx.jobs.get(event.job.id, owner.id) } catch { return }
     const message = createUserMessage({
       content: [{
         type: 'text',
@@ -336,14 +334,16 @@ export function apply(ctx: Context, config: Config): void {
     async execute(args, exec) {
       const id = validateJobId(args.job_id)
       const jobs = ctx.jobs
+      accessibleJob(ctx, id, exec)
+      const caller = exec.agent?.id
       if (args.wait === true) {
         // A settlement that releases this wait is reported `awaited`, so the
         // notice listener above skips it: this result carries the terminal
         // state. A timed-out or aborted wait has left the registry's waiter
         // set before any later settlement, which then notifies as usual.
-        await jobs.wait(id, Math.min(args.timeout_ms ?? waitDefault, waitCap), exec.agent?.id, exec.signal)
+        await jobs.wait(id, waitTimeout(args.timeout_ms), caller, exec.signal)
       }
-      return readBody(jobs.read(id, exec.agent?.id))
+      return readBody(jobs.read(id, caller))
     },
     presentCall: args => presentJobCall(`Read output from background job ${args.job_id}`, 'read', args.job_id),
   }))
@@ -362,7 +362,7 @@ export function apply(ctx: Context, config: Config): void {
       }],
     },
     execute(_args, exec) {
-      const jobs = ctx.jobs.list(exec.agent?.id)
+      const jobs = ctx.jobs.listTree(exec.agent?.id)
       return Promise.resolve(jobs.map(publicJob))
     },
     presentCall: () => presentJobCall('List background jobs', 'read'),
@@ -370,10 +370,12 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'job_kill',
-    description: 'Request cancellation of a running background job.',
+    description: 'Cancel a background job; set wait: true to observe whether it actually stopped.',
     parameters: {
       job_id: { type: 'string', required: true, description: 'Job id returned by the tool that started the background work.' },
       reason: { type: 'string', description: 'Optional short reason, recorded in the log and forwarded to the job.' },
+      wait: { type: 'boolean', description: 'Wait for actual settlement after requesting cancellation. Defaults to false.' },
+      timeout_ms: { type: 'number', description: 'Settlement wait in milliseconds, capped by configuration.' },
     },
     finalizeContent: finalizeJobContent,
     output: {
@@ -393,23 +395,78 @@ export function apply(ctx: Context, config: Config): void {
         type: 'text',
         text: value.outcome === 'already-finished'
           ? `job ${value.job.id} had already finished ${statusLine(value.job)}`
-          : `requested cancellation of job ${value.job.id}`,
+          : `requested cancellation of job ${value.job.id} ${statusLine(value.job)}`,
       }],
     },
-    execute(args, exec) {
+    async execute(args, exec) {
       const id = validateJobId(args.job_id)
       const jobs = ctx.jobs
-      const result = jobs.kill(id, exec.agent?.id, args.reason)
-      // The model's own kill is its delivery: the settlement notice would only
-      // repeat what this tool result already said.
-      if (result === 'requested') killedByModel.add(id)
+      accessibleJob(ctx, id, exec)
+      const caller = exec.agent?.id
+      const timeout = args.wait === true ? waitTimeout(args.timeout_ms) : undefined
+      const result = jobs.kill(id, caller, args.reason)
       // A projection describes current state without consuming pending output.
-      const job = publicJob(jobs.get(id, exec.agent?.id))
-      return Promise.resolve({
+      const job = publicJob(timeout !== undefined
+        ? await jobs.wait(id, timeout, caller, exec.signal)
+        : jobs.get(id, caller))
+      return {
         outcome: result === 'already-finished' ? 'already-finished' as const : 'cancellation-requested' as const,
         job,
-      })
+      }
     },
     presentCall: args => presentJobCall(`Kill background job ${args.job_id}`, 'execute', args.job_id),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'job_stop_all',
+    description: 'Stop background jobs and registered independent work in your session and live descendant sessions, and verify their settlement.',
+    parameters: {
+      reason: { type: 'string', description: 'Optional cancellation reason forwarded to every job.' },
+      timeout_ms: { type: 'number', description: 'Concurrent settlement wait in milliseconds, capped by configuration.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          confirmed: { type: 'boolean', required: true },
+          jobs: { type: 'array', required: true, items: {
+            type: 'object', additionalProperties: false,
+            properties: { job: { ...PUBLIC_JOB_SCHEMA, required: true }, error: { type: 'string' } },
+          } },
+          sources: { type: 'array', required: true, items: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              source: { type: 'string', required: true },
+              confirmed: { type: 'boolean', required: true },
+              error: { type: 'string' },
+              targets: { type: 'array', required: true, items: {
+                type: 'object', additionalProperties: false,
+                properties: {
+                  id: { type: 'string', required: true }, status: { type: 'string', required: true },
+                  confirmed: { type: 'boolean', required: true }, error: { type: 'string' },
+                },
+              } },
+            },
+          } },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: [
+        value.confirmed ? 'All selected background work has stopped.' : 'Some background work has not been confirmed stopped.',
+        ...value.jobs.map(result => `${result.job.id} ${statusLine(result.job)}${result.error === undefined ? '' : `; ${result.error}`}`),
+        ...value.sources.flatMap(source => [
+          `${source.source}: ${source.confirmed ? 'stop confirmed' : 'stop unconfirmed'}${source.error === undefined ? '' : `; ${source.error}`}`,
+          ...source.targets.map(target => `${target.id} [status: ${target.status}]; ${target.confirmed ? 'stop confirmed' : 'stop unconfirmed'}${target.error === undefined ? '' : `; ${target.error}`}`),
+        ]),
+      ].join('\n') }],
+    },
+    async execute(args, exec) {
+      const result = await ctx.jobs.stopAll(exec.agent?.id, waitTimeout(args.timeout_ms), args.reason, exec.signal)
+      return {
+        confirmed: result.confirmed,
+        sources: result.sources.map(source => ({ ...source, targets: source.targets.map(target => ({ ...target })) })),
+        jobs: result.jobs.map(item => ({ job: publicJob(item.job), ...item.error === undefined ? {} : { error: item.error } })),
+      }
+    },
+    presentCall: () => presentJobCall('Stop all background jobs', 'execute'),
   }))
 }

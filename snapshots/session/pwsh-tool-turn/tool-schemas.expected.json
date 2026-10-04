@@ -120,7 +120,7 @@
     },
     {
       "name": "job_kill",
-      "description": "Request cancellation of a running background job.",
+      "description": "Cancel a background job; set wait: true to observe whether it actually stopped.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -131,6 +131,14 @@
           "reason": {
             "type": "string",
             "description": "Optional short reason, recorded in the log and forwarded to the job."
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for actual settlement after requesting cancellation. Defaults to false."
+          },
+          "timeout_ms": {
+            "type": "number",
+            "description": "Settlement wait in milliseconds, capped by configuration."
           }
         },
         "required": [
@@ -168,6 +176,23 @@
         "required": [
           "job_id"
         ]
+      }
+    },
+    {
+      "name": "job_stop_all",
+      "description": "Stop background jobs and registered independent work in your session and live descendant sessions, and verify their settlement.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Optional cancellation reason forwarded to every job."
+          },
+          "timeout_ms": {
+            "type": "number",
+            "description": "Concurrent settlement wait in milliseconds, capped by configuration."
+          }
+        }
       }
     },
     {
@@ -387,6 +412,14 @@
           "url": {
             "type": "string",
             "description": "The HTTP(S) URL to fetch."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Character offset in the converted text. Use nextOffset from a previous response to continue a long page."
+          },
+          "max_chars": {
+            "type": "integer",
+            "description": "Maximum text characters in this page, within the configured output limit."
           }
         },
         "required": [

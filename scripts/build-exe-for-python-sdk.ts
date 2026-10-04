@@ -64,6 +64,11 @@ const ASSET_GLOBS = [
   'node_modules/@deepseek-ai/dsh-skill-badge/assets/**/*',
   // The diagnosis provider extracts its PowerShell script for an external interpreter.
   'node_modules/@deepseek-ai/dsh-sandbox-windows-acl/assets/**/*',
+  // web_fetch converts complete HTML in a package-owned, interruptible parser Worker.
+  'node_modules/@deepseek-ai/dsh-tool-web/assets/*.cjs',
+  // PDF text extraction resolves binary CMaps and bundled font programs at runtime.
+  'node_modules/**/pdfjs-dist/cmaps/**/*',
+  'node_modules/**/pdfjs-dist/standard_fonts/**/*',
 ]
 
 const PLATFORMS = ['linux', 'macos', 'win'] as const

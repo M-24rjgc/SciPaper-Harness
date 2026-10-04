@@ -45,17 +45,45 @@ function props(
   function useJobs<T>(select: (value: JobsSnapshot) => T): T {
     return select(jobsState)
   }
-  return { sessionId: SESSION, useJobs, watchRows, observe, killJob, t } as JobListActionProps
+  return {
+    sessionId: SESSION, useJobs, watchRows, observe, killJob,
+    stopAllJobs: async () => ({ confirmed: true, failures: [] }), t,
+  } as JobListActionProps
 }
 
 function openList(): void {
   fireEvent.click(screen.getAllByRole('button')[0]!)
 }
 
+describe('explicit stop-all', () => {
+  it('waits for confirmation and shows incomplete stop details', async () => {
+    const stopped = Promise.withResolvers<{ confirmed: boolean; failures: string[] }>()
+    const stopAllJobs = vi.fn(() => stopped.promise)
+    render(<JobListAction {...props([job()])} stopAllJobs={stopAllJobs} />)
+    openList()
+    fireEvent.click(screen.getByRole('button', { name: zh['killAll.stop'] }))
+    expect(stopAllJobs).toHaveBeenCalledWith(SESSION)
+    expect(screen.getByRole('button', { name: zh['killAll.stopping'] }).hasAttribute('disabled')).toBe(true)
+    await act(async () => { stopped.resolve({ confirmed: false, failures: ['bash-1: stopping'] }) })
+    expect(screen.getByRole('alert').textContent).toContain('bash-1: stopping')
+    expect(screen.getByRole('button', { name: zh['killAll.stop'] }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('shows a transport failure without claiming all jobs stopped', async () => {
+    render(<JobListAction {...props([job()])} stopAllJobs={async () => { throw new Error('connection lost') }} />)
+    openList()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: zh['killAll.stop'] })) })
+    expect(screen.getByRole('alert').textContent).toContain('connection lost')
+  })
+})
+
 describe('JobListAction visibility', () => {
-  it('renders nothing while the session sees no jobs', () => {
-    const { container } = render(<JobListAction {...props([])} />)
-    expect(container.innerHTML).toBe('')
+  it('can stop independent work while the session sees no ordinary jobs', async () => {
+    const stopAllJobs = vi.fn(async () => ({ confirmed: false, failures: ['experiment/run-1: transport failed'] }))
+    render(<JobListAction {...props([])} stopAllJobs={stopAllJobs} />)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: zh['killAll.stop'] })) })
+    expect(stopAllJobs).toHaveBeenCalledWith(SESSION)
+    expect(screen.getByRole('alert').textContent).toContain('experiment/run-1: transport failed')
   })
 
   it('watches the session roster while mounted and releases it on unmount', () => {
@@ -177,13 +205,13 @@ describe('JobListAction rows', () => {
     fireEvent.click(screen.getByRole('button', { name: zh['section.settledCount'].replace('{count}', '1') }))
     const list = screen.getByRole('list', { name: zh['list.aria'] })
     const items = within(list).getAllByRole('listitem')
-    // The section line is a listitem too now: live row, section, settled row.
-    expect(items).toHaveLength(3)
-    expect(items[0]?.textContent).toContain('pnpm run build')
+    // Both section headers are listitems: live section, live row, settled section, settled row.
+    expect(items).toHaveLength(4)
+    expect(items[1]?.textContent).toContain('pnpm run build')
     // A live row's second line is kind · duration; the status word only
     // appears through a detail (none while running).
-    expect(items[0]?.textContent).toMatch(/小时|分|秒/)
-    expect(items[2]?.textContent).toContain('exit code: 3')
+    expect(items[1]?.textContent).toMatch(/小时|分|秒/)
+    expect(items[3]?.textContent).toContain('exit code: 3')
   })
 
   it('orders live rows first by start and settled rows newest-first with tie-breaks', () => {
@@ -332,7 +360,7 @@ describe('JobListAction observation', () => {
     expect(screen.getByRole('list', { name: zh['list.aria'] })).toBeDefined()
     // The roster emptying unmounts the control entirely; the open flag resets first.
     rerender(<JobListAction {...props([])} />)
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getByRole('button', { name: zh['killAll.stop'] })).toBeDefined()
   })
 
   it('starts observing on expand with the session identity, renders the live text, and stops on collapse', () => {

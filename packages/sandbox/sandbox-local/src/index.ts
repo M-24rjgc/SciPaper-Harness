@@ -22,7 +22,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -146,6 +146,7 @@ interface AclTempCapability {
   dir: string
   writeSid: string
   grant: AclWriteGrant
+  identity: { dev: number; ino: number; birthtimeMs: number }
 }
 
 /**
@@ -388,12 +389,14 @@ export class LocalSandboxProvider extends SandboxProvider {
   }
 
   /**
-   * Materialize one workspace-write policy's ACEs once per provider
-   * lifetime. The workspace SID and standing root grant are shared by the
+   * Materialize or reuse one workspace-write policy's standing root grant
+   * and verified private temp directory. The workspace SID is shared by the
    * workspace. The temp directory is random and carries a distinct SID, so
    * another session on the same workspace cannot use the shared workspace
    * SID to enter it. A fresh provider always chooses a new path; crash
    * residue therefore cannot collide with or authorize a resumed session.
+   * Deleted or replaced temp directories receive fresh capabilities without
+   * changing or deleting replacement objects.
    * Fail-closed: a half-materialized temp grant is revoked and its directory
    * removed before the error propagates.
    * @param sessionId - the policy's calling-session identity.
@@ -422,7 +425,11 @@ export class LocalSandboxProvider extends SandboxProvider {
     }
     const key = JSON.stringify([String(sessionId), workspaceRoot])
     const existing = this.tempCapabilities.get(key)
-    if (existing !== undefined) return existing
+    if (existing !== undefined) {
+      if (this.ownsTempDirectory(existing)) return existing
+      this.tempCapabilities.delete(key)
+      existing.grant.dispose(false)
+    }
     const tempDir = mkdtempSync(join(tmpdir(), 'dsh-'))
     const tempSid = tempWriteSid(tempDir)
     let grant: AclWriteGrant | undefined
@@ -448,7 +455,8 @@ export class LocalSandboxProvider extends SandboxProvider {
       }
       throw error
     }
-    const capability = { dir: tempDir, writeSid: tempSid, grant }
+    const { dev, ino, birthtimeMs } = lstatSync(tempDir)
+    const capability = { dir: tempDir, writeSid: tempSid, grant, identity: { dev, ino, birthtimeMs } }
     this.tempCapabilities.set(key, capability)
     return capability
   }
@@ -465,18 +473,31 @@ export class LocalSandboxProvider extends SandboxProvider {
   private revokeAclGrants(): void {
     if (this.workspaceGrants.size === 0 && this.tempCapabilities.size === 0) return
     const failures: unknown[] = []
-    for (const grant of [...this.workspaceGrants.values(), ...[...this.tempCapabilities.values()].map(capability => capability.grant)]) {
+    for (const grant of this.workspaceGrants.values()) {
       try {
         grant.dispose()
       } catch (error) {
         failures.push(error)
       }
     }
-    for (const { dir } of this.tempCapabilities.values()) {
+    for (const capability of this.tempCapabilities.values()) {
+      let owned = false
       try {
-        this.removeTempDir(dir)
+        owned = this.ownsTempDirectory(capability)
       } catch (error) {
         failures.push(error)
+      }
+      try {
+        capability.grant.dispose(owned)
+      } catch (error) {
+        failures.push(error)
+      }
+      if (owned) {
+        try {
+          this.removeTempDir(capability.dir)
+        } catch (error) {
+          failures.push(error)
+        }
       }
     }
     this.workspaceGrants.clear()
@@ -487,9 +508,24 @@ export class LocalSandboxProvider extends SandboxProvider {
     }
   }
 
+  /** True only while a private temp path names the directory this provider created. */
+  private ownsTempDirectory(capability: AclTempCapability): boolean {
+    const info = lstatSync(capability.dir, { throwIfNoEntry: false })
+    return info !== undefined && info.isDirectory() && !info.isSymbolicLink()
+      && info.dev === capability.identity.dev && info.ino === capability.identity.ino
+      && info.birthtimeMs === capability.identity.birthtimeMs
+  }
+
   /** Remove one provider-owned private temp directory (injectable for cleanup tests). */
   private removeTempDir(dir: string): void {
-    const remove = this.internals.rmTempDir ?? ((path: string) => { rmSync(path, { recursive: true, force: true }) })
+    const remove = this.internals.rmTempDir ?? ((path: string) => {
+      const info = lstatSync(path, { throwIfNoEntry: false })
+      if (info === undefined) return
+      if (!info.isDirectory() || info.isSymbolicLink()) {
+        throw new Error(`sandbox-local: private temp directory was replaced: ${path}`)
+      }
+      rmSync(path, { recursive: true })
+    })
     remove(dir)
   }
 

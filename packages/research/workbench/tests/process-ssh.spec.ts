@@ -40,6 +40,7 @@ vi.mock('node:child_process', async (original) => {
 })
 
 const SECRET = 'pässwörd测试 &%^"\'x!'
+const TRANSPORT_ARGS = ['-o', 'ConnectTimeout=15', '-o', 'ConnectionAttempts=1', '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no', '-o', 'ClearAllForwardings=yes']
 
 function records(): PasswordRecords {
   const stored = new Map<CredentialKey, CredentialRecord>()
@@ -77,7 +78,7 @@ describe('ssh() for remote runs', () => {
     await ssh('research-host', ['python', '-c', "print('x')"])
     dispose()
     expect(client.spawned).toHaveLength(1)
-    expect(client.spawned[0]?.args).toEqual(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', 'research-host', "'python' '-c' 'print('\\''x'\\'')'"])
+    expect(client.spawned[0]?.args).toEqual(['-o', 'BatchMode=yes', ...TRANSPORT_ARGS, 'research-host', "'python' '-c' 'print('\\''x'\\'')'"])
     expect(client.spawned[0]?.env?.['SSH_ASKPASS']).toBeUndefined()
     expect(client.spawned[0]?.env?.['DSH_SSH_ASKPASS_SECRET']).toBeUndefined()
   })
@@ -85,9 +86,8 @@ describe('ssh() for remote runs', () => {
   it('names the port of user@host:port, and passes an ssh:// address through for OpenSSH to read', async () => {
     await ssh('alice@192.0.2.10:2222', ['true'])
     await ssh('ssh://alice@192.0.2.10:2222', ['true'])
-    expect(client.spawned[0]?.args.slice(0, 6)).toEqual(['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', '-p', '2222'])
-    expect(client.spawned[0]?.args.slice(6, 7)).toEqual(['alice@192.0.2.10'])
-    expect(client.spawned[1]?.args.slice(4, 5)).toEqual(['ssh://alice@192.0.2.10:2222'])
+    expect(client.spawned[0]?.args.slice(-4)).toEqual(['-p', '2222', 'alice@192.0.2.10', "'true'"])
+    expect(client.spawned[1]?.args.at(-2)).toBe('ssh://alice@192.0.2.10:2222')
   })
 
   it('logs in with the password saved for the host, which only the ssh child environment carries', async () => {

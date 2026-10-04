@@ -130,7 +130,7 @@ describe('WorkspaceController commands', () => {
   it('reports why an SSH host refused, without a password in the failure', async () => {
     const { controller, remoteInspect } = await harness()
     const refusal = (kind: string): Error => Object.assign(new Error(`SSH ${kind} refusal`), { name: 'SshFailure', kind })
-    for (const reason of ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported'] as const) {
+    for (const reason of ['auth', 'unreachable', 'handshake', 'host-key', 'host-key-changed', 'unsupported'] as const) {
       remoteInspect.mockRejectedValueOnce(refusal(reason))
       const failure = await controller.create({
         location: { kind: 'ssh', host: 'alpha', path: '/srv/x' }, sshAuth: { kind: 'password', password: 'pässwörd-secret' },

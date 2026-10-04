@@ -34,6 +34,8 @@ interface PwshLoaderReport {
   promptHasMarkerSection: boolean
   foregroundText: string
   backgroundText: string
+  stopAllText: string
+  noLiveJobsAfterStop: boolean
 }
 
 describe.skipIf(!hasPwsh)('tool-pwsh through a real Loader composition', () => {
@@ -65,6 +67,9 @@ describe.skipIf(!hasPwsh)('tool-pwsh through a real Loader composition', () => {
     expect(report?.foregroundText).toBe('loader-ok\n')
     expect(report?.backgroundText).toContain('loader-bg-ok')
     expect(report?.backgroundText).toContain('[status: completed, exit code: 0]')
+    expect(report?.stopAllText).toContain('All selected background work has stopped.')
+    expect(report?.stopAllText).toContain('[status: killed')
+    expect(report?.noLiveJobsAfterStop).toBe(true)
     // 15s of vitest headroom past the subprocess deadline, mirroring
     // LOADER_SMOKE_TEST_TIMEOUT_MS's margin over its process window.
   }, processTimeoutMs + 15_000)

@@ -5,6 +5,23 @@ import { harness, next, registerAgent, startJob, wait } from './host-harness.ts'
 const ROWS = { flushMs: 5 }
 
 describe('streamJobRows', () => {
+  it('mirrors owned runtime descendants without exposing another root', async () => {
+    const ctx = await harness()
+    const root = await registerAgent(ctx, 'tree-root')
+    const child = await registerAgent(ctx, 'tree-child', root)
+    const foreign = await registerAgent(ctx, 'foreign-root')
+    const abort = new AbortController()
+    const iterator = streamJobRows(ctx.jobs, { sessionId: root.id }, ROWS, abort.signal)[Symbol.asyncIterator]()
+    expect((await next(iterator))?.jobs).toEqual([])
+    const task = startJob(ctx, { label: 'child work', owner: child.id })
+    startJob(ctx, { label: 'foreign work', owner: foreign.id })
+    expect((await next(iterator))?.jobs.map(job => job.label)).toEqual(['child work'])
+    ctx.jobs.kill(task.id, child.id)
+    expect((await next(iterator))?.jobs[0]?.status).toBe('killed')
+    abort.abort()
+    expect(await next(iterator)).toBeUndefined()
+    await ctx.fiber.dispose()
+  })
   it('opens with the visible set and re-sends it after each coalesced lifecycle burst', async () => {
     const ctx = await harness()
     const alice = await registerAgent(ctx, 'alice')

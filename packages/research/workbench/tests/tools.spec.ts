@@ -2,7 +2,13 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Context } from '@deepseek-ai/cordis'
+import { Context } from '@deepseek-ai/cordis'
+import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
+import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
+import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { PreToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
 import { attachedFilesDirectory } from '../src/files.ts'
 import { projectBrief, registerResearchTools } from '../src/tools.ts'
@@ -76,10 +82,91 @@ function harness() {
   /** `null` runs the call without an agent session, as a non-agent caller would. */
   const call = (name: string, args: Record<string, unknown>, cwd: string | null = root, execution?: { kind: 'ssh'; host: string }) =>
     tools.get(name)!.execute(args, exec(cwd ?? undefined, name, execution))
-  return { project, foreign, executed, created, goals, tools, call, exec, hook: () => hook! }
+  return { project, foreign, executed, created, goals, tools, call, exec, service, hook: () => hook! }
 }
 
+describe('research board arguments through ToolRuntime', () => {
+  async function fixture() {
+    const h = harness()
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(AgentRegistry)
+    registerResearchTools(ctx, h.service)
+    const sessionId = SessionId('board-tool-runtime')
+    const agent: Agent = {
+      id: sessionId, ctx, options: {}, status: 'idle', inbox: unsupportedInbox(),
+      session: Session.create(sessionId, [], { version: SESSION_FORMAT_VERSION, id: sessionId, cwd: root, createdAt: 0, isSeeded: false }),
+      send() {}, followup() {}, steer() {}, inject() {}, cancel() {},
+      runMaintenance: task => task(new AbortController().signal), whenIdle: () => Promise.resolve(),
+    }
+    const detach = ctx.agents.enter(agent, undefined)
+    let sequence = 0
+    const call = (board: unknown) => ctx.tools.execute({
+      callId: ToolCallId(`board-${++sequence}`), name: 'research_board', agent,
+      arguments: { action: 'board-update', board }, signal: new AbortController().signal,
+    })
+    return { ...h, ctx, detach, call }
+  }
+
+  it('accepts null optional fields and forwards the recursively normalized board patch', async () => {
+    const h = await fixture()
+    try {
+      const result = await h.call({ title: null, summary: null, collectors: null, sections: [{
+        id: 'summary', title: 'Summary', note: null, collapsed: null,
+        blocks: [{ type: 'stats', title: null, items: [{ label: 'Accuracy', value: null, unit: null }] }],
+      }] })
+      expect(result.isError).toBe(false)
+      expect(h.executed.at(-1)?.request).toEqual({ action: 'board-update', projectId: h.project.id, board: {
+        sections: [{ id: 'summary', title: 'Summary', blocks: [{ type: 'stats', items: [{ label: 'Accuracy' }] }] }],
+      } })
+    } finally { h.detach(); await h.ctx.fiber.dispose() }
+  })
+
+  it('accepts overlapping removal objects while retaining discriminants and Zod requirements', async () => {
+    const h = await fixture()
+    try {
+      const result = await h.call({
+        sections: [{ id: 's', remove: true, title: 'Old', blocks: [] }],
+        collectors: [{ id: 'c', remove: true, script: 'old.py' }],
+      })
+      expect(result.isError).toBe(false)
+      expect(h.executed.at(-1)?.request).toEqual({ action: 'board-update', projectId: h.project.id, board: {
+        sections: [{ id: 's', remove: true }], collectors: [{ id: 'c', remove: true }],
+      } })
+      expect((await h.call({ sections: [{ id: 's', remove: false, title: 'S', blocks: [] }] })).isError).toBe(false)
+      expect(h.executed.at(-1)?.request).toEqual({ action: 'board-update', projectId: h.project.id, board: {
+        sections: [{ id: 's', title: 'S', blocks: [] }],
+      } })
+      expect((await h.call({ sections: [{ id: 'incomplete' }] })).isError).toBe(true)
+      expect((await h.call({ sections: [{ id: 's', title: 'S', blocks: [{ type: 'stats', items: [{ label: 'X', value: false }] }] }] })).isError).toBe(true)
+      expect((await h.call({ collectors: [{ id: 'c', remove: false }] })).isError).toBe(true)
+      expect(h.executed).toHaveLength(2)
+    } finally { h.detach(); await h.ctx.fiber.dispose() }
+  })
+})
+
 describe('research tools find the project from the working directory', () => {
+  it('describes structured research inputs and defaults an omitted compile engine', async () => {
+    const h = harness()
+    expect(h.tools.get('research_experiment')?.parameters.properties.spec).toMatchObject({
+      type: 'object', properties: { environmentId: { type: 'string' }, argv: { type: 'array', items: { type: 'string' } } },
+    })
+    expect(h.tools.get('research_artifact')?.parameters.properties.evidence).toMatchObject({
+      type: 'array', items: { type: 'object', properties: { locator: { type: 'object' } } },
+    })
+    const fieldsByTool: [string, string[]][] = [
+      ['research_evidence', ['item', 'claim']], ['research_artifact', ['evidence', 'inputArtifacts', 'engine']],
+      ['research_environment', ['environment']], ['research_experiment', ['spec']], ['research_board', ['board']],
+      ['research_knowledge', ['proposals']],
+    ]
+    expect(Object.fromEntries(fieldsByTool.map(([name, fields]) =>
+      [name, Object.fromEntries(fields.map(field => [field, h.tools.get(name)?.parameters.properties[field]]))],
+    ))).toMatchSnapshot()
+    await h.call('research_artifact', { action: 'compile' })
+    expect(h.executed.at(-1)?.request).toMatchObject({ action: 'compile', engine: 'xelatex' })
+  })
+
   it('uses an unambiguous SSH environment to reach the local ledger without treating remote cwd as local', async () => {
     const h = harness()
     h.project.environments.push({

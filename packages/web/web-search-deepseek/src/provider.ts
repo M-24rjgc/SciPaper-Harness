@@ -163,8 +163,16 @@ export function mapAnthropicResponse(response: AnthropicResponse): WebSearchResu
   const seen = new Set<string>()
   const sources: WebSearchSource[] = []
   for (const block of resultBlocks) {
+    if (block.content !== undefined && !Array.isArray(block.content)) {
+      const code = /^[a-z0-9_]{1,80}$/iu.test(block.content.error_code) ? block.content.error_code : 'unknown_error'
+      throw new WebError(`DeepSeek native web search failed: ${code}`, 'WEB_PROVIDER_ERROR')
+    }
     for (const item of block.content ?? []) {
-      if (item.type !== 'web_search_result' || item.url.length === 0 || seen.has(item.url)) continue
+      if (item.type === 'web_search_tool_result_error') {
+        const code = item.error_code !== undefined && /^[a-z0-9_]{1,80}$/iu.test(item.error_code) ? item.error_code : 'unknown_error'
+        throw new WebError(`DeepSeek native web search failed: ${code}`, 'WEB_PROVIDER_ERROR')
+      }
+      if (item.type !== 'web_search_result' || typeof item.url !== 'string' || item.url.length === 0 || seen.has(item.url)) continue
       seen.add(item.url)
       const snippet = snippets.get(item.url)
       sources.push({

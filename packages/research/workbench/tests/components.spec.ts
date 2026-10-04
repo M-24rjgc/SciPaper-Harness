@@ -9,6 +9,7 @@ import type { ProcessResult } from '../src/process.ts'
 import type { ResearchPreferences } from '../src/types.ts'
 import type { ComponentHost } from '../src/components.ts'
 import { newProject } from '../src/project.ts'
+import { hashBytes } from '../src/files.ts'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 
 /** Every process the manager starts, answered by the current script. */
@@ -227,6 +228,53 @@ describe('managed tools on a Windows x64 host', () => {
 })
 
 describe('TeX distribution selection', () => {
+  it('records initialization failures against the manuscript instead of losing its compile result', async () => {
+    const root = await temporary()
+    vi.stubEnv('DSH_HOME', join(root, 'data-home'))
+    const bin = join(root, 'latex', 'TinyTeX', 'bin', 'windows')
+    await write(join(bin, 'xelatex.exe'))
+    await write(join(root, 'latex', '.complete'))
+    const manager = new ComponentManager(root, none, windows(await temporary(), {}))
+    scripted.answer = (command, args) => args.includes('--version') ? answer(command, args)
+      : { code: 1, stdout: '', stderr: 'format initialization failed' }
+    const project = newProject({ title: 'Typesetting', root: join(root, 'project'), brief: '' }, 'workspace' as WorkspaceId)
+    await mkdir(project.root)
+    const artifact = await writeArtifact(project, { action: 'save-artifact', projectId: project.id, path: 'paper/main.tex', kind: 'manuscript',
+      content: '\\documentclass{article}\\begin{document}Text.\\end{document}', evidence: [], claimIds: [], inputArtifacts: [] }, 'user', 100000)
+    const result = await compilePaper(project, artifact, 'xelatex', manager, signal, 100000)
+    expect(result.status).toBe('failed')
+    expect(result.diagnostics.join('\n')).toMatch(/Managed TeX xelatex format initialization failed/)
+    expect(await readFile(join(project.root, result.logPath), 'utf8')).toContain('format initialization failed')
+  })
+
+  it('initializes managed formats once in writable engine-specific directories and retries a failed initialization', async () => {
+    const root = await temporary()
+    const bin = join(root, 'latex', 'TinyTeX', 'bin', 'windows')
+    vi.stubEnv('DSH_HOME', join(root, 'data-home'))
+    const cache = join(root, 'data-home', 'research', 'cache', 'latex', hashBytes(bin).slice(0, 16), 'xelatex')
+    await write(join(bin, 'xelatex.exe'))
+    await write(join(root, 'latex', '.complete'))
+    const manager = new ComponentManager(root, none, windows(await temporary(), {}))
+    scripted.answer = (command, args) => args.includes('--version') ? answer(command, args)
+      : { code: 1, stdout: '', stderr: 'format initialization failed' }
+    await expect(manager.latexRuntime(signal, 'xelatex')).rejects.toThrow(/format initialization failed/)
+    scripted.answer = async (command, args) => {
+      if (args.includes('--version')) return answer(command, args)
+      await write(join(cache, 'texmf-var', 'web2c', 'xetex', 'xelatex.fmt'), 'format')
+      return { code: 0, stdout: 'format initialized', stderr: '' }
+    }
+    const runtime = await manager.latexRuntime(signal, 'xelatex')
+    expect(runtime.env.TEXMFVAR).toBe(join(cache, 'texmf-var'))
+    expect(runtime.env.TEXMFCACHE).toBe(cache)
+    expect(runtime.compilerArgs).toEqual([])
+    await manager.latexRuntime(signal, 'xelatex')
+    const formats = scripted.calls.filter(call => call.args.includes('--byfmt'))
+    expect(formats).toHaveLength(2)
+    expect(formats[1]?.command).toBe(join(bin, 'fmtutil-sys.exe'))
+    expect(formats[1]?.args).toEqual(['--byfmt', 'xelatex'])
+    expect(formats[1]?.env?.PATH?.startsWith(bin)).toBe(true)
+  })
+
   it('reports no TeX without probing arbitrary commands or downloading', async () => {
     const requested = serve({})
     const manager = new ComponentManager(await temporary(), none, windows(await temporary(), {}))

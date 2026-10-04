@@ -1,7 +1,7 @@
 /**
  * Safe HTTP(S) retrieval for `ctx.web`: validates and pins public IP destinations (and, unless
- * configured off, the fake-ip answers of a local proxy), follows only same-origin redirects,
- * enforces time and size limits, classifies and decodes text, and leaves presentation to
+ * configured off, the fake-ip answers of a local proxy), validates every permitted redirect,
+ * enforces time and size limits, decodes text and PDF pages, and leaves presentation to
  * `@deepseek-ai/dsh-tool-web`. Requests carry no browser cookies or ambient credentials.
  * @module @deepseek-ai/dsh-web-fetch-http/provider
  */
@@ -13,6 +13,7 @@ import type { Response } from 'undici'
 import { proxyRouteFor } from '@deepseek-ai/dsh-http-proxy'
 import { isNonPublicIpLiteral, publicHttpNetwork } from './network.ts'
 import type { PublicAddress } from './network.ts'
+import { extractPdfText } from './pdf.ts'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from './policy.ts'
 
 /** Resolved provider limits and destination policy (the plugin's schemastery Config supplies defaults). */
@@ -23,7 +24,7 @@ export interface HttpFetchLimits {
   maxBodyChars: number
   /** Default fetch timeout in milliseconds. */
   timeoutMs: number
-  /** Maximum number of (same-origin) redirect hops to follow. */
+  /** Maximum number of permitted redirect hops to follow. */
   maxRedirects: number
   /** `User-Agent` header sent on every request. */
   userAgent: string
@@ -32,6 +33,8 @@ export interface HttpFetchLimits {
    * instead of refused. Applies to the default resolver; an injected one makes its own decision.
    */
   allowFakeIpDns: boolean
+  /** Follow anonymous cross-origin redirects after validating every destination. */
+  allowCrossOriginRedirects?: boolean
 }
 
 /** Resolve one hostname to an already policy-validated address set. */
@@ -69,10 +72,15 @@ export class HttpFetchProvider implements WebFetchProvider {
     // One signal stops both the request and body read. The deadline's TimeoutReason later
     // distinguishes this provider's timeout from caller or outer-deadline cancellation.
     using d = deadline(signal, this.limits.timeoutMs, 'WEB_FETCH_TIMEOUT')
-    return await this.followAndRead(request.url, d.signal)
+    try {
+      return await this.followAndRead(request.url, d.signal)
+    } catch (error) {
+      if (error instanceof WebError && !d.signal.aborted) throw error
+      throw translateAbortOrNetwork(error, d.signal)
+    }
   }
 
-  /** Follow same-origin redirects up to the hop cap, then read the final response. */
+  /** Follow permitted redirects up to the hop cap, then read the final response. */
   private async followAndRead(initialUrl: string, signal: AbortSignal): Promise<WebFetchResult> {
     let currentUrl = validateFetchUrl(initialUrl)
     let redirectsFollowed = 0
@@ -101,9 +109,12 @@ export class HttpFetchProvider implements WebFetchProvider {
           let validatedTarget: URL
           try {
             validatedTarget = validateFetchUrl(target.toString())
-            if (!isSameOrigin(validatedTarget, currentUrl)) {
+            if (currentUrl.protocol === 'https:' && validatedTarget.protocol === 'http:') {
+              throw new WebError('HTTPS to HTTP redirect is not allowed', 'WEB_REDIRECT_BLOCKED')
+            }
+            if (!isSameOrigin(validatedTarget, currentUrl) && !this.limits.allowCrossOriginRedirects) {
               throw new WebError(
-                `cross-origin redirect to ${validatedTarget.origin} is not followed automatically; retry against that URL directly`,
+                `cross-origin redirect is not followed automatically; retry ${validatedTarget.href} directly`,
                 'WEB_REDIRECT_BLOCKED',
               )
             }
@@ -127,7 +138,7 @@ export class HttpFetchProvider implements WebFetchProvider {
   private async requestOnce(url: URL, signal: AbortSignal) {
     const headers = {
       'user-agent': this.limits.userAgent,
-      'accept': 'text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8',
+      'accept': 'text/html,application/xhtml+xml,application/pdf,text/*;q=0.9,application/json;q=0.8',
     }
     try {
       // A proxied hop skips public-address resolution and pinning: the proxy performs the origin's
@@ -160,6 +171,13 @@ export class HttpFetchProvider implements WebFetchProvider {
     if (kind === undefined) {
       await response.body?.cancel()
       throw new WebError(`unsupported content type "${contentType ?? 'unknown'}"`, 'WEB_UNSUPPORTED_CONTENT_TYPE')
+    }
+
+    if (kind === 'pdf') {
+      const { bytes, truncatedByBytes } = await this.readCapped(response, signal)
+      if (truncatedByBytes) throw new WebError('PDF exceeds the response byte limit', 'WEB_FETCH_TOO_LARGE')
+      const extracted = await extractPdfText(bytes, this.limits.maxBodyChars, signal)
+      return { url: finalUrl.toString(), statusCode: response.status, body: { kind: 'text', content: extracted.content }, truncated: extracted.truncated }
     }
 
     // Resolve the decoder BEFORE reading the body so an unsupported charset

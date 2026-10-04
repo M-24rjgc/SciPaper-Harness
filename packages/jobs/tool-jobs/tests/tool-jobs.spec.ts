@@ -120,6 +120,64 @@ function text(result: { content: { type: string; text?: string }[] }): string {
 
 const tick = () => new Promise<void>(r => setTimeout(r, 0))
 
+describe('explicit stop tools', () => {
+  it('validates a requested kill wait before asking the producer to stop', async () => {
+    const { ctx } = await setup()
+    const task = producer()
+    const id = ctx.jobs.start(task.spec)
+    const result = await call(ctx, 'job_kill', { job_id: id, wait: true, timeout_ms: -1 })
+    expect(result.isError).toBe(true)
+    expect(task.cancels).toEqual([])
+    task.settle({ status: 'completed' })
+  })
+  it('job_kill can wait for actual settlement without consuming output', async () => {
+    const { ctx } = await setup()
+    const owner = await fakeAgent(ctx, 'waited-kill')
+    const task = producer({ owner: owner.id })
+    const id = ctx.jobs.start(task.spec)
+    task.append('last output')
+    const stopping = call(ctx, 'job_kill', { job_id: id, wait: true, timeout_ms: 1000 }, owner)
+    await tick()
+    expect(task.cancels).toEqual([undefined])
+    task.settle({ status: 'killed' })
+    expect(text(await stopping)).toContain('status: killed')
+    expect(ctx.jobs.read(id, owner.id).chunks[0]?.text).toBe('last output')
+  })
+
+  it('job_stop_all cancels every live job and reports observed states', async () => {
+    const { ctx } = await setup()
+    const owner = await fakeAgent(ctx, 'stop-all')
+    const tasks = [producer({ owner: owner.id }), producer({ owner: owner.id })]
+    tasks.forEach(task => ctx.jobs.start(task.spec))
+    const stopping = call(ctx, 'job_stop_all', { reason: 'requested stop', timeout_ms: 1000 }, owner)
+    await tick()
+    expect(tasks.map(task => task.cancels)).toEqual([['requested stop'], ['requested stop']])
+    tasks.forEach((task) =>{  task.settle({ status: 'killed' }) })
+    expect(text(await stopping)).toContain('All selected background work has stopped.')
+  })
+
+  it('job_stop_all reports an incomplete stop after the configured wait cap', async () => {
+    const { ctx } = await setup({ waitTimeoutMs: 10, maxWaitTimeoutMs: 20 })
+    const task = producer()
+    ctx.jobs.start(task.spec)
+    const result = await call(ctx, 'job_stop_all', { timeout_ms: 1_000 })
+    expect(text(result)).toContain('not been confirmed stopped')
+    expect(text(result)).toContain('timeout')
+    task.settle({ status: 'killed' })
+  })
+
+  it('renders independent supervisor failures even when there are no ordinary jobs', async () => {
+    const { ctx } = await setup()
+    ctx.jobs.registerStopSource('experiment', async () => ({ confirmed: false, targets: [{ id: 'run-1', status: 'unknown', confirmed: false, error: 'transport failed' }] }))
+    const result = await call(ctx, 'job_stop_all', {})
+    expect(result.isError).not.toBe(true)
+    expect(text(result)).toContain('not been confirmed stopped')
+    expect(text(result)).toContain('run-1 [status: unknown]; stop unconfirmed; transport failed')
+    expect(result.value).toMatchObject({ confirmed: false, jobs: [], sources: [{ source: 'experiment', targets: [{ id: 'run-1', confirmed: false }] }] })
+    await ctx.fiber.dispose()
+  })
+})
+
 /** Start and settle `count` owned jobs one at a time, letting each notice land. */
 async function settleTasks(ctx: Context, owner: Agent, count: number): Promise<void> {
   for (let i = 0; i < count; i += 1) {
@@ -560,7 +618,7 @@ describe('job_kill', () => {
     })
     expect(killValue.job).not.toHaveProperty('owner')
     expect(killValue.job).not.toHaveProperty('output')
-    expect(text(result)).toBe('requested cancellation of job bash-1')
+    expect(text(result)).toBe('requested cancellation of job bash-1 [status: stopping]')
     expect(p.cancels).toEqual(['superseded'])
   })
 
@@ -992,7 +1050,7 @@ describe('completion notices', () => {
     expect(shortNotice).toBe('background job\nDone; job_output.')
   })
 
-  it('suppresses the notice for a job the model already killed', async () => {
+  it('notifies actual settlement after a model cancellation request', async () => {
     const { ctx } = await setup()
     const inject = vi.fn()
     const owner = await fakeAgent(ctx, 'sess-1', { inject })
@@ -1002,7 +1060,7 @@ describe('completion notices', () => {
     await call(ctx, 'job_kill', { job_id: 'bash-1' }, owner)
     p.settle({ status: 'killed' })
     await tick()
-    expect(inject).not.toHaveBeenCalled()
+    expect(inject).toHaveBeenCalledTimes(1)
   })
 
   it('suppresses the notice when a wait returned the terminal state', async () => {
@@ -1102,7 +1160,7 @@ describe('completion notices', () => {
     expect(inject).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps a claim on one job while another job settles', async () => {
+  it('notifies both a completed job and a previously cancellation-requested job', async () => {
     const { ctx } = await setup()
     const inject = vi.fn()
     const owner = await fakeAgent(ctx, 'sess-1', { inject })
@@ -1117,7 +1175,7 @@ describe('completion notices', () => {
     expect(inject).toHaveBeenCalledTimes(1)
     killed.settle({ status: 'killed' })
     await tick()
-    expect(inject).toHaveBeenCalledTimes(1)
+    expect(inject).toHaveBeenCalledTimes(2)
   })
 
   it('drops the notice for unowned jobs without throwing', async () => {
@@ -1129,11 +1187,8 @@ describe('completion notices', () => {
     await tick()
   })
 
-  it('delivers to the agent currently registered for the owner session', async () => {
+  it('keeps a same-session replacement from receiving or reading the old runtime job', async () => {
     const { ctx } = await setup()
-    // The settlement names the owner session; the notice goes to whichever
-    // agent holds that session when the job settles, which can read the job
-    // through the same session id.
     const oldInject = vi.fn()
     const oldOwner = await fakeAgent(ctx, 'shared', { inject: oldInject })
     const p = producer({ owner: oldOwner.id })
@@ -1146,8 +1201,10 @@ describe('completion notices', () => {
     await tick()
 
     expect(oldInject).not.toHaveBeenCalled()
-    expect(replacementInject).toHaveBeenCalledTimes(1)
-    expect(text(await call(ctx, 'job_output', { job_id: 'bash-1' }, replacement))).toBe('(no new output)\n[status: completed]')
+    expect(replacementInject).not.toHaveBeenCalled()
+    const read = await call(ctx, 'job_output', { job_id: 'bash-1' }, replacement)
+    expect(read.isError).toBe(true)
+    expect(text(read)).toContain('belongs to another session')
   })
 
   it('drops the notice when the agent registry left before settlement', async () => {

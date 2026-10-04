@@ -188,13 +188,16 @@ export interface ShellProcessRead {
 export interface ShellProcess {
   /** Process lifecycle state (settled exactly once). */
   status: ShellProcessStatus
-  /** Exit code once finished (null = killed by signal / still running). */
+  /** Direct command's observed exit code, or null before exit / when signal-killed. */
   exitCode: number | null
   /** Terminating signal name, when signal-killed. */
   signal: NodeJS.Signals | null
+  /** Infrastructure or cleanup failure, distinct from a requested kill or a nonzero exit. */
+  failure?: string
   /**
-   * Resolves when the underlying process settles (never rejects — provider
-   * rejection settles as `killed` with a stage-neutral error on stderr).
+   * Resolves after the direct command settles and its remaining managed descendants
+   * are terminated and joined, preserving the direct command's exit facts. Never
+   * rejects: provider or cleanup failure is carried by {@link failure} and stderr.
    */
   readonly done: Promise<void>
   /** Sandbox facts, stamped once a confined process settles. */
@@ -225,10 +228,10 @@ export interface ShellProcess {
  */
 export interface ShellExecution extends ShellProcess {
   /**
-   * Foreground projection: settles when the process closes, with split
-   * collected streams and first-cause `timedOut`/`aborted` classification.
-   * Rejects only for infrastructure failures (a spawn that never produced a
-   * process); nonzero exits, timeout kills, and abort kills resolve with a
+   * Foreground projection: settles after command exit and managed-range cleanup,
+   * with split streams and first-cause `timedOut`/`aborted` classification.
+   * Rejects only for infrastructure failures (spawn or range cleanup);
+   * nonzero exits, timeout kills, and abort kills resolve with a
    * descriptive result. Created on demand and memoized — callers that never
    * invoke it (background producers) never observe the rejection either; the
    * handle's `done`/read path carries the spawn-failure story for them.

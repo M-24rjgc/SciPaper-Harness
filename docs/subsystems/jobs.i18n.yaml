@@ -15,11 +15,14 @@
   en: eee762c5ae896a2d
   zh: 93984e2007381ae8
 /background-job-runtime/consumer-views:
-  en: 8923d586da35964e
-  zh: 85437e407856cd5f
+  en: affcadebdf90f63a
+  zh: f63065a9a5773ea9
+/background-job-runtime/session-tree-stop:
+  en: 392aaec4803cc04e
+  zh: fef1aecc942c82af
 /background-job-runtime/events:
   en: 413216510fce678e
   zh: 18efe733a0b35d0c
 /background-job-runtime/service-behavior:
-  en: b4c51bdf4816f1ef
-  zh: c8f3e872dd988a7b
+  en: a021ecc9d293cfcf
+  zh: 468a275bcb48b260

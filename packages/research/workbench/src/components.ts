@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import extract from 'extract-zip'
-import { hashFile, atomicWrite } from './files.ts'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
+import { hashBytes, hashFile, atomicWrite } from './files.ts'
 import { checked, localExecutable, runProcess } from './process.ts'
 import type { CompileRecord, ComponentStatus, ResearchPreferences } from './types.ts'
 
@@ -167,6 +168,8 @@ interface TexInstallation {
 export interface LatexRuntime {
   bin: string
   compilerArgs: readonly string[]
+  /** Writable format, font and configuration directories for managed TeX; external distributions keep their own setup. */
+  env: Readonly<Record<string, string>>
   /** Prefix arguments for a bibliography program from this same distribution. */
   bibliographyArgs: (program: 'bibtex' | 'biber') => Promise<readonly string[]>
 }
@@ -470,9 +473,10 @@ export class ComponentManager {
     this.requireTexEngine(selected, engine)
     const bin = selected.status.path
     const external = selected.status.source === 'configured' || selected.status.source === 'system'
+    const env = external ? {} : await this.managedTexRuntime(bin, engine, signal)
     let bibliography: Promise<readonly string[]> | undefined
     return {
-      bin, compilerArgs: external && selected.miktexEngines.includes(engine) ? ['--disable-installer'] : [],
+      bin, env, compilerArgs: external && selected.miktexEngines.includes(engine) ? ['--disable-installer'] : [],
       bibliographyArgs: (program) => {
         // Biber is a Perl application; it has no MiKTeX installer switch.
         if (!external || program === 'biber') return Promise.resolve([])
@@ -485,6 +489,53 @@ export class ComponentManager {
         return bibliography
       },
     }
+  }
+
+  /** Initialize one managed engine's formats before publishing its writable runtime directories. */
+  private async managedTexRuntime(bin: string, engine: CompileRecord['engine'], signal: AbortSignal): Promise<Record<string, string>> {
+    const cache = join(resolveDshHome(), 'research', 'cache', 'latex', hashBytes(bin).slice(0, 16), engine)
+    const variable = join(cache, 'texmf-var')
+    const configuration = join(cache, 'texmf-config')
+    const fontCache = join(variable, 'fonts', 'cache')
+    const fontConfig = join(configuration, 'fonts', 'fonts.conf')
+    const texRoot = resolve(bin, '..', '..')
+    const env = {
+      PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter),
+      TEXMFVAR: variable, TEXMFSYSVAR: variable,
+      TEXMFCONFIG: configuration, TEXMFSYSCONFIG: configuration, TEXMFCACHE: cache,
+      FONTCONFIG_FILE: fontConfig, FONTCONFIG_PATH: dirname(fontConfig),
+    }
+    await this.once(`latex-runtime:${engine}`, async () => {
+      await mkdir(variable, { recursive: true })
+      await mkdir(configuration, { recursive: true })
+      await mkdir(fontCache, { recursive: true })
+      const xml = (path: string): string => path.replaceAll('\\', '/').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+      const fontDirectories = this.host.platform === 'win32'
+        ? [join(process.env.SystemRoot ?? 'C:\\Windows', 'Fonts'), ...(process.env.LOCALAPPDATA ? [join(process.env.LOCALAPPDATA, 'Microsoft', 'Windows', 'Fonts')] : [])]
+        : ['/usr/share/fonts', '/usr/local/share/fonts', '/System/Library/Fonts', '/Library/Fonts']
+      fontDirectories.push(join(texRoot, 'texmf-dist', 'fonts', 'opentype'), join(texRoot, 'texmf-dist', 'fonts', 'truetype'))
+      await atomicWrite(fontConfig, `<?xml version="1.0"?>\n<fontconfig>\n${fontDirectories.map(path => `<dir>${xml(path)}</dir>`).join('\n')}\n<cachedir>${xml(fontCache)}</cachedir>\n</fontconfig>\n`)
+      const marker = join(cache, '.formats-ready')
+      const installedFormat = await findFile(join(texRoot, 'texmf-var'), `${engine}.fmt`, 5)
+      const fingerprint = `${bin}\n${await hashFile(join(bin, this.host.platform === 'win32' ? `${engine}.exe` : engine))}\n${installedFormat === undefined ? '' : await hashFile(installedFormat)}`
+      if (existsSync(marker) && await readFile(marker, 'utf8') === fingerprint && await findFile(variable, `${engine}.fmt`, 5)) return cache
+      if (installedFormat !== undefined) {
+        const directory = join(variable, 'web2c', engine === 'xelatex' ? 'xetex' : engine === 'lualatex' ? 'luahbtex' : 'pdftex')
+        await mkdir(directory, { recursive: true })
+        await copyFile(installedFormat, join(directory, `${engine}.fmt`))
+        await atomicWrite(marker, fingerprint)
+        return cache
+      }
+      // TeX Live's launcher selects its bundled Perl and patches the Windows search path.
+      // Invoking fmtutil.pl directly can select a different distribution's kpsewhich.
+      checked(await runProcess(join(bin, this.host.platform === 'win32' ? 'fmtutil-sys.exe' : 'fmtutil-sys'), ['--byfmt', engine], {
+        signal, env, timeoutMs: 180000, ordinaryExecutablePath: true,
+      }), `Managed TeX ${engine} format initialization`)
+      if (!await findFile(variable, `${engine}.fmt`, 5)) throw new Error(`Managed TeX did not initialize ${engine}.fmt in ${variable}`)
+      await atomicWrite(marker, fingerprint)
+      return cache
+    })
+    return env
   }
 
   /**

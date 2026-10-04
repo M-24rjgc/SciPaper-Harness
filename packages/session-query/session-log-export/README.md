@@ -46,6 +46,7 @@ The Web bundle mounts the package with Connection, `dsh-commands`, `dsh-client-u
 
 | Field | Default | Meaning |
 |---|---|---|
+| `redactSecrets` | `true` | Redact detected passwords, API keys and tokens in exported log copies. Detected values of four or more characters are also masked in repeated text and compact stream fragments; shorter values are masked only in explicit credential fields. Stored logs and attachments remain unchanged. |
 | `compressionLevel` | `6` | DEFLATE level from 0 through 9 for each ZIP entry. |
 
 ### Command contract

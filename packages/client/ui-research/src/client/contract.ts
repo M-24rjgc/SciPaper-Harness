@@ -340,9 +340,9 @@ export type SshAuthChoice =
   | { readonly kind: 'password'; readonly password: string }
 
 /** Why an SSH host could not be used, as the host classifies it. */
-export type SshWorkspaceFailure = 'auth' | 'unreachable' | 'host-key' | 'host-key-changed' | 'unsupported'
+export type SshWorkspaceFailure = 'auth' | 'unreachable' | 'handshake' | 'host-key' | 'host-key-changed' | 'unsupported'
 
-const SSH_WORKSPACE_FAILURES: readonly SshWorkspaceFailure[] = ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported']
+const SSH_WORKSPACE_FAILURES: readonly SshWorkspaceFailure[] = ['auth', 'unreachable', 'handshake', 'host-key', 'host-key-changed', 'unsupported']
 
 /** The key of an unknown SSH host, as a person compares it with the one the server's administrator knows. */
 export interface SshHostKey {

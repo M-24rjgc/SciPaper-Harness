@@ -54,6 +54,38 @@ async function mountTools(opts: {
   return { ctx, fiber, call }
 }
 
+describe('fetch pagination and failed resource status', () => {
+  it('continues the converted text across page boundaries without losing a suffix', async () => {
+    const source = 'first '.repeat(300) + 'UNIQUE-SUFFIX'
+    const { fiber, call } = await mountTools({ fetchProvider: {
+      id: 'pagination', available: () => true,
+      fetch: async () => ({ url: 'https://page.test', statusCode: 200, body: { kind: 'html', content: `<p>${source}</p>` }, truncated: false }),
+    } })
+    try {
+      const first = await call('web_fetch', { url: 'https://page.test', max_chars: 1000 })
+      expect(first.isError).toBe(false)
+      expect(first.value).toMatchObject({ offset: 0, nextOffset: 1000 })
+      const second = await call('web_fetch', { url: 'https://page.test', offset: 1000, max_chars: 1000 })
+      expect(second.isError).toBe(false)
+      expect(second.value).toMatchObject({ offset: 1000, truncated: false })
+      expect(JSON.stringify(second.content)).toContain('UNIQUE-SUFFIX')
+      const firstValue = first.value as { body: { content: string } }
+      const secondValue = second.value as { body: { content: string } }
+      expect(firstValue.body.content + secondValue.body.content).toBe(source)
+      expect((await call('web_fetch', { url: 'https://page.test', offset: 999999 })).isError).toBe(true)
+    } finally { await fiber.dispose() }
+  })
+
+  it.each([403, 404, 429, 503, 202])('reports unusable HTTP %i as a failed call', async (statusCode) => {
+    const { fiber, call } = await mountTools({ fetchProvider: {
+      id: 'status', available: () => true,
+      fetch: async () => ({ url: 'https://page.test', statusCode, body: { kind: 'text', content: statusCode === 202 ? '' : 'error' }, truncated: false }),
+    } })
+    try { expect((await call('web_fetch', { url: 'https://page.test' })).isError).toBe(true) }
+    finally { await fiber.dispose() }
+  })
+})
+
 describe('search formatting', () => {
   it('renders content, sources with titles/hostnames, snippets, and a citation reminder', () => {
     const out = formatSearchOutput({
@@ -931,6 +963,7 @@ describe('fetchMaxOutputChars is plugin config', () => {
     })
     const out = await call('web_fetch', { url: 'https://a.test' })
     expect(out.content.map(block => block.type === 'text' ? block.text : '').join('')).toHaveLength(100)
+    expect((await call('web_fetch', { url: 'https://a.test', offset: 0 })).isError).toBe(true)
     await fiber.dispose()
   })
 

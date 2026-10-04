@@ -54,6 +54,8 @@ kind: "package-reference"
 
 工具执行 `pwsh -Command <command>` 并返回合并后的输出。命令每次调用都运行在全新 pwsh 进程中，因此状态从不保留——请传 `workdir` 而不是 `cd`。路径使用原生 Windows 形式，环境变量用 `$env:NAME` 读取。非零退出以 `[exit code: N]` 报告；在 Windows 上，强制终止的命令以 `[exit code: 1]` 结算且没有信号标记，因此 agent 把中断后的裸 exit 1 当作终止而非命令失败。工具描述要求 agent 在任何删除或移动前校验解析后的绝对目标路径，并且不要给 `$HOME` 等自动变量赋值。后台运行、输出截断以及 `description`／`timeoutMs`／`workdir` 参数的行为与 [`dsh-tool-bash`](../tool-bash/README.zh.md#running-long-commands-in-the-background) 完全一致，包括异步 shell 准备过程中由任务负责的取消。
 
+后台命令零退出结算为 `completed`；非零或缺失退出码、基础设施故障结算为 `failed`。请求取消后，执行器完成对受管理进程范围的观察才以 `killed` 结算；无法确认清理时以 `failed` 报告可能残留的工作。
+
 ### 前台命令即任务
 
 组合中有 job 注册表时，前台命令一启动就登记到 `ctx.jobs`，调用等待该任务：命令在运行期间始终被列出、经 `job.list` 与 `job.follow` 流式观看，并可从 Web 任务列表停止。在超时内完成的命令返回普通前台结果，其任务记录随结果一起离开注册表，模型从不看到 id。超过超时仍在运行的命令继续作为它本来就是的那个任务运行，调用返回 `[still running after <timeoutMs>ms; moved to background job <id>]` 加任务交接指引，并以一次消费式读取带上目前为止的输出——`job_output` 恰好从此处接续。来自调用之外的杀停（人在界面上停止任务）会让前台结果在退出标记之前带上 `[stopped: <reason>]`，模型读到的是原因而不是命令失败；取消调用本身则杀掉任务。登记是尽力而为的：`promoteOnTimeout: false`、缺少 job 注册表，或注册表在启动时拒绝该任务（持有者的任务上限、没有控制器）都会改为在执行器的 deadline 杀下运行命令，`timeoutMs` 参数描述也只在交接语义成立时才宣传它。

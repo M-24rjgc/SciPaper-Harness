@@ -2,7 +2,7 @@
 import { spawn } from 'node:child_process'
 import { win32 } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { planSshAuth, sshPasswordStoreOf } from '@deepseek-ai/dsh-ssh/auth'
+import { planSshAuth, sshFailureFrom, sshPasswordStoreOf } from '@deepseek-ai/dsh-ssh/auth'
 
 /** Closed process result with UTF-8 output and exit code; a missing exit code is represented by -1. */
 export interface ProcessResult { code: number; stdout: string; stderr: string }
@@ -17,6 +17,8 @@ export interface ProcessOptions {
   env?: NodeJS.ProcessEnv
   /** Host platform whose process-tree kill applies; tests exercise both. */
   platform?: NodeJS.Platform
+  /** TeX Live discovers its installation from argv[0] and cannot resolve the Windows namespace prefix. */
+  ordinaryExecutablePath?: boolean
 }
 
 /**
@@ -45,7 +47,7 @@ export function runProcess(command: string, args: readonly string[], options: Pr
       PYTHONDONTWRITEBYTECODE: '1',
     }
     const platform = options.platform ?? process.platform
-    const child = spawn(localExecutable(command), [...args], {
+    const child = spawn(options.ordinaryExecutablePath ? command : localExecutable(command), [...args], {
       cwd: options.cwd,
       env: { ...environment, ...options.env },
       detached: platform !== 'win32',
@@ -131,9 +133,17 @@ export function ssh(host: string, args: readonly string[], options: ProcessOptio
 async function sshWithAuth(host: string, args: readonly string[], options: ProcessOptions): Promise<ProcessResult> {
   const plan = await planSshAuth(host, sshPasswordSource === undefined ? undefined : sshPasswordStoreOf(sshPasswordSource))
   const result = await runProcess('ssh', [
-    ...plan.options, '-o', 'ConnectTimeout=15', ...plan.destination, args.map(shQuote).join(' '),
+    ...plan.options, '-o', 'ConnectTimeout=15', '-o', 'ConnectionAttempts=1',
+    '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no', '-o', 'ClearAllForwardings=yes',
+    ...plan.destination, args.map(shQuote).join(' '),
   ], plan.env === undefined ? options : { ...options, env: { ...options.env, ...plan.env } })
-  return { ...result, stdout: plan.redact(result.stdout), stderr: plan.redact(result.stderr) }
+  const redacted = { ...result, stdout: plan.redact(result.stdout), stderr: plan.redact(result.stderr) }
+  if (result.code !== 0) {
+    const fallback = new Error(`Remote command exited with code ${result.code}`)
+    const failure = sshFailureFrom(redacted.stderr, fallback)
+    if (failure !== fallback) throw failure
+  }
+  return redacted
 }
 
 /**

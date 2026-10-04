@@ -57,13 +57,14 @@ export function sshDestinationArguments(value: string): string[] {
 }
 
 /** Why an ssh connection could not be used, as a stable discriminant for localized messages. */
-export type SshFailureKind = 'auth' | 'unreachable' | 'host-key' | 'host-key-changed' | 'unsupported'
+export type SshFailureKind = 'auth' | 'unreachable' | 'handshake' | 'host-key' | 'host-key-changed' | 'unsupported'
 
-const FAILURE_KINDS: readonly SshFailureKind[] = ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported']
+const FAILURE_KINDS: readonly SshFailureKind[] = ['auth', 'unreachable', 'handshake', 'host-key', 'host-key-changed', 'unsupported']
 
 const FAILURE_MESSAGES: Readonly<Record<SshFailureKind, string>> = {
   auth: 'SSH authentication failed',
   unreachable: 'SSH host is unreachable',
+  handshake: 'SSH connection closed or stalled before authentication; consider bypassing the global proxy and retrying',
   'host-key': 'SSH host key is not trusted yet',
   'host-key-changed': 'SSH host key has changed',
   unsupported: 'SSH password login is not available on this computer',
@@ -125,7 +126,8 @@ export function classifySshFailure(text: string): SshFailureKind | undefined {
   if (/REMOTE HOST IDENTIFICATION HAS CHANGED|Host key for .* has changed and you have requested strict checking/u.test(text)) return 'host-key-changed'
   if (/Host key verification failed|host key is known for .* and you have requested strict checking/u.test(text)) return 'host-key'
   if (/Permission denied(?: \(|, please try again)|Too many authentication failures/u.test(text)) return 'auth'
-  if (/Could not resolve hostname|ssh: connect to host |banner exchange: |kex_exchange_identification: |Connection timed out during banner exchange|Connection to \S+ port \d+ timed out|Connection closed by \S+ port \d+/u.test(text)) return 'unreachable'
+  if (/banner exchange: |kex_exchange_identification: |Connection timed out during banner exchange|Connection closed by \S+ port \d+/u.test(text)) return 'handshake'
+  if (/Could not resolve hostname|ssh: connect to host |Connection to \S+ port \d+ timed out/u.test(text)) return 'unreachable'
   return undefined
 }
 

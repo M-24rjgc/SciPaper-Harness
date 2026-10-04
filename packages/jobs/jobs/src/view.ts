@@ -98,3 +98,48 @@ export interface JobView {
    */
   readonly output: { readonly total: number; readonly earliest: number; readonly spillPaths?: readonly string[] }
 }
+
+/** Cancellation and observed settlement for one job, including a failed stop. */
+export interface JobStopResult {
+  readonly job: JobView
+  /** Cancellation or observation failure; a terminal record alone does not prove termination after this failure. */
+  readonly error?: string
+}
+
+/** One independently managed target observed by an explicit stop source. */
+export interface StopSourceTarget {
+  /** Source-specific stable resource identifier. */
+  readonly id: string
+  /** Fresh observed lifecycle state, including unknown when observation failed. */
+  readonly status: string
+  /** True only after the adapter verified this resource is no longer active. */
+  readonly confirmed: boolean
+  /** Cancellation or observation failure for this target. */
+  readonly error?: string
+}
+
+/** Bounded cancellation report supplied by a detached-work adapter. */
+export interface StopSourceReport {
+  /** True only when every selected independent target was confirmed stopped. */
+  readonly confirmed: boolean
+  /** Individual resource observations; an empty list alone does not confirm an adapter failure. */
+  readonly targets: readonly StopSourceTarget[]
+  /** Adapter-wide cancellation or observation failure. */
+  readonly error?: string
+}
+
+/** Source identity and its observed independent work. */
+export interface NamedStopSourceReport extends StopSourceReport {
+  /** Effect-scoped adapter's public registration label. */
+  readonly source: string
+}
+
+/** Bounded stop of the live jobs owned by a session and its live runtime descendants. */
+export interface JobStopReport {
+  /** True only when all selected jobs and independent work were verified stopped. */
+  readonly confirmed: boolean
+  /** Actual ordinary-job projections and any cancellation or observation failures. */
+  readonly jobs: readonly JobStopResult[]
+  /** Explicit-stop adapters; these do not participate in ordinary cancellation or disposal. */
+  readonly sources: readonly NamedStopSourceReport[]
+}

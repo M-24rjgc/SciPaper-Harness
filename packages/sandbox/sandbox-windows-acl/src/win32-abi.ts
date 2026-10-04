@@ -42,6 +42,8 @@ export const WRITE_RESTRICTED = 0x8
 export const WinWorldSid = 1
 /** TOKEN_INFORMATION_CLASS value for token groups. */
 export const TokenGroups = 2
+/** TOKEN_INFORMATION_CLASS value for the signed-in user SID. */
+export const TokenUser = 1
 /** TOKEN_INFORMATION_CLASS value for the token default DACL. */
 export const TokenDefaultDacl = 6
 /** SECURITY_INFORMATION flag selecting the DACL. */

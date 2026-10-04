@@ -46,6 +46,7 @@ Web bundle 将本包与 Connection、`dsh-commands`、`dsh-client-ui-commands` �
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
+| `redactSecrets` | `true` | 在导出日志副本中隐藏检测到的密码、API key 和 token。长度不少于四个字符的已识别值，也会在重复正文及紧凑流片段中隐藏；更短的值仅在明确的凭据字段中隐藏。存储日志及附件保持原样。 |
 | `compressionLevel` | `6` | 每个 ZIP 条目的 DEFLATE 级别，范围为 0 到 9。 |
 
 ### 命令约定

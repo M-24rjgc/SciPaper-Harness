@@ -1278,33 +1278,45 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: '@Remote({ mode: \'stream\' }) list(request: JobListRequest, signal: AbortSignal): AsyncIterable<JobListFrame>',
-        description: 'Stream the jobs one session can see — its own plus every unowned job — as whole-set frames: one on open, then one after each coalesced burst of lifecycle commits. The stream has no natural end; the carrier closes it.',
+        description: 'Stream jobs in the session\'s captured runtime ownership tree plus unowned jobs as whole-set frames: one on open, then one after each coalesced burst of lifecycle commits. The stream has no natural end; the carrier closes it.',
         parameters: [{ name: 'request', description: 'the session whose visible set to mirror.' }, { name: 'signal', description: 'cancellation owned by the Remote stream carrier.' }],
         returns: 'the roster frames.',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) follow(request: JobFollowRequest, signal: AbortSignal): AsyncIterable<JobFollowFrame>',
         description: 'Stream one job\'s retained output from an absolute byte offset, then its terminal projection once settled and drained. Non-consuming: the model-facing cursor and notice state never observe these reads. The request\'s session is the fenced read\'s caller; the registry rejects a job the session cannot see and an unknown job.',
-        parameters: [{ name: 'request', description: 'target job, owning session, and optional resume offset.' }, { name: 'signal', description: 'cancellation owned by the Remote stream carrier.' }],
+        parameters: [{ name: 'request', description: 'target job, owner or trusted ancestor session, and optional resume offset.' }, { name: 'signal', description: 'cancellation owned by the Remote stream carrier.' }],
         returns: 'anchor, coalesced output frames, and the terminal status.',
       },
       {
         signature: '@Remote(\'kill\') kill(request: JobKillRequest): JobKillValue',
-        description: 'Kill one background job on a human\'s behalf. The request\'s session is the fenced read\'s caller, so the job must be one that session can see: the registry\'s owner fence is the only access rule, and a child session\'s own jobs are killable from its list like any other. The kill records `cancelled by the user` as its reason; it is not one the model requested, so the owning agent still receives the completion notice, and a shell tool waiting on that job reads the reason in its own result.',
+        description: 'Kill one background job on a human\'s behalf. The request\'s session is the fenced read\'s caller, so the job must be one that session can see: the registry requires its captured owner or a trusted runtime ancestor. A replacement using the same session id has no access. The kill records `cancelled by the user` as its reason; it is not one the model requested, so the owning agent still receives the completion notice, and a shell tool waiting on that job reads the reason in its own result.',
         parameters: [{ name: 'request', description: 'Session whose job list carries the job, and the job id.' }],
         returns: 'the registry\'s admission of the kill request.',
+      },
+      {
+        signature: '@Remote(\'stopAll\') async stopAll(request: JobStopAllRequest, signal: AbortSignal): Promise<JobStopAllValue>',
+        description: 'Stop the session\'s active turn, live runtime descendants, and their jobs. Ordinary session cancellation retains detached jobs; this command explicitly cancels them and reports observed settlement, including stops that timed out.',
+        parameters: [{ name: 'request', description: 'root session whose live ownership tree is stopped.' }, { name: 'signal', description: 'cancellation of the bounded observation, not of requested stops.' }],
+        returns: 'per-job states and whether no selected work remains live.',
       },
     ],
   },
   {
     key: 'jobs',
     summary: 'Abstract background job registry.',
-    description: 'Abstract background job registry. Subclass, implement the abstract members, and load the subclass as a plugin — it registers as `ctx.jobs` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- Registrations outlive producer and controller fibers. Owner and service disposal cancel live work and await compliant producers; a throwing teardown cancel force-fails only the record. Such settlements announce `cause: \'teardown\'`, because a job whose owner is being destroyed has no reader left.\n- Owned-job access is fenced by the owner\'s session id. Ids are predictable, so authorization — not secrecy — is the boundary.\n- Settlement is first-wins: one terminal record, released waiters, then one round of contained event delivery, even against a late producer outcome. The `settled` event follows every released waiter and reports whether it released one (`awaited`), so a completion reporter can skip settlements a waiting caller already collected.\n- A settled record stays listed until its owner\'s disposal, service disposal, or an explicit remove by a caller that collected the terminal state itself and never handed the id out.\n- start refuses work while no attached job controller serves the spec\'s owner, so a producer cannot start work that owner cannot collect or stop. One registry serves every composition in the process, so this question — and event delivery under `{ owners: \'scope\' }` — is owner-relative rather than process-wide: registrations made from an unscoped context serve every owner, and registrations made under an agent composition\'s scope serve exactly the agents composed under it.\n- Every job owns one output ring. Pull sources named by the spec are pumped by the registry and drained once more before settlement; pushed appends land whole. The model\'s consuming cursor and observers\' absolute offsets read the same bytes and never disturb each other.\n- Ring retention is bounded. Appends past the live cap drop the oldest retained bytes; a reader below the retained window gets a lossy read, never an error. Settlement trims retention to the settled cap and ends the stream; the ring has no separate lifecycle.',
+    description: 'Abstract background job registry. Subclass, implement the abstract members, and load the subclass as a plugin — it registers as `ctx.jobs` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nImplementations must honor these semantics:\n\n- Registrations outlive producer and controller fibers. Owner and service disposal cancel live work and await compliant producers; a throwing teardown cancel force-fails only the record. Such settlements announce `cause: \'teardown\'`, because a job whose owner is being destroyed has no reader left.\n- Caller session ids resolve to exact registered runtimes. Owned-job access requires the captured owner or a trusted runtime ancestor; a replacement using the same session id inherits no access.\n- Settlement is first-wins: one terminal record, released waiters, then one round of contained event delivery, even against a late producer outcome. The `settled` event follows every released waiter and reports whether it released one (`awaited`), so a completion reporter can skip settlements a waiting caller already collected.\n- A settled record stays listed until its owner\'s disposal, service disposal, or an explicit remove by a caller that collected the terminal state itself and never handed the id out. Records reporting possibly orphaned work survive owner disposal, refuse explicit removal, and keep stopAll unconfirmed until service disposal removes them.\n- start refuses work while no attached job controller serves the spec\'s owner, so a producer cannot start work that owner cannot collect or stop. One registry serves every composition in the process, so this question — and event delivery under `{ owners: \'scope\' }` — is owner-relative rather than process-wide: registrations made from an unscoped context serve every owner, and registrations made under an agent composition\'s scope serve exactly the agents composed under it.\n- Every job owns one output ring. Pull sources named by the spec are pumped by the registry and drained once more before settlement; pushed appends land whole. The model\'s consuming cursor and observers\' absolute offsets read the same bytes and never disturb each other.\n- Ring retention is bounded. Appends past the live cap drop the oldest retained bytes; a reader below the retained window gets a lossy read, never an error. Settlement trims retention to the settled cap and ends the stream; the ring has no separate lifecycle.',
     methods: [
       {
         signature: 'abstract readonly events: JobEvents',
         description: 'Lifecycle and output events, filtered per subscription.',
         parameters: [],
+      },
+      {
+        signature: 'registerStopSource(name: string, source: SessionStopSource): () => void',
+        description: 'Attach an explicit-stop adapter without adopting its independent resources. Scope visibility and plugin teardown follow the registering Cordis context; the source validates target authority from exact runtime ownership itself. Ordinary cancellation and registry/owner disposal never invoke this hook.',
+        parameters: [{ name: 'name', description: 'stable adapter label included in the stop report.' }, { name: 'source', description: 'bounded cancellation and real-state observation.' }],
+        returns: 'disposer removing only the hook, without stopping its work.',
       },
       {
         signature: 'abstract start(spec: JobSpec): JobId',
@@ -1319,39 +1331,57 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'fresh projections.',
       },
       {
+        signature: 'listTree(caller?: SessionId): JobView[]',
+        description: 'List accessible jobs across the caller\'s runtime ownership tree. A provider may retain trusted admission-time ancestry until an owner\'s jobs drain. Durable fork lineage never grants access to another root Agent.',
+        parameters: [{ name: 'caller', description: 'root session; omission sees only unowned jobs.' }],
+        returns: 'deduplicated projections including unowned jobs.',
+      },
+      {
+        signature: 'getTree(id: JobId, caller?: SessionId): JobView',
+        description: 'Project one job visible to the caller\'s live runtime ownership tree.',
+        parameters: [{ name: 'id', description: 'job to look up.' }, { name: 'caller', description: 'root session; omission sees only unowned jobs.' }],
+        returns: 'a fresh projection, rejecting unknown or unrelated jobs.',
+      },
+      {
+        signature: 'async stopAll( caller: SessionId | undefined, timeoutMs: number, reason?: string, signal?: AbortSignal, deadlineAt?: number, ): Promise<JobStopReport>',
+        description: 'Cancel all live accessible jobs, then await their settlement concurrently. A timeout or aborted wait never claims termination. Cancellation failures are isolated per job, and newly admitted live jobs remain unconfirmed.',
+        parameters: [{ name: 'caller', description: 'session whose live ownership tree is stopped.' }, { name: 'timeoutMs', description: 'non-negative finite bound; zero requests stops without waiting.' }, { name: 'reason', description: 'cancellation reason forwarded to every selected producer.' }, { name: 'signal', description: 'cancels observation; already requested stops remain in force.' }, { name: 'deadlineAt', description: 'optional enclosing absolute deadline; can only shorten this wait.' }],
+        returns: 'actual job states and whether all selected work stopped.',
+      },
+      {
         signature: 'abstract get(id: JobId, caller?: SessionId): JobView',
         description: 'Project one job without changing its cursor. Throws for an unknown or foreign job.',
-        parameters: [{ name: 'id', description: 'job to look up.' }, { name: 'caller', description: 'reading session checked against the owner.' }],
+        parameters: [{ name: 'id', description: 'job to look up.' }, { name: 'caller', description: 'session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.' }],
         returns: 'a fresh projection.',
       },
       {
         signature: 'abstract read(id: JobId, caller?: SessionId): JobRead',
         description: 'Consume the ring from the model cursor and advance it to the current total. After settlement the first read also carries the producer\'s result. Throws for an unknown or foreign job.',
-        parameters: [{ name: 'id', description: 'job to read.' }, { name: 'caller', description: 'reading session checked against the owner.' }],
+        parameters: [{ name: 'id', description: 'job to read.' }, { name: 'caller', description: 'session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.' }],
         returns: 'the chunks since the cursor, the lossy flag, the result once, and the post-read projection.',
       },
       {
         signature: 'abstract readAt(id: JobId, from: number, caller?: SessionId): JobOutputRead',
         description: 'Read retained ring output without moving the model cursor. Resume with a previous read\'s `next`; an offset inside a retained chunk returns the whole chunk (its `at` may precede `from`). Throws for a negative or non-integer offset, or an unknown or foreign job.',
-        parameters: [{ name: 'id', description: 'job to read.' }, { name: 'from', description: 'absolute byte offset to read from (0 for the retained head).' }, { name: 'caller', description: 'reading session checked against the owner.' }],
+        parameters: [{ name: 'id', description: 'job to read.' }, { name: 'from', description: 'absolute byte offset to read from (0 for the retained head).' }, { name: 'caller', description: 'session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.' }],
         returns: 'retained chunks overlapping `[from, total)`, the resume offset, and the lossy flag.',
       },
       {
         signature: 'abstract kill(id: JobId, caller?: SessionId, reason?: string): \'requested\' | \'already-finished\'',
         description: 'Request cancellation, then mark the job stopping. A producer throw propagates without changing job state. A supplied reason is merged into terminal `detail` when the job settles `killed`. Throws for an unknown or foreign job.',
-        parameters: [{ name: 'id', description: 'job to cancel.' }, { name: 'caller', description: 'killing session checked against the owner.' }, { name: 'reason', description: 'cancellation reason forwarded verbatim to the producer.' }],
+        parameters: [{ name: 'id', description: 'job to cancel.' }, { name: 'caller', description: 'session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.' }, { name: 'reason', description: 'cancellation reason forwarded verbatim to the producer.' }],
         returns: '`requested` for live work, otherwise `already-finished`.',
       },
       {
         signature: 'abstract wait(id: JobId, timeoutMs: number, caller?: SessionId, signal?: AbortSignal): Promise<JobView>',
         description: 'Wait for settlement or timeout without cancelling the job. Caller abort rejects only while the job is live; after settlement the terminal projection wins. Rejects for an invalid timeout or an unknown or foreign job.',
-        parameters: [{ name: 'id', description: 'job to wait for.' }, { name: 'timeoutMs', description: 'positive finite wait bound in milliseconds.' }, { name: 'caller', description: 'waiting session checked against the owner.' }, { name: 'signal', description: 'optional cancellation of the wait itself.' }],
+        parameters: [{ name: 'id', description: 'job to wait for.' }, { name: 'timeoutMs', description: 'positive finite wait bound in milliseconds.' }, { name: 'caller', description: 'session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.' }, { name: 'signal', description: 'optional cancellation of the wait itself.' }],
         returns: 'projection at settlement or timeout.',
       },
       {
         signature: 'abstract remove(id: JobId, caller?: SessionId): void',
-        description: 'Drop one settled job\'s record from the visible set and announce `removed`. For a caller that collected the terminal state through its own wait and never handed the id to the model, such as a shell tool\'s foreground call. Throws for a job that is still live, unknown, or foreign.',
-        parameters: [{ name: 'id', description: 'settled job to drop.' }, { name: 'caller', description: 'removing session checked against the owner.' }],
+        description: 'Drop one settled job\'s record from the visible set and announce `removed`. For a caller that collected the terminal state through its own wait and never handed the id to the model, such as a shell tool\'s foreground call. Throws for a job that is still live, may have orphaned work, is unknown, or is foreign.',
+        parameters: [{ name: 'id', description: 'settled job to drop.' }, { name: 'caller', description: 'session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.' }],
       },
       {
         signature: 'abstract attachController(name: string): () => void',
@@ -1956,9 +1986,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the goals, those that drive rounds first, then the most recently changed.',
       },
       {
-        signature: 'async execute(raw: ResearchCommand, signal: AbortSignal, actor: \'user\' | \'agent\', sessionId?: string): Promise<ResearchResponse>',
+        signature: 'async execute(raw: ResearchCommand, signal: AbortSignal, actor: \'user\' | \'agent\', sessionId?: string, callingAgent?: Agent): Promise<ResearchResponse>',
         description: 'Dispatch a validated tool or desktop command. The desktop receives a job for long operations; the agent waits for the result inside its tool call. `start-new`, `relocate`, `discard-draft`, `archive-project` and `unarchive-project` are the desktop\'s alone.',
-        parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }, { name: 'sessionId', description: 'the agent\'s conversation, recorded on the runs it submits; absent for the desktop.' }],
+        parameters: [{ name: 'raw', description: 'the command as received.' }, { name: 'signal', description: 'cancellation of the call.' }, { name: 'actor', description: 'who acts: the desktop user or the agent.' }, { name: 'sessionId', description: 'the agent\'s conversation, recorded on the runs it submits; absent for the desktop.' }, { name: 'callingAgent', description: 'the registered runtime Agent that owns agent-submitted work; absent for desktop commands.' }],
         returns: 'the outcome.',
       },
     ],
@@ -2872,7 +2902,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'shell',
     summary: 'Abstract bash execution service.',
-    description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nexecute resolves with the process handle after preparation. "Foreground" is a property of what the caller awaits, not of the spawn — a caller that awaits ShellExecution.result ran the command in the foreground; one that keeps the handle ran it in the background. A caller that waits only for a while runs the command under `onExpiry: \'none\'` and bounds its own wait; the handle stays valid after the caller stops waiting.\n\nImplementations must honor these semantics:\n\n- ShellExecution.result rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a descriptive result: first-cause `timedOut`/`aborted`, the spec\'s `timeoutMs` echoed.\n- The handle is published after preparation. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on the read path, while `result()` carries the same failure as its rejection.\n- `onExpiry: \'none\'` arms no deadline; `\'kill\'` kills at expiry. Expiry during preparation returns a settled timed-out handle without output.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a process survives an executor-only reload.',
+    description: 'Abstract bash execution service. Subclass, implement the abstract methods, and load the subclass as a plugin — it registers as `ctx.shell` (one implementation per context; loading a second throws, which is cordis\' standard duplicate-service behavior).\n\nexecute resolves with the process handle after preparation. "Foreground" is a property of what the caller awaits, not of the spawn — a caller that awaits ShellExecution.result ran the command in the foreground; one that keeps the handle ran it in the background. A caller that waits only for a while runs the command under `onExpiry: \'none\'` and bounds its own wait; the handle stays valid after the caller stops waiting.\n\nImplementations must honor these semantics:\n\n- ShellExecution.result rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a descriptive result: first-cause `timedOut`/`aborted`, the spec\'s `timeoutMs` echoed.\n- The handle is published after preparation. At command exit, remaining managed descendants are terminated and joined before `done` resolves, preserving direct exit facts. It never rejects; infrastructure failures carry `failure` and stderr, while `result()` rejects.\n- `onExpiry: \'none\'` arms no deadline; `\'kill\'` kills at expiry. Expiry during preparation returns a settled timed-out handle without output.\n- ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.\n- A still-running process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a process survives an executor-only reload.',
     methods: [
       {
         signature: 'abstract resolve(request: ShellExecRequest): ShellExecSpec',
@@ -5147,11 +5177,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CheckProgress',
-    declaration: 'export interface CheckProgress {\n    items: CheckFinding[];\n    checkedAt: string;\n}',
+    declaration: 'export interface CheckProgress {\n    items: CheckFinding[];\n    status?: CheckStatus[\'status\'] | undefined;\n    reason?: string | undefined;\n    checkedAt: string;\n}',
   },
   {
     name: 'CheckReport',
-    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: string | undefined;\n    route?: string | undefined;\n    gatesRun: string[];\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
+    declaration: 'export interface CheckReport {\n    clean: boolean;\n    scope: string;\n    mode?: string | undefined;\n    route?: string | undefined;\n    gatesRun: string[];\n    checks?: CheckStatus[] | undefined;\n    phases: PhaseStatus[];\n    findings: CheckFinding[];\n    checkedAt: string;\n}',
+  },
+  {
+    name: 'CheckStatus',
+    declaration: 'export interface CheckStatus {\n    id: string;\n    status: \'passed\' | \'warnings\' | \'failed\' | \'skipped\';\n    reason?: string | undefined;\n}',
   },
   {
     name: 'ClaimRecord',
@@ -6130,6 +6164,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type JobStatus = \'running\' | \'stopping\' | \'completed\' | \'killed\' | \'failed\';',
   },
   {
+    name: 'JobStopAllRequest',
+    declaration: 'export interface JobStopAllRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'JobStopAllValue',
+    declaration: 'export interface JobStopAllValue extends JobStopReport {\n    readonly agents: readonly SessionStopResult[];\n}',
+  },
+  {
+    name: 'JobStopReport',
+    declaration: 'export interface JobStopReport {\n    readonly confirmed: boolean;\n    readonly jobs: readonly JobStopResult[];\n    readonly sources: readonly NamedStopSourceReport[];\n}',
+  },
+  {
+    name: 'JobStopResult',
+    declaration: 'export interface JobStopResult {\n    readonly job: JobView;\n    readonly error?: string;\n}',
+  },
+  {
     name: 'JobView',
     declaration: 'export interface JobView {\n    readonly id: JobId;\n    readonly kind: string;\n    readonly label: string;\n    readonly owner?: SessionId;\n    readonly outputLimitBytes?: number;\n    readonly status: JobStatus;\n    readonly progress?: string;\n    readonly detail?: string;\n    readonly startedAt: number;\n    readonly finishedAt?: number;\n    readonly output: {\n        readonly total: number;\n        readonly earliest: number;\n        readonly spillPaths?: readonly string[];\n    };\n}',
   },
@@ -6211,7 +6261,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LatexRuntime',
-    declaration: 'export interface LatexRuntime {\n    bin: string;\n    compilerArgs: readonly string[];\n    bibliographyArgs: (program: \'bibtex\' | \'biber\') => Promise<readonly string[]>;\n}',
+    declaration: 'export interface LatexRuntime {\n    bin: string;\n    compilerArgs: readonly string[];\n    env: Readonly<Record<string, string>>;\n    bibliographyArgs: (program: \'bibtex\' | \'biber\') => Promise<readonly string[]>;\n}',
   },
   {
     name: 'LiteratureItem',
@@ -6566,6 +6616,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModeSummary {\n    id: string;\n    order: number;\n    name: LocalizedText;\n    summary: LocalizedText;\n    entry?: string | undefined;\n    preload: string[];\n    routes: {\n        id: string;\n        name: LocalizedText;\n        summary: LocalizedText;\n    }[];\n    defaultRoute?: string | undefined;\n    phases: {\n        id: string;\n        label: LocalizedText;\n        routes?: string[] | undefined;\n        checkpoint: boolean;\n        skills: string[];\n    }[];\n}',
   },
   {
+    name: 'NamedStopSourceReport',
+    declaration: 'export interface NamedStopSourceReport extends StopSourceReport {\n    readonly source: string;\n}',
+  },
+  {
     name: 'NameResult',
     declaration: 'export interface NameResult {\n    valid: boolean;\n    saved: string;\n    patterns: number;\n    papers: number;\n    domains: number;\n    tiers: Record<string, number>;\n    issues: string[];\n    next: string;\n}',
   },
@@ -6663,7 +6717,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PhaseProgress',
-    declaration: 'export interface PhaseProgress {\n    done: boolean;\n    unmet: string[];\n    checkedAt: string;\n}',
+    declaration: 'export interface PhaseProgress {\n    done: boolean;\n    unmet: string[];\n    materialsPresent?: boolean | undefined;\n    checksComplete?: boolean | undefined;\n    warnings?: number | undefined;\n    skippedChecks?: string[] | undefined;\n    checkedAt: string;\n}',
   },
   {
     name: 'PhaseState',
@@ -6671,7 +6725,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PhaseStatus',
-    declaration: 'export interface PhaseStatus {\n    id: string;\n    done: boolean;\n    missing: string[];\n    unmet: string[];\n}',
+    declaration: 'export interface PhaseStatus {\n    id: string;\n    done: boolean;\n    missing: string[];\n    unmet: string[];\n    materialsPresent?: boolean | undefined;\n    checksComplete?: boolean | undefined;\n    warnings?: number | undefined;\n    skippedChecks?: string[] | undefined;\n}',
   },
   {
     name: 'PlatformSession',
@@ -7854,6 +7908,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionStartSource = \'startup\' | \'resume\' | \'clear\' | \'compact\';',
   },
   {
+    name: 'SessionStopRequest',
+    declaration: 'export interface SessionStopRequest {\n    readonly sessionId?: SessionId;\n    readonly caller?: Agent;\n    readonly agents: readonly Agent[];\n    readonly deadline: number;\n    readonly reason?: string;\n    readonly signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'SessionStopResult',
+    declaration: 'export interface SessionStopResult {\n    readonly sessionId: SessionId;\n    readonly status: \'idle\' | \'running\';\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'SessionStopSource',
+    declaration: 'export type SessionStopSource = (request: SessionStopRequest) => Promise<StopSourceReport>;',
+  },
+  {
     name: 'SessionStorageMetadata',
     declaration: 'export interface SessionStorageMetadata {\n    readonly meta: SessionHeader;\n    readonly inheritedEventCount: SessionLogOffset;\n}',
   },
@@ -8003,7 +8069,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ShellProcess',
-    declaration: 'export interface ShellProcess {\n    status: ShellProcessStatus;\n    exitCode: number | null;\n    signal: NodeJS.Signals | null;\n    readonly done: Promise<void>;\n    sandbox?: ShellSandboxInfo;\n    readOutput(): ShellProcessRead;\n    observed: ShellObservedStreams;\n    kill(): boolean;\n}',
+    declaration: 'export interface ShellProcess {\n    status: ShellProcessStatus;\n    exitCode: number | null;\n    signal: NodeJS.Signals | null;\n    failure?: string;\n    readonly done: Promise<void>;\n    sandbox?: ShellSandboxInfo;\n    readOutput(): ShellProcessRead;\n    observed: ShellObservedStreams;\n    kill(): boolean;\n}',
   },
   {
     name: 'ShellProcessRead',
@@ -8216,6 +8282,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'StandingPhase',
     declaration: 'export interface StandingPhase {\n    id: string;\n    label: LocalizedText;\n    state: PhaseState;\n    checkpoint: boolean;\n    hints: LocalizedText[];\n    checkedAt?: string | undefined;\n}',
+  },
+  {
+    name: 'StopSourceReport',
+    declaration: 'export interface StopSourceReport {\n    readonly confirmed: boolean;\n    readonly targets: readonly StopSourceTarget[];\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'StopSourceTarget',
+    declaration: 'export interface StopSourceTarget {\n    readonly id: string;\n    readonly status: string;\n    readonly confirmed: boolean;\n    readonly error?: string;\n}',
   },
   {
     name: 'StorageBackend',

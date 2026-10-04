@@ -1390,6 +1390,11 @@ describe('the face the research tree acts through', () => {
     b.workspaces.create.mockRejectedValueOnce(refusal)
     await expect(b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' }))
       .rejects.toMatchObject({ name: 'SshWorkspaceError', reason: 'auth', message: 'SSH authentication failed' })
+    b.workspaces.create.mockRejectedValueOnce(Object.assign(new Error('workspace create failed'), {
+      rpcError: { code: 'workspace/ssh-failed', message: 'SSH handshake interrupted before login', details: { path: '/srv/x', reason: 'handshake' } },
+    }))
+    await expect(b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'password', password: 'pw' }))
+      .rejects.toMatchObject({ name: 'SshWorkspaceError', reason: 'handshake', message: 'SSH handshake interrupted before login' })
     const other = new Error('workspace create failed: workspace/invalid-path')
     b.workspaces.create.mockRejectedValueOnce(other)
     await expect(b.tree.createSshWorkspace('lab', '/srv/x', { kind: 'key' })).rejects.toBe(other)

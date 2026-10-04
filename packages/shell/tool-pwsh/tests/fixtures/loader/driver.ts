@@ -55,12 +55,35 @@ try {
     await new Promise(resolve => setTimeout(resolve, 50))
   }
 
+  const stopTarget = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: ToolCallId('loader-stop-target'),
+    name: 'pwsh',
+    arguments: { command: 'Write-Output loader-stop-ready; Start-Sleep -Seconds 60', description: 'loader stop target', run_in_background: true },
+  })
+  const stopTargetId = (stopTarget.value as { jobId: string }).jobId
+  const stopDeadline = Date.now() + 10_000
+  while (Date.now() < stopDeadline) {
+    const ready = ctx.jobs.list().find(job => job.id === stopTargetId)
+    if ((ready?.output.total ?? 0) > 0) break
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  const stopped = await ctx.tools.execute({
+    signal: new AbortController().signal,
+    callId: ToolCallId('loader-stop-all'),
+    name: 'job_stop_all',
+    arguments: { reason: 'loader stop', timeout_ms: 10_000 },
+  })
+  const stopAllText = stopped.content.filter(block => block.type === 'text').map(block => block.text).join('')
+
   await writeFile('./pwsh-loader-report.json', JSON.stringify({
     schemaHasRunInBackground: Object.hasOwn(schema.parameters.properties as object, 'run_in_background'),
     promptHasMarkerSection: prompt?.text.includes('Non-zero exits are reported as `[exit code: N]` markers') === true,
     // Normalize PowerShell's platform line endings (CRLF on Windows, LF elsewhere).
     foregroundText: foregroundText.replace(/\r\n/g, '\n'),
     backgroundText: backgroundText.replace(/\r\n/g, '\n'),
+    stopAllText,
+    noLiveJobsAfterStop: ctx.jobs.list().every(job => job.status !== 'running' && job.status !== 'stopping'),
   }))
 } finally {
   await ctx.fiber.dispose()

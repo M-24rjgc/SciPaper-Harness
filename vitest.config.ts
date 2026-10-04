@@ -31,13 +31,14 @@ const windowsUnsupportedPackages = process.platform === 'win32'
       'packages/shell/tool-bash',
       'packages/hooks/*',
       'packages/experimental/ptc-runtime-python',
-      'packages/sandbox/sandbox-local',
     ]
   : []
 
 const windowsUnsupportedTests = process.platform === 'win32'
   ? [
       ...windowsUnsupportedPackages.map(path => `${path}/tests/**/*.spec.ts`),
+      // ACL grant ownership uses filesystem operations and mocked Win32 calls on every platform.
+      'packages/sandbox/sandbox-local/tests/!(acl-grants).spec.ts',
       // The Windows SSH client uses independent exec channels. Remote helper
       // and POSIX-multiplexing fixtures still need a POSIX host. The fs-ssh
       // provider suite is platform-neutral and checks POSIX remote URI encoding.
@@ -74,7 +75,7 @@ const nonLinuxWebWorkerTests = process.platform === 'linux'
 const platformUnsupportedTests = [...windowsUnsupportedTests, ...nonLinuxWebWorkerTests]
 
 const windowsUnsupportedCoveragePackages = process.platform === 'win32'
-  ? [...windowsUnsupportedPackages, 'packages/ssh/*', 'packages/subprocess/*', 'packages/terminal/terminal-bash']
+  ? [...windowsUnsupportedPackages, 'packages/sandbox/sandbox-local', 'packages/ssh/*', 'packages/subprocess/*', 'packages/terminal/terminal-bash']
   : []
 
 // Windows-only packages: their sources execute exclusively on win32 (koffi

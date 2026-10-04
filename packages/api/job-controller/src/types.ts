@@ -7,6 +7,7 @@
 
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { JobChunk, JobView } from '@deepseek-ai/dsh-jobs/view'
+import type { JobStopReport } from '@deepseek-ai/dsh-jobs/view'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 export type { JobChunk, JobView } from '@deepseek-ai/dsh-jobs/view'
@@ -17,8 +18,8 @@ export interface JobListRequest {
 }
 
 /**
- * One `job.list` frame: the complete set the session can see — its own jobs
- * plus every unowned job — after a lifecycle change. Whole-set replacement,
+ * One `job.list` frame: the complete set the session can see — its live runtime
+ * ownership tree's jobs plus every unowned job — after a lifecycle change. Whole-set replacement,
  * so a reconnect's first frame is already the truth.
  */
 export interface JobListFrame {
@@ -28,7 +29,7 @@ export interface JobListFrame {
 
 /** Human-initiated cancellation of one background job visible to a session. */
 export interface JobKillRequest {
-  /** Session whose job list carries the job; the fenced lookup reads as it. */
+  /** Session whose live runtime ownership tree can see the job. */
   readonly sessionId: SessionId
   readonly jobId: JobId
 }
@@ -36,6 +37,24 @@ export interface JobKillRequest {
 /** Receipt after the registry accepted the human kill request. */
 export interface JobKillValue {
   readonly outcome: 'requested' | 'already-finished'
+}
+
+/** Explicit human stop of a session's active turn and its live descendant work. */
+export interface JobStopAllRequest {
+  readonly sessionId: SessionId
+}
+
+/** Observed quiescence of one runtime Agent after the stop request. */
+export interface SessionStopResult {
+  readonly sessionId: SessionId
+  readonly status: 'idle' | 'running'
+  /** Cancellation, observation, or timeout failure. */
+  readonly error?: string
+}
+
+/** Observed Agent quiescence and job settlement after an explicit session-tree stop. */
+export interface JobStopAllValue extends JobStopReport {
+  readonly agents: readonly SessionStopResult[]
 }
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
@@ -48,7 +67,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 /** Target of one `job.follow` stream: the job, its owning session, and an optional resume offset. */
 export interface JobFollowRequest {
   /**
-   * Owning session for the fenced read. Omitted for an unowned job, which any
+   * Caller session whose live runtime ownership tree can see the job. Omitted for an unowned job, which any
    * caller may observe.
    */
   readonly sessionId?: SessionId

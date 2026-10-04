@@ -39,7 +39,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
-| `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
+| `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output`, `job_stop_all` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents share output, list, kill, and stop-all tools. Explicit stop-all also requests and verifies settlement of registered independent work. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
@@ -2149,7 +2149,7 @@ The globally named control tools over continuable background subagents: provider
 
 ### `job_kill`
 
-Request cancellation of a running background job.
+Cancel a background job; set wait: true to observe whether it actually stopped.
 
 ```json
 {
@@ -2162,6 +2162,14 @@ Request cancellation of a running background job.
     "reason": {
       "type": "string",
       "description": "Optional short reason, recorded in the log and forwarded to the job."
+    },
+    "wait": {
+      "type": "boolean",
+      "description": "Wait for actual settlement after requesting cancellation. Defaults to false."
+    },
+    "timeout_ms": {
+      "type": "number",
+      "description": "Settlement wait in milliseconds, capped by configuration."
     }
   },
   "required": [
@@ -2214,7 +2222,29 @@ Read a background job: output since the previous read for stream jobs, or the re
 
 Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
 
-The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`.
+### `job_stop_all`
+
+Stop background jobs and registered independent work in your session and live descendant sessions, and verify their settlement.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "reason": {
+      "type": "string",
+      "description": "Optional cancellation reason forwarded to every job."
+    },
+    "timeout_ms": {
+      "type": "number",
+      "description": "Concurrent settlement wait in milliseconds, capped by configuration."
+    }
+  }
+}
+```
+
+Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/index.ts)
+
+The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents share output, list, kill, and stop-all tools. Explicit stop-all also requests and verifies settlement of registered independent work. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`.
 
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
@@ -2683,6 +2713,14 @@ Fetch the content of a specific HTTP(S) URL and return it decoded to text.
     "url": {
       "type": "string",
       "description": "The HTTP(S) URL to fetch."
+    },
+    "offset": {
+      "type": "integer",
+      "description": "Character offset in the converted text. Use nextOffset from a previous response to continue a long page."
+    },
+    "max_chars": {
+      "type": "integer",
+      "description": "Maximum text characters in this page, within the configured output limit."
     }
   },
   "required": [
@@ -2725,7 +2763,7 @@ web_search and web_fetch keep provider selection behind ctx.web so model-visible
 
 ### `research_artifact`
 
-Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. list-venues {query?}: the template library, 139 CCF venues (words such as "neurips", "CCF-A", "security"). apply-template {venue, stage?: review|final}: the venue's official style files, example and guide into template/&lt;venue&gt;/ (a paper there, or anywhere in the project, finds them), and template.json, main.tex.tmpl and the style files into the project root for an assembled paper; review is anonymous where the venue is. import-template {paths}: copy template files you have into template/. run-script {script, args?}: run one of the scripts the project's mode declares (its skills name them) in the project folder. export {}: zip of sources, PDF, data manifest and the check report.
+Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. compile {path?, engine?}: builds the PDF (path defaults to the main .tex; engine defaults to xelatex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. list-venues {query?}: the template library, 139 CCF venues (words such as "neurips", "CCF-A", "security"). apply-template {venue, stage?: review|final}: the venue's official style files, example and guide into template/&lt;venue&gt;/ (a paper there, or anywhere in the project, finds them), and template.json, main.tex.tmpl and the style files into the project root for an assembled paper; review is anonymous where the venue is. import-template {paths}: copy template files you have into template/. run-script {script, args?}: run one of the scripts the project's mode declares (its skills name them) in the project folder. export {}: zip of sources, PDF, data manifest and the check report.
 
 ```json
 {
@@ -2776,7 +2814,47 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
       "description": "save-artifact: optional optimistic revision"
     },
     "evidence": {
-      "description": "save/register: [{evidenceId, revision, locator, quote}]"
+      "type": "array",
+      "description": "save/register: evidence citations pinned to an imported revision",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "evidenceId": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "locator": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "page": {
+                "type": "integer"
+              },
+              "paragraph": {
+                "type": "integer"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "key": {
+                "type": "string"
+              }
+            }
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidenceId",
+          "revision",
+          "locator",
+          "quote"
+        ]
+      }
     },
     "claimIds": {
       "type": "array",
@@ -2786,7 +2864,24 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
       }
     },
     "inputArtifacts": {
-      "description": "save/register: [{id, revision}] the files this one was made from (e.g. data table and plotting script)"
+      "type": "array",
+      "description": "save/register: the artifact revisions this file was made from",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ]
+      }
     },
     "artifactId": {
       "type": "string",
@@ -2801,7 +2896,7 @@ Paper files, LaTeX and export. Files you write with ordinary file tools count to
     },
     "engine": {
       "type": "string",
-      "description": "compile (xelatex for CJK text)",
+      "description": "compile: defaults to xelatex, including CJK text",
       "enum": [
         "pdflatex",
         "xelatex",
@@ -2869,7 +2964,983 @@ The experiment board the user watches beside the chat. It already shows every ru
       "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "board": {
-      "description": "board-update: the layout, or the parts to change"
+      "type": "object",
+      "description": "board-update: the layout, or the parts to change",
+      "additionalProperties": true,
+      "properties": {
+        "title": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sections": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "remove": {
+                    "oneOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "note": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "collapsed": {
+                    "oneOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "blocks": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "stats"
+                                },
+                                "items": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "value": {
+                                        "oneOf": [
+                                          {
+                                            "oneOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "run": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "seed": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "metric": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "scale": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "digits": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "unit": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "target": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "better": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "higher",
+                                              "lower"
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "sub": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted"
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "progress": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "label"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "items"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "table"
+                                },
+                                "columns": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "key": {
+                                        "type": "string"
+                                      },
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "align": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "left",
+                                              "center",
+                                              "right"
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "key",
+                                      "label"
+                                    ]
+                                  }
+                                },
+                                "rows": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "cells": {
+                                        "type": "object",
+                                        "additionalProperties": true,
+                                        "properties": {}
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted"
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "cells"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "columns",
+                                "rows"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "chart"
+                                },
+                                "x": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "xLabel": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "yLabel": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "min": {
+                                  "oneOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "max": {
+                                  "oneOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "series": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "label": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "run": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "seed": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "key": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "points": {
+                                        "oneOf": [
+                                          {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "array",
+                                              "items": {
+                                                "type": "number"
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "series"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "list"
+                                },
+                                "items": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "title": {
+                                        "type": "string"
+                                      },
+                                      "status": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "progress": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "detail": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "run": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "seed": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted"
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "title"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "items"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "runs"
+                                },
+                                "match": {
+                                  "type": "string"
+                                },
+                                "metrics": {
+                                  "oneOf": [
+                                    {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "scale": {
+                                  "oneOf": [
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "digits": {
+                                  "oneOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "match"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "text"
+                                },
+                                "text": {
+                                  "type": "string"
+                                },
+                                "tone": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "good",
+                                        "warning",
+                                        "bad",
+                                        "muted"
+                                      ]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "text"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "kv"
+                                },
+                                "items": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "label": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "number"
+                                          }
+                                        ]
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted"
+                                            ]
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "label",
+                                      "value"
+                                    ]
+                                  }
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "items"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": true,
+                              "properties": {
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "type": {
+                                  "type": "string",
+                                  "const": "log"
+                                },
+                                "text": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "type",
+                                "text"
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collectors": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "remove": {
+                    "oneOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "script": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "environmentId": {
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "every": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "args": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     },
     "replace": {
       "type": "boolean",
@@ -2886,7 +3957,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_check`
 
-Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode (with its gates), one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure, prose) or one of the mode's gates; a phase and a base check of the same name mean the phase. It reports and never blocks, and it records where each phase stands for the user. Not clean means not done: fix the errors and check again.
+Check the paper as it is on disk: citations resolve and are complete, every number in results and tables traces to collected metrics or data, placeholders (\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode (with its gates), one base check (cite, numbers, placeholders, figures, compile, visual, review, stale, claims, structure, prose) or one of the mode's gates; a phase and a base check of the same name mean the phase. It reports and never blocks, and it records where each phase stands for the user. Each check reports passed, warnings, failed or skipped; phase results distinguish materialsPresent from checksComplete. Warnings remain visible and nonblocking; skipped checks have not established coverage. Not clean means not done: fix the errors or finish skipped checks, then check again.
 
 ```json
 {
@@ -2908,7 +3979,7 @@ Source: [`packages/research/workbench/src/tools.ts`](../packages/research/workbe
 
 ### `research_environment`
 
-Create or bind the Python environment experiments run in. environment {environment: {name, kind: uv|existing|conda, target: local|ssh, python, sshHost?, remoteRoot?, requirements: [], isDefault}}. kind uv with a blank python creates a managed 3.12 environment inside the project. Existing and conda interpreters are inspected, never modified, and binding a local one asks the user first. SSH uses an OpenSSH alias and a dedicated absolute remoteRoot.
+Create or bind the Python environment experiments run in. environment {environment: {name, kind: uv|existing|conda, target: local|ssh, python, sshHost?, remoteRoot?, requirements: [], isDefault}}. kind uv with a blank python creates a managed 3.12 environment inside the project. Existing and conda interpreters are inspected, never modified, and binding a local one asks the user first. SSH uses OpenSSH config, an alias and a dedicated absolute remoteRoot. If SSH times out or the handshake fails, consider retrying with the SSH connection bypassing the global proxy.
 
 ```json
 {
@@ -2925,7 +3996,55 @@ Create or bind the Python environment experiments run in. environment {environme
       "description": "Optional; defaults to the research linked to this conversation’s workspace."
     },
     "environment": {
-      "description": "the environment description"
+      "type": "object",
+      "description": "the environment description",
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "uv",
+            "existing",
+            "conda"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "local",
+            "ssh"
+          ]
+        },
+        "python": {
+          "type": "string"
+        },
+        "sshHost": {
+          "type": "string"
+        },
+        "remoteRoot": {
+          "type": "string"
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isDefault": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "target",
+        "python",
+        "requirements",
+        "isDefault"
+      ]
     }
   },
   "required": [
@@ -2984,10 +4103,142 @@ Sources and citations. import {paths}: snapshot files (PDF, DOCX, CSV, JSON, tex
       ]
     },
     "item": {
-      "description": "literature-import: one item exactly as literature-search returned it"
+      "type": "object",
+      "description": "literature-import: one item exactly as literature-search returned it",
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string",
+          "enum": [
+            "crossref",
+            "openalex",
+            "arxiv"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "year": {
+          "type": "integer"
+        },
+        "doi": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "abstract": {
+          "type": "string"
+        },
+        "bibtex": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "provider",
+        "title",
+        "authors",
+        "url",
+        "abstract",
+        "bibtex"
+      ]
     },
     "claim": {
-      "description": "claim: {id, text, kind: hypothesis|method|literature|empirical, state: proposed|supported|contradicted|stale, evidence: [{evidenceId, revision, locator, quote}], artifactIds}"
+      "type": "object",
+      "description": "claim: claim text, kind, support state and exact evidence references",
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "hypothesis",
+            "method",
+            "literature",
+            "empirical"
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "supported",
+            "contradicted",
+            "stale"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "evidenceId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "locator": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "page": {
+                    "type": "integer"
+                  },
+                  "paragraph": {
+                    "type": "integer"
+                  },
+                  "line": {
+                    "type": "integer"
+                  },
+                  "key": {
+                    "type": "string"
+                  }
+                }
+              },
+              "quote": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "evidenceId",
+              "revision",
+              "locator",
+              "quote"
+            ]
+          }
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "kind",
+        "state",
+        "evidence",
+        "artifactIds"
+      ]
     }
   },
   "required": [
@@ -3026,7 +4277,71 @@ Independent experiment runs that survive the chat and the app. experiment {reque
       "description": "experiment: a new UUID"
     },
     "spec": {
-      "description": "experiment: the run specification"
+      "type": "object",
+      "description": "experiment: the run specification",
+      "additionalProperties": true,
+      "properties": {
+        "environmentId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "maxSeconds": {
+          "type": "integer"
+        },
+        "gpuIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dataEvidenceIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "codeArtifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "codePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metricsPath": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "environmentId",
+        "name",
+        "argv",
+        "cwd",
+        "seed",
+        "maxSeconds",
+        "gpuIds",
+        "dataEvidenceIds",
+        "codeArtifactIds",
+        "metricsPath"
+      ]
     },
     "runId": {
       "type": "string",
@@ -3203,7 +4518,191 @@ Research-pattern knowledge graphs: reusable problem → solution → story patte
       "description": "unmark: the mark id, <graph>:<kind>:<id>"
     },
     "proposals": {
-      "description": "relations-propose: [{kind, from, to, ground}], at most 50"
+      "type": "array",
+      "description": "relations-propose: grounded directed relations, at most 50",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "cites",
+              "introduces",
+              "is-a",
+              "extends",
+              "improves-on",
+              "compares-with",
+              "applied-to",
+              "evaluated-on",
+              "measured-by"
+            ]
+          },
+          "from": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "paper"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "method",
+                      "task",
+                      "dataset",
+                      "metric"
+                    ]
+                  }
+                ]
+              },
+              "evidenceId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "to": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "const": "paper"
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "method",
+                      "task",
+                      "dataset",
+                      "metric"
+                    ]
+                  }
+                ]
+              },
+              "evidenceId": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "ground": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "quote"
+                  },
+                  "evidenceId": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "integer"
+                  },
+                  "quote": {
+                    "type": "string"
+                  },
+                  "locator": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "page": {
+                        "type": "integer"
+                      },
+                      "paragraph": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      },
+                      "key": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "setting": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "evidenceId",
+                  "revision",
+                  "quote"
+                ]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "run"
+                  },
+                  "runId": {
+                    "type": "string"
+                  },
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "baselineRunId": {
+                    "type": "string"
+                  },
+                  "setting": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "runId",
+                  "from",
+                  "to"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "from",
+          "to",
+          "ground"
+        ]
+      }
     },
     "relation": {
       "type": "string",

@@ -80,6 +80,8 @@ interface TrackedJob {
   outputLimitBytes: number | undefined
   /** Exact lifecycle owner; session-id authorization is derived from it. */
   owner: Agent | undefined
+  /** Trusted runtime ancestors captured at admission; detached owners remain reachable until cleanup. */
+  ancestors: readonly Agent[]
   cancel: (reason?: string) => void
   status: JobStatus
   ring: OutputRing
@@ -236,6 +238,7 @@ export class LocalJobRegistry extends JobRegistry {
       append: (text, options) => { this.appendRing(state, ring, text, options, 'producer') },
       updateProgress: (line) => { this.updateProgress(state, line) },
     }
+    const ancestors = this.runtimeAncestors(owner)
     const hooks = spec.run(handle)
 
     let markSettled!: () => void
@@ -246,6 +249,7 @@ export class LocalJobRegistry extends JobRegistry {
       label: spec.label,
       outputLimitBytes: spec.outputLimitBytes,
       owner,
+      ancestors,
       cancel: hooks.cancel.bind(hooks),
       status: 'running',
       ring,
@@ -304,9 +308,34 @@ export class LocalJobRegistry extends JobRegistry {
   }
 
   list(caller?: SessionId): JobView[] {
+    const agent = caller === undefined ? undefined : this.selfCtx.get('agents')?.get(caller)
     return [...this.store.values()]
-      .filter(job => job.owner === undefined || job.owner.id === caller)
+      .filter(job => job.owner === undefined || job.owner === agent)
       .map(job => this.view(job))
+  }
+
+  override listTree(caller?: SessionId): JobView[] {
+    const agent = caller === undefined ? undefined : this.selfCtx.get('agents')?.get(caller)
+    return [...this.store.values()]
+      .filter(job => job.owner === undefined || job.owner === agent
+        || (agent !== undefined && job.ancestors.includes(agent)))
+      .map(job => this.view(job))
+  }
+
+  /** Capture only registered runtime ownership, never durable fork lineage. */
+  private runtimeAncestors(owner: Agent | undefined): Agent[] {
+    const agents = this.ctx.get('agents')
+    if (owner === undefined || agents === undefined) return []
+    const ancestors: Agent[] = []
+    const seen = new Set<Agent>([owner])
+    let child = owner
+    while (true) {
+      const parent = agents.list().find(candidate => agents.isOwnedBy(child.id, candidate))
+      if (parent === undefined || seen.has(parent)) return ancestors
+      ancestors.push(parent)
+      seen.add(parent)
+      child = parent
+    }
   }
 
   get(id: JobId, caller?: SessionId): JobView {
@@ -336,6 +365,7 @@ export class LocalJobRegistry extends JobRegistry {
   remove(id: JobId, caller?: SessionId): void {
     const job = this.expect(id, caller)
     if (!isTerminal(job.status)) throw new Error(`job ${id} is still ${job.status}; kill it and wait for settlement before removing it`)
+    if (job.detail?.includes('work may be orphaned')) throw new Error(`job ${id} cannot be removed: ${job.detail}`)
     this.drop([job])
   }
 
@@ -399,12 +429,13 @@ export class LocalJobRegistry extends JobRegistry {
   }
 
   /**
-   * The isolation fence: a job with an owner is reachable only by callers
-   * whose session id matches (`!== undefined` semantics — an unowned job is
-   * open, and a caller-less view can never match an owned one).
+   * Resolve caller ids to exact registered runtimes. Only the captured owner or
+   * trusted ancestors can reach owned work; a same-id replacement inherits nothing.
    */
   private assertAccess(job: TrackedJob, caller: SessionId | undefined): void {
-    if (job.owner !== undefined && job.owner.id !== caller) {
+    if (job.owner === undefined) return
+    const agent = caller === undefined ? undefined : this.selfCtx.get('agents')?.get(caller)
+    if (agent === undefined || (agent !== job.owner && !job.ancestors.includes(agent))) {
       throw new Error(`job ${job.id} belongs to another session`)
     }
   }
@@ -621,12 +652,12 @@ export class LocalJobRegistry extends JobRegistry {
     this.ownerCleanups.set(owner, detach)
   }
 
-  /** Cancel, await terminal records, and drop every job owned by one exact agent lifecycle. */
+  /** Cancel and await one exact owner's jobs, retaining any unconfirmed orphaned work. */
   private async disposeOwned(owner: Agent): Promise<void> {
     const owned = [...this.store.values()].filter(job => job.owner === owner)
     this.cancelForTeardown(owned, 'owner disposed')
     await Promise.all(owned.map(job => job.settled))
-    this.drop(owned)
+    this.drop(owned.filter(job => !job.detail?.includes('work may be orphaned')))
   }
 
   /** Drop settled records and announce each removal, the one visible-set change no per-job record carries. */

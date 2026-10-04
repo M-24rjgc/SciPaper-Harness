@@ -59,6 +59,8 @@ kind: "package-reference"
 
 传入 `run_in_background: true` 会准入任务并立即返回 job id；限制准备可能仍在进行，且不设后台执行超时。进程可用前输出为空。任务取消会中止准备并停止随后返回的进程；启动失败使已准入任务以失败状态结算。agent 用 `job_output` 读取输出（除非 `wait: true`，否则非阻塞）、用 `job_list` 列出任务、用 `job_kill` 停止任务；完成的任务会在会话内通知拥有它的 agent。后台支持需要挂载通用任务运行时（`dsh-jobs-local`）及其控制工具（`dsh-tool-jobs`）。后台 job 把运行的非消费 `observed` 读取器交给 job 注册表作为拉式源；注册表按自己的节奏（`dsh-jobs-local` 的 `pumpPollMs`）把它们泵入 job 的输出环，Web 客户端由此流式看到实时输出，模型的 `job_output` 读取则经另一个游标消费同一份字节。读取器抛错只记录一次，该流就此停止，job 继续跑到自己的结算。输出环是尽力而为的实时预览：stdout 与 stderr 按轮询轮次复制，同一个轮询窗口内两条流的写入会先 stdout 后 stderr 出现，而不是按写入顺序。
 
+后台命令零退出结算为 `completed`；非零或缺失退出码、基础设施故障结算为 `failed`。请求取消后，执行器完成对受管理进程范围的观察才以 `killed` 结算；无法确认清理时以 `failed` 报告可能残留的工作。
+
 ### 前台命令即任务
 
 组合中有 job 注册表时，前台命令一启动就登记到 `ctx.jobs`，调用等待该任务：命令在运行期间始终被列出、经 `job.list` 与 `job.follow` 流式观看，并可从 Web 任务列表停止。在超时内完成的命令返回普通前台结果，其任务记录随结果一起离开注册表，模型从不看到 id。超过超时仍在运行的命令继续作为它本来就是的那个任务运行，调用返回 `[still running after <timeoutMs>ms; moved to background job <id>]` 加任务交接指引，并以一次消费式读取带上目前为止的输出——`job_output` 恰好从此处接续。来自调用之外的杀停（人在界面上停止任务）会让前台结果在信号标记之前带上 `[stopped: <reason>]`，模型读到的是原因而不是命令失败；取消调用本身则杀掉任务。登记是尽力而为的：`promoteOnTimeout: false`、缺少 job 注册表，或注册表在启动时拒绝该任务（持有者的任务上限、没有控制器）都会改为在执行器的 deadline 杀下运行命令，`timeoutMs` 参数描述也只在交接语义成立时才宣传它。

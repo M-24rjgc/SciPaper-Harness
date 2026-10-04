@@ -12,6 +12,8 @@ const NEW_PROVIDER = '@deepseek-ai/dsh-llm-deepseek-api-key'
 const JS_TAG = 'tag:yaml.org,2002:js'
 const VERSION = 'dsh-v0.1.7-rc.2'
 const ROUTE = 'deepseek-official'
+/** The previous shipped expression, compared as data without evaluating profile JavaScript. */
+const PACKAGED_SKILLS = "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-research-workbench/package.json')), 'runtime/skills')"
 const DEEPSEEK_FIELDS = new Set([
   'protocol', 'apiKeyEnv', 'baseURL', 'thinking', 'reasoningEffort', 'maxTokens',
   'defaultContextWindow', 'models', 'streamIdleTimeoutMs', 'maxRequestFilesBytes',
@@ -262,11 +264,30 @@ function migratePatch(file: InputFile, existingRoutes: readonly Record<string, u
     }
   }
   walk(rows)
+  migrateBundledSkills(rows)
   for (const route of routes) {
     assertRouteCompatible(route, existingRoutes)
     mergeRoute(config(patchRow(rows, 'llm-pi-ai', file.document), file.document), route, file.document)
     disableNative(rows, file.document)
   }
+}
+
+/** Move only the old shipped root into the trusted field; arbitrary user roots remain custom. */
+function migrateBundledSkills(rows: YAMLSeq): void {
+  visit(rows, { Map(_key, row) {
+    if (row.get('id') !== 'skill-filesystem' && row.get('name') !== '@deepseek-ai/dsh-skill-filesystem') return
+    const fields = row.get('config')
+    if (!isMap(fields) || fields.has('bundledSkillDir')) return
+    const dirs = fields.get('customSkillDirs')
+    if (!isSeq(dirs)) return
+    const index = dirs.items.findIndex(node => isScalar(node) && node.tag === JS_TAG
+      && typeof node.value === 'string'
+      && node.value.replace(/\s+/g, '').replaceAll('"', "'") === PACKAGED_SKILLS.replace(/\s+/g, ''))
+    if (index < 0) return
+    fields.set('bundledSkillDir', dirs.items[index])
+    dirs.items.splice(index, 1)
+    if (dirs.items.length === 0) fields.delete('customSkillDirs')
+  } })
 }
 
 function inheritedProvider(files: InputFile[]): { config: Record<string, unknown>; legacy: boolean } {
@@ -296,6 +317,7 @@ function existingPiRoutes(settings: InputFile, patches: InputFile[]): Record<str
 }
 
 function anchorPreset(plugins: YAMLSeq, base: string, document: Document): void {
+  migrateBundledSkills(plugins)
   const baseURL = pathToFileURL(base + sep).href
   visit(plugins, {
     Scalar(_key, node) {

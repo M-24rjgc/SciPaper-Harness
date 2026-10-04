@@ -56,6 +56,7 @@ async function bench(): Promise<{ ctx: Context; fiber: ReturnType<Context['plugi
       kills.push([sessionId, jobId])
       return killResult
     },
+    stopAll: async () => ({ ok: true, value: { confirmed: false, jobs: [], sources: [{ source: 'experiment', confirmed: false, targets: [{ id: 'run-1', status: 'unknown', confirmed: false, error: 'transport failed' }] }], agents: [{ sessionId: 'busy-child', status: 'running', error: 'timeout' }] } }),
   } as never)
   // The locale plugin binds a settings scope, which reads the connection handle
   // and the forwarded-event port.
@@ -100,6 +101,7 @@ describe('ui-jobs browser half', () => {
     killResult = { ok: false }
     await expect(face.killJob(SessionId('sess-live'), 'bash-4')).resolves.toBe(false)
     expect(kills).toEqual([['sess-live', 'bash-3'], ['sess-live', 'bash-4']])
+    await expect(face.stopAllJobs(SessionId('sess-live'))).resolves.toEqual({ confirmed: false, failures: ['busy-child: timeout', 'experiment/run-1: transport failed'] })
   })
 
   it('registers the header action, and fiber teardown removes it (HMR safety)', async () => {

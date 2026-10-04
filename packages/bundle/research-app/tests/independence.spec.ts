@@ -118,4 +118,14 @@ describe('the Web composition of the research edition', () => {
       approval: 'never',
     })
   })
+
+  it('loads its packaged skills through the trusted bundled root in workspace-write mode', () => {
+    const preset = composeEntries([...layers, loadOverlayPatches('research preset spec', RESEARCH_PRESET_PATCH)])
+      .find(candidate => candidate.id === 'preset-research')
+    const plugins = (preset?.config as { plugins: Array<{ id: string; config?: Record<string, unknown> }> }).plugins
+    const skills = plugins.find(plugin => plugin.id === 'skill-filesystem')
+    expect(skills?.config).toHaveProperty('bundledSkillDir')
+    expect(skills?.config?.['customSkillDirs']).toBeUndefined()
+    expect(row('web-fetch-http').config).toMatchObject({ allowCrossOriginRedirects: true, maxBodyChars: 2_000_000 })
+  })
 })

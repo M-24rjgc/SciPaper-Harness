@@ -54,7 +54,7 @@ The limit counts the exact owner's `running` and `stopping` records; all unowned
 
 ### Lifecycle
 
-Jobs belong to their owner and backend, not to the producer tool, so producer or controller reloads do not stop them. When an agent that owns jobs is disposed, its jobs are cancelled, their producers awaited, and their snapshots removed; service disposal does the same for every remaining job. A cancellation that throws during teardown force-fails the record and warns that the work may be orphaned, so teardown never deadlocks.
+Jobs belong to their owner and backend, not to the producer tool, so producer or controller reloads do not stop them. When an agent that owns jobs is disposed, its jobs are cancelled and their producers awaited. Snapshots reporting possibly orphaned work remain visible to their captured runtime ancestors; ordinary `remove()` refuses them and `stopAll()` stays unconfirmed. Other snapshots are removed, and service disposal removes every remaining record. A cancellation that throws during teardown force-fails the record and warns that the work may be orphaned, so teardown never deadlocks.
 
 ### What can go wrong
 
@@ -99,7 +99,7 @@ This section explains the design decisions behind the registry and points at the
 
 ### Teardown
 
-Owner disposal (`disposeOwned`) cancels the owner's jobs, awaits their settlement, removes their records, and announces each removal — the one visible-set change no per-job record carries. Service disposal (`disposeAll`) cancels all live jobs, awaits settlement, removes every record (announcing each removal, so a subscriber mounted outside the service drops its rows), then detaches the cross-fiber owner-cleanup effects.
+Owner disposal (`disposeOwned`) cancels the owner's jobs, awaits their settlement, retains records reporting possibly orphaned work, removes other records, and announces each removal — the one visible-set change no per-job record carries. Service disposal (`disposeAll`) cancels all live jobs, awaits settlement, removes every record (announcing each removal, so a subscriber mounted outside the service drops its rows), then detaches the cross-fiber owner-cleanup effects.
 
 </details>
 

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use `dsh-tool-jobs` to inspect and control background commands, PTY work, and subagents through `job_output`, `job_list`, and `job_kill`. Reads can wait within a configured timeout, list results identify each job's kind and status, and cancellation settles only after the work stops. When owned work finishes, the agent receives an in-session notice: busy agents receive it in their next step, while idle agents are woken by a follow-up turn. Configuration controls wait limits, completion delivery, and an optional cap on consecutive wakeups. Stream output is consumed by one reader, and pending notices do not survive owner disposal.
+Use `dsh-tool-jobs` to inspect and control background commands, PTY work, and subagents through `job_output`, `job_list`, `job_kill`, and `job_stop_all`. Reads can wait within a configured timeout, list results identify each job's kind and status, and cancellation settles only after the work stops. When owned work finishes, the agent receives an in-session notice: busy agents receive it in their next step, while idle agents are woken by a follow-up turn. Configuration controls wait limits, completion delivery, and an optional cap on consecutive wakeups. Stream output is consumed by one reader, and pending notices do not survive owner disposal.
 
 ## Table of Contents
 
@@ -25,19 +25,20 @@ Use `dsh-tool-jobs` to inspect and control background commands, PTY work, and su
 <a id="use-this-package"></a>
 ## Use this package
 
-Load this plugin in any composition where the agent should start, observe, and stop background jobs: it registers the three tools, attaches the controller producers need, and delivers completion notices. It requires the `ctx.tools`, `ctx.jobs`, and `ctx.systemPrompt` services from the composed harness; completion notices resolve their destination through `ctx.agents`, which every composition with owned jobs already provides.
+Load this plugin in any composition where the agent should start, observe, and stop background jobs: it registers four tools, attaches the controller producers need, and delivers completion notices. It requires the `ctx.tools`, `ctx.jobs`, and `ctx.systemPrompt` services from the composed harness; completion notices resolve their destination through `ctx.agents`, which every composition with owned jobs already provides.
 
-### The three tools
+### The tools
 
 - `job_output(job_id, wait?, timeout_ms?)` — Read a job's output. Stream jobs return only the output since the previous read; final-output jobs return their result after settlement. Every response ends with `[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap and leaves a still-running job alive on timeout. A read renders stdout first and stderr in one `[stderr]` section, notes output that left memory before the read, and carries a job's result (a subagent's answer) exactly once, on the first read after settlement.
-- `job_list()` — List your background jobs with their ids, kinds, and statuses, one per line: `<id> [<kind>] <status> — <label>`.
-- `job_kill(job_id, reason?)` — Request cancellation of a running job immediately; the job settles as `killed` once its work actually stops. A terminal job returns its current snapshot, and the optional reason is recorded and forwarded to the job.
+- `job_list()` — List the background jobs of your live runtime ownership tree with their ids, kinds, and statuses, one per line: `<id> [<kind>] <status> — <label>`.
+- `job_kill(job_id, reason?, wait?, timeout_ms?)` — Request cancellation immediately. `wait: true` waits for actual settlement up to the configured cap; a returned `stopping` state is not a confirmed stop.
+- `job_stop_all(reason?, timeout_ms?)` — Cancel all live jobs and registered independent work owned by this session and its runtime descendants, and await settlement concurrently. Returns `{ confirmed, jobs: [{ job, error? }], sources: [{ source, confirmed, targets: [{ id, status, confirmed, error? }], error? }] }`; timeout, cancellation failure, unknown target state, and possible orphaned work remain unconfirmed. Output waits cancelled or timed out by the caller leave jobs running.
 
-The three tools return `{ text, job }`, `PublicJobSnapshot[]`, and `{ outcome: 'cancellation-requested' | 'already-finished', job }` respectively. A public snapshot carries id, kind, label, status with the live progress line or the terminal detail, and start/finish times, and omits ownership and ring offsets. All three render through generic UI cards: `read` for output and list, `execute` for kill.
+The first three tools return `{ text, job }`, `PublicJobSnapshot[]`, and `{ outcome: 'cancellation-requested' | 'already-finished', job }` respectively. A public snapshot carries id, kind, label, status with the live progress line or the terminal detail, and start/finish times, and omits ownership and ring offsets. All tools render through generic UI cards: `read` for output and list, `execute` for cancellation.
 
 ### Completion notices
 
-When a job finishes, the owning agent receives `background job <id> (<kind>: <label>) finished [status: ...]. Read its output with job_output.` as an in-session message. A busy agent has the notice injected into its next step — the turn cannot close while the inbox holds it, so several jobs settling together cost one step rather than one turn each. An idle agent is instead woken with a follow-up turn, because an unclaimed notice is a completion the model never learns about. Completions the model already collected get no notice: the registry reports a settlement that released a live `wait` as `awaited` — whether a `job_output` wait or a shell tool waiting on its own foreground command — and the plugin remembers the kills the model requested through `job_kill`; a settlement caused by owner or service teardown is skipped because nobody is left to read it.
+When a job finishes, its original owning runtime receives `background job <id> (<kind>: <label>) finished [status: ...]. Read its output with job_output.` as an in-session message. A replacement using the same session id receives no notice and cannot read the old job. A busy agent has the notice injected into its next step — the turn cannot close while the inbox holds it, so several jobs settling together cost one step rather than one turn each. An idle agent is instead woken with a follow-up turn, because an unclaimed notice is a completion the model never learns about. Completions the model already collected get no notice: the registry reports a settlement that released a live `wait` as `awaited` — whether a `job_output` wait or a shell tool waiting on its own foreground command; a cancellation request alone never suppresses the eventual notice; a settlement caused by owner or service teardown is skipped because nobody is left to read it.
 
 Waking is unbounded by default: an unattended agent that chains background commands and one-shot subagents is woken for every completion. `maxConsecutiveWakes` caps that: each owner may be woken that many times before further notices degrade to injection, and claiming any user-authored message restores the budget. The cap bounds the self-exciting chain — a woken turn may start the background job whose completion wakes it again — but a notice past it waits silently until the next user input, so a session that relies on wakes to finish its work stalls there. `completionDelivery: quiet` keeps even idle owners on the injection lane, which deterministic transcripts need.
 
@@ -52,7 +53,7 @@ Loading the plugin with no config is the common path; a `waitTimeoutMs` above `m
 | Field | Default | Meaning |
 |---|---|---|
 | `waitTimeoutMs` | `30,000` | Wait used when `wait: true` omits `timeout_ms` |
-| `maxWaitTimeoutMs` | `600,000` | Cap for model-supplied waits; larger values clamp down to it |
+| `maxWaitTimeoutMs` | `60,000` | Cap for model-supplied waits; larger values clamp down to it |
 | `completionDelivery` | `wakeup` | `wakeup` opens a turn on an idle owner; `quiet` leaves the notice pending |
 | `maxConsecutiveWakes` | unset | Turns one owner may open by wake before notices degrade to injection; unset means no cap |
 
@@ -74,7 +75,7 @@ This section explains the design decisions behind the tools and points at the co
 
 ### Design philosophy
 
-- **Kind-independent controls.** The same three tools read, list, and cancel jobs of every producer kind — bash, subagent, PTY — because all of them register through the generic `ctx.jobs` runtime.
+- **Kind-independent controls.** The same tool set read, list, and cancel jobs of every producer kind — bash, subagent, PTY — because all of them register through the generic `ctx.jobs` runtime.
 - **Delivery is owned here; recipients are the registry's.** The plugin decides how an unreported completion reaches the owner — injected into a busy step, or a woken turn on an idle owner — while the registry routes each settlement to the listeners its owner's scope chain reaches, so a mount under one preset never sees another preset's agents, and an agent reads exactly one notice per completion however many presets are mounted.
 - **Producer-owned output bounds.** When a producer supplies `outputLimitBytes`, the complete model-facing result — output read, terminal kill snapshot, or completion notice — is capped after status and notice metadata are added; producers that omit it keep unbounded behavior.
 
@@ -82,7 +83,7 @@ This section explains the design decisions behind the tools and points at the co
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Plugin entry: tool registrations, the settlement subscription and model-kill set, prompt section, output capping |
+| [`src/index.ts`](src/index.ts) | Plugin entry: tool registrations, the settlement subscription and stop confirmation, prompt section, output capping |
 | [`src/render.ts`](src/render.ts) | Model-facing rendering: the public projection, status lines, and the consuming delta (stdout, `[stderr]` section, dropped-output notice) |
 | — | No runtime invariant companion is published; this model-facing adapter has no independent lifecycle stream; execution relations are owned by the capability seam it calls. |
 
@@ -92,7 +93,7 @@ This section explains the design decisions behind the tools and points at the co
 
 ### Notice delivery lanes
 
-The settlement subscription (`{ owners: 'scope' }`) skips settlements the registry reports as `awaited`, jobs the model killed through `job_kill`, unowned jobs, and teardown settlements, then resolves the agent registered for the owner session. A `wakeup` delivery opens a turn on an idle owner; with `maxConsecutiveWakes` set, only while the budget lasts, tracked per exact `Agent` in a `WeakMap`, and claiming a user-authored message (`agent/inbox/claimed`) resets that owner's budget. A busy owner — or any notice past a configured budget, or `quiet` delivery — is injected into the next-step inbox instead. The registry counts only a wait still owed the projection at settlement, so a wait that timed out or was aborted leaves a later settlement to notify as usual; a removal drops the job from the model-kill set, which only ever holds live jobs the model killed.
+The settlement subscription (`{ owners: 'scope' }`) skips settlements the registry reports as `awaited`, unowned jobs, and teardown settlements, then resolves the agent registered for the owner session. A `wakeup` delivery opens a turn on an idle owner; with `maxConsecutiveWakes` set, only while the budget lasts, tracked per exact `Agent` in a `WeakMap`, and claiming a user-authored message (`agent/inbox/claimed`) resets that owner's budget. A busy owner — or any notice past a configured budget, or `quiet` delivery — is injected into the next-step inbox instead. The registry counts only a wait still owed the projection at settlement, so a wait that timed out or was aborted leaves a later settlement to notify as usual.
 
 </details>
 
@@ -107,7 +108,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [jobs group map](../README.md) — the sibling group page and its package table.
 - [Registry contract](../jobs/README.md) — the abstract `ctx.jobs` service behind the tools.
 - [Process-local registry](../jobs-local/README.md) — where jobs run in this process.
-- [Generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-jobs) — the exact `job_output`, `job_list`, and `job_kill` schemas.
+- [Generated tool catalog](../../../docs/tool-catalog.md#deepseek-aidsh-tool-jobs) — the exact `job_output`, `job_list`, `job_kill`, and `job_stop_all` schemas.
 - [Generated configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-tool-jobs) — every accepted config field and its source declaration.
 - [job-registry seam Agent Note](../../../.agents/notes/archived/architecture/2026-07-26-job-registry-seam.md) — the owner-fenced registry contract and its rationale.
 
@@ -125,7 +126,7 @@ Every request in this plugin's registration scope contains this guidance. Agent-
 ##### Background-job guidance
 
 ```markdown
-Track every background job id you start. You are notified in-session when a job finishes — do not busy-poll or sleep on one; keep working on independent steps and do not duplicate a running job's work. Before giving a final answer, collect every still-relevant job with job_output (set wait: true only when you are genuinely blocked on it), and job_kill jobs that stopped mattering.
+Track every background job id you start. Completion notices report actual settlement; do not busy-poll or duplicate running work. Collect relevant output with job_output, using wait: true only when blocked on the result. A cancelled or timed-out output wait leaves the job running. Use job_kill with wait: true to verify a stop, or job_stop_all when asked to stop all commands. Report stopping or failed stops honestly; a cancellation request alone does not mean the work has stopped.
 ```
 
 #### Token effect
@@ -140,7 +141,7 @@ Prefix-stable while the plugin scope and guidance text are unchanged. Activation
 
 #### What the model sees
 
-The generated [`job_output`, `job_list`, and `job_kill` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-jobs) while this tool set is visible.
+The generated [`job_output`, `job_list`, `job_kill`, and `job_stop_all` schemas](../../../docs/tool-catalog.md#deepseek-aidsh-tool-jobs) while this tool set is visible.
 
 #### Token effect
 

@@ -46,6 +46,10 @@ Install the built helper on the remote host, or use [`remote-workspace-presets`]
 
 For PTC, configure both bootstrap fields and pass the verified `ctx.ssh.nodeExecutable` and `ctx.ssh.bootstrapPath` to [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.md). Basic filesystem and Bash use may omit the pair. The `bootstrapPath` getter refuses an unconfigured PTC deployment.
 
+### Proxy troubleshooting
+
+If an SSH connection times out or its handshake fails while a global proxy is enabled, consider bypassing the global proxy for that connection and trying again.
+
 ### Password login
 
 A host that has a saved password logs in with it instead of keys. The password is a credential record that [`credentials`](../../credentials/credentials/README.md) keeps under `ssh/host-<hash of the host>`; `ctx.credentials` must be composed for a password to be read. Saved passwords are written by [`remote-workspace-presets`](../remote-workspace-presets/README.md) after the host accepted them.
@@ -54,7 +58,7 @@ Every ssh child of such a host receives `SSH_ASKPASS` and `SSH_ASKPASS_REQUIRE=f
 
 This needs OpenSSH 8.4 or newer, which introduced `SSH_ASKPASS_REQUIRE`; older or unrecognized clients fail with kind `unsupported` before any connection. On Windows the program is `askpass.cmd` running `askpass.ps1` in Windows PowerShell, which writes the password as UTF-8 without passing it through `cmd.exe`. The Windows OpenSSH client cannot start a program from a path with non-ASCII characters, so the directory is created under the temporary directory, `ProgramData` or `Users\Public`, whichever is first and ASCII. Windows opens one authenticated connection per stream, so each stream logs in again.
 
-The package entry `@deepseek-ai/dsh-ssh/auth` exports the pieces every ssh caller shares: `parseSshHost` and `sshDestinationArguments` for `user@host:port`, `planSshAuth`, the `SshPasswordStore`, and `SshFailure` with `classifySshFailure`, which reduce ssh diagnostics to `auth`, `unreachable`, `host-key`, `host-key-changed` or `unsupported`.
+The package entry `@deepseek-ai/dsh-ssh/auth` exports the pieces every ssh caller shares: `parseSshHost` and `sshDestinationArguments` for `user@host:port`, `planSshAuth`, the `SshPasswordStore`, and `SshFailure` with `classifySshFailure`, which reduce ssh diagnostics to `auth`, `unreachable`, `handshake`, `host-key`, `host-key-changed` or `unsupported`.
 
 ### Trusting a new host
 

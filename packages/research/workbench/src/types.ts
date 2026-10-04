@@ -240,6 +240,17 @@ export interface PhaseStatus {
    * when the phase is done; reports stored before keys existed read as empty.
    */
   unmet: string[]
+  /** Requirements exist separately from the coverage and outcome of the deciding checks. */
+  materialsPresent?: boolean | undefined
+  checksComplete?: boolean | undefined
+  warnings?: number | undefined
+  skippedChecks?: string[] | undefined
+}
+/** Outcome of one check. A skipped check has established nothing about the material. */
+export interface CheckStatus {
+  id: string
+  status: 'passed' | 'warnings' | 'failed' | 'skipped'
+  reason?: string | undefined
 }
 /** A deterministic report on the paper's current files; it never refuses anything. */
 export interface CheckReport {
@@ -254,6 +265,8 @@ export interface CheckReport {
    * stored before this field existed read as none.
    */
   gatesRun: string[]
+  /** Explicit coverage; absent on reports stored before coverage was recorded. */
+  checks?: CheckStatus[] | undefined
   phases: PhaseStatus[]
   findings: CheckFinding[]
   checkedAt: string
@@ -263,11 +276,17 @@ export interface PhaseProgress {
   done: boolean
   /** What held it back, as {@link PhaseStatus.unmet} keys. */
   unmet: string[]
+  materialsPresent?: boolean | undefined
+  checksComplete?: boolean | undefined
+  warnings?: number | undefined
+  skippedChecks?: string[] | undefined
   checkedAt: string
 }
 /** The findings of one check, from the last report that ran it. */
 export interface CheckProgress {
   items: CheckFinding[]
+  status?: CheckStatus['status'] | undefined
+  reason?: string | undefined
   checkedAt: string
 }
 /** The last check of the whole paper (scope `all`). */

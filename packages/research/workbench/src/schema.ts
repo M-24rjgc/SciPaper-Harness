@@ -153,17 +153,25 @@ const findingSchema = z.object({
   check: id, severity: z.enum(['error', 'warning']), message: z.string(),
   file: z.string().optional(), line: integer.optional(),
 })
+const coverageSchema = z.object({ status: z.enum(['passed', 'warnings', 'failed', 'skipped']), reason: z.string().optional() })
+const phaseCoverage = {
+  materialsPresent: z.boolean().optional(), checksComplete: z.boolean().optional(),
+  warnings: integer.optional(), skippedChecks: z.array(z.string()).optional(),
+}
 // Reports stored before requirement keys and gatesRun existed read with none.
 const checkReportSchema = z.object({
   clean: z.boolean(), scope: z.string(), mode: z.string().optional(), route: z.string().optional(),
   gatesRun: z.array(z.string()).default([]),
-  phases: z.array(z.object({ id, done: z.boolean(), missing: z.array(z.string()), unmet: z.array(z.string()).default([]) })),
+  checks: z.array(coverageSchema.extend({ id })).optional(),
+  phases: z.array(z.object({
+    id, done: z.boolean(), missing: z.array(z.string()), unmet: z.array(z.string()).default([]), ...phaseCoverage,
+  })),
   findings: z.array(findingSchema), checkedAt: id,
 })
 const progressSchema = z.object({
   mode: id, route: z.string().optional(),
-  phases: z.record(z.string(), z.object({ done: z.boolean(), unmet: z.array(z.string()), checkedAt: id })),
-  findings: z.record(z.string(), z.object({ items: z.array(findingSchema), checkedAt: id })),
+  phases: z.record(z.string(), z.object({ done: z.boolean(), unmet: z.array(z.string()), checkedAt: id, ...phaseCoverage })),
+  findings: z.record(z.string(), z.object({ items: z.array(findingSchema), checkedAt: id, ...coverageSchema.partial().shape })),
   full: z.object({ clean: z.boolean(), errors: integer, warnings: integer, checkedAt: id }).optional(),
 })
 
@@ -409,7 +417,7 @@ export const commandSchema = z.discriminatedUnion('action', [
   z.object({ ...base, action: z.literal('board-update'), board: boardPatchSchema, replace: z.boolean().optional() }),
   z.object({ ...base, action: z.literal('board-refresh') }),
   z.object({ ...base, action: z.literal('board-view'), refresh: z.boolean().optional(), runs: z.array(id).max(20).optional() }),
-  z.object({ ...base, action: z.literal('compile'), artifactId: id.optional(), path: id.optional(), engine: z.enum(['pdflatex', 'xelatex', 'lualatex']) }),
+  z.object({ ...base, action: z.literal('compile'), artifactId: id.optional(), path: id.optional(), engine: z.enum(['pdflatex', 'xelatex', 'lualatex']).default('xelatex') }),
   z.object({ ...base, action: z.literal('render-pages'), artifactId: id.optional(), maxPages: z.number().int().min(1).max(60).optional() }),  z.object({ ...base, action: z.literal('visual-review'), artifactId: id }),
   z.object({ ...base, action: z.literal('complete-visual-review'), artifactId: id, artifactRevision: integer, sessionId: id, findings: id }),
   z.object({

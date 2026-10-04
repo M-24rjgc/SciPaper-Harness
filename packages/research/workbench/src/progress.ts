@@ -7,7 +7,7 @@
  */
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { checkLabel, decidingChecks, ERRORS_KEY_PREFIX, explainsCondition, reportedChecks } from './checks.ts'
+import { checkLabel, decidingChecks, ERRORS_KEY_PREFIX, SKIPPED_KEY_PREFIX, explainsCondition, reportedChecks } from './checks.ts'
 import { requirementKey, type ModePhase, type ResolvedMode } from './modes.ts'
 import type {
   CheckFinding, CheckReport, LocalizedText, PhaseProgress, PhaseState, ResearchProgress, ResearchProject, ResearchStanding, StandingIssues,
@@ -45,10 +45,13 @@ export function mergeProgress(previous: ResearchProgress | undefined, report: Ch
     if (phase === undefined) continue
     const deciding = decidingChecks(phase, mode)
     if (mode.gates.some(gate => deciding.has(gate.id) && !ran.has(gate.id))) continue
-    progress.phases[status.id] = { done: status.done, unmet: [...status.unmet], checkedAt }
+    const { id: _id, missing: _missing, ...phaseStatus } = status
+    progress.phases[status.id] = { ...phaseStatus, unmet: [...status.unmet], checkedAt }
   }
   for (const check of reportedChecks(report, mode)) {
-    progress.findings[check] = { items: report.findings.filter(finding => finding.check === check), checkedAt }
+    const status = report.checks?.find(item => item.id === check)
+    progress.findings[check] = { items: report.findings.filter(finding => finding.check === check), checkedAt,
+      ...(status === undefined ? {} : { status: status.status, ...(status.reason === undefined ? {} : { reason: status.reason }) }) }
   }
   if (report.scope === 'all') progress.full = fullOf(report)
   return progress
@@ -157,6 +160,10 @@ export async function projectStanding(project: ResearchProject, mode: ResolvedMo
 
 /** The person's sentence for one unmet key: the requirement's hint, or whose errors to fix; none for a key the pack no longer has. */
 function hintFor(phase: ModePhase, key: string, mode: ResolvedMode): LocalizedText[] {
+  if (key.startsWith(SKIPPED_KEY_PREFIX)) {
+    const label = checkLabel(mode, key.slice(SKIPPED_KEY_PREFIX.length))
+    return [{ en: `Run ${label.en}`, zh: `完成「${label.zh}」检查` }]
+  }
   if (key.startsWith(ERRORS_KEY_PREFIX)) {
     const label = checkLabel(mode, key.slice(ERRORS_KEY_PREFIX.length))
     return [{ en: `Fix the errors in ${label.en}`, zh: `处理「${label.zh}」里的错误` }]

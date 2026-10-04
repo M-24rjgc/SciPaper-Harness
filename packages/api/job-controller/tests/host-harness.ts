@@ -16,7 +16,7 @@ export async function harness(): Promise<Context> {
 }
 
 /** Register a live agent for `rawId` under its own lifecycle scope. */
-export async function registerAgent(ctx: Context, rawId: string): Promise<Agent & { disposeScope: () => Promise<void> }> {
+export async function registerAgent(ctx: Context, rawId: string, owner?: Agent): Promise<Agent & { disposeScope: () => Promise<void> }> {
   const scopeFiber = ctx.plugin(() => {})
   const id = SessionId(rawId)
   const session = Session.create(id)
@@ -36,7 +36,8 @@ export async function registerAgent(ctx: Context, rawId: string): Promise<Agent 
     whenIdle: () => Promise.resolve(),
     disposeScope: () => scopeFiber.dispose(),
   }
-  await ctx.agents.register(agent)
+  if (owner === undefined) await ctx.agents.register(agent)
+  else ctx.agents.enter(agent, owner)
   return agent
 }
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { parse, parseDocument } from 'yaml'
-import { boot, initProfile, readProfilePatches, type ProfileContext } from '@deepseek-ai/dsh-app-boot'
+import { boot, composeEntries, initProfile, loadOverlayPatches, readProfilePatches, type ProfileContext } from '@deepseek-ai/dsh-app-boot'
 import ConfigEditor from '@deepseek-ai/dsh-config-editor'
 import LlmRuntime, { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
@@ -19,6 +19,7 @@ import { closeMockServers, mockServer, textEvents } from '../../../llm/llm-pi-ai
 import { migrateResearchProfile } from '../src/migration.ts'
 
 const roots: string[] = []
+const packagedSkillExpression = "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-research-workbench/package.json')), 'runtime/skills')"
 
 function at(value: unknown, ...path: Array<string | number>): unknown {
   for (const key of path) {
@@ -30,7 +31,7 @@ function at(value: unknown, ...path: Array<string | number>): unknown {
 afterEach(async () => {
   await closeMockServers()
   vi.unstubAllEnvs()
-  await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true })))
+  await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true })))
 })
 
 async function fixture(settings?: string, patch = '[]\n') {
@@ -49,6 +50,57 @@ it('leaves a modern empty profile byte-identical and creates no migration artifa
   const f = await fixture()
   await migrateResearchProfile(f)
   expect(await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')).toBe('[]\n')
+  expect(await readdir(f.home)).toEqual(['profiles'])
+})
+
+it('migrates the old packaged skill override without trusting custom roots or changing user permission policies', async () => {
+  const f = await fixture(undefined, `- id: preset-research
+  config:
+    id: research
+    plugins:
+      - id: skill-filesystem
+        name: '@deepseek-ai/dsh-skill-filesystem'
+        config:
+          customSkillDirs:
+            - !!js ${packagedSkillExpression}
+            - C:/synthetic/custom-skills
+- id: permission
+  config:
+    presets:
+      research-auto: {sandbox: workspace-write, approval: on-request}
+`)
+  const shipped = loadOverlayPatches('migration spec', join(import.meta.dirname, '../presets/research.patch.yml'))
+  const composed = () => composeEntries([shipped, loadOverlayPatches('migration spec', join(f.profileDir, 'cordis.patch.yml'))])
+  expect(at(composed(), 0, 'config', 'plugins', 0, 'config', 'bundledSkillDir')).toBeUndefined()
+  await migrateResearchProfile(f)
+  const first = await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')
+  const effective = composed()
+  expect(at(effective, 0, 'config', 'plugins', 0, 'config', 'bundledSkillDir')).toBeDefined()
+  expect(at(effective, 0, 'config', 'plugins', 0, 'config', 'customSkillDirs')).toEqual(['C:/synthetic/custom-skills'])
+  expect(at(loadOverlayPatches('migration spec', join(f.profileDir, 'cordis.patch.yml')), 1, 'config', 'presets', 'research-auto', 'approval')).toBe('on-request')
+  expect(first).toContain('!!js')
+  await migrateResearchProfile(f)
+  expect(await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')).toBe(first)
+  expect((await readdir(f.profileDir)).filter(name => name.includes('.before-'))).toHaveLength(1)
+})
+
+it('leaves arbitrary custom skill expressions and explicit bundled overrides byte-identical', async () => {
+  const source = `- id: preset-research
+  config:
+    id: research
+    plugins:
+      - id: skill-filesystem
+        config:
+          bundledSkillDir: C:/synthetic/explicit
+          customSkillDirs: [C:/synthetic/custom]
+      - id: skill-filesystem-other
+        name: '@deepseek-ai/dsh-skill-filesystem'
+        config:
+          customSkillDirs: [!!js "process.env.CUSTOM_SKILL_ROOT"]
+`
+  const f = await fixture(undefined, source)
+  await migrateResearchProfile(f)
+  expect(await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')).toBe(source)
   expect(await readdir(f.home)).toEqual(['profiles'])
 })
 
@@ -181,6 +233,36 @@ it('converts custom preset discovery to declarations with stable ids and origina
   expect(await readFile(join(base, 'agent.cordis.yml'), 'utf8')).toBe(source)
   await migrateResearchProfile(f)
   expect(await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')).toBe(raw)
+})
+
+it('promotes the old official skill root in a migrated custom preset before anchoring while preserving custom roots across two migrations', async () => {
+  const f = await fixture()
+  const base = join(f.home, '.agent-presets', 'custom-lab')
+  await mkdir(base, { recursive: true })
+  const dynamic = 'process.env.CUSTOM_SKILL_ROOT'
+  const source = `- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js ${packagedSkillExpression}
+      - ./custom-skills
+      - !!js ${dynamic}
+`
+  await writeFile(join(base, 'agent.cordis.yml'), source)
+  await migrateResearchProfile(f)
+  const first = await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')
+  const document = parseDocument(first, { customTags: [{ tag: 'tag:yaml.org,2002:js', resolve: (value: string) => value }] })
+  const fields = at(document.toJS(), 0, 'insert', 0, 'config', 'plugins', 0, 'config')
+  const baseURL = JSON.stringify(pathToFileURL(base + '/').href)
+  expect(at(fields, 'bundledSkillDir')).toBe(`(baseUrl => (${packagedSkillExpression}))(${baseURL})`)
+  expect(at(fields, 'customSkillDirs')).toEqual([
+    join(base, 'custom-skills'), `(baseUrl => (${dynamic}))(${baseURL})`,
+  ])
+  expect(first.match(/!!js/g)).toHaveLength(2)
+  await migrateResearchProfile(f)
+  expect(await readFile(join(f.profileDir, 'cordis.patch.yml'), 'utf8')).toBe(first)
+  expect(await readFile(join(base, 'agent.cordis.yml'), 'utf8')).toBe(source)
+  expect((await readdir(f.profileDir)).filter(name => name.includes('.before-'))).toHaveLength(1)
 })
 
 it('does not overwrite a new declaration with an old preset directory', async () => {

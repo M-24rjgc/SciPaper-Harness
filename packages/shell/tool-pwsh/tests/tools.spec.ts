@@ -795,7 +795,7 @@ describe('background execution through the job runtime', () => {
     await call(ctx, 'pwsh', { command: 'Start-Sleep -Seconds 60', description: 'test command', run_in_background: true })
 
     const killed = await call(ctx, 'job_kill', { job_id: 'pwsh-1' })
-    expect(text(killed)).toBe('requested cancellation of job pwsh-1')
+    expect(text(killed)).toBe('requested cancellation of job pwsh-1 [status: stopping]')
     // The cancel reached the process handle; the task settles as killed with
     // the signal detail mapped by processOutcome.
     const final = await call(ctx, 'job_output', { job_id: 'pwsh-1', wait: true })
@@ -1171,12 +1171,17 @@ describe('processOutcome', () => {
 
   it('maps a completed process to its exit code', () => {
     expect(processOutcome(settled({ exitCode: 3 })))
-      .toEqual({ status: 'completed', detail: 'exit code: 3' })
+      .toEqual({ status: 'failed', detail: 'exit code: 3' })
   })
 
-  it('defensively reads a null exit code as 0 (handle shapes from other executors)', () => {
+  it('does not turn a missing exit code into success', () => {
     expect(processOutcome(settled({ exitCode: null })))
-      .toEqual({ status: 'completed', detail: 'exit code: 0' })
+      .toEqual({ status: 'failed', detail: 'exit code: null' })
+  })
+
+  it('does not turn a failed process cleanup into a successful kill', () => {
+    expect(processOutcome(settled({ status: 'killed', failure: 'process cleanup failed; work may be orphaned' })))
+      .toEqual({ status: 'failed', detail: 'process cleanup failed; work may be orphaned' })
   })
 
   it('appends sandbox facts to the terminal detail', () => {

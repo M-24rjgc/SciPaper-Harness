@@ -207,11 +207,13 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-job-controller`
 
 - `inject`: `jobs` · `typert`
-- `source`: [`packages/api/job-controller/src/index.ts:35`](../packages/api/job-controller/src/index.ts)
+- `source`: [`packages/api/job-controller/src/index.ts:37`](../packages/api/job-controller/src/index.ts)
 
 ```ts config-catalog
 /** Job Controller deployment policy. */
 export interface Config {
+  /** Settlement wait for an explicit stop-all, in milliseconds (default 30000, at most 60000). */
+  readonly stopWaitTimeoutMs?: number
   /** Coalescing window after a registry commit before the next rows or output read, in milliseconds (default 100). */
   readonly observeFlushMs?: number
   /** Soft byte budget per observation output frame (default 65536); one larger chunk ships whole. */
@@ -2542,7 +2544,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-research-workbench`
 
 - `inject`: `storageDomain` · `workspaceRegistry` · `sessionController` · `credentials` · `tools` · `llm` · `agents` · `goals` · `sessions` · `permissionPresets`
-- `source`: [`packages/research/workbench/src/index.ts:69`](../packages/research/workbench/src/index.ts)
+- `source`: [`packages/research/workbench/src/index.ts:71`](../packages/research/workbench/src/index.ts)
 
 ```ts config-catalog
 /** Research workbench configuration. */
@@ -2728,6 +2730,8 @@ export interface Config {
 ```ts config-catalog
 /** Session-log archive policy. */
 export interface Config {
+  /** Redact detected passwords, API keys and tokens from exported logs. @default true */
+  readonly redactSecrets?: boolean
   /** DEFLATE level for each ZIP entry. @default 6 */
   readonly compressionLevel?: SessionLogCompressionLevel
 }
@@ -3763,7 +3767,7 @@ export interface Config {
 export interface Config {
   /** Wait duration applied when `job_output` sets `wait` without `timeout_ms` (default 30s). */
   waitTimeoutMs?: number
-  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 10min). */
+  /** Hard cap on any single wait; a larger model-supplied `timeout_ms` is clamped down to it (default 1min). */
   maxWaitTimeoutMs?: number
   /** Whether a completion opens a turn on an idle owner (default `wakeup`). */
   completionDelivery?: CompletionDelivery
@@ -4075,7 +4079,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-web`
 
 - `inject`: `tools` · `web` · `systemPrompt`
-- `source`: [`packages/web/tool-web/src/index.ts:37`](../packages/web/tool-web/src/index.ts)
+- `source`: [`packages/web/tool-web/src/index.ts:38`](../packages/web/tool-web/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config: which web tools to register, search bounds, per-tool budgets, and the fetch output cap. */
@@ -4092,7 +4096,7 @@ export interface Config {
   fetchTimeoutMs?: number
   /** Cooperative timeout budget (ms) for `web_search`. Defaults to 30000. */
   searchTimeoutMs?: number
-  /** Cap on source characters converted and complete `web_fetch` output characters. Defaults to 200000. */
+  /** Cap on one complete `web_fetch` output and legacy synchronous conversion. Defaults to 200000. */
   fetchMaxOutputChars?: number
 }
 ```
@@ -4303,7 +4307,7 @@ export interface Config {
   maxBodyChars?: number
   /** Default fetch timeout in milliseconds, within Node's timer range. */
   timeoutMs?: number
-  /** Maximum number of same-origin redirect hops to follow. */
+  /** Maximum number of permitted redirect hops to follow. */
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
@@ -4316,6 +4320,8 @@ export interface Config {
    * ranges are refused either way.
    */
   allowFakeIpDns?: boolean
+  /** Follow anonymous cross-origin redirects, validating every hop. Defaults to false. */
+  allowCrossOriginRedirects?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-web-fetch-http -->

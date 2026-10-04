@@ -112,10 +112,13 @@ export class AclWriteGrant {
     return [...this.standingPaths, ...this.revocablePaths]
   }
 
-  /** Revoke every revocable grant (standing security descriptor edits stay) and free the SIDs; reports every cleanup failure. */
-  dispose(): void {
+  /**
+   * Revoke live grants and free the SIDs; reports every cleanup failure.
+   * @param revoke - false frees allocations without touching paths whose granted directory was deleted or replaced.
+   */
+  dispose(revoke = true): void {
     const failures: unknown[] = []
-    for (const path of this.revocablePaths) {
+    for (const path of revoke ? this.revocablePaths : []) {
       try {
         revokeWrite(this.api, path, this.sidPtr)
       } catch (error) {

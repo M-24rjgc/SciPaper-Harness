@@ -31,21 +31,23 @@ export async function* streamJobRows(
 ): AsyncIterable<JobListFrame> {
   signal.throwIfAborted()
   const waiter = new OutputWaiter()
+  let visible = new Set(registry.listTree(request.sessionId).map(job => job.id))
   // Subscribe before the first read so a commit between the read and the
   // wait cannot be missed.
   const unsubscribe = registry.events.subscribe({ owners: 'all' }, (event) => {
     if (event.type === 'output') return
-    const owner = event.job.owner
-    if (owner === undefined || owner === request.sessionId) waiter.wake()
+    const next = registry.listTree(request.sessionId)
+    if (visible.has(event.job.id) || next.some(job => job.id === event.job.id)) waiter.wake()
+    visible = new Set(next.map(job => job.id))
   })
   try {
-    yield { type: 'rows', jobs: registry.list(request.sessionId) }
+    yield { type: 'rows', jobs: registry.listTree(request.sessionId) }
     while (true) {
       await waiter.wait(signal)
       // Let a burst of commits settle into one frame.
       await sleep(options.flushMs, signal)
       if (signal.aborted) return
-      yield { type: 'rows', jobs: registry.list(request.sessionId) }
+      yield { type: 'rows', jobs: registry.listTree(request.sessionId) }
     }
   } finally {
     unsubscribe()

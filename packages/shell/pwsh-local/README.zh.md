@@ -67,7 +67,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 
 ### 后台进程
 
-以 `onExpiry: 'none'` 解析并等待 `execute` 返回句柄即可在后台运行命令；不布置任何 deadline。取消或准备失败会在发布句柄前拒绝调用。`readOutput()` 把流增量合并为一次消费式读取，并在 `[stderr]` 分段下标记 stderr；`kill()` 终止提供方管理的 range；`done` 在直接命令关闭时结算且绝不 reject。job id、所有权、轮询与通知属于通用 `ctx.jobs` 运行时，工具层会把句柄注册进去。
+以 `onExpiry: 'none'` 解析并等待 `execute` 返回句柄即可在后台运行命令；不布置任何 deadline。取消或准备失败会在发布句柄前拒绝调用。`readOutput()` 把流增量合并为一次消费式读取，并在 `[stderr]` 分段下标记 stderr；`kill()` 终止提供方管理的 range；`done` 结算前，会在直接命令退出时终止并等待剩余受管子进程，同时保留主命令的退出码和输出。要让后台任务继续运行，应使主进程存活至任务结束。它绝不 reject；无法确认清理时设置 `failure` 与 stderr，并让 `result()` 拒绝。job id、所有权、轮询与通知属于通用 `ctx.jobs` 运行时，工具层会把句柄注册进去。
 
 <a id="adjusting-budgets-at-runtime"></a>
 ### 运行时调整预算

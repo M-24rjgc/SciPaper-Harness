@@ -48,6 +48,7 @@ int wmain()
   P(WRITE_RESTRICTED);
   P((int)WinWorldSid);
   P((int)TokenGroups);
+  P((int)TokenUser);
   P((int)SE_FILE_OBJECT);
   P(DACL_SECURITY_INFORMATION);
   P((int)TRUSTEE_IS_UNKNOWN);
@@ -83,6 +84,7 @@ int wmain()
   static_assert(LPTR == 0x40, "LocalAlloc flags");
   static_assert(SECURITY_MAX_SID_SIZE == 68, "SECURITY_MAX_SID_SIZE");
   static_assert(TOKEN_QUERY == 0x8 && TOKEN_DUPLICATE == 0x2 && TOKEN_ADJUST_DEFAULT == 0x80 && TOKEN_ASSIGN_PRIMARY == 0x1, "token rights");
+  static_assert(TokenUser == 1, "token user class");
   static_assert(SE_GROUP_LOGON_ID == 0xC0000000, "logon id attr");
   static_assert(FILE_GENERIC_WRITE == 0x120116, "generic write");
   static_assert(DELETE == 0x10000 && FILE_DELETE_CHILD == 0x40, "delete rights");

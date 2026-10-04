@@ -49,6 +49,7 @@
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/dsh-pwsh-local": "workspace:*",
     "@deepseek-ai/dsh-sandbox-local": "workspace:*",
+    "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/cordis": "workspace:~",
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/dsh-subprocess": "workspace:*",

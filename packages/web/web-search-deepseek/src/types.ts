@@ -12,12 +12,14 @@ export interface WebSearchResultItem {
   title?: string | null
   /** Provider-supplied page age/recency string (mapped to `publishedAt`). */
   page_age?: string | null
+  /** Native search failure code when the server returned an error item. */
+  error_code?: string
 }
 
 /** A `web_search_tool_result` content block: the citeable result shape. */
 export interface WebSearchToolResultBlock {
   type: 'web_search_tool_result'
-  content?: WebSearchResultItem[]
+  content?: WebSearchResultItem[] | { type: 'web_search_tool_result_error'; error_code: string }
 }
 
 /** One citation location inside a `text` block (the snippet source). */

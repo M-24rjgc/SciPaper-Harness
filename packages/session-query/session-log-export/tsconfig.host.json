@@ -8,6 +8,7 @@
   "files": [
     "src/archive.ts",
     "src/index.ts",
+    "src/redact.ts",
     "src/routes.ts"
   ],
   "references": [

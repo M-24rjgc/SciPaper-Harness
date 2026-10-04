@@ -32,6 +32,7 @@ import { sessionFormatLogFilename } from '@deepseek-ai/dsh-session-format'
 import type { SessionEvent, SessionHeader, SessionId, SessionStore } from '@deepseek-ai/dsh-session'
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
+import { discoverSessionLogSecrets, redactSessionLog } from './redact.ts'
 
 /** Valid fflate DEFLATE levels accepted by session-log export. */
 export type SessionLogCompressionLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
@@ -49,6 +50,8 @@ export interface SessionLogExportDeps {
 
 /** The export services narrowed to the mounted ones streaming actually reads. */
 export interface SessionLogExportReady {
+  /** Redact detected credential values in exported copies. Defaults to true. */
+  readonly redactSecrets?: boolean
   readonly sessionQuery: SessionQueryEngine
   readonly sessionPersistence: SessionPersistence
   readonly attachments: AttachmentStore
@@ -150,6 +153,29 @@ export async function readSessionLogText(
   id: SessionId,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
+  return (await readSessionLogSnapshot(persistence, id, signal))?.content
+}
+
+/** One serialized committed prefix, with its event cutoff retained between export passes. */
+interface SessionLogSnapshot {
+  readonly content: string
+  readonly eventCount: number
+}
+
+/**
+ * Read one log, optionally restricted to a previously discovered committed prefix.
+ * @param persistence - the mounted persistence backend.
+ * @param id - the session to read.
+ * @param signal - cancellation forwarded to the open and read.
+ * @param eventCount - discovered event count, excluding later appends.
+ * @returns the serialized committed prefix, or undefined for an absent session.
+ */
+async function readSessionLogSnapshot(
+  persistence: SessionPersistence,
+  id: SessionId,
+  signal?: AbortSignal,
+  eventCount?: number,
+): Promise<SessionLogSnapshot | undefined> {
   const options = signal === undefined ? {} : { signal }
   let handle: SessionHandle
   try {
@@ -161,8 +187,11 @@ export async function readSessionLogText(
     throw error
   }
   try {
-    const { events } = await handle.read(0, undefined, options)
-    return serializeSessionLog(handle.header, events)
+    const { events } = await handle.read(0, eventCount, options)
+    if (eventCount !== undefined && events.length !== eventCount) {
+      throw new Error(`subagent "${id}" changed its committed log prefix during export`)
+    }
+    return { content: serializeSessionLog(handle.header, events), eventCount: events.length }
   } finally {
     await handle.close()
   }
@@ -330,10 +359,14 @@ export function sessionLogZipFilename(sessionId: string): string {
 
 /**
  * Yield the export entries in zip order: the preloaded root log first, then
- * every subagent descendant in lineage order (each flushed when live, read
- * through a persistence read handle right before it is yielded, and dropped
- * after the consumer moves on), then every distinct attachment referenced by
- * the included logs. Images are read and verified as bounded stored objects;
+ * every subagent descendant in lineage order. When redacting, a first pass
+ * discovers credentials across all included logs before any log is emitted;
+ * a second pass reads and emits each descendant's discovered committed prefix
+ * without retaining earlier logs. Event cutoffs exclude concurrent appends;
+ * the logs are individually committed prefixes, not an atomic cross-session
+ * snapshot. Each read flushes its live session first. Explicitly unredacted exports
+ * need only the emission pass. Attachments are collected from the original log
+ * text and follow the logs. Images are read and verified as bounded stored objects;
  * generic files remain streamed through the ZIP writer. The host holds at most
  * one descendant log, one image, and one file chunk beyond the root.
  * @param deps - the mounted export services (the caller answered 500 before this runs).
@@ -353,40 +386,55 @@ export async function* sessionLogZipEntries(
 ): AsyncGenerator<SessionLogZipEntry> {
   const media = new Map<string, ImageAttachmentRef>()
   const files = new Map<string, FileAttachmentRef>()
+  const secrets = new Set<string>()
+  const exportContent = (content: string): string => deps.redactSecrets === false ? content : redactSessionLog(content, secrets)
   const rememberAttachments = (content: string): void => {
     const refs = attachmentRefsInArtifact(content)
     for (const [id, ref] of refs.images) media.set(id, ref)
     for (const [id, ref] of refs.files) files.set(id, ref)
   }
-  rememberAttachments(rootContent)
-  yield { path: SESSION_LOG_FILENAME, content: rootContent }
+  const descendantIds: SessionId[] = []
   if (includeDescendants) {
     const seen = new Set<SessionId>([sessionId])
-    const collect = async function* (
-      nodes: readonly SessionLineageNode[],
-    ): AsyncGenerator<SessionLogZipEntry> {
+    const collect = (nodes: readonly SessionLineageNode[]): void => {
       for (const node of nodes) {
         signal?.throwIfAborted()
         const id = node.session.header.id
         if (seen.has(id)) continue
         seen.add(id)
-        await flushLiveSessionLog(deps, id, signal)
-        const content = await readSessionLogText(deps.sessionPersistence, id, signal)
-        signal?.throwIfAborted()
-        if (content === undefined) {
-          throw new Error(`subagent "${id}" has no stored log`)
-        }
-        rememberAttachments(content)
-        yield {
-          path: `subagents/${safeSessionIdSegment(id)}/${SESSION_LOG_FILENAME}`,
-          content,
-        }
-        yield* collect(node.descendants)
+        descendantIds.push(id)
+        collect(node.descendants)
       }
     }
     const lineage = await deps.sessionQuery.traceSession(sessionId, signal)
     signal?.throwIfAborted()
-    yield* collect(lineage.descendants)
+    collect(lineage.descendants)
+  }
+  const readDescendant = async (id: SessionId, eventCount?: number): Promise<SessionLogSnapshot> => {
+    await flushLiveSessionLog(deps, id, signal)
+    const snapshot = await readSessionLogSnapshot(deps.sessionPersistence, id, signal, eventCount)
+    signal?.throwIfAborted()
+    if (snapshot === undefined) throw new Error(`subagent "${id}" has no stored log`)
+    return snapshot
+  }
+  const eventCounts = new Map<SessionId, number>()
+  if (deps.redactSecrets !== false) {
+    discoverSessionLogSecrets(rootContent, secrets)
+    for (const id of descendantIds) {
+      const snapshot = await readDescendant(id)
+      discoverSessionLogSecrets(snapshot.content, secrets)
+      eventCounts.set(id, snapshot.eventCount)
+    }
+  }
+  rememberAttachments(rootContent)
+  yield { path: SESSION_LOG_FILENAME, content: exportContent(rootContent) }
+  for (const id of descendantIds) {
+    const { content } = await readDescendant(id, eventCounts.get(id))
+    rememberAttachments(content)
+    yield {
+      path: `subagents/${safeSessionIdSegment(id)}/${SESSION_LOG_FILENAME}`,
+      content: exportContent(content),
+    }
   }
   for (const ref of media.values()) {
     signal?.throwIfAborted()

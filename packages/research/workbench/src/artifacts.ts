@@ -393,22 +393,6 @@ export async function compilePaper(
   const digest = await paperDigest(project.root, await flattenPaper(project.root, artifact.path, limit))
   const build = await projectPath(project.root, `.research/build/${artifact.id}/${artifact.revision}/${digest.slice(0, 16)}`)
   await mkdir(build, { recursive: true })
-  const runtime = await components.latexRuntime(signal, engine)
-  const bin = runtime.bin
-  // TeX Live's Windows environment conversion rejects some Unicode absolute paths.
-  // Keep TeX arguments relative to the working directory; Node still owns absolute paths.
-  const bibPath = await searchPath(project, build)
-  const env = {
-    PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter),
-    TEXINPUTS: `.${delimiter}${await searchPath(project, dirname(source))}`,
-    BIBINPUTS: bibPath,
-    BSTINPUTS: bibPath,
-  }
-  const outputDirectory = relative(dirname(source), build).replaceAll('\\', '/')
-  const args = [
-    ...runtime.compilerArgs, '-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
-    `-output-directory=${outputDirectory}`, basename(source),
-  ]
   const pdf = join(build, `${basename(source, '.tex')}.pdf`)
   // A PDF left by an earlier compile of the same inputs must not pass for this one.
   try { await rm(pdf) } catch (error) {
@@ -420,8 +404,24 @@ export async function compilePaper(
   const failed = (stage: string, code: number): void => { failure = `Error: ${stage} failed (exit code ${code})` }
   const installed = new Set<string>()
   try {
+    const runtime = await components.latexRuntime(signal, engine)
+    const bin = runtime.bin
+    // TeX Live's Windows environment conversion rejects some Unicode absolute paths.
+    // Keep TeX arguments relative to the working directory; Node still owns absolute paths.
+    const bibPath = await searchPath(project, build)
+    const env = {
+      ...runtime.env, PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter),
+      TEXINPUTS: `.${delimiter}${await searchPath(project, dirname(source))}`, BIBINPUTS: bibPath, BSTINPUTS: bibPath,
+    }
+    const outputDirectory = relative(dirname(source), build).replaceAll('\\', '/')
+    const args = [
+      ...runtime.compilerArgs, '-no-shell-escape', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error',
+      `-output-directory=${outputDirectory}`, basename(source),
+    ]
     for (let attempt = 0; attempt <= MAX_TEX_INSTALLS; attempt++) {
-      const first = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
+      const first = await runProcess(texExecutable(bin, engine), args, {
+        cwd: dirname(source), env, signal, timeoutMs: 180000, ordinaryExecutablePath: true,
+      })
       log += first.stdout + first.stderr
       if (first.code !== 0) {
         // Only this pass's output: an earlier pass's missing file is installed already.
@@ -437,14 +437,14 @@ export async function compilePaper(
       const auxPath = join(build, `${stem}.aux`)
       if (existsSync(join(build, `${stem}.bcf`))) {
         const result = await runProcess(texExecutable(bin, 'biber'), [...await runtime.bibliographyArgs('biber'), stem], {
-          cwd: build, env, signal, timeoutMs: 180000,
+          cwd: build, env, signal, timeoutMs: 180000, ordinaryExecutablePath: true,
         })
         log += result.stdout + result.stderr
         if (result.code !== 0) { failed('Biber', result.code); break }
       } else if (existsSync(auxPath) && (await readFile(auxPath, 'utf8')).includes('\\bibdata')) {
         const bibtexArgs = await runtime.bibliographyArgs('bibtex')
         const bibtex = (): Promise<ProcessResult> => runProcess(texExecutable(bin, 'bibtex'), [...bibtexArgs, stem], {
-          cwd: build, env, signal, timeoutMs: 180000,
+          cwd: build, env, signal, timeoutMs: 180000, ordinaryExecutablePath: true,
         })
         let result = await bibtex()
         log += result.stdout + result.stderr
@@ -465,7 +465,9 @@ export async function compilePaper(
         if (result.code !== 0) { failed('BibTeX', result.code); break }
       }
       for (let round = 0; round < 2; round++) {
-        const result = await runProcess(texExecutable(bin, engine), args, { cwd: dirname(source), env, signal, timeoutMs: 180000 })
+        const result = await runProcess(texExecutable(bin, engine), args, {
+          cwd: dirname(source), env, signal, timeoutMs: 180000, ordinaryExecutablePath: true,
+        })
         log += result.stdout + result.stderr
         if (result.code !== 0) { failed(`${engine} pass ${round + 2}`, result.code); break }
       }

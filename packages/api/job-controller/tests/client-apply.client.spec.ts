@@ -14,12 +14,19 @@ afterEach(async () => {
 })
 
 /** Mount the client half over a captured `remote.job` namespace and a real Gateway stream carrier. */
-async function mount(): Promise<{ ctx: Context; observeCalls: unknown[]; rowsCalls: unknown[]; killCalls: unknown[] }> {
+async function mount(): Promise<{
+  ctx: Context
+  observeCalls: unknown[]
+  rowsCalls: unknown[]
+  killCalls: unknown[]
+  stopAllCalls: unknown[]
+}> {
   const ctx = new Context()
   contexts.add(ctx)
   const observeCalls: unknown[] = []
   const rowsCalls: unknown[] = []
   const killCalls: unknown[] = []
+  const stopAllCalls: unknown[] = []
   const connection: ConnectionHandle = {
     isLoopback: true,
     generation: { getSnapshot: () => ({ id: 1, host: { home: '/home/fixture' } }), subscribe: () => () => {} },
@@ -43,6 +50,10 @@ async function mount(): Promise<{ ctx: Context; observeCalls: unknown[]; rowsCal
       killCalls.push(request)
       return { ok: true as const, value: { outcome: 'requested' as const } }
     },
+    stopAll: async (request: unknown) => {
+      stopAllCalls.push(request)
+      return { ok: true as const, value: { confirmed: true, jobs: [], sources: [], agents: [] } }
+    },
   }
   ctx.reflect.provide('remote', {
     $stream: <Item>(options: RemoteStreamOptions<Item>) => new RemoteStream(connection, options),
@@ -50,7 +61,7 @@ async function mount(): Promise<{ ctx: Context; observeCalls: unknown[]; rowsCal
   })
   ctx.reflect.provide('remote.job', job)
   await ctx.plugin(JobClient)
-  return { ctx, observeCalls, rowsCalls, killCalls }
+  return { ctx, observeCalls, rowsCalls, killCalls, stopAllCalls }
 }
 
 async function flush(): Promise<void> {
@@ -58,6 +69,12 @@ async function flush(): Promise<void> {
 }
 
 describe('Job Controller Client apply', () => {
+  it('forwards explicit stop-all reports through the generated namespace', async () => {
+    const { ctx, stopAllCalls } = await mount()
+    const sessionId = 'session-stop' as SessionId
+    await expect(ctx.jobs.stopAll(sessionId)).resolves.toEqual({ ok: true, value: { confirmed: true, jobs: [], sources: [], agents: [] } })
+    expect(stopAllCalls).toEqual([{ sessionId }])
+  })
   it('declares the Remote services it binds', () => {
     expect(JobClient.inject).toEqual(['remote', 'remote.job'])
   })

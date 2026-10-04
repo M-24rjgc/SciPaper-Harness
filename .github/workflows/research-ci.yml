@@ -62,13 +62,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build research product
         run: pnpm run build:research
-      - name: Research, plugin lifecycle and desktop regressions
+      - name: Research, harness lifecycle and desktop regressions
         run: >-
-          pnpm exec vitest run --maxWorkers=2
+          pnpm exec vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
           packages/research/workbench
           packages/bundle/research-app
           packages/bundle/research-knowledge-bundle
           packages/client/ui-research
+          packages/api/job-controller
+          packages/api/workspace-controller
+          packages/client/ui-jobs
+          packages/jobs
+          packages/shell/bash-local
+          packages/shell/pwsh-local
+          packages/shell/tool-bash
+          packages/shell/tool-pwsh
+          packages/sandbox/sandbox-local
+          packages/sandbox/sandbox-windows-acl
+          packages/session-query/session-log-export
+          packages/ssh/ssh
+          packages/ssh/remote-workspace-presets
+          packages/web
           apps/desktop/tests/project-manager.spec.ts
           scripts/ci-workflow.spec.ts
           scripts/ci-compatible-selfhosted.spec.ts

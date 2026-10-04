@@ -51,7 +51,7 @@ describe('the research preset', () => {
     expect(persona.config?.prefix).toMatch(/research collaborator/)
     // What the host lets the agent import without asking: the files the user attached.
     expect(persona.config?.prefix).toContain('Files the user attached to the conversation can be imported directly.')
-    expect(JSON.stringify(research.find(row => row.id === 'skill-filesystem'))).toMatch(/customSkillDirs/)
+    expect(JSON.stringify(research.find(row => row.id === 'skill-filesystem'))).toMatch(/bundledSkillDir/)
   })
 
   it('ships well-formed general skills and mode packs, and every research tool and skill they name exists', async () => {

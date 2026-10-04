@@ -7,7 +7,7 @@ import { bindScopeParent, createScope, scopeOf } from '@deepseek-ai/dsh-scope'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'
 import { JobId } from '@deepseek-ai/dsh-jobs'
 import type {
-  JobEvent, JobEventFilter, JobHandle, JobHooks, JobKind, JobOutcome, JobOutputSource, JobSpec, JobView,
+  JobEvent, JobEventFilter, JobHandle, JobHooks, JobKind, JobOutcome, JobOutputSource, JobSpec, JobView, SessionStopRequest,
 } from '@deepseek-ai/dsh-jobs'
 import LocalJobRegistry, { type Config as JobsConfig } from '@deepseek-ai/dsh-jobs-local'
 import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
@@ -111,6 +111,245 @@ async function harness(config: JobsConfig = {}) {
   ctx.jobs.attachController('test-controller')
   return ctx
 }
+
+describe('independent-work stop sources', () => {
+  it('uses exact live runtime ownership and only invokes hooks on explicit stop-all', async () => {
+    const ctx = await harness()
+    const root = await liveAgent(ctx, 'source-root')
+    const child = stubAgent(ctx, 'source-child')
+    ctx.agents.enter(child, root)
+    const other = await liveAgent(ctx, 'source-other')
+    const stop = vi.fn(async (request: SessionStopRequest) => {
+      expect(request.caller).toBe(root)
+      expect(request.agents).toEqual([root, child])
+      expect(request.agents).not.toContain(other)
+      expect(request.reason).toBe('explicit')
+      return { confirmed: true, targets: [{ id: 'run-1', status: 'cancelled', confirmed: true }] }
+    })
+    const fiber = await ctx.plugin({ inject: ['jobs'], apply(inner) { inner.jobs.registerStopSource('experiment', stop) } })
+    root.cancel({ kind: 'user' })
+    expect(stop).not.toHaveBeenCalled()
+    const deadline = Date.now() + 1000
+    expect(await ctx.jobs.stopAll(root.id, 5000, 'explicit', undefined, deadline)).toMatchObject({ confirmed: true, sources: [{ source: 'experiment', confirmed: true, targets: [{ id: 'run-1' }] }] })
+    expect(stop.mock.calls[0]![0].deadline).toBe(deadline)
+    await fiber.dispose()
+    expect((await ctx.jobs.stopAll(root.id, 1000)).sources).toEqual([])
+    await ctx.fiber.dispose()
+    expect(stop).toHaveBeenCalledTimes(1)
+  })
+
+  it('filters hook registration scopes to the caller and verified descendants', async () => {
+    const ctx = await harness()
+    const rootScope = createScope(ctx, {})
+    const childScope = createScope(ctx, {})
+    const foreignScope = createScope(ctx, {})
+    const root = await liveAgent(ctx, 'scoped-source-root', scopeOf(rootScope.ctx))
+    const child = stubAgent(ctx, 'scoped-source-child', scopeOf(childScope.ctx))
+    ctx.agents.enter(child, root)
+    await liveAgent(ctx, 'scoped-source-other', scopeOf(foreignScope.ctx))
+    const ownStop = vi.fn(async () => ({ confirmed: true, targets: [] }))
+    const childStop = vi.fn(async () => ({ confirmed: true, targets: [] }))
+    const foreignStop = vi.fn(async () => ({ confirmed: true, targets: [] }))
+    await rootScope.ctx.plugin({ inject: ['jobs'], apply(inner) { inner.jobs.registerStopSource('root', ownStop) } })
+    await childScope.ctx.plugin({ inject: ['jobs'], apply(inner) { inner.jobs.registerStopSource('child', childStop) } })
+    await foreignScope.ctx.plugin({ inject: ['jobs'], apply(inner) { inner.jobs.registerStopSource('other', foreignStop) } })
+    const report = await ctx.jobs.stopAll(root.id, 1000)
+    expect(report.sources.map(source => source.source)).toEqual(['root', 'child'])
+    expect(ownStop).toHaveBeenCalledTimes(1)
+    expect(childStop).toHaveBeenCalledTimes(1)
+    expect(foreignStop).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+    expect(ownStop).toHaveBeenCalledTimes(1)
+  })
+
+  it('contains failed adapters, bounds hanging observation, and keeps unknown targets unconfirmed', async () => {
+    const ctx = await harness()
+    const healthy = vi.fn(async () => ({ confirmed: true, targets: [{ id: 'healthy', status: 'cancelled', confirmed: true }] }))
+    ctx.jobs.registerStopSource('broken', async () => { throw new Error('transport failed') })
+    ctx.jobs.registerStopSource('hanging', async () => new Promise(() => {}))
+    ctx.jobs.registerStopSource('unknown', async () => ({ confirmed: true, targets: [{ id: 'run-unknown', status: 'unknown', confirmed: false }] }))
+    ctx.jobs.registerStopSource('healthy', healthy)
+    const report = await ctx.jobs.stopAll(undefined, 10)
+    expect(report.confirmed).toBe(false)
+    expect(report.sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'broken', confirmed: false, error: 'Error: transport failed' }),
+      expect.objectContaining({ source: 'hanging', confirmed: false }),
+      expect.objectContaining({ source: 'unknown', targets: [{ id: 'run-unknown', status: 'unknown', confirmed: false }] }),
+      expect.objectContaining({ source: 'healthy', confirmed: true }),
+    ]))
+    expect(report.sources.find(source => source.source === 'hanging')?.error).toContain('timeout')
+    expect(healthy).toHaveBeenCalledTimes(1)
+    await ctx.fiber.dispose()
+  })
+
+  it('never treats a missing live caller as unowned Host authority', async () => {
+    const ctx = await harness()
+    const source = vi.fn(async () => ({ confirmed: true, targets: [] }))
+    ctx.jobs.registerStopSource('experiment', source)
+    const report = await ctx.jobs.stopAll(SessionId('missing-runtime'), 10)
+    expect(report).toMatchObject({ confirmed: false, sources: [{ source: 'experiment' }] })
+    expect(report.sources[0]?.error).toContain('no live runtime caller')
+    expect(source).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('session-tree stop confirmation', () => {
+  it('retains trusted ancestry while a detached child still owns a live job', async () => {
+    const ctx = await harness()
+    const root = await liveAgent(ctx, 'detached-root')
+    const child = stubAgent(ctx, 'detached-child')
+    const detach = ctx.agents.enter(child, root)
+    const task = producer({ owner: child })
+    const id = ctx.jobs.start(task.spec)
+    detach()
+    expect(ctx.agents.get(child.id)).toBeUndefined()
+    expect(ctx.jobs.listTree(root.id).map(job => job.id)).toContain(id)
+    const stopping = ctx.jobs.stopAll(root.id, 1000)
+    expect(task.cancels).toEqual([undefined])
+    task.settle({ status: 'killed' })
+    expect((await stopping).confirmed).toBe(true)
+    await ctx.fiber.dispose()
+  })
+
+  it('also requests cancellation of work admitted while the first batch stops', async () => {
+    const ctx = await harness()
+    const late = producer()
+    let lateId: JobId | undefined
+    const first = producer({ cancel: () => { lateId = ctx.jobs.start(late.spec) } })
+    ctx.jobs.start(first.spec)
+    const stopping = ctx.jobs.stopAll(undefined, 1000)
+    first.settle({ status: 'killed' })
+    await expect.poll(() => late.cancels.length).toBe(1)
+    late.settle({ status: 'killed' })
+    const report = await stopping
+    expect(report.confirmed).toBe(true)
+    expect(report.jobs.some(result => result.job.id === lateId)).toBe(true)
+    await ctx.fiber.dispose()
+  })
+  it('includes runtime descendants and unowned jobs, but leaves other roots isolated', async () => {
+    const ctx = await harness()
+    const root = await liveAgent(ctx, 'stop-root')
+    const child = stubAgent(ctx, 'stop-child')
+    ctx.agents.enter(child, root)
+    const grandchild = stubAgent(ctx, 'stop-grandchild')
+    ctx.agents.enter(grandchild, child)
+    const unrelated = await liveAgent(ctx, 'other-root')
+    const tasks = [producer({ owner: root }), producer({ owner: child }), producer({ owner: grandchild }), producer()]
+    const ids = tasks.map(task => ctx.jobs.start(task.spec))
+    const other = producer({ owner: unrelated })
+    const otherId = ctx.jobs.start(other.spec)
+    expect(ctx.jobs.listTree(root.id).map(job => job.id)).toEqual(expect.arrayContaining(ids))
+    expect(ctx.jobs.listTree(root.id).map(job => job.id)).not.toContain(otherId)
+    const stopping = ctx.jobs.stopAll(root.id, 1000, 'explicit stop')
+    // Every cancel lands before waiting for any one producer.
+    expect(tasks.map(task => task.cancels)).toEqual(tasks.map(() => ['explicit stop']))
+    tasks.forEach((task) =>{  task.settle({ status: 'killed' }) })
+    const report = await stopping
+    expect(report.confirmed).toBe(true)
+    expect(report.jobs.map(result => result.job.status)).toEqual(tasks.map(() => 'killed'))
+    expect(other.cancels).toEqual([])
+    other.settle({ status: 'completed' })
+    await ctx.fiber.dispose()
+  })
+
+  it('reports a timed-out stop without claiming termination', async () => {
+    const ctx = await harness()
+    const task = producer()
+    ctx.jobs.start(task.spec)
+    const report = await ctx.jobs.stopAll(undefined, 10)
+    expect(report).toMatchObject({ confirmed: false, jobs: [{ job: { status: 'stopping' } }] })
+    expect(report.jobs[0]?.error).toContain('timeout')
+    task.settle({ status: 'killed' })
+    await ctx.fiber.dispose()
+  })
+
+  it('isolates cancellation failures and still stops the other jobs', async () => {
+    const ctx = await harness()
+    const broken = producer({ cancel: () => { throw new Error('cancel boom') } })
+    const healthy = producer()
+    ctx.jobs.start(broken.spec)
+    ctx.jobs.start(healthy.spec)
+    const stopping = ctx.jobs.stopAll(undefined, 1000)
+    healthy.settle({ status: 'killed' })
+    const report = await stopping
+    expect(report.confirmed).toBe(false)
+    expect(report.jobs[0]).toMatchObject({ job: { status: 'running' }, error: 'Error: cancel boom' })
+    expect(report.jobs[1]).toMatchObject({ job: { status: 'killed' } })
+    broken.settle({ status: 'completed' })
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects an already-aborted command before cancelling work', async () => {
+    const ctx = await harness()
+    const task = producer()
+    ctx.jobs.start(task.spec)
+    const abort = new AbortController()
+    abort.abort(new Error('cancel observation'))
+    await expect(ctx.jobs.stopAll(undefined, 10, undefined, abort.signal)).rejects.toThrow('cancel observation')
+    expect(task.cancels).toEqual([])
+    task.settle({ status: 'completed' })
+    await ctx.fiber.dispose()
+  })
+
+  it('does not confirm a force-failed record that may leave orphaned work', async () => {
+    const ctx = await harness()
+    const task = producer()
+    ctx.jobs.start(task.spec)
+    const stopping = ctx.jobs.stopAll(undefined, 1000)
+    task.settle({ status: 'failed', detail: 'process cleanup failed; work may be orphaned' })
+    expect((await stopping).confirmed).toBe(false)
+    await ctx.fiber.dispose()
+  })
+
+  it('keeps a prior cleanup failure visible and unconfirmed after its owner is disposed', async () => {
+    const ctx = await harness()
+    const root = stubAgent(ctx, 'orphan-root')
+    const detachRoot = ctx.agents.enter(root, undefined)
+    const child = stubAgent(ctx, 'orphan-child')
+    const detachChild = ctx.agents.enter(child, root)
+    const task = producer({ owner: child })
+    const id = ctx.jobs.start(task.spec)
+    task.job().append('retained child output')
+    task.settle({ status: 'failed', detail: 'process cleanup failed; work may be orphaned' })
+    await ctx.jobs.wait(id, 1000, child.id)
+    expect(() => { ctx.jobs.remove(id, child.id) }).toThrow('cannot be removed')
+    await disposeAgentScope(child)
+    detachChild()
+    const report = await ctx.jobs.stopAll(root.id, 1000)
+    expect(report.confirmed).toBe(false)
+    expect(report.jobs).toHaveLength(1)
+    expect(report.jobs[0]?.job.id).toBe(id)
+    expect(report.jobs[0]?.job.status).toBe('failed')
+    expect(report.jobs[0]?.error).toContain('work may be orphaned')
+    expect(ctx.jobs.listTree(root.id).map(job => job.id)).toEqual([id])
+    expect(ctx.jobs.list(root.id)).toEqual([])
+    expect(ctx.jobs.get(id, root.id).id).toBe(id)
+    expect(ctx.jobs.readAt(id, 0, root.id).chunks.map(chunk => chunk.text)).toEqual(['retained child output'])
+    expect(ctx.jobs.read(id, root.id).job.id).toBe(id)
+    await expect(ctx.jobs.wait(id, 1000, root.id)).resolves.toMatchObject({ id, status: 'failed' })
+
+    const replacementChild = await liveAgent(ctx, child.id)
+    expect(ctx.jobs.list(replacementChild.id)).toEqual([])
+    expect(ctx.jobs.listTree(replacementChild.id)).toEqual([])
+    expect(() => ctx.jobs.getTree(id, replacementChild.id)).toThrow('belongs to another session')
+    expect(() => ctx.jobs.readAt(id, 0, replacementChild.id)).toThrow('belongs to another session')
+    expect(() => ctx.jobs.read(id, replacementChild.id)).toThrow('belongs to another session')
+    expect(() => ctx.jobs.kill(id, replacementChild.id)).toThrow('belongs to another session')
+    await expect(ctx.jobs.wait(id, 1000, replacementChild.id)).rejects.toThrow('belongs to another session')
+    expect(ctx.jobs.listTree(root.id).map(job => job.id)).toEqual([id])
+
+    await disposeAgentScope(root)
+    detachRoot()
+    const replacementRoot = await liveAgent(ctx, root.id)
+    expect(ctx.jobs.listTree(replacementRoot.id)).toEqual([])
+    expect(() => ctx.jobs.getTree(id, replacementRoot.id)).toThrow('belongs to another session')
+    expect(() => ctx.jobs.read(id, replacementRoot.id)).toThrow('belongs to another session')
+    expect(() => ctx.jobs.kill(id, replacementRoot.id)).toThrow('belongs to another session')
+    expect((await ctx.jobs.stopAll(replacementRoot.id, 1000)).jobs).toEqual([])
+    await ctx.fiber.dispose()
+  })
+})
 
 /** Collect events matching `filter`; `types` narrows what is recorded. */
 function collect(ctx: Context, filter: JobEventFilter = { owners: 'all' }, types?: JobEvent['type'][]): JobEvent[] {
@@ -937,7 +1176,11 @@ describe('LocalJobRegistry owner cleanup', () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]).toMatchObject({ cause: 'teardown', job: { status: 'failed' } })
     expect((seen[0] as { job: JobView }).job.detail).toContain('cancel threw during teardown')
-    expect(ctx.jobs.list(owner.id)).toEqual([])
+    const retained = ctx.jobs.list(owner.id)
+    expect(retained.map(job => job.status)).toEqual(['failed'])
+    expect(retained[0]?.detail).toContain('work may be orphaned')
+    expect((await ctx.jobs.stopAll(owner.id, 1000)).confirmed).toBe(false)
+    await ctx.fiber.dispose()
   })
 })
 

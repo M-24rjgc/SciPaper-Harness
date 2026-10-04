@@ -119,6 +119,8 @@ seam 先把确定性工作区 SID 的 ACE 常驻物化（每个工作区每服�
 
 启动时若带有 subprocess 控制标记，runner 会通过受限子进程的 CRT 启动表转发 fd 7，并在 spawn 后立即关闭自身副本。可选的 `controlFileDescriptor: 7` 输入要求 `stdio: 'inherit'`；在管道 stdio 下请求它会在进程创建前失败。
 
+在 `workspace-write` 下，runner 通过 `PYTHONPATH` 与 `PYTHONSAFEPATH` 提供私有 Python 启动模块。Python 3.11+ 会先加载该模块，再允许命令目录中的普通模块导入，因此同名 `sitecustomize.py` 无法遮蔽它。对于规范工作区或私有临时根目录内部的 `os.mkdir(..., 0o700)`，模块保留所有者、当前用户、管理员与 SYSTEM 的保护，只补入所属根目录的能力 SID 与 Low 标签；创建前检查根目录身份，保留父目录删除权限拒绝。根目录以外沿用普通 CPython 行为并继续受限令牌约束。这样 `tempfile` 与离线 pip 安装可以运行，而无需扩大令牌的 restricting SID 列表。Python 的 `-E`、`-I` 或 `-S` 禁用启动兼容；直接调用 `AclSandbox` 不会获得该兼容层。
+
 ### 已验证边界
 
 - **Everyone 仍留在两种 restricting 列表中，但不再带来写权限。** 保活组是早期 DLL 初始化与 CNG 所必需的；如今 Low 标签会拒绝对被标记根目录之外、由 Everyone 授权的写入，因此这一旧缺口已关闭。

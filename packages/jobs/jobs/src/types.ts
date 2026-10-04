@@ -6,11 +6,32 @@
  */
 
 import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { JobId } from './brand.ts'
 import type { JobChannel, JobChunk, JobKind, JobView } from './view.ts'
+import type { StopSourceReport } from './view.ts'
 
 export { JobId } from './brand.ts'
 export type { JobChannel, JobChunk, JobKind, JobKindMap, JobStatus, JobView } from './view.ts'
+
+/** Trusted caller and shared deadline for an explicit session-tree stop. */
+export interface SessionStopRequest {
+  /** Requested root session; absent only for an unowned Host control. */
+  readonly sessionId?: SessionId
+  /** Exact currently registered caller; durable session lineage grants no authority. */
+  readonly caller?: Agent
+  /** Verified live runtime ownership tree, including the caller. */
+  readonly agents: readonly Agent[]
+  /** Absolute epoch-millisecond deadline shared by every stop participant. */
+  readonly deadline: number
+  /** Cancellation reason forwarded to the selected resources. */
+  readonly reason?: string
+  /** Cancels observation; requested resource stops remain in force. */
+  readonly signal?: AbortSignal
+}
+
+/** Adapter invoked only by explicit stop-all, never by turn cancellation or service disposal. */
+export type SessionStopSource = (request: SessionStopRequest) => Promise<StopSourceReport>
 
 /** Terminal result supplied by a producer through {@link JobHooks.done}. */
 export interface JobOutcome {

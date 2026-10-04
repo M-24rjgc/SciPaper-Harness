@@ -61,3 +61,25 @@ describe.skipIf(process.env.RESEARCH_TEX_SMOKE !== '1')('actual system TeX compi
     expect(fetch).not.toHaveBeenCalled()
   }, 60000)
 })
+
+it.skipIf(!process.env.RESEARCH_MANAGED_TEX_ROOT)('initializes managed TeX in its writable cache and compiles CJK', async () => {
+  const componentRoot = process.env.RESEARCH_MANAGED_TEX_ROOT!
+  const root = await mkdtemp(join(tmpdir(), 'scipaper-managed-real-'))
+  roots.push(root)
+  vi.stubEnv('DSH_HOME', join(root, 'home'))
+  const components = new ComponentManager(componentRoot, () => ({}))
+  const selected = (await components.status()).find(component => component.id === 'latex')!
+  expect(selected).toMatchObject({ installed: true, source: 'managed' })
+  const project = newProject({ title: 'Typesetting', root, brief: '' }, randomUUID() as WorkspaceId)
+  const artifact = await writeArtifact(project, {
+    action: 'save-artifact', projectId: project.id, kind: 'manuscript', path: 'paper/main.tex',
+    content: '\\documentclass{article}\n\\usepackage{fontspec}\n\\setmainfont{Microsoft YaHei}\n\\begin{document}\n科研排版验证。$E=mc^2$\n\\end{document}\n',
+    evidence: [], claimIds: [], inputArtifacts: [],
+  }, 'user', 100000)
+  const signal = new AbortController().signal
+  const runtime = await components.latexRuntime(signal, 'xelatex')
+  expect(runtime.env.TEXMFVAR?.startsWith(join(root, 'home', 'research', 'cache', 'latex'))).toBe(true)
+  const result = await compilePaper(project, artifact, 'xelatex', components, signal, 100000)
+  expect(result.status, await readFile(join(project.root, result.logPath), 'utf8')).toBe('completed')
+  expect((await readFile(join(project.root, result.pdfPath))).subarray(0, 5).toString()).toBe('%PDF-')
+}, 180000)

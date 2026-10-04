@@ -45,11 +45,15 @@
  */
 
 import { SUBPROCESS_CONTROL_ENV, SUBPROCESS_CONTROL_FD } from '@deepseek-ai/dsh-subprocess/control'
-import { closeSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { closeSync, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { delimiter, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { win32 } from './ffi.ts'
+import { allocUint32, decodePtrAt, decodeUint8At, decodeUint32, decodeUint32At, win32 } from './ffi.ts'
+import type { Win32Bindings } from './ffi.ts'
 import { AclSandbox, assertTempRootOutsideWorkspace } from './index.ts'
+import { openCurrentProcessToken } from './token.ts'
+import { TokenUser } from './win32-abi.ts'
 import { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
 
 const RUNNER_SIGNATURE = 'windows-acl-run'
@@ -71,6 +75,29 @@ interface ParsedArgs {
   tempWriteSid: string | undefined
   command: string
   args: string[]
+}
+
+interface OwnedDirectory {
+  path: string
+  dev: number
+  ino: number
+  birthtimeMs: number
+}
+
+/** Create one private directory and retain the identity required for safe removal. */
+function createOwnedDirectory(prefix: string): OwnedDirectory {
+  const path = mkdtempSync(prefix)
+  const { dev, ino, birthtimeMs } = lstatSync(path)
+  return { path, dev, ino, birthtimeMs }
+}
+
+/** Remove only the private directory this runner created; replaced objects are left untouched. */
+function removeOwnedDirectory(directory: OwnedDirectory): void {
+  const info = lstatSync(directory.path, { throwIfNoEntry: false })
+  if (info !== undefined && info.isDirectory() && !info.isSymbolicLink()
+    && info.dev === directory.dev && info.ino === directory.ino && info.birthtimeMs === directory.birthtimeMs) {
+    rmSync(directory.path, { recursive: true })
+  }
 }
 
 function parseArgs(raw: string[]): ParsedArgs {
@@ -113,6 +140,32 @@ function requireDirectory(label: string, path: string): void {
   }
 }
 
+/** The signed-in user's SID for private Python directory ownership, independently of the token's owner group. */
+function currentUserSid(api: Win32Bindings): string {
+  const token = openCurrentProcessToken(api)
+  try {
+    const needed = allocUint32()
+    api.getTokenInformation(token, TokenUser, null, 0, needed)
+    const bytes = decodeUint32(needed)
+    if (bytes < 16) fail('GetTokenInformation TokenUser returned an invalid size')
+    const info = Buffer.alloc(bytes)
+    if (api.getTokenInformation(token, TokenUser, info, info.length, needed) === 0) {
+      fail(`GetTokenInformation TokenUser failed (Win32 ${api.getLastError()})`)
+    }
+    const sid = decodePtrAt(info, 0)
+    if (sid === null) fail('GetTokenInformation TokenUser returned no SID')
+    const count = decodeUint8At(sid, 1)
+    if (count > 15 || api.getLengthSid(sid) < 8 + count * 4) fail('GetTokenInformation TokenUser returned an invalid SID')
+    let authority = 0
+    for (let offset = 2; offset < 8; offset++) authority = authority * 256 + decodeUint8At(sid, offset)
+    const parts = [`S-${decodeUint8At(sid, 0)}-${authority}`]
+    for (let index = 0; index < count; index++) parts.push(String(decodeUint32At(sid, 8 + index * 4)))
+    return parts.join('-')
+  } finally {
+    if (api.closeHandle(token) === 0) fail(`CloseHandle user token failed (Win32 ${api.getLastError()})`)
+  }
+}
+
 async function main(): Promise<number> {
   const parsed = parseArgs(process.argv.slice(2))
   // Both directories are validated in both modes: a provider bug that passes
@@ -139,7 +192,8 @@ async function main(): Promise<number> {
     fail(`SetConsoleCtrlHandler failed (Win32 ${api.getLastError()})`)
   }
 
-  let ownedTempDir: string | undefined
+  let ownedTempDir: OwnedDirectory | undefined
+  let pythonCompatibilityDir: OwnedDirectory | undefined
   let sandbox: AclSandbox | undefined
   let initialized = false
   try {
@@ -154,8 +208,8 @@ async function main(): Promise<number> {
         privateTempSid = tempWriteSid(privateTempDir)
         if (parsed.tempWriteSid !== privateTempSid) fail('--temp-write-sid does not match --temp')
       } else {
-        ownedTempDir = mkdtempSync(join(parsed.temp, 'dsh-'))
-        privateTempDir = ownedTempDir
+        ownedTempDir = createOwnedDirectory(join(parsed.temp, 'dsh-'))
+        privateTempDir = ownedTempDir.path
         privateTempSid = tempWriteSid(privateTempDir)
       }
     }
@@ -177,6 +231,24 @@ async function main(): Promise<number> {
       if (api.setEnvironmentVariableW('TEMP', privateTempDir) === 0) {
         fail(`SetEnvironmentVariableW TEMP failed (Win32 ${api.getLastError()})`)
       }
+      pythonCompatibilityDir = createOwnedDirectory(join(privateTempDir, 'dsh-python-'))
+      const source = fileURLToPath(new URL('../assets/python-compat/sitecustomize.py', import.meta.url))
+      writeFileSync(join(pythonCompatibilityDir.path, 'sitecustomize.py'), readFileSync(source), { flag: 'wx', mode: 0o600 })
+      const environment = {
+        PYTHONPATH: [pythonCompatibilityDir.path, process.env.PYTHONPATH].filter(Boolean).join(delimiter),
+        PYTHONSAFEPATH: '1',
+        DSH_PYTHON_RESTORE_PATH: process.env.PYTHONSAFEPATH ? '0' : '1',
+        DSH_PYTHON_SANDBOX_USER_SID: currentUserSid(api),
+        DSH_PYTHON_SANDBOX_ROOTS: JSON.stringify([
+          [realpathSync.native(parsed.workspace), writeSid],
+          [realpathSync.native(privateTempDir), privateTempSid],
+        ]),
+      }
+      for (const [key, value] of Object.entries(environment)) {
+        if (api.setEnvironmentVariableW(key, value) === 0) {
+          fail(`SetEnvironmentVariableW ${key} failed (Win32 ${api.getLastError()})`)
+        }
+      }
     }
 
     const child = sandbox.spawn({
@@ -197,9 +269,16 @@ async function main(): Promise<number> {
         process.stderr.write(`${RUNNER_SIGNATURE}: cleanup: ${error instanceof Error ? error.message : String(error)}\n`)
       }
     }
+    if (pythonCompatibilityDir !== undefined) {
+      try {
+        removeOwnedDirectory(pythonCompatibilityDir)
+      } catch (error) {
+        process.stderr.write(`${RUNNER_SIGNATURE}: cleanup: ${error instanceof Error ? error.message : String(error)}\n`)
+      }
+    }
     if (ownedTempDir !== undefined) {
       try {
-        rmSync(ownedTempDir, { recursive: true, force: true })
+        removeOwnedDirectory(ownedTempDir)
       } catch (error) {
         process.stderr.write(`${RUNNER_SIGNATURE}: cleanup: ${error instanceof Error ? error.message : String(error)}\n`)
       }

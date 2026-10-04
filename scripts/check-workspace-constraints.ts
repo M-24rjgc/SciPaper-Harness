@@ -215,6 +215,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js', 'assets'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
   '@deepseek-ai/dsh-skill-office': ['assets'],
+  // web_fetch shares fixed conversion rules with its path-loaded HTML Worker.
+  '@deepseek-ai/dsh-tool-web': ['assets/*.cjs'],
   '@deepseek-ai/dsh-subprocess': ['lib/control.js'],
   // SSH launches a private helper and shares wire definitions and TLS setup
   // between that helper and the connection owner.

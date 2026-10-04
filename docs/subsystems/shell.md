@@ -170,7 +170,7 @@ The `SANDBOX_UNAVAILABLE` error code (owned by the [sandbox seam](sandbox.md)) i
 
 ## Background processes: `ShellProcess`
 
-`start()` resolves with a handle after asynchronous launch preparation; cancellation or preparation failure rejects before publication. The handle has no id or owner. `dsh-tool-bash` adapts it into `ctx.jobs.start()` hooks; the generic runtime then owns job identity and lifecycle. `done` resolves when the underlying process settles and never rejects; a subprocess provider rejection becomes a `killed` process with a stage-neutral error on stderr. Reads remain valid after settlement, and sandbox facts are stamped before `done` resolves.
+`start()` resolves with a handle after asynchronous launch preparation; cancellation or preparation failure rejects before publication. The handle has no id or owner. `dsh-tool-bash` adapts it into `ctx.jobs.start()` hooks; the generic runtime then owns job identity and lifecycle. `done` resolves after direct command exit and termination and joining of remaining managed descendants, preserving the direct exit facts. It never rejects; provider or cleanup failures appear in `failure` and stderr and reject the foreground `result()` projection. A provider rejection becomes a `killed` process. Reads remain valid after settlement, and sandbox facts are stamped before `done` resolves.
 
 ```ts type-equiv
 /**
@@ -182,13 +182,16 @@ The `SANDBOX_UNAVAILABLE` error code (owned by the [sandbox seam](sandbox.md)) i
 interface ShellProcess {
   /** Process lifecycle state (settled exactly once). */
   status: ShellProcessStatus
-  /** Exit code once finished (null = killed by signal / still running). */
+  /** Direct command's observed exit code, or null before exit / when signal-killed. */
   exitCode: number | null
   /** Terminating signal name, when signal-killed. */
   signal: NodeJS.Signals | null
+  /** Infrastructure or cleanup failure, distinct from a requested kill or a nonzero exit. */
+  failure?: string
   /**
-   * Resolves when the underlying process settles (never rejects — provider
-   * rejection settles as `killed` with a stage-neutral error on stderr).
+   * Resolves after the direct command settles and its remaining managed descendants
+   * are terminated and joined, preserving the direct command's exit facts. Never
+   * rejects: provider or cleanup failure is carried by {@link failure} and stderr.
    */
   readonly done: Promise<void>
   /** Sandbox facts, stamped once a confined process settles. */
@@ -253,7 +256,7 @@ execute resolves with the process handle after preparation. "Foreground" is a pr
 Implementations must honor these semantics:
 
 - ShellExecution.result rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a descriptive result: first-cause `timedOut`/`aborted`, the spec's `timeoutMs` echoed.
-- The handle is published after preparation. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on the read path, while `result()` carries the same failure as its rejection.
+- The handle is published after preparation. At command exit, remaining managed descendants are terminated and joined before `done` resolves, preserving direct exit facts. It never rejects; infrastructure failures carry `failure` and stderr, while `result()` rejects.
 - `onExpiry: 'none'` arms no deadline; `'kill'` kills at expiry. Expiry during preparation returns a settled timed-out handle without output.
 - ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.
 - A still-running process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a process survives an executor-only reload.

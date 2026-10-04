@@ -366,6 +366,15 @@ it('requires Office skill bodies and helpers in the published payload', () => {
   } })).toEqual([expect.stringContaining('package.json files must be')])
 })
 
+it('requires the path-loaded HTML Worker and shared conversion asset in the published payload', () => {
+  const dir = 'packages/web/tool-web'
+  const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']
+  expect(checkWorkspaceManifest({ dir, manifest })).toEqual([])
+  if (manifest.files === undefined) throw new Error('HTML Worker publication fixture must declare files')
+  expect(checkWorkspaceManifest({ dir, manifest: { ...manifest, files: manifest.files.filter(file => file !== 'assets/*.cjs') } }))
+    .toEqual([expect.stringContaining('package.json files must be')])
+})
+
 it('requires the local speech worker and locked runtime in the published payload', () => {
   const dir = 'packages/experimental/speech-to-text-sensevoice'
   const manifest = JSON.parse(readFileSync(new URL(`../${dir}/package.json`, import.meta.url), 'utf8')) as WorkspaceManifest['manifest']

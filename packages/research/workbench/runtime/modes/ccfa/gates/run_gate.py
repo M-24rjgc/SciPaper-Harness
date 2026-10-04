@@ -216,9 +216,11 @@ def yaml_gate(root):
 
 
 def scope_field(text, *labels):
-    """A `Label: value` line of the report's scope block (bold and list markers allowed)."""
+    """A scope field written as a label/value line or a two-column Markdown row."""
     names = "|".join(re.escape(label) for label in labels)
     match = re.search(rf"^\s*(?:[-*]\s+)?(?:\*\*)?(?:{names})(?:\*\*)?\s*[:：]\s*(?:\*\*)?\s*([^\n|]+)", text, re.IGNORECASE | re.MULTILINE)
+    if not match:
+        match = re.search(rf"^\s*\|\s*(?:\*\*)?(?:{names})(?:\*\*)?\s*\|\s*([^\n|]+)\|", text, re.IGNORECASE | re.MULTILINE)
     return match[1].strip().strip("`*").strip() if match else ""
 
 
@@ -266,7 +268,7 @@ def review_gate(root):
     for report in reports:
         name = rel(root, report)
         text = report.read_text(encoding="utf-8-sig")
-        if scope_field(text, "Template", "模板") != "ccfa-review-1":
+        if scope_field(text, "Template", "Report template", "模板", "报告模板") != "ccfa-review-1":
             findings.append(finding("warning", f"{name} does not declare Template: ccfa-review-1 in its scope block, so its format was not checked", name))
         else:
             mode, detail, rubric, no_scores = report_profile(text)

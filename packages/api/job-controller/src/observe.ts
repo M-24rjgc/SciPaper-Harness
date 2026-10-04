@@ -65,7 +65,7 @@ export async function* observeJobOutput(
     waiter.wake()
   })
   try {
-    let job = registry.get(id, request.sessionId)
+    let job = registry.getTree(id, request.sessionId)
     let cursor = request.from ?? job.output.earliest
     yield { type: 'opened', job, from: cursor }
     while (!signal.aborted) {

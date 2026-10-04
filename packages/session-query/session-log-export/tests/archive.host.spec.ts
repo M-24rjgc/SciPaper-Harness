@@ -62,6 +62,17 @@ function logText(stored: StoredLog): string {
   return SessionLogExport.serializeSessionLog(stored.header, stored.events)
 }
 
+/** One valid text message for cross-session redaction fixtures. */
+function textEvent(text: string): SessionEvent<'user/message'> {
+  return {
+    type: 'user/message', seq: SessionSeq(1), time: 1000, surfaceOp: 'append',
+    data: {
+      id: 'message-id' as UserMessage['id'], role: 'user', source: { kind: 'user' },
+      content: [{ type: 'text', text }],
+    },
+  }
+}
+
 function node(id: string, ...descendants: SessionLineageNode[]): SessionLineageNode {
   return { session: { header: header(id, sid('session-root')), live: false, persisted: true }, descendants }
 }
@@ -89,7 +100,10 @@ function readHandle(stored: StoredLog): SessionHandle {
     header: stored.header,
     access: 'read',
     inheritedEventCount: 0,
-    read: async () => ({ eventState: 'detached', events: structuredClone(stored.events) }),
+    read: async (offset = 0, length?: number) => ({
+      eventState: 'detached',
+      events: structuredClone(stored.events.slice(offset, length === undefined ? undefined : offset + length)),
+    }),
     close: async () => {},
   } as unknown as SessionHandle
 }
@@ -123,6 +137,7 @@ async function buildApi(
       descendants: readonly SessionLineageNode[]
     }>
     compressionLevel?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+    redactSecrets?: boolean
   } = {},
 ) {
   const ctx = new Context()
@@ -173,6 +188,7 @@ async function buildApi(
   if (services.sessions !== undefined) ctx.provide('sessions', services.sessions as never)
   const connection = new HostConnectionService(ctx, [], {} as BrowserAuth)
   const fiber = ctx.plugin(SessionLogExport, {
+    ...services.redactSecrets === undefined ? {} : { redactSecrets: services.redactSecrets },
     ...services.compressionLevel === undefined
       ? {}
       : { compressionLevel: services.compressionLevel },
@@ -225,11 +241,12 @@ describe('session export compression config', () => {
   it('defaults to level 6 and rejects values outside the integer 0-9 range', () => {
     expect(SessionLogExport.Config({})).toEqual({
       compressionLevel: 6,
+      redactSecrets: true,
     })
     expect(SessionLogExport.Config({ compressionLevel: 0 }))
-      .toEqual({ compressionLevel: 0 })
+      .toEqual({ compressionLevel: 0, redactSecrets: true })
     expect(SessionLogExport.Config({ compressionLevel: 9 }))
-      .toEqual({ compressionLevel: 9 })
+      .toEqual({ compressionLevel: 9, redactSecrets: true })
     for (const value of [-1, 10, 1.5]) {
       expect(() => SessionLogExport.Config({ compressionLevel: value } as never)).toThrow()
     }
@@ -416,9 +433,77 @@ describe('session.export download endpoint', () => {
       new Request('http://host/api/session.export?sessionId=session-root&includeDescendants=true'),
     )
     const files = unzipSync(await responseBytes(response))
-    expect(flushed).toEqual([sid('session-root'), sid('child-a')])
+    expect(flushed).toEqual([sid('session-root'), sid('child-a'), sid('child-a')])
     expect(strFromU8(files[exportLogName] as Uint8Array)).toBe(logText(durable['session-root'] as StoredLog))
     expect(strFromU8(files[subagentLogName('child-a')] as Uint8Array)).toBe(logText(durable['child-a'] as StoredLog))
+  })
+
+  it.each([true, false])('discovers descendant-only credentials before ordered logs are emitted (redact=%s)', async (redactSecrets) => {
+    const secret = 'fixture-descendant-password-9852'
+    const stored: Record<string, StoredLog> = {
+      'session-root': log('session-root', undefined, [textEvent(`copied ${secret}`)]),
+      'child-a': log('child-a', sid('session-root'), [textEvent(`copied early ${secret}`)]),
+      'grandchild-a': log('grandchild-a', sid('child-a'), [textEvent(`copied nested ${secret}`)]),
+      'child-b': log('child-b', sid('session-root'), [textEvent(JSON.stringify({ password: secret }))]),
+      'child-c': log('child-c', sid('session-root'), [textEvent(`copied late ${secret}`)]),
+    }
+    const reads: SessionId[] = []
+    let activeHandles = 0
+    let maxActiveHandles = 0
+    const api = await buildApi(stored, [node('child-a', node('grandchild-a')), node('child-b'), node('child-c')], {
+      redactSecrets,
+      open: async (id) => {
+        const content = stored[id]
+        if (content === undefined) throw new SessionPersistenceNotFoundError(id)
+        reads.push(id)
+        activeHandles += 1
+        maxActiveHandles = Math.max(maxActiveHandles, activeHandles)
+        return Object.assign(readHandle(content), { close: async () => { activeHandles -= 1 } })
+      },
+    })
+    const response = await api.downloads.sessionLog(
+      { sessionId: sid('session-root'), includeDescendants: true }, new AbortController().signal,
+    )
+    const files = unzipSync(await responseBytes(response))
+    const descendants = ['child-a', 'grandchild-a', 'child-b', 'child-c']
+    expect(Object.keys(files)).toEqual([exportLogName, ...descendants.map(subagentLogName)])
+    expect(reads).toEqual([sid('session-root'), ...[...redactSecrets ? descendants : [], ...descendants].map(sid)])
+    expect(maxActiveHandles).toBe(1)
+    expect(activeHandles).toBe(0)
+    for (const [id, original] of Object.entries(stored)) {
+      const path = id === 'session-root' ? exportLogName : subagentLogName(id)
+      const content = strFromU8(files[path] as Uint8Array)
+      if (redactSecrets) {
+        expect(content).not.toContain(secret)
+        expect(content).toContain('[REDACTED]')
+      } else {
+        expect(content).toBe(logText(original))
+      }
+      expect(logText(original)).toContain(secret)
+    }
+  })
+
+  it.each([0, 1])('pins the discovered descendant prefix before concurrent appends (events=%s)', async (eventCount) => {
+    const before = log('child-a', sid('session-root'), eventCount === 0 ? [] : [textEvent('discovered prefix')])
+    const appended = {
+      ...textEvent(JSON.stringify({ password: 'fixture-appended-password-2178' })), seq: SessionSeq(eventCount),
+    }
+    const after = log('child-a', sid('session-root'), [...before.events, appended])
+    let descendantReads = 0
+    const api = await buildApi({}, [node('child-a')], {
+      open: async (id) => {
+        if (id === sid('session-root')) return readHandle(log('session-root'))
+        descendantReads += 1
+        return readHandle(descendantReads === 1 ? before : after)
+      },
+    })
+    const response = await api.downloads.sessionLog(
+      { sessionId: sid('session-root'), includeDescendants: true }, new AbortController().signal,
+    )
+    const files = unzipSync(await responseBytes(response))
+    expect(strFromU8(files[subagentLogName('child-a')] as Uint8Array)).toBe(logText(before))
+    expect(descendantReads).toBe(2)
+    expect(logText(after)).toContain('fixture-appended-password-2178')
   })
 
   it('reads a cold log without asking the live-session store to flush', async () => {
@@ -632,6 +717,7 @@ describe('session.export download endpoint', () => {
     if (producerSignal === undefined) throw new Error('missing lineage signal')
     expect(reads[0]?.id).toBe(sid('session-root'))
     expect(reads[1]).toEqual({ id: sid('child-a'), signal: producerSignal })
+    expect(reads[2]).toEqual({ id: sid('child-a'), signal: producerSignal })
     const cancellation = new Error('request cancelled after response')
     controller.abort(cancellation)
     expect(rootSignal.aborted).toBe(true)

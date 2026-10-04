@@ -611,6 +611,7 @@ describe('the row menus', () => {
     ['auth', { host: 'alice@lab', path: '/p' }, zh.treeSshFailAuthKey],
     ['auth', { host: 'alice@lab', path: '/p', password: 'pw' }, zh.treeSshFailAuthPassword],
     ['unreachable', { host: 'alice@lab', path: '/p', password: 'pw' }, zh.treeSshFailUnreachable],
+    ['handshake', { host: 'alice@lab', path: '/p', password: 'pw' }, zh.treeSshFailHandshake],
     ['host-key', { host: 'alice@lab', port: '2222', path: '/p', password: 'pw' }, zh.treeSshFailHostKey.replace('{command}', 'ssh -p 2222 alice@lab')],
     ['host-key', { host: 'alice@lab', path: '/p' }, zh.treeSshFailHostKey.replace('{command}', 'ssh alice@lab')],
     ['host-key-changed', { host: 'alice@lab', path: '/p' }, zh.treeSshFailHostKeyChanged],

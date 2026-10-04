@@ -64,14 +64,16 @@ export async function sshCommand(
   const plan = await planSshAuth(host, auth.passwords, auth.password)
   const child = spawn('ssh', [
     '-T', ...plan.options, '-o', 'StrictHostKeyChecking=yes', '-o', 'ForwardAgent=no',
-    '-o', 'ClearAllForwardings=yes', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
+    '-o', 'ClearAllForwardings=yes', '-o', 'ConnectTimeout=15', '-o', 'ConnectionAttempts=1',
+    '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3',
     ...plan.destination, command,
-  ], { stdio: ['pipe', 'pipe', 'pipe'], ...plan.env === undefined ? {} : { env: { ...process.env, ...plan.env } } })
+  ], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], ...plan.env === undefined ? {} : { env: { ...process.env, ...plan.env } } })
   const chunks: Buffer[] = []
   const errors: Buffer[] = []
   let outputBytes = 0
   let errorBytes = 0
-  const timeout = setTimeout(() => { child.kill('SIGTERM') }, timeoutMs)
+  let timedOut = false
+  const timeout = setTimeout(() => { timedOut = true; child.kill('SIGTERM') }, timeoutMs)
   const done = new Promise<string>((resolve, reject) => {
     child.once('error', reject)
     child.stdout.on('data', (chunk: Buffer) => {
@@ -84,6 +86,7 @@ export async function sshCommand(
       if (errorBytes <= MAX_RESPONSE_BYTES) errors.push(chunk)
     })
     child.once('close', (code) => {
+      if (timedOut) { reject(new Error(`SSH command timed out after ${timeoutMs} ms`)); return }
       if (outputBytes > MAX_RESPONSE_BYTES) reject(new Error('SSH setup returned too much output'))
       else if (code !== 0) {
         const text = plan.redact(Buffer.concat(errors).toString('utf8').trim())

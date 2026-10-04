@@ -67,7 +67,7 @@ if (result.timedOut) console.log('timed out after', result.timeoutMs)
 
 ### Background processes
 
-Resolve with `onExpiry: 'none'` and await `execute` to run a command in the background; no deadline is armed. Cancellation or preparation failure rejects before a handle is published. `readOutput()` merges the stream deltas into one consuming read, marking stderr under a `[stderr]` section; `kill()` terminates the provider-managed range; `done` settles when the direct command closes and never rejects. Job ids, ownership, polling, and notices belong to the generic `ctx.jobs` runtime, which the tool layer registers the handle with.
+Resolve with `onExpiry: 'none'` and await `execute` to run a command in the background; no deadline is armed. Cancellation or preparation failure rejects before a handle is published. `readOutput()` merges the stream deltas into one consuming read, marking stderr under a `[stderr]` section; `kill()` terminates the provider-managed range; At direct command exit, remaining managed descendants are terminated and joined before `done` settles, preserving the command's exit code and output. To keep background work running, keep the command's main process alive until that work finishes. It never rejects; cleanup observation failures populate `failure` and stderr and make `result()` reject. Job ids, ownership, polling, and notices belong to the generic `ctx.jobs` runtime, which the tool layer registers the handle with.
 
 <a id="adjusting-budgets-at-runtime"></a>
 ### Adjusting budgets at runtime

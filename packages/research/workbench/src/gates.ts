@@ -41,7 +41,11 @@ export function parseGateOutput(result: ProcessResult, check: string): CheckFind
     let value: unknown
     try { value = JSON.parse(line) } catch { continue }
     const parsed = gateOutputSchema.safeParse(value)
-    if (parsed.success) return parsed.data.findings.map(finding => ({ check, ...finding }))
+    if (parsed.success) {
+      const findings: CheckFinding[] = parsed.data.findings.map(finding => ({ check, ...finding }))
+      if (result.code !== 0 && !findings.some(finding => finding.severity === 'error')) findings.push({ check, severity: 'error', message: `The gate failed (exit code ${result.code}): ${result.stderr.trim().slice(-TAIL)}` })
+      return findings
+    }
   }
   const tail = `${result.stderr}\n${result.stdout}`.trim().slice(-TAIL)
   return [{ check, severity: 'error', message: `The gate printed no findings (exit code ${result.code})${tail ? `: ${tail}` : ''}` }]
@@ -85,7 +89,8 @@ export function createGateRunner(python: () => Promise<string | undefined>, sign
   return async (gate, mode, project) => {
     const interpreter = await python()
     if (interpreter === undefined) {
-      return [{ check: gate.id, severity: 'error', message: 'This gate needs the platform Python: install it under Tools & models in the research settings' }]
+      const reason = 'This gate needs the platform Python: install it under Tools & models in the research settings'
+      return { status: 'skipped', reason, findings: [{ check: gate.id, severity: 'error', message: reason }] }
     }
     return parseGateOutput(await runPackScript(interpreter, gate, mode, project, [], signal), gate.id)
   }

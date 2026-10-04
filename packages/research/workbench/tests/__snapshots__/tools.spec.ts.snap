@@ -1,0 +1,1512 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`research tools find the project from the working directory > describes structured research inputs and defaults an omitted compile engine 1`] = `
+{
+  "research_artifact": {
+    "engine": {
+      "description": "compile: defaults to xelatex, including CJK text",
+      "enum": [
+        "pdflatex",
+        "xelatex",
+        "lualatex",
+      ],
+      "type": "string",
+    },
+    "evidence": {
+      "description": "save/register: evidence citations pinned to an imported revision",
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "evidenceId": {
+            "type": "string",
+          },
+          "locator": {
+            "additionalProperties": true,
+            "properties": {
+              "key": {
+                "type": "string",
+              },
+              "line": {
+                "type": "integer",
+              },
+              "page": {
+                "type": "integer",
+              },
+              "paragraph": {
+                "type": "integer",
+              },
+            },
+            "type": "object",
+          },
+          "quote": {
+            "type": "string",
+          },
+          "revision": {
+            "type": "integer",
+          },
+        },
+        "required": [
+          "evidenceId",
+          "revision",
+          "locator",
+          "quote",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+    "inputArtifacts": {
+      "description": "save/register: the artifact revisions this file was made from",
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string",
+          },
+          "revision": {
+            "type": "integer",
+          },
+        },
+        "required": [
+          "id",
+          "revision",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+  },
+  "research_board": {
+    "board": {
+      "additionalProperties": true,
+      "description": "board-update: the layout, or the parts to change",
+      "properties": {
+        "collectors": {
+          "oneOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "properties": {
+                  "args": {
+                    "oneOf": [
+                      {
+                        "items": {
+                          "type": "string",
+                        },
+                        "type": "array",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "environmentId": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "every": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "id": {
+                    "type": "string",
+                  },
+                  "remove": {
+                    "oneOf": [
+                      {
+                        "type": "boolean",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "script": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                },
+                "required": [
+                  "id",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+            {
+              "type": "null",
+            },
+          ],
+        },
+        "sections": {
+          "oneOf": [
+            {
+              "items": {
+                "additionalProperties": true,
+                "properties": {
+                  "blocks": {
+                    "oneOf": [
+                      {
+                        "items": {
+                          "oneOf": [
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "items": {
+                                  "items": {
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "better": {
+                                        "oneOf": [
+                                          {
+                                            "enum": [
+                                              "higher",
+                                              "lower",
+                                            ],
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "digits": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                      },
+                                      "metric": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "progress": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "run": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "scale": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "seed": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "sub": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "target": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted",
+                                            ],
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "unit": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "value": {
+                                        "oneOf": [
+                                          {
+                                            "oneOf": [
+                                              {
+                                                "type": "string",
+                                              },
+                                              {
+                                                "type": "number",
+                                              },
+                                            ],
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    "required": [
+                                      "label",
+                                    ],
+                                    "type": "object",
+                                  },
+                                  "type": "array",
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "stats",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "items",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "columns": {
+                                  "items": {
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "align": {
+                                        "oneOf": [
+                                          {
+                                            "enum": [
+                                              "left",
+                                              "center",
+                                              "right",
+                                            ],
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "key": {
+                                        "type": "string",
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                      },
+                                    },
+                                    "required": [
+                                      "key",
+                                      "label",
+                                    ],
+                                    "type": "object",
+                                  },
+                                  "type": "array",
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "rows": {
+                                  "items": {
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "cells": {
+                                        "additionalProperties": true,
+                                        "properties": {},
+                                        "type": "object",
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted",
+                                            ],
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    "required": [
+                                      "cells",
+                                    ],
+                                    "type": "object",
+                                  },
+                                  "type": "array",
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "table",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "columns",
+                                "rows",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "max": {
+                                  "oneOf": [
+                                    {
+                                      "type": "number",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "min": {
+                                  "oneOf": [
+                                    {
+                                      "type": "number",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "series": {
+                                  "items": {
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "key": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "label": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "points": {
+                                        "oneOf": [
+                                          {
+                                            "items": {
+                                              "items": {
+                                                "type": "number",
+                                              },
+                                              "type": "array",
+                                            },
+                                            "type": "array",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "run": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "seed": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    "type": "object",
+                                  },
+                                  "type": "array",
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "chart",
+                                  "type": "string",
+                                },
+                                "x": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "xLabel": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "yLabel": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "series",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "items": {
+                                  "items": {
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "detail": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "progress": {
+                                        "oneOf": [
+                                          {
+                                            "type": "number",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "run": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "seed": {
+                                        "oneOf": [
+                                          {
+                                            "type": "integer",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "status": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "title": {
+                                        "type": "string",
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted",
+                                            ],
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    "required": [
+                                      "title",
+                                    ],
+                                    "type": "object",
+                                  },
+                                  "type": "array",
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "list",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "items",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "digits": {
+                                  "oneOf": [
+                                    {
+                                      "type": "integer",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "match": {
+                                  "type": "string",
+                                },
+                                "metrics": {
+                                  "oneOf": [
+                                    {
+                                      "items": {
+                                        "type": "string",
+                                      },
+                                      "type": "array",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "scale": {
+                                  "oneOf": [
+                                    {
+                                      "type": "number",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "runs",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "match",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "text": {
+                                  "type": "string",
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "tone": {
+                                  "oneOf": [
+                                    {
+                                      "enum": [
+                                        "good",
+                                        "warning",
+                                        "bad",
+                                        "muted",
+                                      ],
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "text",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "text",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "items": {
+                                  "items": {
+                                    "additionalProperties": true,
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                      },
+                                      "tone": {
+                                        "oneOf": [
+                                          {
+                                            "enum": [
+                                              "good",
+                                              "warning",
+                                              "bad",
+                                              "muted",
+                                            ],
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "null",
+                                          },
+                                        ],
+                                      },
+                                      "value": {
+                                        "oneOf": [
+                                          {
+                                            "type": "string",
+                                          },
+                                          {
+                                            "type": "number",
+                                          },
+                                        ],
+                                      },
+                                    },
+                                    "required": [
+                                      "label",
+                                      "value",
+                                    ],
+                                    "type": "object",
+                                  },
+                                  "type": "array",
+                                },
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "kv",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "items",
+                              ],
+                              "type": "object",
+                            },
+                            {
+                              "additionalProperties": true,
+                              "properties": {
+                                "note": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "text": {
+                                  "type": "string",
+                                },
+                                "title": {
+                                  "oneOf": [
+                                    {
+                                      "type": "string",
+                                    },
+                                    {
+                                      "type": "null",
+                                    },
+                                  ],
+                                },
+                                "type": {
+                                  "const": "log",
+                                  "type": "string",
+                                },
+                              },
+                              "required": [
+                                "type",
+                                "text",
+                              ],
+                              "type": "object",
+                            },
+                          ],
+                        },
+                        "type": "array",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "collapsed": {
+                    "oneOf": [
+                      {
+                        "type": "boolean",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "id": {
+                    "type": "string",
+                  },
+                  "note": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "remove": {
+                    "oneOf": [
+                      {
+                        "type": "boolean",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "title": {
+                    "oneOf": [
+                      {
+                        "type": "string",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                },
+                "required": [
+                  "id",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+            {
+              "type": "null",
+            },
+          ],
+        },
+        "summary": {
+          "oneOf": [
+            {
+              "type": "string",
+            },
+            {
+              "type": "null",
+            },
+          ],
+        },
+        "tags": {
+          "oneOf": [
+            {
+              "items": {
+                "type": "string",
+              },
+              "type": "array",
+            },
+            {
+              "type": "null",
+            },
+          ],
+        },
+        "title": {
+          "oneOf": [
+            {
+              "type": "string",
+            },
+            {
+              "type": "null",
+            },
+          ],
+        },
+      },
+      "type": "object",
+    },
+  },
+  "research_environment": {
+    "environment": {
+      "additionalProperties": true,
+      "description": "the environment description",
+      "properties": {
+        "isDefault": {
+          "type": "boolean",
+        },
+        "kind": {
+          "enum": [
+            "uv",
+            "existing",
+            "conda",
+          ],
+          "type": "string",
+        },
+        "name": {
+          "type": "string",
+        },
+        "python": {
+          "type": "string",
+        },
+        "remoteRoot": {
+          "type": "string",
+        },
+        "requirements": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "sshHost": {
+          "type": "string",
+        },
+        "target": {
+          "enum": [
+            "local",
+            "ssh",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "name",
+        "kind",
+        "target",
+        "python",
+        "requirements",
+        "isDefault",
+      ],
+      "type": "object",
+    },
+  },
+  "research_evidence": {
+    "claim": {
+      "additionalProperties": true,
+      "description": "claim: claim text, kind, support state and exact evidence references",
+      "properties": {
+        "artifactIds": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "evidence": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "evidenceId": {
+                "type": "string",
+              },
+              "locator": {
+                "additionalProperties": true,
+                "properties": {
+                  "key": {
+                    "type": "string",
+                  },
+                  "line": {
+                    "type": "integer",
+                  },
+                  "page": {
+                    "type": "integer",
+                  },
+                  "paragraph": {
+                    "type": "integer",
+                  },
+                },
+                "type": "object",
+              },
+              "quote": {
+                "type": "string",
+              },
+              "revision": {
+                "type": "integer",
+              },
+            },
+            "required": [
+              "evidenceId",
+              "revision",
+              "locator",
+              "quote",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "id": {
+          "type": "string",
+        },
+        "kind": {
+          "enum": [
+            "hypothesis",
+            "method",
+            "literature",
+            "empirical",
+          ],
+          "type": "string",
+        },
+        "state": {
+          "enum": [
+            "proposed",
+            "supported",
+            "contradicted",
+            "stale",
+          ],
+          "type": "string",
+        },
+        "text": {
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "text",
+        "kind",
+        "state",
+        "evidence",
+        "artifactIds",
+      ],
+      "type": "object",
+    },
+    "item": {
+      "additionalProperties": true,
+      "description": "literature-import: one item exactly as literature-search returned it",
+      "properties": {
+        "abstract": {
+          "type": "string",
+        },
+        "authors": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "bibtex": {
+          "type": "string",
+        },
+        "doi": {
+          "type": "string",
+        },
+        "id": {
+          "type": "string",
+        },
+        "provider": {
+          "enum": [
+            "crossref",
+            "openalex",
+            "arxiv",
+          ],
+          "type": "string",
+        },
+        "title": {
+          "type": "string",
+        },
+        "url": {
+          "type": "string",
+        },
+        "year": {
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+        "provider",
+        "title",
+        "authors",
+        "url",
+        "abstract",
+        "bibtex",
+      ],
+      "type": "object",
+    },
+  },
+  "research_experiment": {
+    "spec": {
+      "additionalProperties": true,
+      "description": "experiment: the run specification",
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "codeArtifactIds": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "codePaths": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "cwd": {
+          "type": "string",
+        },
+        "dataEvidenceIds": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "environmentId": {
+          "type": "string",
+        },
+        "gpuIds": {
+          "items": {
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "maxSeconds": {
+          "type": "integer",
+        },
+        "metricsPath": {
+          "type": "string",
+        },
+        "name": {
+          "type": "string",
+        },
+        "seed": {
+          "type": "integer",
+        },
+      },
+      "required": [
+        "environmentId",
+        "name",
+        "argv",
+        "cwd",
+        "seed",
+        "maxSeconds",
+        "gpuIds",
+        "dataEvidenceIds",
+        "codeArtifactIds",
+        "metricsPath",
+      ],
+      "type": "object",
+    },
+  },
+  "research_knowledge": {
+    "proposals": {
+      "description": "relations-propose: grounded directed relations, at most 50",
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "from": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {
+                  "type": "string",
+                },
+                "type": "array",
+              },
+              "evidenceId": {
+                "type": "string",
+              },
+              "id": {
+                "type": "string",
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "const": "paper",
+                    "type": "string",
+                  },
+                  {
+                    "enum": [
+                      "method",
+                      "task",
+                      "dataset",
+                      "metric",
+                    ],
+                    "type": "string",
+                  },
+                ],
+              },
+              "name": {
+                "type": "string",
+              },
+            },
+            "type": "object",
+          },
+          "ground": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "evidenceId": {
+                    "type": "string",
+                  },
+                  "locator": {
+                    "additionalProperties": true,
+                    "properties": {
+                      "key": {
+                        "type": "string",
+                      },
+                      "line": {
+                        "type": "integer",
+                      },
+                      "page": {
+                        "type": "integer",
+                      },
+                      "paragraph": {
+                        "type": "integer",
+                      },
+                    },
+                    "type": "object",
+                  },
+                  "quote": {
+                    "type": "string",
+                  },
+                  "revision": {
+                    "type": "integer",
+                  },
+                  "setting": {
+                    "type": "string",
+                  },
+                  "type": {
+                    "const": "quote",
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "type",
+                  "evidenceId",
+                  "revision",
+                  "quote",
+                ],
+                "type": "object",
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "baselineRunId": {
+                    "type": "string",
+                  },
+                  "from": {
+                    "type": "string",
+                  },
+                  "runId": {
+                    "type": "string",
+                  },
+                  "setting": {
+                    "type": "string",
+                  },
+                  "to": {
+                    "type": "string",
+                  },
+                  "type": {
+                    "const": "run",
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "type",
+                  "runId",
+                  "from",
+                  "to",
+                ],
+                "type": "object",
+              },
+            ],
+          },
+          "kind": {
+            "enum": [
+              "cites",
+              "introduces",
+              "is-a",
+              "extends",
+              "improves-on",
+              "compares-with",
+              "applied-to",
+              "evaluated-on",
+              "measured-by",
+            ],
+            "type": "string",
+          },
+          "to": {
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "items": {
+                  "type": "string",
+                },
+                "type": "array",
+              },
+              "evidenceId": {
+                "type": "string",
+              },
+              "id": {
+                "type": "string",
+              },
+              "kind": {
+                "oneOf": [
+                  {
+                    "const": "paper",
+                    "type": "string",
+                  },
+                  {
+                    "enum": [
+                      "method",
+                      "task",
+                      "dataset",
+                      "metric",
+                    ],
+                    "type": "string",
+                  },
+                ],
+              },
+              "name": {
+                "type": "string",
+              },
+            },
+            "type": "object",
+          },
+        },
+        "required": [
+          "kind",
+          "from",
+          "to",
+          "ground",
+        ],
+        "type": "object",
+      },
+      "type": "array",
+    },
+  },
+}
+`;

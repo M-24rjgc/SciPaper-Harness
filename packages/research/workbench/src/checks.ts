@@ -20,14 +20,14 @@ import { requirementKey, type ModeCondition, type ModeGate, type ModePhase, type
 import { validateLinks } from './project.ts'
 import { proseFindings } from './prose.ts'
 import { checkIds } from './schema.ts'
-import type { CheckFinding, CheckId, CheckReport, LocalizedText, PhaseStatus, ResearchProject } from './types.ts'
+import type { CheckFinding, CheckId, CheckReport, CheckStatus, LocalizedText, PhaseStatus, ResearchProject } from './types.ts'
 
 /**
  * Runs one of the mode pack's gates over the project. The service supplies it,
  * so this module never starts a process itself.
  * @returns the gate's findings, each tagged with the gate's id.
  */
-export type GateRunner = (gate: ModeScript, mode: ResolvedMode, project: ResearchProject) => Promise<CheckFinding[]>
+export type GateRunner = (gate: ModeScript, mode: ResolvedMode, project: ResearchProject) => Promise<CheckFinding[] | { status: 'skipped'; reason: string; findings: CheckFinding[] }>
 
 const RESULT_SECTION = /experiment|result|evaluat|ablation|analys|benchmark|实验|结果|评估|消融/i
 const CONCLUSION_SECTION = /conclu|summary|discussion|结论|总结|讨论/i
@@ -45,6 +45,8 @@ const REVIEW_FILE = /(?:^|\/)(?:(?:reviews?|[\w-]+-review-reports?)\/[^/]+|revie
 const LEDGER_FILE = /(?:^|\/)revision-ledger\.md$/i
 /** How an unmet key names a deciding check that reported errors: `errors:<check id>`. */
 export const ERRORS_KEY_PREFIX = 'errors:'
+/** A deciding check that has not inspected this revision. */
+export const SKIPPED_KEY_PREFIX = 'skipped:'
 
 /** What each base check is called where people read it; a gate's name comes from its pack. */
 export const CHECK_LABELS: Record<CheckId, LocalizedText> = {
@@ -123,6 +125,7 @@ interface Context {
   bibEntries: BibEntry[]
   graphicsCount: number
   reviewExists: boolean
+  skipped: Map<string, string>
 }
 
 /**
@@ -137,7 +140,7 @@ interface Context {
 export async function runChecks(
   project: ResearchProject, limit: number, scope: string | undefined, mode: ResolvedMode, runGate?: GateRunner,
 ): Promise<CheckReport> {
-  const context: Context = { project, mode, limit, findings: [], bibEntries: [], graphicsCount: 0, reviewExists: false }
+  const context: Context = { project, mode, limit, findings: [], bibEntries: [], graphicsCount: 0, reviewExists: false, skipped: new Map() }
   const main = await findMainManuscript(project, limit)
   if (main === undefined) {
     add(context, 'structure', 'error', 'No LaTeX manuscript yet: write one with \\documentclass (for example paper/main.tex)')
@@ -157,11 +160,15 @@ export async function runChecks(
     await checkCompile(context, paper)
     checkStructure(context, paper, await listProjectFiles(project.root, path => path.endsWith('.sty'), 3))
     checkProse(context, paper)
+  } else {
+    for (const id of ['cite', 'numbers', 'placeholders', 'figures', 'compile', 'visual', 'prose']) context.skipped.set(id, 'No readable LaTeX manuscript')
   }
   await checkReview(context)
   checkLedger(context)
   const resolved = resolveScope(mode, scope ?? 'all')
   const gates = gatesInScope(mode, resolved)
+  const selected = new Set(gates.map(gate => gate.id))
+  for (const gate of mode.gates) if (!selected.has(gate.id)) context.skipped.set(gate.id, 'Outside this check scope')
   await runGates(context, gates, runGate)
   context.findings = withoutMissingFiles(project.root, context.findings)
   const phases = await phaseProgress(context)
@@ -189,12 +196,15 @@ function withoutMissingFiles(root: string, findings: CheckFinding[]): CheckFindi
 
 async function runGates(context: Context, gates: ModeScript[], runGate: GateRunner | undefined): Promise<void> {
   for (const gate of gates) {
-    if (!runGate) { add(context, gate.id, 'error', 'This gate could not run here'); continue }
+    if (!runGate) { context.skipped.set(gate.id, 'This gate could not run here'); add(context, gate.id, 'error', 'This gate could not run here'); continue }
     try {
-      const findings = await runGate(gate, context.mode, context.project)
+      const result = await runGate(gate, context.mode, context.project)
+      const findings = Array.isArray(result) ? result : result.findings
+      if (!Array.isArray(result)) context.skipped.set(gate.id, result.reason)
       context.findings.push(...findings.slice(0, MAX_FINDINGS_PER_CHECK).map(finding => ({ ...finding, check: gate.id })))
       if (findings.length > MAX_FINDINGS_PER_CHECK) add(context, gate.id, 'error', `…and ${findings.length - MAX_FINDINGS_PER_CHECK} more findings`)
     } catch (error) {
+      context.skipped.set(gate.id, errorText(error))
       add(context, gate.id, 'error', `The gate failed to run: ${errorText(error)}`)
     }
   }
@@ -613,29 +623,41 @@ async function phaseProgress(context: Context): Promise<PhaseStatus[]> {
         unmetKeys.push(requirementKey(requirement))
       }
     }
+    const materialsPresent = unmetKeys.length === 0
+    const skippedChecks = [...deciding].filter(check => context.skipped.has(check))
+    if (skippedChecks.length) missing.push(`Checks not completed: ${skippedChecks.join(', ')}`)
     // What the person is told first is what to make; the errors of what exists come after.
     unmetKeys.push(...blockingChecks.map(check => `${ERRORS_KEY_PREFIX}${check}`))
-    statuses.push({ id: phase.id, done: missing.length === 0, missing, unmet: unmetKeys })
+    unmetKeys.push(...skippedChecks.map(check => `${SKIPPED_KEY_PREFIX}${check}`))
+    statuses.push({ id: phase.id, done: missing.length === 0, missing, unmet: unmetKeys, materialsPresent,
+      checksComplete: skippedChecks.length === 0, skippedChecks,
+      warnings: context.findings.filter(finding => finding.severity === 'warning' && deciding.has(finding.check)).length })
   }
   return statuses
 }
 
 function summarize(context: Context, phases: PhaseStatus[], scope: string, resolved: CheckScope, gatesRun: string[]): CheckReport {
   const { mode } = context
+  const checks: CheckStatus[] = [...checkIds, ...mode.gates.map(gate => gate.id)].map((id) => {
+    const reason = context.skipped.get(id)
+    const findings = context.findings.filter(finding => finding.check === id)
+    return reason === undefined ? { id, status: findings.some(item => item.severity === 'error') ? 'failed' : findings.length ? 'warnings' : 'passed' }
+      : { id, status: 'skipped', reason }
+  })
   let findings = context.findings
   // The whole paper is done only when nothing is wrong and every phase of its mode is done.
-  let clean = !findings.some(finding => finding.severity === 'error') && phases.every(phase => phase.done)
+  let clean = !findings.some(finding => finding.severity === 'error') && checks.every(check => check.status !== 'skipped') && phases.every(phase => phase.done)
   if (resolved.kind === 'phase') {
     const deciding = decidingChecks(resolved.phase, mode)
     findings = findings.filter(finding => deciding.has(finding.check))
     clean = phases.some(item => item.id === scope && item.done)
   } else if (resolved.kind === 'check') {
     findings = findings.filter(finding => finding.check === scope)
-    clean = !findings.some(finding => finding.severity === 'error')
+    clean = !context.skipped.has(scope) && !findings.some(finding => finding.severity === 'error')
   }
   findings = [...findings].sort((a, b) => Number(a.severity === 'warning') - Number(b.severity === 'warning'))
   return {
     clean, scope, mode: mode.pack.id, ...(mode.route === undefined ? {} : { route: mode.route }),
-    gatesRun, phases, findings, checkedAt: new Date().toISOString(),
+    gatesRun, checks, phases, findings, checkedAt: new Date().toISOString(),
   }
 }

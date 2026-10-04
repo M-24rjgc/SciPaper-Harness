@@ -306,6 +306,14 @@
           "url": {
             "type": "string",
             "description": "The HTTP(S) URL to fetch."
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Character offset in the converted text. Use nextOffset from a previous response to continue a long page."
+          },
+          "max_chars": {
+            "type": "integer",
+            "description": "Maximum text characters in this page, within the configured output limit."
           }
         },
         "required": [

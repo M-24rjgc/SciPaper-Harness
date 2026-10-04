@@ -28,8 +28,9 @@ export const DEFAULT_WEB_TOOL_TIMEOUT_MS = 30_000
 
 /**
  * Default cap on one `web_fetch` output and on source characters converted
- * synchronously. This leaves headroom above the local provider's default
- * 100,000-character body cap while bounding custom providers and rendered output.
+ * synchronously by legacy result formatters. Live HTML conversion uses an owned
+ * Worker with independent input and retained-markdown limits so pagination can
+ * access the complete retrieved body within those limits.
  */
 export const DEFAULT_FETCH_MAX_OUTPUT_CHARS = 200_000
 
@@ -47,7 +48,7 @@ export interface Config {
   fetchTimeoutMs?: number
   /** Cooperative timeout budget (ms) for `web_search`. Defaults to 30000. */
   searchTimeoutMs?: number
-  /** Cap on source characters converted and complete `web_fetch` output characters. Defaults to 200000. */
+  /** Cap on one complete `web_fetch` output and legacy synchronous conversion. Defaults to 200000. */
   fetchMaxOutputChars?: number
 }
 

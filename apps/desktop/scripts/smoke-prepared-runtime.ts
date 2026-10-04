@@ -35,6 +35,6 @@ export async function smokePreparedRuntime(
     process.stdout.write(stdout)
     await smokeDesktopRuntime(root, node, descriptor, environment, resourcesRuntime)
   } finally {
-    await rm(cache, { recursive: true, force: true })
+    await rm(cache, { recursive: true })
   }
 }

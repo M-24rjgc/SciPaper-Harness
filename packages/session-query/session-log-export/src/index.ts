@@ -44,12 +44,15 @@ export { SESSION_LOG_EXPORT_PATH } from './routes.ts'
 
 /** Session-log archive policy. */
 export interface Config {
+  /** Redact detected passwords, API keys and tokens from exported logs. @default true */
+  readonly redactSecrets?: boolean
   /** DEFLATE level for each ZIP entry. @default 6 */
   readonly compressionLevel?: SessionLogCompressionLevel
 }
 
 /** Validate Session-log archive configuration. */
 export const Config: Schema<Config> = Schema.object({
+  redactSecrets: Schema.boolean().default(true),
   compressionLevel: Schema.number().step(1).min(0).max(9)
     .default(DEFAULT_SESSION_LOG_COMPRESSION_LEVEL) as Schema<SessionLogCompressionLevel>,
 })
@@ -93,6 +96,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         ctx,
         request,
         config.compressionLevel ?? DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
+        config.redactSecrets ?? true,
       )
       if (request.method === 'GET') return response
       await response.body?.cancel()
@@ -109,6 +113,7 @@ async function sessionLogExportResponse(
   ctx: Context,
   request: Request,
   compressionLevel: SessionLogCompressionLevel,
+  redactSecrets: boolean,
 ): Promise<Response> {
   const url = new URL(request.url)
   const query = Object.fromEntries(url.searchParams)
@@ -129,6 +134,7 @@ async function sessionLogExportResponse(
     )
   }
   const ready: SessionLogExportReady = {
+    redactSecrets,
     sessionQuery: deps.sessionQuery,
     sessionPersistence: deps.sessionPersistence,
     attachments: deps.attachments,
@@ -161,6 +167,7 @@ async function sessionLogExportResponse(
     {
       headers: {
         'content-type': 'application/zip',
+        'x-dsh-log-redaction': redactSecrets ? 'detected-credentials' : 'none',
         'content-disposition': `attachment; filename="${sessionLogZipFilename(sessionId)}"`,
       },
     },

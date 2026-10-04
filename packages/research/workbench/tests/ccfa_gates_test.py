@@ -163,6 +163,13 @@ class Review(ProjectTest):
             "message": "Open major finding C001 (unresolved): Missing ablation — fix it through its owner, then re-review",
         }])
 
+    def test_declared_template_in_a_scope_table_or_bold_list_is_validated(self):
+        for declaration in ("| Template | `ccfa-review-1` |", "- **Report template:** ccfa-review-1", "**报告模板**：ccfa-review-1"):
+            with self.subTest(declaration=declaration):
+                self.write(self.REPORT, review_report().replace("Template: ccfa-review-1", declaration).replace("**Overall:** 6", "**Overall:** 0"))
+                self.assertEqual(self.messages(self.run_gate("review")), [
+                    "Review report (scientific, detailed): Overall must be an integer 1-10, N/A, or not assessed"])
+
     def test_reports_the_upstream_format_errors(self):
         self.write(self.REPORT, review_report().replace("**Overall:** 6", "**Overall:** 0"))
         self.assertEqual(self.messages(self.run_gate("review")), [

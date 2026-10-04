@@ -12,7 +12,7 @@ import { WebError } from '@deepseek-ai/dsh-web'
 export const WEB_FETCH_MAX_URL_LENGTH = 2048
 
 /** The body kinds this provider decodes. */
-export type FetchableKind = 'html' | 'text'
+export type FetchableKind = 'html' | 'text' | 'pdf'
 
 /**
  * Parse a request URL and enforce network-independent transport restrictions:
@@ -78,6 +78,7 @@ export function isSameOrigin(a: URL, b: URL): boolean {
 export function classifyContentType(contentType: string | null): FetchableKind | undefined {
   const mime = (contentType ?? '').replace(/;.*$/s, '').trim().toLowerCase()
   if (mime === 'text/html' || mime === 'application/xhtml+xml') return 'html'
+  if (mime === 'application/pdf') return 'pdf'
   if (mime.startsWith('text/')) return 'text'
   if (mime === 'application/json' || mime === 'application/xml' || mime.endsWith('+json') || mime.endsWith('+xml')) return 'text'
   return undefined

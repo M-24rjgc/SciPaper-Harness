@@ -170,7 +170,7 @@ interface ShellSandboxInfo {
 
 ## 后台进程：`ShellProcess`
 
-`start()` 在异步启动准备完成后返回句柄；取消或准备失败会在发布前拒绝调用。该句柄没有 id 或 owner。`dsh-tool-bash` 将它适配为 `ctx.jobs.start()` 钩子；随后由通用运行时拥有任务标识与生命周期。`done` 会在底层进程结算时完成且绝不 reject；subprocess 提供方的 rejection 会生成状态为 `killed` 的进程，并把不声明阶段的错误写入 stderr。进程结算后仍可读取，并且沙箱事实会在 `done` 完成前写入。
+`start()` 在异步启动准备完成后返回句柄；取消或准备失败会在发布前拒绝调用。该句柄没有 id 或 owner。`dsh-tool-bash` 将它适配为 `ctx.jobs.start()` 钩子；随后由通用运行时拥有任务标识与生命周期。`done` 会在直接命令退出、剩余受管子进程被终止并等待结束后完成，保留直接命令的退出事实。它绝不 reject；提供方或清理失败会写入 `failure` 与 stderr，并让前台 `result()` 投影拒绝。提供方的 rejection 会生成状态为 `killed` 的进程。进程结算后仍可读取，并且沙箱事实会在 `done` 完成前写入。
 
 ```ts type-equiv
 /**
@@ -182,13 +182,16 @@ interface ShellSandboxInfo {
 interface ShellProcess {
   /** Process lifecycle state (settled exactly once). */
   status: ShellProcessStatus
-  /** Exit code once finished (null = killed by signal / still running). */
+  /** Direct command's observed exit code, or null before exit / when signal-killed. */
   exitCode: number | null
   /** Terminating signal name, when signal-killed. */
   signal: NodeJS.Signals | null
+  /** Infrastructure or cleanup failure, distinct from a requested kill or a nonzero exit. */
+  failure?: string
   /**
-   * Resolves when the underlying process settles (never rejects — provider
-   * rejection settles as `killed` with a stage-neutral error on stderr).
+   * Resolves after the direct command settles and its remaining managed descendants
+   * are terminated and joined, preserving the direct command's exit facts. Never
+   * rejects: provider or cleanup failure is carried by {@link failure} and stderr.
    */
   readonly done: Promise<void>
   /** Sandbox facts, stamped once a confined process settles. */
@@ -253,7 +256,7 @@ execute resolves with the process handle after preparation. "Foreground" is a pr
 Implementations must honor these semantics:
 
 - ShellExecution.result rejects only for infrastructure failures. Nonzero exits, timeout kills, and abort kills resolve with a descriptive result: first-cause `timedOut`/`aborted`, the spec's `timeoutMs` echoed.
-- The handle is published after preparation. `done` settles at process close and never rejects; spawn failures settle as `killed` with the error on the read path, while `result()` carries the same failure as its rejection.
+- The handle is published after preparation. At command exit, remaining managed descendants are terminated and joined before `done` resolves, preserving direct exit facts. It never rejects; infrastructure failures carry `failure` and stderr, while `result()` rejects.
 - `onExpiry: 'none'` arms no deadline; `'kill'` kills at expiry. Expiry during preparation returns a settled timed-out handle without output.
 - ShellProcess.readOutput is incremental: consecutive reads never repeat output. Lossy reads report truncation and available spill files.
 - A still-running process is stopped and awaited when its owning composition tears down. With the subprocess seam that boundary is `ctx.subprocess` disposal, so a process survives an executor-only reload.

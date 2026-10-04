@@ -24,6 +24,12 @@ describe('CI workflow', () => {
     const steps = (research.steps as Record<string, unknown>[])
     expect(steps.some(step => step.run === 'pnpm run build:research')).toBe(true)
     expect(steps.some(step => typeof step.run === 'string' && step.run.includes('packages/research/workbench') && step.run.includes('packages/client/ui-research'))).toBe(true)
+    const regressions = steps.find(step => step.name === 'Research, harness lifecycle and desktop regressions')
+    expect(regressions?.run).toEqual(expect.stringContaining('--hookTimeout=30000'))
+    for (const owner of ['packages/jobs', 'packages/shell/pwsh-local', 'packages/shell/tool-bash',
+      'packages/sandbox/sandbox-windows-acl', 'packages/session-query/session-log-export', 'packages/web']) {
+      expect(regressions?.run).toEqual(expect.stringContaining(owner))
+    }
     const staticChecks = workflowJob(workflow, 'static')
     expect(staticChecks['runs-on']).toBe('ubuntu-24.04')
     expect(staticChecks['continue-on-error']).toBeUndefined()

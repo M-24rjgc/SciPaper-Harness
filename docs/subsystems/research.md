@@ -316,10 +316,13 @@ activeGoals(project: ResearchProject, projects?: readonly ResearchProject[]): Re
  * @param signal - cancellation of the call.
  * @param actor - who acts: the desktop user or the agent.
  * @param sessionId - the agent's conversation, recorded on the runs it submits; absent for the desktop.
+ * @param callingAgent - the registered runtime Agent that owns agent-submitted work; absent for desktop commands.
  * @returns the outcome.
  */
-async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse>
+async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string, callingAgent?: Agent): Promise<ResearchResponse>
 ```
+
+Types: [Agent](core.md)
 
 Source: [`packages/research/workbench/src/index.ts`](../../packages/research/workbench/src/index.ts)
 

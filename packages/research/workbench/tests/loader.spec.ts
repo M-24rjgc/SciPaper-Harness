@@ -37,6 +37,8 @@ const processes = vi.hoisted(() => ({
   runner: { status: 'completed', metrics: { accuracy: 0.8123 } } as Record<string, unknown>,
   launch: { status: 'running' } as Record<string, unknown>,
   compileFails: false,
+  /** Opt-in smoke tests delegate every process to the installed runtimes. */
+  real: false,
   launchFails: false,
   /** Compile variants: a missing style on the first pass, a pass that fails, no final log. */
   missingSty: false,
@@ -63,6 +65,7 @@ vi.mock('../src/process.ts', async (original) => {
     ssh: async (_host: string, args: readonly string[]) => processes.ssh?.([...args]) ?? ok('{}'),
     runProcess: async (command: string, args: readonly string[], options: ProcessOptions = {}): Promise<ProcessResult> => {
       processes.calls.push({ command, args: [...args], options })
+      if (processes.real) return actual.runProcess(command, args, options)
       const joined = args.join(' ')
       if (args[0] === '--version' && /bibtex/.test(path.basename(command))) return ok('BibTeX 0.99d (TeX Live 2026)')
       if (args[0] === '--version' && /latex/.test(path.basename(command))) {
@@ -155,7 +158,7 @@ async function temporaryRoot(prefix: string): Promise<string> {
 beforeEach(() => {
   processes.calls.length = 0; processes.runner = { status: 'completed', metrics: { accuracy: 0.8123 } }
   processes.launch = { status: 'running' }
-  processes.compileFails = false; processes.launchFails = false; processes.holds.clear()
+  processes.compileFails = false; processes.real = false; processes.launchFails = false; processes.holds.clear()
   processes.missingSty = false; processes.passesBeforeFailure = undefined; processes.noLog = false
   processes.latexFailures.length = 0; processes.bibtexOutputs.length = 0
   processes.ssh = undefined; processes.extracted = undefined
@@ -216,7 +219,7 @@ interface BootOptions {
   knowledgeEvidence?: boolean
   knowledgeMemory?: boolean
   knowledgeRelations?: boolean
-  componentRoot?: boolean
+  componentRoot?: boolean | string
   /** Sessions already live when the service starts. */
   live?: FakeSession[]
   /** The presets the permission row configures. */
@@ -398,7 +401,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
     ]),
     '- id: research-mode-skills', '  name: research-mode-skills',
     '- name: research', '  config:', '    maxSourceBytes: 100000', '    pollIntervalMs: 500', '    maxReviewPages: 4',
-    ...options.componentRoot === false ? [] : [`    componentRoot: ${JSON.stringify(join(root ?? '', 'components'))}`],
+    ...options.componentRoot === false ? [] : [`    componentRoot: ${JSON.stringify(typeof options.componentRoot === 'string' ? options.componentRoot : join(root ?? '', 'components'))}`],
     ...options.researchHome === undefined ? [] : [`    researchHome: ${JSON.stringify(options.researchHome)}`],
   ].join('\n'))
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configuration).href } })
@@ -1942,6 +1945,44 @@ describe('the research service records; it never drives the agent', () => {
     expect(service.getProject(p.id).experiments.find(r => r.id === third)).toMatchObject({ collected: true, metrics: {} })
     expect((await run({ action: 'export' })).path).toMatch(/draft-\d+\.zip$/)
   })
+
+  it('persists skipped check coverage through a composition restart', async () => {
+    root = await temporaryRoot('research-check-coverage-')
+    const pool = new MemoryMediaPool()
+    const first = await boot(pool)
+    const project = await first.service.create({ title: 'Check coverage', root: join(root, 'project'), brief: '', mode: 'general' })
+    const result = await first.service.execute({ action: 'check', projectId: project.id, scope: 'cite' }, signal, 'agent')
+    expect(result.check?.clean).toBe(false)
+    expect(result.check?.checks).toContainEqual({ id: 'cite', status: 'skipped', reason: 'No readable LaTeX manuscript' })
+    expect(first.service.getProject(project.id).progress?.findings.cite).toMatchObject({ status: 'skipped', reason: 'No readable LaTeX manuscript', items: [] })
+    await ctx!.fiber.dispose(); ctx = undefined
+    const second = await boot(pool)
+    expect(second.service.getProject(project.id).lastCheck?.checks).toEqual(result.check?.checks)
+    expect(second.service.getProject(project.id).progress?.findings.cite).toMatchObject({ status: 'skipped', reason: 'No readable LaTeX manuscript' })
+  })
+
+  it.skipIf(!process.env.RESEARCH_REAL_TEX_BIN || !process.env.RESEARCH_REAL_PYTHON)('records a real PDF and rendered page through the composed service', async () => {
+    root = await temporaryRoot('research-real-service-')
+    const { service } = await boot(new MemoryMediaPool(),
+      process.env.RESEARCH_REAL_COMPONENT_ROOT ? { componentRoot: process.env.RESEARCH_REAL_COMPONENT_ROOT } : {})
+    processes.real = true
+    await service.configure({ python: process.env.RESEARCH_REAL_PYTHON,
+      ...(process.env.RESEARCH_REAL_COMPONENT_ROOT ? {} : { texBin: process.env.RESEARCH_REAL_TEX_BIN }) })
+    const project = await service.create({ title: 'Typesetting', root: join(root, 'paper-project'), brief: '', mode: 'general' })
+    await write(join(project.root, 'paper/main.tex'), '\\documentclass{article}\n\\usepackage{fontspec}\n\\setmainfont{Microsoft YaHei}\n\\begin{document}\n科研排版验证。$E=mc^2$\n\\end{document}\n')
+    const result = await service.execute({ action: 'compile', projectId: project.id } as never, signal, 'agent')
+    expect(result.message, result.content).toMatch(/PDF built/)
+    const compiled = service.getProject(project.id).compilations.at(-1)!
+    expect(compiled).toMatchObject({ status: 'completed', engine: 'xelatex' })
+    expect((await readFile(join(project.root, compiled.pdfPath))).subarray(0, 5).toString()).toBe('%PDF-')
+    const rendered = await service.execute({ action: 'render-pages', projectId: project.id, maxPages: 1 }, signal, 'agent')
+    expect(rendered.paths).toHaveLength(1)
+    expect((await readFile(rendered.paths![0]!)).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    expect(service.getProject(project.id).visualReviews.at(-1)).toMatchObject({ status: 'rendered', inputDigest: compiled.inputDigest })
+    const stored = (await service.snapshot()).projects.find(item => item.id === project.id)!
+    expect(stored.compilations.at(-1)?.status).toBe('completed')
+    expect(stored.visualReviews.at(-1)?.status).toBe('rendered')
+  }, 60000)
 
   it('compiles to a PDF, renders pages for the agent to look at, exports, and records failures without refusing', async () => {
     root = await temporaryRoot('research-compile-')

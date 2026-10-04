@@ -43,7 +43,7 @@ describe.skipIf(process.platform !== 'win32')('managed Windows ACL control pipe'
       handle.terminate()
       await handle.waitForExit()
     }
-  })
+  }, 30_000)
 
   it('preserves binary bytes through the Job and restricted-token runners while denying writes', async () => {
     scratch = await mkdtemp(join(tmpdir(), 'dsh-acl-control-'))

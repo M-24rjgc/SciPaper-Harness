@@ -62,10 +62,20 @@ describe('pack gates', () => {
 
   it('reports a gate as not run when no platform Python is installed, instead of installing one', async () => {
     const before = calls.length
-    expect(await createGateRunner(async () => undefined, signal)(gate, mode, project)).toEqual([
-      { check: 'draft-lint', severity: 'error', message: expect.stringMatching(/needs the platform Python/) as unknown as string },
-    ])
+    const result = await createGateRunner(async () => undefined, signal)(gate, mode, project)
+    if (Array.isArray(result)) throw new Error('A missing runtime must return skipped coverage')
+    expect(result.status).toBe('skipped')
+    expect(result.reason).toMatch(/needs the platform Python/)
+    expect(result.findings[0]?.check).toBe('draft-lint')
+    expect(result.findings[0]?.severity).toBe('error')
+    expect(result.findings[0]?.message).toMatch(/needs the platform Python/)
     expect(calls.length).toBe(before)
+  })
+
+  it('does not let an empty findings object hide a failed process', () => {
+    expect(parseGateOutput({ code: 2, stdout: '{"findings":[]}', stderr: 'cannot read source' }, 'x')).toEqual([
+      { check: 'x', severity: 'error', message: 'The gate failed (exit code 2): cannot read source' },
+    ])
   })
 
   it('passes the caller\'s arguments after the manifest\'s, with an empty route for a pack without routes', async () => {

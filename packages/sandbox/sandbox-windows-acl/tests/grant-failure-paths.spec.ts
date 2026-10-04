@@ -96,6 +96,18 @@ describe('AclWriteGrant failure paths', () => {
     expect(() =>{  grant.dispose() }).toThrow(AggregateError)
   })
 
+  it('frees allocations without revoking a directory that has been deleted or replaced', () => {
+    const { api, failReads } = grantThenFailApi()
+    const read = vi.spyOn(api, 'getNamedSecurityInfoW')
+    const free = vi.spyOn(api, 'localFree')
+    const grant = AclWriteGrant.create('S-1-4-42-42', api)
+    grant.add('C:\\granted')
+    failReads()
+    expect(() => { grant.dispose(false) }).not.toThrow()
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(free).toHaveBeenCalledWith(42n)
+  })
+
   it('dispose aggregates a failing SID free into an AggregateError', () => {
     const api = stubBindings({
       convertStringSidToSidW: vi.fn((_sid: string, slot: NativePtr) => {

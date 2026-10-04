@@ -35,6 +35,8 @@ export interface JobListInjected {
    * state itself converges through the jobs control frames.
    */
   killJob: (sessionId: SessionId, jobId: string) => Promise<boolean>
+  /** Stop the session's active turn and descendant jobs; resolves only after bounded settlement observation. */
+  stopAllJobs: (sessionId: SessionId) => Promise<{ confirmed: boolean; failures: string[] }>
 }
 
 /** Full props for the session-header job-list action. */
@@ -312,20 +314,22 @@ function JobItem({ job, view, expanded, now, onToggle, kill, t }: {
 
 /**
  * Session-header entry point for this session's background jobs. Mounting it
- * keeps the session's roster stream open; it renders nothing at all until the
- * session can see at least one job. Expanding an observable row (a live job,
+ * keeps the session's roster stream open; an empty roster still offers an
+ * explicit stop-all for independent work. Expanding an observable row (a live job,
  * or a settled one with retained output) starts its observation stream, and
  * collapsing (or closing the popover) stops it — output only flows while
  * someone is watching. A running row carries a two-press stop button that
  * requests a human kill through the job controller.
  * @param props - runtime slot currency, the jobs snapshot hook, the roster,
  *   observation, and kill controls, and the namespace translator.
- * @returns the trigger and its popover list, or null when there is nothing to show.
+ * @returns the job list or the independent-work stop control for an empty roster.
  */
-export function JobListAction({ sessionId, useJobs, watchRows, observe, killJob, t }: JobListActionProps) {
+export function JobListAction({ sessionId, useJobs, watchRows, observe, killJob, stopAllJobs, t }: JobListActionProps) {
   const jobs = useJobs(state => state.rows[sessionId]) ?? NO_JOBS
   const observedViews = useJobs(state => state.observed)
   const [open, setOpen] = useState(false)
+  const [stoppingAll, setStoppingAll] = useState(false)
+  const [stopAllFailure, setStopAllFailure] = useState<string | undefined>(undefined)
   const [expandedKey, setExpandedKey] = useState<string | undefined>(undefined)
   const [now, setNow] = useState(() => Date.now())
   // Settled-section fold: an explicit user toggle wins; before one, the tail
@@ -403,8 +407,8 @@ export function JobListAction({ sessionId, useJobs, watchRows, observe, killJob,
     return observe(sessionId, activeJob)
   }, [sessionId, activeJob, observe])
 
-  // The last visible job disappearing removes this control; close first so
-  // focus does not vanish from an unmounting node.
+  // The last visible job disappearing closes the list. The stop-all control
+  // remains available for independently managed work outside this roster.
   useEffect(() => {
     if (visibleCount === 0 && open) setOpen(false)
   }, [visibleCount, open])
@@ -457,7 +461,22 @@ export function JobListAction({ sessionId, useJobs, watchRows, observe, killJob,
     })
   }
 
-  if (visibleCount === 0) return null
+  const pressStopAll = (): void => {
+    setStoppingAll(true)
+    setStopAllFailure(undefined)
+    void stopAllJobs(sessionId).then((result) => {
+      if (!result.confirmed) setStopAllFailure(result.failures.join('; ') || t('killAll.unconfirmed'))
+    }, (error: unknown) => { setStopAllFailure(String(error)) }).finally(() => { setStoppingAll(false) })
+  }
+
+  if (visibleCount === 0) return (
+    <div className={css.root}>
+      <button type="button" className={css.trigger} disabled={stoppingAll} onClick={pressStopAll}>
+        {t(stoppingAll ? 'killAll.stopping' : 'killAll.stop')}
+      </button>
+      {stopAllFailure !== undefined ? <div className={`${css.notice} ${css.noticeError}`} role="alert">{t('killAll.failed', { error: stopAllFailure })}</div> : null}
+    </div>
+  )
 
   const countKey = liveRows.length > 0
     ? (liveRows.length === 1 ? 'count.live.one' : 'count.live.other')
@@ -528,9 +547,13 @@ export function JobListAction({ sessionId, useJobs, watchRows, observe, killJob,
       {open
         ? (
           <ul ref={menuRef} className={css.menu} style={{ left: menuShift }} aria-label={t('list.aria')}>
-            {liveRows.length > 0
-              ? <li className={css.sectionHeader} aria-hidden="true">{t('section.live')}</li>
-              : null}
+            <li className={css.sectionHeader}>
+              <span>{t(liveRows.length > 0 ? 'section.live' : 'list.aria')}</span>
+              <button type="button" className={css.sectionClear} disabled={stoppingAll} onClick={pressStopAll}>
+                {t(stoppingAll ? 'killAll.stopping' : 'killAll.stop')}
+              </button>
+            </li>
+            {stopAllFailure !== undefined ? <li className={`${css.notice} ${css.noticeError}`} role="alert">{t('killAll.failed', { error: stopAllFailure })}</li> : null}
             {liveRows.map(item)}
             {settledRows.length > 0
               ? (

@@ -67,6 +67,15 @@ const errors = (report: Awaited<ReturnType<typeof runChecks>>, check: string) =>
 const warnings = (report: Awaited<ReturnType<typeof runChecks>>, check: string) => report.findings.filter(f => f.check === check && f.severity === 'warning')
 
 describe('research checks report on the paper as it is on disk', () => {
+  it('distinguishes skipped checks from passed checks when the manuscript is absent', async () => {
+    const project = await fixture()
+    await rm(join(project.root, 'paper'), { recursive: true })
+    await rm(join(project.root, 'template'), { recursive: true })
+    const report = await runChecks(project, 100000, 'cite')
+    expect(report.clean).toBe(false)
+    expect(report.findings).toEqual([])
+    expect(report.checks?.find(check => check.id === 'cite')).toEqual({ id: 'cite', status: 'skipped', reason: 'No readable LaTeX manuscript' })
+  })
   it('finds the main file without registration and reports every class of problem with its location', async () => {
     const p = await fixture('proposal')
     const report = await runChecks(p, 100000)
@@ -235,12 +244,15 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(report.phases.map(phase => phase.id)).toEqual(['story', 'plan', 'cite', 'write', 'refine', 'review', 'figures', 'latex', 'experiments', 'submission'])
     expect(Object.fromEntries(report.phases.map(phase => [phase.id, phase.missing]))).toMatchObject({
       story: [expect.stringMatching(/write story\.json/)],
-      cite: ['No bibliography entries yet'],
+      cite: ['No bibliography entries yet', 'Checks not completed: cite'],
       plan: [expect.stringMatching(/1 error/), expect.stringMatching(/blueprint/)],
-      write: [expect.stringMatching(/error/), 'No manuscript yet'],
-      figures: ['No editable architecture diagram (draw.io file or TikZ picture)'],
-      experiments: ['No collected results to report'],
+      write: [expect.stringMatching(/error/), 'No manuscript yet', 'Checks not completed: cite, numbers'],
+      figures: ['No editable architecture diagram (draw.io file or TikZ picture)', 'Checks not completed: figures'],
+      experiments: ['No collected results to report', 'Checks not completed: placeholders, numbers, figures, compile'],
     })
+    const cite = await runChecks(p, 100000, 'cite')
+    expect(cite.clean).toBe(false)
+    expect(cite.checks).toContainEqual({ id: 'cite', status: 'skipped', reason: 'No readable LaTeX manuscript' })
     await write(p.root, 'idea.md', 'idea')
     await write(p.root, 'notes/outline.md', 'outline')
     await write(p.root, 'figures/arch.drawio', '<mxfile/>')
@@ -250,8 +262,8 @@ describe('research checks report on the paper as it is on disk', () => {
     expect(report.findings).toEqual([])
     const phases = Object.fromEntries((await runChecks(p, 100000)).phases.map(phase => [phase.id, phase.missing]))
     expect(phases.plan).toEqual([expect.stringMatching(/1 error/)])
-    expect(phases.figures).toEqual([])
-    expect(phases.experiments).toEqual(['No collected results to report', '1 run(s) still in progress'])
+    expect(phases.figures).toEqual(['Checks not completed: figures'])
+    expect(phases.experiments).toEqual(['No collected results to report', '1 run(s) still in progress', 'Checks not completed: placeholders, numbers, figures, compile'])
   })
 
   it('has no phases in general mode, skips section expectations there, and treats unknown scopes as all', async () => {

@@ -589,13 +589,14 @@ type SshRejection = 'treeSshInvalid' | 'treeSshHostInvalid' | 'treeSshPortInvali
 type SshNotice =
   | {
     readonly key: SshRejection | 'treeSshFailAuthKey' | 'treeSshFailAuthPassword' | 'treeSshFailUnreachable'
-      | 'treeSshFailHostKeyChanged' | 'treeSshFailUnsupported'
+      | 'treeSshFailHandshake' | 'treeSshFailHostKeyChanged' | 'treeSshFailUnsupported'
   }
   | { readonly key: 'treeSshFailHostKey'; readonly command: string }
 
 /** The dictionary line for each cause the Host can report that needs no more than its own words. */
 const SSH_FAILURE_KEYS = {
   unreachable: 'treeSshFailUnreachable',
+  handshake: 'treeSshFailHandshake',
   'host-key-changed': 'treeSshFailHostKeyChanged',
   unsupported: 'treeSshFailUnsupported',
 } as const

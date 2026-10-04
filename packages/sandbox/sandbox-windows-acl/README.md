@@ -117,6 +117,8 @@ The seam materializes the deterministic workspace SID's ACE standing (once per w
 
 When launched with the subprocess control marker, the runner forwards fd 7 through the restricted child's CRT startup table and closes its own copy immediately after spawn. The optional `controlFileDescriptor: 7` input requires `stdio: 'inherit'`; requesting it with piped stdio fails before process creation.
 
+Under `workspace-write`, the runner supplies a private Python startup module through `PYTHONPATH` and `PYTHONSAFEPATH`. Python 3.11+ loads that module before any `sitecustomize.py` in the command directory; normal script and module imports resume afterward. For `os.mkdir(..., 0o700)` within the canonical workspace or private temp root, the module preserves owner, signed-in user, administrator and SYSTEM protection, and adds only that root's capability SID and Low label. It checks root identities before creation and retains the parent-delete deny. Directories outside those roots use ordinary CPython behavior and remain subject to the restricted token. This keeps `tempfile` and offline pip installs usable without broadening the token's restricting list. Python `-E`, `-I` or `-S` disables startup compatibility; direct `AclSandbox` callers do not receive it.
+
 ### Verified boundaries
 
 - **Everyone stays in both restricting lists, but no longer confers write authority** — the keep-alive group is required for early DLL initialization and CNG; the Low label now denies an Everyone-granted write outside the labeled roots, so that former gap is closed.

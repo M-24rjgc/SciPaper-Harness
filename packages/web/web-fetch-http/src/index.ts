@@ -36,7 +36,7 @@ export interface Config {
   maxBodyChars?: number
   /** Default fetch timeout in milliseconds, within Node's timer range. */
   timeoutMs?: number
-  /** Maximum number of same-origin redirect hops to follow. */
+  /** Maximum number of permitted redirect hops to follow. */
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
@@ -49,6 +49,8 @@ export interface Config {
    * ranges are refused either way.
    */
   allowFakeIpDns?: boolean
+  /** Follow anonymous cross-origin redirects, validating every hop. Defaults to false. */
+  allowCrossOriginRedirects?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -58,6 +60,7 @@ export const Config: z<Config> = z.object({
   maxRedirects: z.number().default(5),
   userAgent: z.string().default(DEFAULT_USER_AGENT),
   allowFakeIpDns: z.boolean().default(true),
+  allowCrossOriginRedirects: z.boolean().default(false),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -100,6 +103,7 @@ export function apply(ctx: Context, config: Config): void {
     maxRedirects: resolved.maxRedirects,
     userAgent: resolved.userAgent,
     allowFakeIpDns: resolved.allowFakeIpDns,
+    allowCrossOriginRedirects: resolved.allowCrossOriginRedirects,
   }
   ctx.web.registerFetchProvider(new HttpFetchProvider(limits))
 }

@@ -1,5 +1,5 @@
 ---
-description: "The anonymous public HTTP(S) fetch backend for ctx.web: how deployments mount bounded, safe URL retrieval with same-origin redirects and text-only decoding."
+description: "The anonymous public HTTP(S) fetch backend for ctx.web: how deployments mount bounded, safe URL retrieval with validated redirects and bounded text/PDF decoding."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-With `dsh-web-fetch-http`, the harness can fetch public HTTP(S) pages through the web service (`ctx.web`) and get their status code plus bounded, decoded content without sending credentials. Choose it when a composition needs safe retrieval with URL validation, public-address resolution, connection pinning, same-origin redirects, byte and character caps, and an explicit product `User-Agent`. It returns non-2xx responses as results rather than errors, and rejects non-public destinations, binary data, and unsupported content types. The model-facing `web_fetch` tool lives in `dsh-tool-web`, which renders this provider's bodies.
+With `dsh-web-fetch-http`, the harness can fetch public HTTP(S) pages through the web service (`ctx.web`) and get their status code plus bounded, decoded content without sending credentials. Choose it when a composition needs safe retrieval with URL validation, public-address resolution, connection pinning, configurable anonymous cross-origin redirects, byte and character caps, and an explicit product `User-Agent`. It returns non-2xx responses as results rather than errors, and rejects non-public destinations and unsupported content types. PDF pages are extracted as text without executing document scripts; scanned pages require OCR. The model-facing `web_fetch` tool lives in `dsh-tool-web`, which renders this provider's bodies.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount the provider in a composition that already loads the web service; it regis
 
 ### When to choose it
 
-Choose this backend when a deployment must fetch public pages with bounded output and safe transport: no credentials are sent, every resolved address must be public (or, by default, a local fake-ip proxy's placeholder answer), each connection is pinned to the validated answer set, redirects cannot escape the origin, and every response is capped.
+Choose this backend when a deployment must fetch public pages with bounded output and safe transport: no credentials are sent, every resolved address must be public (or, by default, a local fake-ip proxy's placeholder answer), each connection is pinned to the validated answer set, cross-origin redirects require explicit enablement and every target is revalidated, and every response is capped.
 
 ### Minimal configuration
 
@@ -45,8 +45,9 @@ Load the web service and the provider; configurable limits have safe defaults an
 | `maxResponseBytes` | `5,000,000` | Maximum response body size in bytes |
 | `maxBodyChars` | `100,000` | Maximum decoded body length in characters |
 | `timeoutMs` | `30,000` | Fetch timeout — a resource backstop, not the model-facing tool budget |
-| `maxRedirects` | `5` | Maximum same-origin redirect hops (`0` follows none) |
+| `maxRedirects` | `5` | Maximum permitted redirect hops (`0` follows none) |
 | `userAgent` | `deepseek-harness/…` | `User-Agent` header sent on every request |
+| `allowCrossOriginRedirects` | `false` | Follow anonymous cross-origin redirects with per-hop validation; HTTPS downgrade is refused |
 | `allowFakeIpDns` | `true` | Fetch a hostname whose every DNS answer is a fake-ip proxy placeholder in `198.18.0.0/15` or `2001:2::/48`; `false` refuses it |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-fetch-http) is the exhaustive source for every accepted field and its JSDoc.
@@ -62,7 +63,7 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 
 ### Transport behavior
 
-The provider keeps requests anonymous and bounded: it accepts only `http:` and `https:` URLs without embedded credentials and rejects URLs over 2,048 characters. It resolves each hostname once, rejects the complete result if any IPv4 or IPv6 address is not public unicast (the fake-ip exception below aside), and pins the connection to that validated set. IPv6 checks discover the active DNS64 prefix and reject translations to non-public IPv4. Each same-origin redirect repeats resolution and pinning; cross-origin redirects fail and require a fresh call. The provider also enforces byte, character, hop, and time caps, rejects unsupported content types, and sends an explicit product `User-Agent`.
+The provider keeps requests anonymous and bounded: it accepts only `http:` and `https:` URLs without embedded credentials and rejects URLs over 2,048 characters. It resolves each hostname once, rejects the complete result if any IPv4 or IPv6 address is not public unicast (the fake-ip exception below aside), and pins the connection to that validated set. IPv6 checks discover the active DNS64 prefix and reject translations to non-public IPv4. Each same-origin redirect repeats resolution and pinning; cross-origin redirects require `allowCrossOriginRedirects`; every permitted hop repeats the destination checks. The provider also enforces byte, character, hop, and time caps, rejects unsupported content types, and sends an explicit product `User-Agent`.
 
 A request routed through an HTTP proxy (`HTTPS_PROXY` or `HTTP_PROXY`, set by the launcher or by the Desktop application from the operating system's proxy) skips local resolution and pinning, because the proxy resolves the origin. A hop the proxy policy bypasses keeps the resolved-and-pinned path, and an IP literal that the address checks refuse is never handed to a proxy.
 
@@ -90,7 +91,7 @@ This section explains the design decisions behind the provider; the observable b
 
 The package is built on one separation and one layered timeout:
 
-- **Safe retrieval vs. presentation.** This provider owns URL validation, public-address enforcement, connection pinning, HTTP transport, redirect policy, caps, charset decoding, and binary rejection; `dsh-tool-web` owns HTML→markdown and truncation formatting. A non-2xx response is data, not failure.
+- **Safe retrieval vs. presentation.** This provider owns URL validation, public-address enforcement, connection pinning, HTTP transport, redirect policy, caps, charset/PDF decoding; `dsh-tool-web` owns HTML→markdown and truncation formatting. A non-2xx response is data, not failure.
 - **Two timeout layers.** The provider's `timeoutMs` is a resource backstop for direct `ctx.web.fetch()` callers; the model-facing tool-call budget belongs to `dsh-tool-call-timeout-policy`, which arms `exec.signal`. When the outer deadline fires first the provider reports `WEB_ABORTED` and the policy replaces it with `TOOL_TIMEOUT`; `WEB_FETCH_TIMEOUT` therefore identifies a direct service caller whose provider budget elapsed.
 
 ### Source map
@@ -105,7 +106,9 @@ The package is built on one separation and one layered timeout:
 
 ### Read path
 
-A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public (an answer made only of fake-ip placeholders is accepted when `allowFakeIpDns` is on), and pins the connection to the accepted addresses. It repeats that check for each same-origin redirect; a cross-origin redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
+A fetch validates the URL, resolves the hostname once, rejects the complete answer set when any address is not public (an answer made only of fake-ip placeholders is accepted when `allowFakeIpDns` is on), and pins the connection to the accepted addresses. It repeats that check for each permitted redirect; a disallowed redirect or non-public target fails before response bytes are accepted. The final response is classified by `Content-Type`, decoded from its declared charset, and read under the byte cap; the decoded text is then truncated to the character cap.
+
+PDF text extraction uses a separate Worker for each call, with a 256 MiB V8 old-generation limit and no ambient environment. This is a parser resource limit, not an operating-system memory sandbox. Cancellation terminates and joins the Worker. CMaps and fonts resolve from the installed PDF.js package; document scripts and OCR are not executed.
 
 </details>
 
@@ -141,7 +144,7 @@ No direct invalidation; the named consumer owns any request-prefix changes.
 
 These limits define when the provider is unsafe or a poor fit. They are current package constraints.
 
-- **Only textual content decodes** — html/xhtml and `text/*` plus JSON/XML families; a missing `Content-Type` or any binary type throws `WEB_UNSUPPORTED_CONTENT_TYPE`, and text-extractable PDF decoding is named deferred work.
+- **Supported content** — html/xhtml, `text/*`, JSON/XML and PDF text. Missing or unsupported content types fail explicitly. Invalid, encrypted or textless PDFs fail rather than returning an empty success; no OCR is performed.
 - **Charset comes only from the `Content-Type` header** (UTF-8 default) — an HTML `<meta charset>` declaration is ignored, and a declared-but-unrecognized charset label throws rather than falling back.
 - **Fake-ip answers are accepted by default** — a hostname answered entirely inside `198.18.0.0/15` or `2001:2::/48` is fetched, so on a network that routes those ranges to real hosts a name pointed there reaches them; set `allowFakeIpDns: false` on such networks. The check never accepts a mixed answer or an IP literal, and a proxied request is not checked locally at all.
 

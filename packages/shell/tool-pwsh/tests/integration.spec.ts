@@ -71,7 +71,8 @@ describe.skipIf(!hasPwsh)('pwsh tool over the real pwsh executor', () => {
   })
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
+    await ctx.fiber.dispose()
+    await rm(dir, { recursive: true })
   })
 
   const agent = () => ({ session: { header: { id: 'session-int', cwd: dir } } })
@@ -153,4 +154,19 @@ describe.skipIf(!hasPwsh)('pwsh tool over the real pwsh executor', () => {
     expect(output).toContain('bg-done')
     expect(output).toContain('[status: completed, exit code: 0]')
   })
+
+  it('confirms stop-all only after a real running PowerShell process stops', async () => {
+    const started = await call('pwsh', {
+      command: 'Write-Output stop-all-ready; Start-Sleep -Seconds 60',
+      description: 'wait for an explicit stop',
+      run_in_background: true,
+    })
+    if (started.isError) throw new Error('expected background pwsh success')
+    const id = (started.value as { jobId: string }).jobId
+    await expect.poll(() => ctx.jobs.list().find(job => job.id === id)?.output.total ?? 0, { timeout: 10_000 }).toBeGreaterThan(0)
+    const stopped = await call('job_stop_all', { reason: 'explicit test stop', timeout_ms: 10_000 })
+    expect(stopped.isError).toBe(false)
+    expect(stopped.value).toMatchObject({ confirmed: true, jobs: [{ job: { id, status: 'killed' } }] })
+    expect(ctx.jobs.list().every(job => job.status !== 'running' && job.status !== 'stopping')).toBe(true)
+  }, 15_000)
 })

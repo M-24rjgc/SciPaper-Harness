@@ -12,7 +12,7 @@ import { RemoteStreamCarrierError, type ClientRemote } from '@deepseek-ai/dsh-ap
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { JobKillRequest, JobKillValue, JobFollowFrame, JobFollowRequest, JobListFrame, JobListRequest } from '../types.ts'
+import type { JobKillRequest, JobKillValue, JobFollowFrame, JobFollowRequest, JobListFrame, JobListRequest, JobStopAllRequest, JobStopAllValue } from '../types.ts'
 import type { ClientJobsModel, JobsSource } from './model.ts'
 
 /** The generated `job` namespace face the stream runners drive. */
@@ -37,6 +37,12 @@ export interface JobRemote {
    * @returns the registry's admission, or the business/transport failure.
    */
   kill(request: JobKillRequest): Promise<RemoteResult<JobKillValue>>
+  /**
+   * Stop the session's active turn and its live descendant jobs.
+   * @param request - session whose work is stopped.
+   * @returns observed settlement or a transport/business failure.
+   */
+  stopAll(request: JobStopAllRequest): Promise<RemoteResult<JobStopAllValue>>
 }
 
 /** Remote faces the runners drive: the Gateway stream factory and the `job` namespace. */
@@ -73,6 +79,12 @@ export interface IJobs {
    * @returns the registry's admission, or the business/transport failure.
    */
   kill(sessionId: SessionId, id: JobId): Promise<RemoteResult<JobKillValue>>
+  /**
+   * Stop all work owned by the session's live runtime tree.
+   * @param sessionId - session whose work is stopped.
+   * @returns observed settlement; confirmed is false for incomplete stops.
+   */
+  stopAll(sessionId: SessionId): Promise<RemoteResult<JobStopAllValue>>
 }
 
 /** One reference-counted stream. */
@@ -122,6 +134,10 @@ export class ClientJobs extends Service implements IJobs {
 
   kill(sessionId: SessionId, id: JobId): Promise<RemoteResult<JobKillValue>> {
     return this.remote.job.kill({ sessionId, jobId: id })
+  }
+
+  stopAll(sessionId: SessionId): Promise<RemoteResult<JobStopAllValue>> {
+    return this.remote.job.stopAll({ sessionId })
   }
 
   watchRows(sessionId: SessionId): () => void {

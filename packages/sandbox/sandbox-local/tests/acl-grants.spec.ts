@@ -5,7 +5,7 @@
  * is mocked; native access checks live in sandbox-windows-acl's runner suite.
  */
 
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -187,6 +187,40 @@ describe('windows-acl write grants (LocalSandboxProvider)', () => {
     } finally {
       cleanup()
     }
+  })
+
+  it('replaces a removed private temp directory with a fresh path and capability', async () => {
+    const { sandbox, fiber } = await setup()
+    try {
+      const ws = workspaceRoot()
+      scratch.push(ws)
+      const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: ws, sessionId: SessionId('temp-removed') }
+      const first = await sandbox.confine(['true'], policy)
+      const firstDir = flag(first.argv, '--temp') ?? ''
+      rmdirSync(firstDir)
+      const next = await sandbox.confine(['true'], policy)
+      expect(flag(next.argv, '--temp')).not.toBe(firstDir)
+      expect(flag(next.argv, '--temp-write-sid')).not.toBe(flag(first.argv, '--temp-write-sid'))
+      expect(mockState.grants).toHaveLength(3)
+      expect(mockState.grants[1]?.disposed).toBe(true)
+      expect(existsSync(flag(next.argv, '--temp') ?? '')).toBe(true)
+    } finally { await fiber.dispose(); cleanup() }
+  })
+
+  it('replaces a stale capability and preserves the file now occupying its old path', async () => {
+    const { sandbox, fiber } = await setup()
+    const ws = workspaceRoot()
+    scratch.push(ws)
+    const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: ws, sessionId: SessionId('temp-replaced') }
+    const confined = await sandbox.confine(['true'], policy)
+    const tempDir = flag(confined.argv, '--temp') ?? ''
+    rmdirSync(tempDir)
+    writeFileSync(tempDir, 'replacement')
+    try {
+      const replacement = await sandbox.confine(['true'], policy)
+      expect(flag(replacement.argv, '--temp')).not.toBe(tempDir)
+      expect(existsSync(tempDir)).toBe(true)
+    } finally { await fiber.dispose(); cleanup() }
   })
 
   it('a fresh provider gives a resumed session a new temp path and SID, so crash residue cannot collide', async () => {

@@ -25,13 +25,15 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Load the plugin through the web-app manifest; it renders nothing until the session can see at least one job, so an ordinary conversation never grows a control for a capability it is not using.
+Load the plugin through the web-app manifest. An empty roster still offers **Stop all**, so independent supervisors remain controllable even when no ordinary job row exists.
 
 ### One row per job
 
 The `job.list` stream `ctx.jobs` mirrors is the single roster: each `JobView` row carries lifecycle, duration, the live `progress` line or the terminal `detail`, and its retained byte count — a live job, or a settled one with retained output, is what makes a row expandable. There is no second roster to join.
 
 Running job rows also carry a two-press stop control: the first press arms it, the confirming press within three seconds calls `ctx.jobs.kill`, and the row converges through the roster stream (`stopping`, then the settled section, whose detail carries `cancelled by the user`). The kill claims nothing in the model's notice ledger, so the owning agent still receives the standard completion notice — the model is told the user stopped its task rather than left to infer it ([decision](../../../.agents/notes/implemented/feature/2026-08-26-human-job-kill.md)). The settled section folds behind its count while live work exists and can be cleared client-side.
+
+The list also offers **Stop all**. It calls `ctx.jobs.stopAll`, cancels the session and its live runtime descendants, and waits for observed Agent, job, and registered independent-work stops. The button shows a pending state until the bounded report arrives; incomplete stops and transport failures are displayed with their details.
 
 ### The expanded panel
 

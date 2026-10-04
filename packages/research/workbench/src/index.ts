@@ -14,7 +14,8 @@ import type { SessionCreateRequest, SessionRequestId, SessionSummary } from '@de
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { WorkspaceActiveSessionError } from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-llm'
-import type {} from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-jobs'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-permission-presets'
@@ -29,6 +30,7 @@ import { FileTimes, mergeProgress, projectStanding, storedProgress } from './pro
 import { createEnvironment } from './environments.ts'
 import { appendExampleConversation, initializeResearchExamples } from './examples.ts'
 import { adoptRunCode, collectRunOutputs, experimentLogs, launchExperiment, newExperiment, observationDue, observeExperiment } from './experiments.ts'
+import { ExperimentStops, type ExperimentSubmissionControl } from './experiment-stops.ts'
 import { ExperimentBoards, missingScripts, unmatched } from './board.ts'
 import { auditSvg, exportFigure } from './figures.ts'
 import { fetchReferenceFigures, generateImage } from './images.ts'
@@ -257,6 +259,8 @@ export class ResearchWorkbench extends TypertRemoteService {
   private readonly operations = new Set<Promise<unknown>>()
   /** Runs whose launch is under way outside their project's lock. */
   private readonly launching = new Set<string>()
+  /** Explicit stop-all capabilities do not share the detached supervisors' lifetime. */
+  private experimentStops!: ExperimentStops
   /** The latest project creation, draft opening, move or removal; each one waits for the one before it. */
   private creations: Promise<unknown> = Promise.resolve()
   /**
@@ -409,6 +413,21 @@ export class ResearchWorkbench extends TypertRemoteService {
     }
     this.modes = await ModeRegistry.load([runtimeAsset('modes')], this.ctx.logger)
     this.domain = await this.ctx.storageDomain.open(researchDomain)
+    this.experimentStops = new ExperimentStops(this.ctx.agents, {
+      projects: () => this.projects(),
+      projectAt: cwd => this.projectAt(cwd),
+      observe: (project, run, action, signal) => observeExperiment(project, run, action, signal, false),
+      save: (snapshot, original, observed) => this.saveExperimentStop(snapshot, original, observed),
+      requestCancel: (snapshot, run) => {
+        const signal = AbortSignal.any([this.lifetime.signal, AbortSignal.timeout(10000)])
+        this.track(observeExperiment(snapshot, run, 'cancel', signal, false)
+          .then(observed => this.saveExperimentStop(snapshot, run, observed))
+          .catch((error: unknown) => { this.ctx.logger.warn('research experiment stop request for %s: %s', run.id, String(error)) }))
+      },
+    })
+    this.ctx.inject(['jobs'], (scope) => {
+      scope.jobs.registerStopSource('research-experiments', request => this.experimentStops.stop(request))
+    })
     const cut = [...this.domain.table('tasks').entries()].filter(([, task]) => task.status === 'running')
     await Promise.all(cut.map(([id, task]) => this.domain.table('tasks').put(id, {
       ...task, status: 'interrupted', message: 'The application restarted; independent experiments can be reconnected from the experiment panel',
@@ -823,9 +842,13 @@ export class ResearchWorkbench extends TypertRemoteService {
    * @param signal - cancellation of the call.
    * @param actor - who acts: the desktop user or the agent.
    * @param sessionId - the agent's conversation, recorded on the runs it submits; absent for the desktop.
+   * @param callingAgent - the registered runtime Agent that owns agent-submitted work; absent for desktop commands.
    * @returns the outcome.
    */
-  async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string): Promise<ResearchResponse> {
+  async execute(raw: ResearchCommand, signal: AbortSignal, actor: 'user' | 'agent', sessionId?: string, callingAgent?: Agent): Promise<ResearchResponse> {
+    if (callingAgent !== undefined && (actor !== 'agent' || this.ctx.agents.get(callingAgent.id) !== callingAgent || callingAgent.session.id !== sessionId)) {
+      throw new Error('The research caller is not the registered runtime Agent')
+    }
     const request = commandSchema.parse(raw) as ResearchCommand
     if (isPersonCommand(request)) {
       if (actor !== 'user') throw new Error(PERSON_ONLY)
@@ -917,7 +940,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       default: {
         if (example) throw new Error(EXAMPLE_READ_ONLY)
         const work = async (workSignal: AbortSignal): Promise<ResearchResponse> => {
-          const prepared = await this.prepare(project.id, request, workSignal, actor, sessionId)
+          const prepared = await this.prepare(project.id, request, workSignal, actor, sessionId, callingAgent)
           const value = typeof prepared === 'function' ? await this.mutate(project.id, prepared) : prepared
           if (request.action === 'set-mode') this.announceMode(project.id)
           if (request.action === 'set-autonomy') this.alignConversations(project.id)
@@ -1204,6 +1227,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     signal: AbortSignal,
     actor: 'user' | 'agent',
     sessionId: string | undefined,
+    callingAgent?: Agent,
   ): Promise<ResearchResponse | Commit> {
     const limit = this.config.maxSourceBytes
     switch (request.action) {
@@ -1270,7 +1294,7 @@ export class ResearchWorkbench extends TypertRemoteService {
           return { message: `Experiment environment ready: ${environment.id}`, path: environment.python }
         }
       }
-      case 'experiment': return this.submitExperiment(id, request, signal, sessionId)
+      case 'experiment': return this.submitExperiment(id, request, signal, sessionId, callingAgent)
       case 'experiment-refresh':
       case 'experiment-cancel': {
         const snapshot = this.record(id)
@@ -1726,6 +1750,7 @@ export class ResearchWorkbench extends TypertRemoteService {
     request: Extract<ResearchCommand, { action: 'experiment' }>,
     signal: AbortSignal,
     sessionId: string | undefined,
+    callingAgent?: Agent,
   ): Promise<ResearchResponse | Commit> {
     const admitted = await this.mutate(id, async (project): Promise<{ run: ExperimentRecord; fresh: boolean }> => {
       const existing = project.experiments.find(r => r.id === request.requestId)
@@ -1745,25 +1770,58 @@ export class ResearchWorkbench extends TypertRemoteService {
     })
     const { run } = admitted
     if (!admitted.fresh) return { message: `Existing experiment: ${run.id} (${run.status})`, runs: [runView(run)] }
+    // A durable display sessionId alone is not an ownership capability.
+    let control: ExperimentSubmissionControl | undefined
+    try {
+      control = callingAgent !== undefined || sessionId === undefined
+        ? this.experimentStops.admit(this.record(id), run, callingAgent) : undefined
+    } catch (error) {
+      this.launching.delete(run.id)
+      return this.mutate(id, (project) => {
+        const cancelled = { ...run, status: 'cancelled' as const, message: `Runtime submission admission ended: ${String(error)}` }
+        project.experiments[runAt(project, run.id)] = cancelled
+        return { message: cancelled.message, runs: [runView(cancelled)] }
+      })
+    }
+    const launchSignal = control === undefined ? signal : AbortSignal.any([signal, control.signal])
     let launched: ExperimentRecord
     try {
-      launched = await launchExperiment(this.record(id), run, signal)
+      launched = await launchExperiment(this.record(id), run, launchSignal,
+        control === undefined ? undefined : () => { control.submitting() })
     } catch (error) {
-      launched = { ...run, status: 'unknown', message: `Submission outcome requires inspection: ${String(error)}` }
+      launched = control?.cancelledBeforeSubmission
+        ? { ...run, status: 'cancelled', message: 'Cancelled before supervisor submission' }
+        : { ...run, status: 'unknown', message: `Submission outcome requires inspection: ${String(error)}` }
     }
-    return async (project) => {
-      this.launching.delete(run.id)
-      const index = runAt(project, run.id)
-      project.experiments[index] = launched
-      await this.collect(project, index)
-      return { message: `Experiment ${run.id}: ${launched.status}. Use experiment-wait to wait for it.`, runs: [runView(launched)] }
-    }
+    try {
+      return await this.mutate(id, async (project) => {
+        this.launching.delete(run.id)
+        const index = runAt(project, run.id)
+        project.experiments[index] = launched
+        await this.collect(project, index)
+        return { message: `Experiment ${run.id}: ${launched.status}. Use experiment-wait to wait for it.`, runs: [runView(launched)] }
+      })
+    } finally { control?.ready(launched.status) }
   }
 
   /** Whether a background observer or a wait should look at this run now. */
   private observable(run: ExperimentRecord): boolean {
     return (ACTIVE_RUN_STATES.has(run.status) || (run.status === 'completed' && !run.collected))
       && observationDue(run, Date.now()) && !this.launching.has(run.id)
+  }
+
+  /** Record only the resource captured at trusted admission; terminal observations win over late retries. */
+  private saveExperimentStop(snapshot: ResearchProject, original: ExperimentRecord, observed: ExperimentRecord): Promise<void> {
+    return this.mutate(snapshot.id, (current) => {
+      const index = runAt(current, original.id)
+      const run = current.experiments[index]
+      if (current.root !== snapshot.root || run === undefined || run.directory !== original.directory
+        || run.environmentFingerprint !== original.environmentFingerprint || JSON.stringify(run.spec) !== JSON.stringify(original.spec)) {
+        throw new Error('The experiment resource no longer matches its trusted submission')
+      }
+      if (ACTIVE_RUN_STATES.has(run.status)) current.experiments[index] = observed
+      this.experimentStops.confirmed(snapshot.id, observed)
+    })
   }
 
   /**
@@ -1789,6 +1847,7 @@ export class ResearchWorkbench extends TypertRemoteService {
         return current
       }
       project.experiments[index] = observed
+      this.experimentStops.confirmed(id, observed)
       // Collecting marks the observed record itself.
       await this.collect(project, index)
       return observed

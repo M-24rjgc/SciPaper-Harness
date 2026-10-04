@@ -75,7 +75,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 }
 
 /** Why an SSH Workspace could not be registered. */
-export type WorkspaceSshFailure = 'auth' | 'unreachable' | 'host-key' | 'host-key-changed' | 'unsupported'
+export type WorkspaceSshFailure = 'auth' | 'unreachable' | 'handshake' | 'host-key' | 'host-key-changed' | 'unsupported'
 
 /**
  * How a person chose to authenticate to the SSH host of a new Workspace. `key` uses OpenSSH keys, agent and

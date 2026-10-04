@@ -273,6 +273,114 @@ interface JobRead {
 }
 ```
 
+<a id="session-tree-stop"></a>
+
+## 会话树停止
+
+`JobStopReport` 记录显式会话树停止所选中的普通任务和独立工作适配器。`SessionStopRequest` 携带当前运行时的 Agent 树和统一截止时间；适配器报告保留各目标的停止确认和错误。`job.stopAll` 接收 `JobStopAllRequest` 并返回 `JobStopAllValue`，其中包含观测到的 Agent 状态。
+
+```ts type-equiv
+/** Trusted caller and shared deadline for an explicit session-tree stop. */
+interface SessionStopRequest {
+  /** Requested root session; absent only for an unowned Host control. */
+  readonly sessionId?: SessionId
+  /** Exact currently registered caller; durable session lineage grants no authority. */
+  readonly caller?: Agent
+  /** Verified live runtime ownership tree, including the caller. */
+  readonly agents: readonly Agent[]
+  /** Absolute epoch-millisecond deadline shared by every stop participant. */
+  readonly deadline: number
+  /** Cancellation reason forwarded to the selected resources. */
+  readonly reason?: string
+  /** Cancels observation; requested resource stops remain in force. */
+  readonly signal?: AbortSignal
+}
+```
+
+```ts type-equiv
+/** Adapter invoked only by explicit stop-all, never by turn cancellation or service disposal. */
+type SessionStopSource = (request: SessionStopRequest) => Promise<StopSourceReport>
+```
+
+```ts type-equiv
+/** Cancellation and observed settlement for one job, including a failed stop. */
+interface JobStopResult {
+  readonly job: JobView
+  /** Cancellation or observation failure; a terminal record alone does not prove termination after this failure. */
+  readonly error?: string
+}
+```
+
+```ts type-equiv
+/** One independently managed target observed by an explicit stop source. */
+interface StopSourceTarget {
+  /** Source-specific stable resource identifier. */
+  readonly id: string
+  /** Fresh observed lifecycle state, including unknown when observation failed. */
+  readonly status: string
+  /** True only after the adapter verified this resource is no longer active. */
+  readonly confirmed: boolean
+  /** Cancellation or observation failure for this target. */
+  readonly error?: string
+}
+```
+
+```ts type-equiv
+/** Bounded cancellation report supplied by a detached-work adapter. */
+interface StopSourceReport {
+  /** True only when every selected independent target was confirmed stopped. */
+  readonly confirmed: boolean
+  /** Individual resource observations; an empty list alone does not confirm an adapter failure. */
+  readonly targets: readonly StopSourceTarget[]
+  /** Adapter-wide cancellation or observation failure. */
+  readonly error?: string
+}
+```
+
+```ts type-equiv
+/** Source identity and its observed independent work. */
+interface NamedStopSourceReport extends StopSourceReport {
+  /** Effect-scoped adapter's public registration label. */
+  readonly source: string
+}
+```
+
+```ts type-equiv
+/** Bounded stop of the live jobs owned by a session and its live runtime descendants. */
+interface JobStopReport {
+  /** True only when all selected jobs and independent work were verified stopped. */
+  readonly confirmed: boolean
+  /** Actual ordinary-job projections and any cancellation or observation failures. */
+  readonly jobs: readonly JobStopResult[]
+  /** Explicit-stop adapters; these do not participate in ordinary cancellation or disposal. */
+  readonly sources: readonly NamedStopSourceReport[]
+}
+```
+
+```ts type-equiv
+/** Explicit human stop of a session's active turn and its live descendant work. */
+interface JobStopAllRequest {
+  readonly sessionId: SessionId
+}
+```
+
+```ts type-equiv
+/** Observed quiescence of one runtime Agent after the stop request. */
+interface SessionStopResult {
+  readonly sessionId: SessionId
+  readonly status: 'idle' | 'running'
+  /** Cancellation, observation, or timeout failure. */
+  readonly error?: string
+}
+```
+
+```ts type-equiv
+/** Observed Agent quiescence and job settlement after an explicit session-tree stop. */
+interface JobStopAllValue extends JobStopReport {
+  readonly agents: readonly SessionStopResult[]
+}
+```
+
 ## 事件
 
 注册表通过一条带过滤的流宣布每次提交。生命周期事件携带其所宣布的提交之后的投影；`settled` 标出原因，完成播报方据此跳过 teardown；`output` 只携带 id 与新的 total，观察者从自己的游标读取，注册表从不推送负载。
@@ -328,7 +436,7 @@ type JobEventFilter =
 
 ## 服务行为
 
-抽象的 [`JobRegistry`](../../packages/jobs/jobs/src/index.ts) Service Definition 规定了原子化的 `start`、各自接收调用方的 `list`、`get`、消耗式 `read`、非消耗的 `readAt`、`kill` 与有界的 `wait`、带过滤的 `events` 流，以及 `attachController`；[`LocalJobRegistry`](../../packages/jobs/jobs-local/src/index.ts) 是进程本地的 Service Provider。授权比较拥有者会话；拥有者清理与准入使用 job 启动时登记在该拥有者会话下的活体 `Agent`。本地提供方的正安全整数配置 `maxConcurrentJobsPerOwner` 默认为 `10`，按精确拥有者统计 `running` 加 `stopping` 记录，无主任务共享一个桶；生产方的终态结算释放容量；`retainBytes`（默认 262144）与 `settledRetainBytes`（默认 16384）约束每个环的运行期与结算后保留量，`pumpPollMs`（默认 150）是拉取节奏。参见 [`dsh-jobs`](../../packages/jobs/jobs/README.zh.md) 了解 Service Definition 约定，[`dsh-jobs-local`](../../packages/jobs/jobs-local/README.zh.md) 了解注册表生命周期与准入策略，[`dsh-tool-jobs`](../../packages/jobs/tool-jobs/README.zh.md) 了解面向模型的 Consumer。
+抽象的 [`JobRegistry`](../../packages/jobs/jobs/src/index.ts) Service Definition 规定了原子化的 `start`、各自接收调用方的 `list`、`get`、消耗式 `read`、非消耗的 `readAt`、`kill` 与有界的 `wait`、带过滤的 `events` 流，以及 `attachController`；[`LocalJobRegistry`](../../packages/jobs/jobs-local/src/index.ts) 是进程本地的 Service Provider。授权将调用方会话解析为登记时的精确所有者或可信运行时祖先；同 id 的替换实例不会继承权限。拥有者清理与准入使用 job 启动时登记在该拥有者会话下的活体 `Agent`。本地提供方的正安全整数配置 `maxConcurrentJobsPerOwner` 默认为 `10`，按精确拥有者统计 `running` 加 `stopping` 记录，无主任务共享一个桶；生产方的终态结算释放容量；`retainBytes`（默认 262144）与 `settledRetainBytes`（默认 16384）约束每个环的运行期与结算后保留量，`pumpPollMs`（默认 150）是拉取节奏。工作可能孤立的记录会在所有者释放后保留，拒绝显式移除，并使停止全部操作保持未确认状态，直到服务释放时移除。参见 [`dsh-jobs`](../../packages/jobs/jobs/README.zh.md) 了解 Service Definition 约定，[`dsh-jobs-local`](../../packages/jobs/jobs-local/README.zh.md) 了解注册表生命周期与准入策略，[`dsh-tool-jobs`](../../packages/jobs/tool-jobs/README.zh.md) 了解面向模型的 Consumer。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -346,7 +454,7 @@ Host service backing the generated `ctx.remote.job` namespace.
 
 ```ts cordis-catalog
 /**
- * Stream the jobs one session can see — its own plus every unowned job —
+ * Stream jobs in the session's captured runtime ownership tree plus unowned jobs
  * as whole-set frames: one on open, then one after each coalesced burst of
  * lifecycle commits. The stream has no natural end; the carrier closes it.
  * @param request - the session whose visible set to mirror.
@@ -361,7 +469,7 @@ Host service backing the generated `ctx.remote.job` namespace.
  * model-facing cursor and notice state never observe these reads. The
  * request's session is the fenced read's caller; the registry rejects a
  * job the session cannot see and an unknown job.
- * @param request - target job, owning session, and optional resume offset.
+ * @param request - target job, owner or trusted ancestor session, and optional resume offset.
  * @param signal - cancellation owned by the Remote stream carrier.
  * @returns anchor, coalesced output frames, and the terminal status.
  */
@@ -370,8 +478,8 @@ Host service backing the generated `ctx.remote.job` namespace.
 /**
  * Kill one background job on a human's behalf. The request's session is
  * the fenced read's caller, so the job must be one that session can see:
- * the registry's owner fence is the only access rule, and a child session's
- * own jobs are killable from its list like any other. The kill records
+ * the registry requires its captured owner or a trusted runtime ancestor.
+ * A replacement using the same session id has no access. The kill records
  * `cancelled by the user` as its reason; it is not one the model requested,
  * so the owning agent still receives the completion notice, and a shell
  * tool waiting on that job reads the reason in its own result.
@@ -379,7 +487,19 @@ Host service backing the generated `ctx.remote.job` namespace.
  * @returns the registry's admission of the kill request.
  */
 @Remote('kill') kill(request: JobKillRequest): JobKillValue
+
+/**
+ * Stop the session's active turn, live runtime descendants, and their jobs.
+ * Ordinary session cancellation retains detached jobs; this command explicitly
+ * cancels them and reports observed settlement, including stops that timed out.
+ * @param request - root session whose live ownership tree is stopped.
+ * @param signal - cancellation of the bounded observation, not of requested stops.
+ * @returns per-job states and whether no selected work remains live.
+ */
+@Remote('stopAll') async stopAll(request: JobStopAllRequest, signal: AbortSignal): Promise<JobStopAllValue>
 ```
+
+Types: [JobStopAllRequest](jobs.zh.md#session-tree-stop) · [JobStopAllValue](jobs.zh.md#session-tree-stop)
 
 Source: [`packages/api/job-controller/src/index.ts`](../../packages/api/job-controller/src/index.ts)
 
@@ -392,14 +512,25 @@ Abstract background job registry. Subclass, implement the abstract members, and 
 Implementations must honor these semantics:
 
 - Registrations outlive producer and controller fibers. Owner and service disposal cancel live work and await compliant producers; a throwing teardown cancel force-fails only the record. Such settlements announce `cause: 'teardown'`, because a job whose owner is being destroyed has no reader left.
-- Owned-job access is fenced by the owner's session id. Ids are predictable, so authorization — not secrecy — is the boundary.
+- Caller session ids resolve to exact registered runtimes. Owned-job access requires the captured owner or a trusted runtime ancestor; a replacement using the same session id inherits no access.
 - Settlement is first-wins: one terminal record, released waiters, then one round of contained event delivery, even against a late producer outcome. The `settled` event follows every released waiter and reports whether it released one (`awaited`), so a completion reporter can skip settlements a waiting caller already collected.
-- A settled record stays listed until its owner's disposal, service disposal, or an explicit remove by a caller that collected the terminal state itself and never handed the id out.
+- A settled record stays listed until its owner's disposal, service disposal, or an explicit remove by a caller that collected the terminal state itself and never handed the id out. Records reporting possibly orphaned work survive owner disposal, refuse explicit removal, and keep stopAll unconfirmed until service disposal removes them.
 - start refuses work while no attached job controller serves the spec's owner, so a producer cannot start work that owner cannot collect or stop. One registry serves every composition in the process, so this question — and event delivery under `{ owners: 'scope' }` — is owner-relative rather than process-wide: registrations made from an unscoped context serve every owner, and registrations made under an agent composition's scope serve exactly the agents composed under it.
 - Every job owns one output ring. Pull sources named by the spec are pumped by the registry and drained once more before settlement; pushed appends land whole. The model's consuming cursor and observers' absolute offsets read the same bytes and never disturb each other.
 - Ring retention is bounded. Appends past the live cap drop the oldest retained bytes; a reader below the retained window gets a lossy read, never an error. Settlement trims retention to the settled cap and ends the stream; the ring has no separate lifecycle.
 
 ```ts cordis-catalog
+/**
+ * Attach an explicit-stop adapter without adopting its independent resources.
+ * Scope visibility and plugin teardown follow the registering Cordis context;
+ * the source validates target authority from exact runtime ownership itself.
+ * Ordinary cancellation and registry/owner disposal never invoke this hook.
+ * @param name - stable adapter label included in the stop report.
+ * @param source - bounded cancellation and real-state observation.
+ * @returns disposer removing only the hook, without stopping its work.
+ */
+registerStopSource(name: string, source: SessionStopSource): () => void
+
 /**
  * Preflight access, validation, owner cleanup, and implementation-owned
  * admission before starting and atomically registering work. Any preflight
@@ -418,10 +549,40 @@ abstract start(spec: JobSpec): JobId
 abstract list(caller?: SessionId): JobView[]
 
 /**
+ * List accessible jobs across the caller's runtime ownership tree. A provider
+ * may retain trusted admission-time ancestry until an owner's jobs drain.
+ * Durable fork lineage never grants access to another root Agent.
+ * @param caller - root session; omission sees only unowned jobs.
+ * @returns deduplicated projections including unowned jobs.
+ */
+listTree(caller?: SessionId): JobView[]
+
+/**
+ * Project one job visible to the caller's live runtime ownership tree.
+ * @param id - job to look up.
+ * @param caller - root session; omission sees only unowned jobs.
+ * @returns a fresh projection, rejecting unknown or unrelated jobs.
+ */
+getTree(id: JobId, caller?: SessionId): JobView
+
+/**
+ * Cancel all live accessible jobs, then await their settlement concurrently.
+ * A timeout or aborted wait never claims termination. Cancellation failures
+ * are isolated per job, and newly admitted live jobs remain unconfirmed.
+ * @param caller - session whose live ownership tree is stopped.
+ * @param timeoutMs - non-negative finite bound; zero requests stops without waiting.
+ * @param reason - cancellation reason forwarded to every selected producer.
+ * @param signal - cancels observation; already requested stops remain in force.
+ * @param deadlineAt - optional enclosing absolute deadline; can only shorten this wait.
+ * @returns actual job states and whether all selected work stopped.
+ */
+async stopAll( caller: SessionId | undefined, timeoutMs: number, reason?: string, signal?: AbortSignal, deadlineAt?: number, ): Promise<JobStopReport>
+
+/**
  * Project one job without changing its cursor. Throws for an unknown or
  * foreign job.
  * @param id - job to look up.
- * @param caller - reading session checked against the owner.
+ * @param caller - session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.
  * @returns a fresh projection.
  */
 abstract get(id: JobId, caller?: SessionId): JobView
@@ -431,7 +592,7 @@ abstract get(id: JobId, caller?: SessionId): JobView
  * total. After settlement the first read also carries the producer's
  * result. Throws for an unknown or foreign job.
  * @param id - job to read.
- * @param caller - reading session checked against the owner.
+ * @param caller - session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.
  * @returns the chunks since the cursor, the lossy flag, the result once, and the post-read projection.
  */
 abstract read(id: JobId, caller?: SessionId): JobRead
@@ -443,7 +604,7 @@ abstract read(id: JobId, caller?: SessionId): JobRead
  * non-integer offset, or an unknown or foreign job.
  * @param id - job to read.
  * @param from - absolute byte offset to read from (0 for the retained head).
- * @param caller - reading session checked against the owner.
+ * @param caller - session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.
  * @returns retained chunks overlapping `[from, total)`, the resume offset, and the lossy flag.
  */
 abstract readAt(id: JobId, from: number, caller?: SessionId): JobOutputRead
@@ -454,7 +615,7 @@ abstract readAt(id: JobId, from: number, caller?: SessionId): JobOutputRead
  * terminal `detail` when the job settles `killed`. Throws for an unknown
  * or foreign job.
  * @param id - job to cancel.
- * @param caller - killing session checked against the owner.
+ * @param caller - session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.
  * @param reason - cancellation reason forwarded verbatim to the producer.
  * @returns `requested` for live work, otherwise `already-finished`.
  */
@@ -467,7 +628,7 @@ abstract kill(id: JobId, caller?: SessionId, reason?: string): 'requested' | 'al
  * job.
  * @param id - job to wait for.
  * @param timeoutMs - positive finite wait bound in milliseconds.
- * @param caller - waiting session checked against the owner.
+ * @param caller - session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.
  * @param signal - optional cancellation of the wait itself.
  * @returns projection at settlement or timeout.
  */
@@ -477,9 +638,10 @@ abstract wait(id: JobId, timeoutMs: number, caller?: SessionId, signal?: AbortSi
  * Drop one settled job's record from the visible set and announce
  * `removed`. For a caller that collected the terminal state through its own
  * {@link wait} and never handed the id to the model, such as a shell tool's
- * foreground call. Throws for a job that is still live, unknown, or foreign.
+ * foreground call. Throws for a job that is still live, may have orphaned work,
+ * is unknown, or is foreign.
  * @param id - settled job to drop.
- * @param caller - removing session checked against the owner.
+ * @param caller - session resolving to the captured owner or a trusted runtime ancestor; absent sees unowned jobs.
  */
 abstract remove(id: JobId, caller?: SessionId): void
 
@@ -493,7 +655,7 @@ abstract remove(id: JobId, caller?: SessionId): void
 abstract attachController(name: string): () => void
 ```
 
-Types: [SessionId](core.zh.md)
+Types: [JobStopReport](jobs.zh.md#session-tree-stop) · [SessionId](core.zh.md) · [SessionStopSource](jobs.zh.md#session-tree-stop)
 
 Source: [`packages/jobs/jobs/src/index.ts`](../../packages/jobs/jobs/src/index.ts)
 <!-- END GENERATED cordis-surface -->

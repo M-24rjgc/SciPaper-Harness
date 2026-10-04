@@ -11,6 +11,10 @@ Runs are independent processes: they keep going if the chat ends or the app rest
 
 `research_environment` environment `{name, kind: uv, target: local, python: "", requirements: [...], isDefault: true}` creates a managed Python 3.12 environment inside the project and locks its packages. Bind an existing interpreter (`kind: existing`/`conda`, absolute path) when the user already has one with CUDA; binding asks the user. For a remote GPU server: `target: ssh`, an OpenSSH alias as `sshHost`, a dedicated absolute `remoteRoot`.
 
+### SSH with a proxy or VPN enabled
+
+If SSH times out, cannot connect or fails during the handshake while a proxy or VPN is enabled, consider retrying with the SSH connection bypassing the global proxy. The appropriate way to bypass it depends on the computer and proxy configuration.
+
 ## 2. Code
 
 Put experiment code under `code/`. Each entry script:

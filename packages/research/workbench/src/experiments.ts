@@ -166,9 +166,12 @@ export async function adoptRunCode(project: ResearchProject, run: ExperimentReco
  * @param project - project snapshot supplying code, data and environment records.
  * @param run - durably queued run with a stable supervisor directory.
  * @param signal - cancellation for preparation and submission, not the detached experiment's lifetime.
+ * @param submitting - callback at the supervisor submission boundary, after immutable inputs are prepared.
  * @returns observed launch state, with terminal remote results cached locally; the caller persists it.
  */
-export async function launchExperiment(project: ResearchProject, run: ExperimentRecord, signal: AbortSignal): Promise<ExperimentRecord> {
+export async function launchExperiment(
+  project: ResearchProject, run: ExperimentRecord, signal: AbortSignal, submitting?: () => void,
+): Promise<ExperimentRecord> {
   const environment = project.environments.find(e => e.id === run.spec.environmentId)
   if (!environment) throw new Error('Experiment environment is missing')
   const directory = await projectPath(project.root, `.research/runs/${run.id}`)
@@ -245,11 +248,15 @@ export async function launchExperiment(project: ResearchProject, run: Experiment
       throw new Error('Choose a dedicated remote research directory, not a shared system or home root')
     }
     checked(await ssh(sshHostOf(environment), [environment.python, '-c', remoteInstall, run.directory], { signal, input: zipSync(bundle), timeoutMs: 600000 }), 'Remote input transfer')
+    signal.throwIfAborted()
+    submitting?.()
     output = checked(
       await ssh(sshHostOf(environment), [environment.python, `${run.directory}/experiment_runner.py`, 'launch', run.directory], { signal }),
       'Remote experiment submission',
     )
   } else {
+    signal.throwIfAborted()
+    submitting?.()
     output = checked(
       await runProcess(environment.python, [join(directory, 'experiment_runner.py'), 'launch', directory], { signal }),
       'Local experiment submission',
@@ -286,6 +293,7 @@ async function cacheRemoteResult(
  * @param run - previously persisted state used when scheduling observation retries.
  * @param action - read status or request cancellation of the existing supervisor.
  * @param signal - cancellation for the observation request; aborts reject instead of scheduling retry.
+ * @param cacheResult - whether to copy terminal supervisor results into the local run directory.
  * @returns updated state, or unknown with a retry deadline after an observation or cache failure.
  */
 export async function observeExperiment(
@@ -293,6 +301,7 @@ export async function observeExperiment(
   run: ExperimentRecord,
   action: 'status' | 'cancel',
   signal: AbortSignal,
+  cacheResult = true,
 ): Promise<ExperimentRecord> {
   const environment = project.environments.find(e => e.id === run.spec.environmentId)
   if (!environment) throw new Error('Experiment environment is missing')
@@ -302,7 +311,7 @@ export async function observeExperiment(
       : await runProcess(environment.python, [`${run.directory}/experiment_runner.py`, action, run.directory], { signal })
     const state = stateSchema.parse(JSON.parse(checked(result, 'Experiment observation')))
     const updated = applyState(run, state, state.metrics ?? run.metrics)
-    await cacheRemoteResult(project, environment, updated, signal)
+    if (cacheResult) await cacheRemoteResult(project, environment, updated, signal)
     return updated
   } catch (error) {
     if (signal.aborted) throw error

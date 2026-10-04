@@ -47,6 +47,25 @@ export function apply(ctx: ClientContext): void {
         // The brand is nominal typing only; the row key is the registry id the
         // roster stream delivered, so the wire boundary stamps it back here.
         killJob: async (sessionId, jobId) => (await ctx.jobs.kill(sessionId, jobId as JobId)).ok,
+        stopAllJobs: async (sessionId) => {
+          const result = await ctx.jobs.stopAll(sessionId)
+          if (!result.ok) return { confirmed: false, failures: [result.error.message] }
+          return {
+            confirmed: result.value.confirmed,
+            failures: [
+              ...result.value.jobs.filter(item => item.error !== undefined || item.job.status === 'running' || item.job.status === 'stopping' || item.job.detail?.includes('work may be orphaned'))
+                .map(item => `${item.job.id}: ${item.error ?? item.job.detail ?? item.job.status}`),
+              ...result.value.agents.filter(item => item.error !== undefined || item.status === 'running')
+                .map(item => `${item.sessionId}: ${item.error ?? item.status}`),
+              ...result.value.sources.flatMap(source => [
+                ...source.error !== undefined || (!source.confirmed && source.targets.length === 0)
+                  ? [`${source.source}: ${source.error ?? 'stop unconfirmed'}`] : [],
+                ...source.targets.filter(target => !target.confirmed || target.error !== undefined)
+                  .map(target => `${source.source}/${target.id}: ${target.error ?? target.status}`),
+              ]),
+            ],
+          }
+        },
       }),
     }, JobListAction),
   )

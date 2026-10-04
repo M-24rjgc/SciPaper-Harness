@@ -1253,6 +1253,56 @@
     },
     {
       "doc": "docs/subsystems/jobs.md",
+      "symbol": "SessionStopRequest",
+      "source": "packages/jobs/jobs/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "SessionStopSource",
+      "source": "packages/jobs/jobs/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "JobStopResult",
+      "source": "packages/jobs/jobs/src/view.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "StopSourceTarget",
+      "source": "packages/jobs/jobs/src/view.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "StopSourceReport",
+      "source": "packages/jobs/jobs/src/view.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "NamedStopSourceReport",
+      "source": "packages/jobs/jobs/src/view.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "JobStopReport",
+      "source": "packages/jobs/jobs/src/view.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "JobStopAllRequest",
+      "source": "packages/api/job-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "SessionStopResult",
+      "source": "packages/api/job-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
+      "symbol": "JobStopAllValue",
+      "source": "packages/api/job-controller/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/jobs.md",
       "symbol": "JobEvent",
       "source": "packages/jobs/jobs/src/types.ts"
     },

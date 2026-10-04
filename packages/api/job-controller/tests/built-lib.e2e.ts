@@ -38,5 +38,7 @@ describe.skipIf(!existsSync(artifact))('job Remote built codecs', () => {
     expect(schemaOf('list').safeParse({ type: 'rows', jobs: [row] }).success).toBe(true)
     expect(schemaOf('follow').safeParse({ type: 'opened', job: row, from: 0 }).success).toBe(true)
     expect(schemaOf('follow').safeParse({ type: 'status', job: { ...row, status: 'paused' } }).success).toBe(false)
+    expect(schemaOf('stopAll').safeParse({ confirmed: false, jobs: [{ job: row, error: 'timeout' }], sources: [{ source: 'experiment', confirmed: false, targets: [{ id: 'run-1', status: 'unknown', confirmed: false, error: 'transport failed' }] }], agents: [{ sessionId: 'parent', status: 'running', error: 'timeout' }] }).success).toBe(true)
+    expect(schemaOf('stopAll').safeParse({ confirmed: true, jobs: [], sources: [], agents: [{ sessionId: 'parent', status: 'paused' }] }).success).toBe(false)
   })
 })

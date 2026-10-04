@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join, resolve, toNamespacedPath } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -140,8 +141,8 @@ async function checkSharp() {
   assert.deepEqual(decoded.data, pixel)
 }
 
-/** Exercise Domino parsing through the HTML converter and GFM plugin used by web_fetch. */
-function checkHtml() {
+/** Exercise Domino and the installed tool's package-owned HTML Worker, including ASAR dependency reads. */
+async function checkHtml() {
   const Turndown = requireRuntime('turndown')
   const { gfm } = requireRuntime('@joplin/turndown-plugin-gfm')
   const converter = new Turndown({ bulletListMarker: '-' })
@@ -152,6 +153,106 @@ function checkHtml() {
   assert.match(markdown, /-\s+first\n-\s+second/u)
   assert.match(markdown, /\| Name \| Value \|/u)
   assert.match(markdown, /\| x\s+\| 7\s+\|/u)
+  const load = name => import(pathToFileURL(requireRuntime.resolve(name)).href)
+  const [{ Context }, { default: SystemPrompt }, { default: Tools }, { default: Web }, ToolWeb] = await Promise.all([
+    load('@deepseek-ai/cordis'), load('@deepseek-ai/dsh-system-prompt'), load('@deepseek-ai/dsh-tools'),
+    load('@deepseek-ai/dsh-web'), load('@deepseek-ai/dsh-tool-web'),
+  ])
+  const ctx = new Context()
+  let heartbeat
+  let cancellation
+  try {
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(Tools)
+    await ctx.plugin(Web)
+    ctx.web.registerFetchProvider({ id: 'desktop-html-fixture', available: () => true,
+      fetch: async request => ({ url: request.url, statusCode: 200, truncated: false,
+        body: { kind: 'html', content: request.url.endsWith('/large') ? '<p>text</p>'.repeat(100000)
+          : '<h2>Packaged HTML title</h2><p>A &amp; B</p><script>hidden()</script><p>HTML suffix</p>' } }) })
+    await ctx.plugin(ToolWeb, { search: false, fetchMaxOutputChars: 1000 })
+    let offset = 0
+    let content = ''
+    for (let page = 0; page < 10; page++) {
+      const result = await ctx.tools.execute({ callId: `desktop-html-${page}`, name: 'web_fetch',
+        arguments: { url: 'https://desktop-fixture.test/html', offset, max_chars: 20 }, signal: new AbortController().signal })
+      assert.equal(result.isError, false)
+      assert.equal(result.value.body.kind, 'text')
+      content += result.value.body.content
+      if (result.value.nextOffset === undefined) { assert.equal(result.value.truncated, false); break }
+      offset = result.value.nextOffset
+    }
+    assert.equal(content, '## Packaged HTML title\n\nA & B\n\nHTML suffix')
+    const controller = new AbortController()
+    let beats = 0
+    heartbeat = setInterval(() => { beats++ }, 20)
+    cancellation = setTimeout(() => { controller.abort(new Error('desktop HTML cancelled')) }, 250)
+    const cancelled = await ctx.tools.execute({ callId: 'desktop-html-cancel', name: 'web_fetch',
+      arguments: { url: 'https://desktop-fixture.test/large' }, signal: controller.signal })
+    assert.equal(cancelled.isError, true)
+    assert.ok(beats > 1, 'Host heartbeat continues while the large HTML parser is running')
+  } finally {
+    clearInterval(heartbeat)
+    clearTimeout(cancellation)
+    await ctx.fiber.dispose()
+  }
+}
+
+/** Build offline text PDFs whose CJK variant requires the packaged binary CMaps in the parser Worker. */
+function pdfFixture(cjk = false) {
+  const stream = cjk ? 'BT /F1 12 Tf 30 100 Td <6587> Tj ET' : 'BT /F1 12 Tf 30 100 Td (Packaged PDF text) Tj ET'
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 200] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    cjk
+      ? '<< /Type /Font /Subtype /Type0 /BaseFont /HeiseiKakuGo-W5 /Encoding /UniJIS-UTF16-H /DescendantFonts [6 0 R] >>'
+      : '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  if (cjk) objects.push(
+    '<< /Type /Font /Subtype /CIDFontType0 /BaseFont /HeiseiKakuGo-W5 /CIDSystemInfo '
+      + '<< /Registry (Adobe) /Ordering (Japan1) /Supplement 6 >> /DW 1000 /FontDescriptor 7 0 R >>',
+    '<< /Type /FontDescriptor /FontName /HeiseiKakuGo-W5 /Flags 6 /FontBBox [0 -200 1000 900] '
+      + '/ItalicAngle 0 /Ascent 900 /Descent -200 /CapHeight 800 /StemV 80 >>',
+  )
+  let body = '%PDF-1.7\n'
+  const offsets = [0]
+  objects.forEach((object, index) => { offsets.push(body.length); body += `${index + 1} 0 obj\n${object}\nendobj\n` })
+  const start = body.length
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets.slice(1)) body += `${String(offset).padStart(10, '0')} 00000 n \n`
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`
+  return Buffer.from(body)
+}
+
+/** Fetch local fixture bytes through the installed provider, including Worker imports and CMap/font ASAR reads. */
+async function checkPdf() {
+  const entry = requireRuntime.resolve('@deepseek-ai/dsh-web-fetch-http')
+  const { HttpFetchProvider } = await import(pathToFileURL(entry).href)
+  const requireFetch = createRequire(entry)
+  const pdfRoot = dirname(requireFetch.resolve('pdfjs-dist/package.json'))
+  assert.ok(readFileSync(join(pdfRoot, 'cmaps', 'UniJIS-UTF16-H.bcmap')).byteLength > 0)
+  assert.ok(readFileSync(join(pdfRoot, 'standard_fonts', 'LiberationSans-Regular.ttf')).byteLength > 0)
+  const server = createServer((request, response) => {
+    response.writeHead(200, { 'content-type': 'application/pdf' }).end(pdfFixture(request.url === '/cjk'))
+  })
+  try {
+    await new Promise(resolveListen => server.listen(0, '127.0.0.1', resolveListen))
+    const origin = `http://127.0.0.1:${server.address().port}`
+    const provider = new HttpFetchProvider({ maxResponseBytes: 100_000, maxBodyChars: 1000, timeoutMs: 15_000,
+      maxRedirects: 0, userAgent: 'desktop-pdf-smoke', allowFakeIpDns: false },
+    async () => [{ address: '127.0.0.1', family: 4 }])
+    for (const [path, expected] of [['/text', 'Packaged PDF text'], ['/cjk', '文']]) {
+      const result = await provider.fetch({ url: `${origin}${path}` })
+      assert.equal(result.body.kind, 'text')
+      assert.ok(result.body.content.includes(expected), `Packaged PDF ${path} text must survive the parser Worker`)
+      assert.equal(result.truncated, false)
+    }
+  } finally {
+    if (server.listening) await new Promise((resolveClose, reject) => server.close((error) => {
+      if (error === undefined) resolveClose(); else reject(error)
+    }))
+  }
 }
 
 /** Import native document libraries from the copied interpreter and render files. */
@@ -189,17 +290,18 @@ try {
   checkPnpm()
   checkKoffi()
   await checkSharp()
-  checkHtml()
+  await checkHtml()
+  await checkPdf()
   if (process.platform === 'win32') checkResearchPython()
   await checkPty()
   await checkSearch()
 } finally {
   // This private tree contains only fixture files; Windows may release handles after terminal exit.
-  await rm(scratch, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 })
+  await rm(scratch, { recursive: true, maxRetries: 20, retryDelay: 50 })
 }
 
 // Natural event-loop drain includes node-pty's worker and console-list helper teardown.
 process.once('beforeExit', () => {
   console.log(JSON.stringify({ node: process.versions.node, platform: process.platform, arch: process.arch,
-    koffi: true, sharp: true, html: true, pty: true, pnpm: true, grep: true, glob: true }))
+    koffi: true, sharp: true, html: true, pdf: true, pty: true, pnpm: true, grep: true, glob: true }))
 })

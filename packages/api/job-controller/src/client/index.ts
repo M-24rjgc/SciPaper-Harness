@@ -19,6 +19,7 @@ export type { JobsSnapshot, ObservedJob } from './model.ts'
 export type { IJobs } from './service.ts'
 export type {
   JobChunk, JobKillRequest, JobKillValue, JobFollowFrame, JobFollowRequest, JobListFrame, JobListRequest, JobView,
+  JobStopAllRequest, JobStopAllValue,
 } from '../types.ts'
 
 /** Required Client Remote services. */

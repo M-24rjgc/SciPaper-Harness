@@ -299,21 +299,37 @@ export class LocalBashExecutor extends ShellExecutor {
     let stdoutOffset = 0
     let stderrOffset = 0
     let resultPromise: Promise<ShellRunResult> | undefined
+    const joinProcessRange = async (): Promise<void> => {
+      if (running === undefined) return
+      try {
+        // A completed command owns its remaining descendants until they exit.
+        // Stop them before publishing completion, preserving the leader's outcome.
+        running.terminate()
+        if (!await running.waitForExit()) throw new Error('process range did not become empty')
+      } catch (error) {
+        let detail = 'unprintable cleanup failure'
+        try { detail = String(error) } catch { /* Provider failures must not reject done. */ }
+        providerFailure = { error, note: `process cleanup failed; work may be orphaned: ${detail}` }
+        proc.failure = providerFailure.note
+      }
+    }
     const proc: ShellExecution = {
       status: 'running',
       exitCode: null,
       signal: null,
       observed: { stdout: collected.stdout, stderr: observedStderr },
-      done: spawned.then((outcome) => {
-        // Any signal termination is killed, including a command signaling itself.
+      done: spawned.then(async (outcome) => {
+        proc.exitCode = outcome.exitCode
+        proc.signal = outcome.signal
+        await joinProcessRange()
+        // Keep the range killable until cleanup finishes. A natural leader exit
+        // keeps its exit code even when cleanup stops surviving descendants.
         if (proc.status === 'running') {
           proc.status = spawnSignal?.aborted === true || outcome.signal !== null ? 'killed' : 'completed'
         }
-        proc.exitCode = outcome.exitCode
-        proc.signal = outcome.signal
         this.onProcessDone(proc, collected.stderr.readFrom(0).text, false)
         disarm()
-      }, (error: unknown) => {
+      }, async (error: unknown) => {
         // A live handle whose rejection follows this execution's own
         // termination — kill() or the spawn signal's abort — reports its
         // terminal outcome: a provider that terminated the range before the
@@ -323,6 +339,7 @@ export class LocalBashExecutor extends ShellExecutor {
         // synchronous spawn throw never produced a handle and stays a failure.
         if (running !== undefined && (proc.status === 'killed' || spawnSignal?.aborted === true)) {
           proc.status = 'killed'
+          await joinProcessRange()
           this.onProcessDone(proc, collected.stderr.readFrom(0).text, false)
           disarm()
           return
@@ -336,6 +353,8 @@ export class LocalBashExecutor extends ShellExecutor {
           // Provider-owned rejection values cannot make ShellProcess.done reject.
         }
         providerFailure = { error, note: `subprocess failed before reporting an outcome: ${detail}` }
+        proc.failure = providerFailure.note
+        await joinProcessRange()
         this.onProcessDone(proc, providerFailure.note, true, error)
         disarm()
       }),

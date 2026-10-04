@@ -1,5 +1,5 @@
 ---
-description: "ctx.web 的匿名公共 HTTP(S) 抓取后端：部署方如何挂载有界、安全的 URL 抓取，含同源重定向与仅文本解码。"
+description: "ctx.web 的匿名公共 HTTP(S) 抓取后端：部署方如何挂载有界、安全的 URL 抓取，含逐跳校验重定向及有界文本/PDF 解码。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-有了 `dsh-web-fetch-http`，harness 可以通过 web 服务（`ctx.web`）抓取公共 HTTP(S) 页面，并在不发送凭据的情况下获得状态码与有界、解码后的内容。当组合需要 URL 校验、公开地址解析、连接固定、仅同源重定向、字节和字符上限及显式产品 `User-Agent` 时选择它。它把非 2xx 响应作为结果而非错误返回，并拒绝非公开目标、二进制数据与不受支持的内容类型。面向模型的 `web_fetch` 工具位于 `dsh-tool-web`，由它渲染本提供方的正文。
+有了 `dsh-web-fetch-http`，harness 可以通过 web 服务（`ctx.web`）抓取公共 HTTP(S) 页面，并在不发送凭据的情况下获得状态码与有界、解码后的内容。当组合需要 URL 校验、公开地址解析、连接固定、可配置的匿名跨源重定向、字节和字符上限及显式产品 `User-Agent` 时选择它。它把非 2xx 响应作为结果而非错误返回，并拒绝非公开目标与不受支持的内容类型。PDF 按页提取文本，不执行文档脚本；扫描页需要 OCR。面向模型的 `web_fetch` 工具位于 `dsh-tool-web`，由它渲染本提供方的正文。
 
 ## 目录
 
@@ -45,8 +45,9 @@ kind: "package-reference"
 | `maxResponseBytes` | `5,000,000` | 响应主体最大字节数 |
 | `maxBodyChars` | `100,000` | 解码主体最大字符数 |
 | `timeoutMs` | `30,000` | 抓取超时——资源兜底，不是面向模型的工具预算 |
-| `maxRedirects` | `5` | 同源重定向最大跳数（`0` 表示不跟随） |
+| `maxRedirects` | `5` | 允许的重定向最大跳数（`0` 表示不跟随） |
 | `userAgent` | `deepseek-harness/…` | 每次请求发送的 `User-Agent` 标头 |
+| `allowCrossOriginRedirects` | `false` | 允许匿名跨源跳转，每一跳都校验目标；拒绝 HTTPS 降级 |
 | `allowFakeIpDns` | `true` | 抓取所有 DNS 应答都是 fake-ip 代理占位地址（位于 `198.18.0.0/15` 或 `2001:2::/48`）的主机名；`false` 则拒绝 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-fetch-http)是每个受支持字段及其 JSDoc 的穷尽式真源。
@@ -62,7 +63,7 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 
 ### 传输行为
 
-提供方保持请求匿名且有界：只接受不含内嵌凭据且不超过 2,048 个字符的 `http:` 与 `https:` URL。它只解析一次主机名；只要结果中有任何 IPv4 或 IPv6 地址不是公共单播地址（下文的 fake-ip 例外除外），就拒绝整个结果，并把连接固定到已校验的地址集合。IPv6 检查会发现活动 DNS64 前缀，并拒绝指向非公开 IPv4 的转换地址。每次同源重定向都会重复解析与固定；跨源重定向会失败并要求重新调用。提供方还强制执行字节、字符、跳数和时间上限，拒绝不支持的内容类型，并发送显式产品 `User-Agent`。
+提供方保持请求匿名且有界：只接受不含内嵌凭据且不超过 2,048 个字符的 `http:` 与 `https:` URL。它只解析一次主机名；只要结果中有任何 IPv4 或 IPv6 地址不是公共单播地址（下文的 fake-ip 例外除外），就拒绝整个结果，并把连接固定到已校验的地址集合。IPv6 检查会发现活动 DNS64 前缀，并拒绝指向非公开 IPv4 的转换地址。每次同源重定向都会重复解析与固定；跨源重定向须开启 `allowCrossOriginRedirects`，每一跳都重新校验目标。提供方还强制执行字节、字符、跳数和时间上限，拒绝不支持的内容类型，并发送显式产品 `User-Agent`。
 
 经 HTTP 代理（`HTTPS_PROXY` 或 `HTTP_PROXY`，由启动器设置，或由 Desktop 应用依据操作系统代理设置）发送的请求会跳过本地解析与固定，因为由代理解析源站。代理策略绕过的跳数仍走“解析并固定”路径，地址检查会拒绝的 IP 字面量也绝不会交给代理。
 
@@ -90,7 +91,7 @@ Clash、mihomo 和 sing-box 的 fake-ip 模式会用 `198.18.0.0/15`（IPv4）�
 
 本包基于一项职责分离和一套分层超时机制：
 
-- **安全获取与呈现分离。** 本提供方拥有 URL 校验、公开地址强制规则、连接固定、HTTP 传输、重定向策略、上限、charset 解码与二进制拒绝；`dsh-tool-web` 拥有 HTML→markdown 与截断格式化。非 2xx 响应是数据，不是失败。
+- **安全获取与呈现分离。** 本提供方拥有 URL 校验、公开地址强制规则、连接固定、HTTP 传输、重定向策略、上限、charset 与 PDF 文本解码；`dsh-tool-web` 拥有 HTML→markdown 与截断格式化。非 2xx 响应是数据，不是失败。
 - **两层超时。** 提供方的 `timeoutMs` 是直接 `ctx.web.fetch()` 调用方的资源兜底；面向模型的工具调用预算属于 `dsh-tool-call-timeout-policy`，由它触发 `exec.signal`。外层截止期限先到时，提供方报告 `WEB_ABORTED`，策略再以 `TOOL_TIMEOUT` 替换；因此 `WEB_FETCH_TIMEOUT` 标识的是提供方预算耗尽的直接服务调用方。
 
 ### 源码地图
@@ -105,7 +106,9 @@ Clash、mihomo 和 sing-box 的 fake-ip 模式会用 `198.18.0.0/15`（IPv4）�
 
 ### 读取路径
 
-抓取先校验 URL，只解析一次主机名，结果中只要有非公开地址就拒绝（`allowFakeIpDns` 开启时，只由 fake-ip 占位地址组成的应答会被接受），并把连接固定到已接受地址。每次同源重定向都重复该检查；跨源重定向或非公开目标在接收响应字节前失败。最终响应按 `Content-Type` 分类、依声明的 charset 解码，并在字节上限内读取；解码后的文本再截断到字符上限。
+抓取先校验 URL，只解析一次主机名，结果中只要有非公开地址就拒绝（`allowFakeIpDns` 开启时，只由 fake-ip 占位地址组成的应答会被接受），并把连接固定到已接受地址。每次允许的重定向都重复该检查；不允许的重定向或非公开目标在接收响应字节前失败。最终响应按 `Content-Type` 分类、依声明的 charset 解码，并在字节上限内读取；解码后的文本再截断到字符上限。
+
+PDF 文本提取每次使用独立 Worker，V8 old-generation 上限为 256 MiB，不继承环境变量。这是解析器资源限制，不是操作系统内存沙箱。取消时会终止并等待 Worker 退出。CMap 与字体从已安装的 PDF.js 包读取；不执行文档脚本或 OCR。
 
 </details>
 
@@ -141,7 +144,7 @@ Clash、mihomo 和 sing-box 的 fake-ip 模式会用 `198.18.0.0/15`（IPv4）�
 
 这些限制说明提供方何时不安全或不合适。它们是当前包约束。
 
-- **只解码文本内容**——包括 html/xhtml 与 `text/*` 加 JSON/XML 家族；缺少 `Content-Type` 或任何二进制类型都会抛出 `WEB_UNSUPPORTED_CONTENT_TYPE`，可提取文本的 PDF 解码属于明确的延期工作。
+- **支持的内容**——html/xhtml、`text/*`、JSON/XML 与 PDF 文本。缺少或不受支持的内容类型明确报错。无效、加密或没有文本的 PDF 会失败，不会返回空内容的成功；不执行 OCR。
 - **charset 只来自 `Content-Type` 标头**（默认 UTF-8）——HTML `<meta charset>` 声明会被忽略；声明但无法识别的 charset 标签会抛出异常，而非回退。
 - **默认接受 fake-ip 应答**——完全落在 `198.18.0.0/15` 或 `2001:2::/48` 内的主机名会被抓取，因此在把这些范围路由到真实主机的网络上，指向那里的名称会到达这些主机；此类网络应设置 `allowFakeIpDns: false`。该检查从不接受混合应答或 IP 字面量，而经代理发送的请求根本不做本地检查。
 

@@ -357,6 +357,27 @@ describe('HttpFetchProvider caps', () => {
 })
 
 describe('HttpFetchProvider redirects', () => {
+  it('follows opted-in anonymous cross-origin redirects and validates every target', async () => {
+    handler = (req, res) => {
+      if (req.url === '/final') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('redirect destination'); return }
+      res.writeHead(302, { location: `${base.replace('127.0.0.1', 'localhost')}/final` }); res.end()
+    }
+    const resolver = vi.fn(async () => [{ address: '127.0.0.1', family: 4 as const }])
+    const result = await new HttpFetchProvider({ ...limits, allowCrossOriginRedirects: true }, resolver).fetch({ url: base })
+    expect(result.body.content).toBe('redirect destination')
+    expect(resolver.mock.calls).toHaveLength(2)
+  })
+
+  it('does not contact a redirected destination rejected by address validation', async () => {
+    let hits = 0
+    handler = (_req, res) => { hits++; res.writeHead(302, { location: 'http://blocked.test/private' }); res.end() }
+    const resolver = vi.fn(async (host: string) => {
+      if (host === 'blocked.test') throw new Error('destination rejected')
+      return [{ address: '127.0.0.1', family: 4 as const }]
+    })
+    await expect(new HttpFetchProvider({ ...limits, allowCrossOriginRedirects: true }, resolver).fetch({ url: base })).rejects.toThrow('destination rejected')
+    expect(hits).toBe(1)
+  })
   it('follows a same-origin redirect and reports the final URL', async () => {
     handler = (req, res) => {
       if (req.url === '/start') { res.writeHead(302, { location: '/end' }); res.end() }

@@ -32,7 +32,7 @@ import type {
   WorkspaceValue,
 } from './types.ts'
 
-const SSH_FAILURES: readonly WorkspaceSshFailure[] = ['auth', 'unreachable', 'host-key', 'host-key-changed', 'unsupported']
+const SSH_FAILURES: readonly WorkspaceSshFailure[] = ['auth', 'unreachable', 'handshake', 'host-key', 'host-key-changed', 'unsupported']
 
 /** The classification of an SSH connection failure, read without importing the SSH package. */
 function sshFailureOf(error: unknown): WorkspaceSshFailure | undefined {

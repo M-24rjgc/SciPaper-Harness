@@ -155,6 +155,13 @@ describe('mapAnthropicResponse', () => {
       .toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
   })
 
+  it('reports native search error objects with their code rather than a non-iterable error', () => {
+    for (const error_code of ['too_many_requests', 'max_uses_exceeded', 'query_too_long', 'invalid_input', 'unavailable']) {
+      expect(() => mapAnthropicResponse({ content: [{ type: 'web_search_tool_result', content: { type: 'web_search_tool_result_error', error_code } }] }))
+        .toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR', message: `DeepSeek native web search failed: ${error_code}` }))
+    }
+  })
+
   it('throws WEB_PROVIDER_ERROR when content is absent entirely', () => {
     expect(() => mapAnthropicResponse({}))
       .toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))

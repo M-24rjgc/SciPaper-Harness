@@ -46,6 +46,10 @@ kind: "package-reference"
 
 使用 PTC 时，配置两个引导字段，并将验证后的 `ctx.ssh.nodeExecutable` 与 `ctx.ssh.bootstrapPath` 传给 [`NodePtcRuntime`](../../ptc-runtime/ptc-runtime-node/README.zh.md)。仅使用文件系统和 Bash 时可以省略这对字段。未配置 PTC 部署时，`bootstrapPath` getter 会拒绝访问。
 
+### 代理排查
+
+开启全局代理时，如果 SSH 连接超时或握手失败，可以考虑让该连接绕过全局代理后再次尝试。
+
 <a id="password-login"></a>
 ### 密码登录
 
@@ -55,7 +59,7 @@ kind: "package-reference"
 
 这需要 OpenSSH 8.4 或更新版本（`SSH_ASKPASS_REQUIRE` 自该版本引入）；更旧或无法识别的客户端会在建立任何连接之前以 `unsupported` 类别失败。在 Windows 上，该程序是 `askpass.cmd`，由它运行 Windows PowerShell 中的 `askpass.ps1`，以 UTF-8 写出密码，密码不经过 `cmd.exe`。Windows OpenSSH 客户端无法启动路径含非 ASCII 字符的程序，所以目录按顺序建在临时目录、`ProgramData` 或 `Users\Public` 之下，取第一个纯 ASCII 的位置。Windows 为每条流各建立一个已认证连接，所以每条流都会重新登录。
 
-包入口 `@deepseek-ai/dsh-ssh/auth` 导出所有 ssh 调用方共用的部分：解析 `用户@主机:端口` 的 `parseSshHost` 和 `sshDestinationArguments`，`planSshAuth`，`SshPasswordStore`，以及 `SshFailure` 与 `classifySshFailure`，后者把 ssh 诊断归为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`。
+包入口 `@deepseek-ai/dsh-ssh/auth` 导出所有 ssh 调用方共用的部分：解析 `用户@主机:端口` 的 `parseSshHost` 和 `sshDestinationArguments`，`planSshAuth`，`SshPasswordStore`，以及 `SshFailure` 与 `classifySshFailure`，后者把 ssh 诊断归为 `auth`、`unreachable`、`handshake`、`host-key`、`host-key-changed` 或 `unsupported`。
 
 <a id="trusting-a-new-host"></a>
 ### 信任新主机

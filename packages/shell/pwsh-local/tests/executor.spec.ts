@@ -36,7 +36,7 @@ function start(x: { execute(spec: ShellExecSpec): Promise<ShellExecution> }, spe
 const spillDir = mkdtempSync(join(tmpdir(), 'dsh-pwsh-exec-spec-'))
 
 afterAll(() => {
-  rmSync(spillDir, { recursive: true, force: true })
+  rmSync(spillDir, { recursive: true })
 })
 
 /** Per-test temp dirs, removed after each test. */
@@ -46,7 +46,7 @@ afterEach(async () => {
   const ownedContexts = contexts.splice(0)
   const directories = tempDirs.splice(0)
   const results = await Promise.allSettled(ownedContexts.map(ctx => ctx.fiber.dispose()))
-  for (const dir of directories) rmSync(dir, { recursive: true, force: true })
+  for (const dir of directories) rmSync(dir, { recursive: true })
   const failures: unknown[] = results.flatMap((result): unknown[] => result.status === 'rejected' ? [result.reason] : [])
   if (failures.length > 0) throw new AggregateError(failures, 'PowerShell fixture cleanup failed')
 })
@@ -204,6 +204,9 @@ describe('spawn construction (pure, every platform)', () => {
     async terminalEnvironment() { return { platform: 'posix' as const } }
     specs: SubprocessSpawnSpec[] = []
     done: Promise<SubprocessOutcome> = Promise.resolve({ exitCode: 0, signal: null })
+    rangeDone: Promise<boolean> = Promise.resolve(true)
+    terminated = 0
+    onTerminate: () => void = () => {}
     stderrText = ''
     override async resolveExecutable(command: string): Promise<string> { return command }
     override spawnTerminal(): Promise<never> { throw new Error('pwsh spawns pipes, never terminals') }
@@ -226,8 +229,8 @@ describe('spawn construction (pure, every platform)', () => {
         stderr: undefined,
         collected: { stdout: this.stdoutReader, stderr: this.stderrReader },
         done: this.done,
-        terminate: () => {},
-        waitForExit: async () => true,
+        terminate: () => { this.terminated++; this.onTerminate() },
+        waitForExit: () => this.rangeDone,
       }
     }
   }
@@ -310,6 +313,101 @@ describe('spawn construction (pure, every platform)', () => {
     expect(ex.status).toBe('killed')
     await expect(ex.result()).resolves.toMatchObject({ aborted: false, timedOut: false, exitCode: null })
     expect(ex.readOutput().delta).toBe('')
+  })
+
+  it('does not settle a requested stop until the managed process range is empty', async () => {
+    const ctx = createContext()
+    const subprocess = new CapturingSubprocessRuntime(ctx)
+    const direct = Promise.withResolvers<SubprocessOutcome>()
+    const range = Promise.withResolvers<boolean>()
+    subprocess.done = direct.promise
+    subprocess.rangeDone = range.promise
+    await ctx.plugin(PwshLocalExecutor)
+    const ex = await start(ctx.shell, ctx.shell.resolve({ command: 'Write-Output maybe-ran' }))
+    ex.kill()
+    let settled = false
+    void ex.done.then(() => { settled = true })
+    direct.resolve({ exitCode: 1, signal: null })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(settled).toBe(false)
+    range.resolve(true)
+    await ex.done
+    expect(ex.failure).toBeUndefined()
+    expect(settled).toBe(true)
+  })
+
+  it('keeps a natural leader exit killable until its remaining range is joined', async () => {
+    const ctx = createContext()
+    const subprocess = new CapturingSubprocessRuntime(ctx)
+    const range = Promise.withResolvers<boolean>()
+    const stopping = Promise.withResolvers<undefined>()
+    subprocess.done = Promise.resolve({ exitCode: 42, signal: null })
+    subprocess.rangeDone = range.promise
+    subprocess.onTerminate = () => { stopping.resolve(undefined) }
+    subprocess.stderrText = 'leader output'
+    await ctx.plugin(PwshLocalExecutor)
+    const ex = await start(ctx.shell, ctx.shell.resolve({ command: 'exit 42' }))
+    await stopping.promise
+    const settled = vi.fn()
+    void ex.done.then(settled)
+    expect(ex.status).toBe('running')
+    expect(settled).not.toHaveBeenCalled()
+    expect(ex.kill()).toBe(true)
+    range.resolve(true)
+    await ex.done
+    expect(ex.status).toBe('killed')
+    expect(ex.exitCode).toBe(42)
+    expect(ex.readOutput().delta).toBe('[stderr]\nleader output')
+    await expect(ex.result()).resolves.toMatchObject({ exitCode: 42, signal: null, timedOut: false, aborted: false })
+  })
+
+  it('reports a failed natural-completion cleanup as possibly orphaned work', async () => {
+    const ctx = createContext()
+    const subprocess = new CapturingSubprocessRuntime(ctx)
+    const range = Promise.withResolvers<boolean>()
+    subprocess.done = Promise.resolve({ exitCode: 0, signal: null })
+    subprocess.rangeDone = range.promise
+    await ctx.plugin(PwshLocalExecutor)
+    const ex = await start(ctx.shell, ctx.shell.resolve({ command: 'exit 0' }))
+    range.reject(new Error('process inspector unavailable'))
+    await ex.done
+    expect(ex.status).toBe('completed')
+    expect(ex.failure).toContain('work may be orphaned')
+    expect(ex.readOutput().delta).toContain('process inspector unavailable')
+    await expect(ex.result()).rejects.toThrow('process inspector unavailable')
+  })
+
+  it('stops surviving range members after the direct command dies by signal', async () => {
+    const ctx = createContext()
+    const subprocess = new CapturingSubprocessRuntime(ctx)
+    const range = Promise.withResolvers<boolean>()
+    subprocess.done = Promise.resolve({ exitCode: null, signal: 'SIGTERM' })
+    subprocess.rangeDone = range.promise
+    subprocess.onTerminate = () => { range.resolve(true) }
+    await ctx.plugin(PwshLocalExecutor)
+    const ex = await start(ctx.shell, ctx.shell.resolve({ command: 'Write-Output maybe-ran' }))
+    await ex.done
+    expect(ex.status).toBe('killed')
+    expect(subprocess.terminated).toBe(1)
+  })
+
+  it('preserves cleanup observation failure instead of confirming a kill', async () => {
+    const ctx = createContext()
+    const subprocess = new CapturingSubprocessRuntime(ctx)
+    const direct = Promise.withResolvers<SubprocessOutcome>()
+    const range = Promise.withResolvers<boolean>()
+    subprocess.done = direct.promise
+    subprocess.rangeDone = range.promise
+    await ctx.plugin(PwshLocalExecutor)
+    const ex = await start(ctx.shell, ctx.shell.resolve({ command: 'Write-Output maybe-ran' }))
+    ex.kill()
+    direct.resolve({ exitCode: 1, signal: null })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    range.reject(new Error('process inspector unavailable'))
+    await expect(ex.done).resolves.toBeUndefined()
+    expect(ex.failure).toContain('work may be orphaned')
+    expect(ex.readOutput().delta).toContain('process inspector unavailable')
+    await expect(ex.result()).rejects.toThrow('process inspector unavailable')
   })
 
   it('preserves an explicit kill stamp and maps an aborted direct outcome to killed', async () => {
@@ -437,6 +535,61 @@ describe('cancellation against a hanging backend (fake backend, every platform)'
 })
 
 describe.skipIf(!hasPwsh)('PwshLocalExecutor.run', () => {
+  it.runIf(process.platform === 'win32').each(['kill', 'none'] as const)(
+    'joins a surviving native descendant after a natural leader exit under %s expiry',
+    { timeout: 15_000 },
+    async (onExpiry) => {
+      const { ctx, bash } = await setup()
+      const nativeScript = [
+        "const { spawn } = require('node:child_process')",
+        "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', detached: true })",
+        'console.log(child.pid)',
+        'child.unref()',
+        'process.exitCode = 42',
+      ].join(';')
+      let survivorWasAlive = false
+      const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+      vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
+        const handle = spawn(spec)
+        return {
+          ...handle,
+          terminate: () => {
+            const pid = Number(handle.collected?.stdout?.readFrom(0).text.trim())
+            if (Number.isInteger(pid) && pid > 0) {
+              try { process.kill(pid, 0); survivorWasAlive = true } catch { /* Already exited. */ }
+            }
+            handle.terminate()
+          },
+        }
+      })
+      const execution = await bash.execute(bash.resolve({
+        command: '& $env:SHELL_TEST_NODE -e $env:SHELL_TEST_SCRIPT; exit $LASTEXITCODE',
+        env: { SHELL_TEST_NODE: process.execPath, SHELL_TEST_SCRIPT: nativeScript },
+        onExpiry,
+        timeoutMs: 10_000,
+      }))
+      try {
+        const result = await execution.result()
+        const pid = Number(result.stdout.text.trim())
+        expect(survivorWasAlive).toBe(true)
+        expect(Number.isInteger(pid) && pid > 0).toBe(true)
+        expect(() => process.kill(pid, 0)).toThrow()
+        expect(execution.status).toBe('completed')
+        expect(execution.failure).toBeUndefined()
+        expect(result.exitCode).toBe(42)
+        expect(result.signal).toBeNull()
+        expect(result.timedOut).toBe(false)
+        expect(result.aborted).toBe(false)
+        expect(execution.readOutput().delta.trim()).toBe(String(pid))
+        expect(execution.readOutput().delta).toBe('')
+      } finally {
+        execution.kill()
+        await ctx.fiber.dispose()
+        await execution.done
+      }
+    },
+  )
+
   it('resolves with output and the effective timeout', { timeout: 15_000 }, async () => {
     const { bash } = await setup({ timeoutMs: 10_000 })
     const result = await run(bash, bash.resolve({ command: 'Write-Output hi' }))

@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it, vi } from 'vitest'
@@ -54,6 +55,52 @@ async function readUntil(proc: ShellProcess, expected: string, timeoutMs = 5_000
 }
 
 describe('LocalBashExecutor.run', () => {
+  it.each(['kill', 'none'] as const)(
+    'joins a surviving native descendant after a natural leader exit under %s expiry',
+    async (onExpiry) => {
+      const { ctx, bash } = await setup()
+      let survivorWasAlive = false
+      const spawn = ctx.subprocess.spawn.bind(ctx.subprocess)
+      vi.spyOn(ctx.subprocess, 'spawn').mockImplementation((spec) => {
+        const handle = spawn(spec)
+        return {
+          ...handle,
+          terminate: () => {
+            const pid = Number(handle.collected?.stdout?.readFrom(0).text.trim())
+            if (Number.isInteger(pid) && pid > 0) {
+              try { process.kill(pid, 0); survivorWasAlive = true } catch { /* Already exited. */ }
+            }
+            handle.terminate()
+          },
+        }
+      })
+      const execution = await bash.execute(bash.resolve({
+        command: 'sleep 60 </dev/null >/dev/null 2>&1 & echo $!; exit 42', onExpiry,
+      }))
+      try {
+        const result = await execution.result()
+        const pid = Number(result.stdout.text.trim())
+        expect(survivorWasAlive).toBe(true)
+        expect(Number.isInteger(pid) && pid > 0).toBe(true)
+        // A terminated orphan may remain a zombie until its OS reaper collects it.
+        await expect.poll(() => spawnSync('ps', ['-p', String(pid), '-o', 'stat='], { encoding: 'utf8' }).stdout.trim())
+          .toMatch(/^(?:Z.*)?$/u)
+        expect(execution.status).toBe('completed')
+        expect(execution.failure).toBeUndefined()
+        expect(result.exitCode).toBe(42)
+        expect(result.signal).toBeNull()
+        expect(result.timedOut).toBe(false)
+        expect(result.aborted).toBe(false)
+        expect(execution.readOutput().delta.trim()).toBe(String(pid))
+        expect(execution.readOutput().delta).toBe('')
+      } finally {
+        execution.kill()
+        await ctx.fiber.dispose()
+        await execution.done
+      }
+    },
+  )
+
   it('resolves with output and the effective timeout', async () => {
     const { bash } = await setup({ timeoutMs: 5_000 })
     const result = await run(bash, bash.resolve({ command: 'echo hi' }))

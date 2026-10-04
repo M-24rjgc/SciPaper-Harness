@@ -35,9 +35,11 @@ A producer streams output by naming pull sources on its spec — non-consuming o
 
 ### The ownership boundary
 
-A job belongs to the agent session that started it: another agent cannot read or stop it. Ids such as `bash-1` are predictable, so this fence is authorization, not secrecy. A job started without an owner is open to any caller and lasts until the service is disposed.
+A job belongs to the agent session that started it: unrelated agents cannot read or stop it. `listTree(caller)` exposes the caller and its runtime-owned descendants; the local registry captures trusted runtime ancestry at job admission and retains it until the job is removed, so a detached child's remaining work stays reachable; durable fork lineage does not grant access. `stopAll(caller, timeoutMs, reason?, signal?)` requests every live cancellation before waiting concurrently, returns actual per-job states, and confirms only when no selected work remains live or possibly orphaned. Cancelling a wait leaves the jobs running; only explicit stop controls request cancellation. Ids such as `bash-1` are predictable, so this fence is authorization, not secrecy. A job started without an owner is open to any caller and lasts until the service is disposed.
 
 ### Starting background work needs a controller
+
+Independent supervisors can register an effect-scoped `registerStopSource(name, source)` adapter. Only explicit `stopAll(caller, timeoutMs, reason?, signal?, deadlineAt?)` invokes it; ordinary turn cancellation, owner disposal, and service disposal leave its resources alone. A source receives the exact registered caller, verified live runtime descendants, and one absolute deadline; it must validate target ownership independently and return `{ confirmed, targets: [{ id, status, confirmed, error? }], error? }`. Editable session ids or persisted fork lineage confer no authority. Stop reports include `sources` beside `jobs`; a timeout, failed adapter, or unknown target prevents confirmation. An enclosing deadline can shorten a wait and never starts a new observation budget.
 
 A producer can start work only while a controller that serves the owner is attached — loading `dsh-tool-jobs` attaches one. An agent whose composition loads no controller cannot start background work; `start()` fails with a message that names the missing controller rather than starting work the agent could never collect or stop.
 
@@ -48,7 +50,7 @@ A producer can start work only while a controller that serves the owner is attac
 - name: '@deepseek-ai/dsh-tool-jobs'
 ```
 
-Loading these two plugins on a harness base that already provides the agent, tools, and system-prompt services gives the full feature: `dsh-jobs-local` provides the in-process background-job registry, and `dsh-tool-jobs` provides the `job_output`, `job_list`, and `job_kill` tools plus completion-notice delivery.
+Loading these two plugins on a harness base that already provides the agent, tools, and system-prompt services gives the full feature: `dsh-jobs-local` provides the in-process background-job registry, and `dsh-tool-jobs` provides the `job_output`, `job_list`, `job_kill`, and `job_stop_all` tools plus completion-notice delivery.
 
 ### What can go wrong
 
@@ -68,7 +70,7 @@ This section explains the design decisions behind the contract and points at the
 
 - **Contract and implementation are separate packages.** `JobRegistry` is an abstract Cordis service; loading the class directly throws, so a misconfigured composition fails at load instead of registering an empty `ctx.jobs`.
 - **One registry per process, owner-relative answers.** One instance serves every composition in the process, so registrations and deliveries are relative to the registering scope: a controller or listener registered from an unscoped context serves every owner; one registered under an agent composition's scope serves exactly the agents composed under it.
-- **Access is fenced by the owner's session id.** Ids are predictable, so authorization — not secrecy — is the boundary.
+- **Access uses exact registered runtimes.** A caller session resolves to the captured owner or a trusted admission-time runtime ancestor; reusing an old session id grants no access. `list()` returns only the current owner’s jobs and unowned work; `listTree()` includes captured descendants.
 - **Settlement is first-wins, and its event follows every released waiter.** One terminal record, released waiters, then one round of contained event delivery; the `settled` event reports whether it released a live `wait` (`awaited`), so `dsh-tool-jobs` never announces a completion a waiting caller already collected, whichever plugin was waiting.
 - **Registrations outlive producer and controller fibers.** Owner and service disposal cancel live work and await compliant producers; a throwing teardown cancel force-fails only the record.
 
@@ -101,7 +103,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [Background task runtime subsystem](../../../docs/subsystems/jobs.md) — the job types, projection fields, and `ctx.jobs` Cordis surface.
 - [jobs group map](../README.md) — the sibling group page and its package table.
 - [Process-local registry](../jobs-local/README.md) — the shipped implementation that runs jobs in this process.
-- [Model-facing job controls](../tool-jobs/README.md) — the `job_output`, `job_list`, and `job_kill` tools and completion notices.
+- [Model-facing job controls](../tool-jobs/README.md) — the `job_output`, `job_list`, `job_kill`, and `job_stop_all` tools and completion notices.
 - [Generic long-running tool runtime Agent Note](../../../.agents/notes/implemented/architecture/2026-06-20-generic-long-running-tool-runtime.md) — the design behind the background-job runtime.
 - [job-registry seam Agent Note](../../../.agents/notes/archived/architecture/2026-07-26-job-registry-seam.md) — the owner-fenced registry contract and its rationale.
 - [Jobs seam consolidation Agent Note](../../../.agents/notes/implemented/architecture/2026-09-03-jobs-seam-consolidation.md) — one output ring, one projection, one event stream.
@@ -126,7 +128,7 @@ These limits define when the contract is a poor fit. They are current package co
 
 - **The contract is in-process** — `JobSpec.run()` passes callbacks and the registry resolves the live `Agent` behind the owner session; a durable or cross-process backend must reshape identity, restart, ownership, and observation semantics before it can implement this seam.
 - **The model's cursor is the only consuming read** — independent observers use the non-consuming `readAt` and never move it.
-- **A settled record stays listed until it is removed** — by its owner's disposal, service disposal, or an explicit `remove` from the caller that collected it; the registry keeps no retention count of settled jobs.
+- **A settled record stays listed until it is removed** — by its owner's disposal, service disposal, or an explicit `remove` from the caller that collected it. Possible-orphan records survive owner disposal, refuse explicit removal, and keep `stopAll()` unconfirmed; service disposal removes them. The registry keeps no retention count of settled jobs.
 
 <a id="dev-note"></a>
 ### Dev Note

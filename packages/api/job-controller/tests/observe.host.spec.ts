@@ -16,6 +16,19 @@ import { collect, harness, next, registerAgent, startJob, wait } from './host-ha
 const OBSERVE: ObserveJobOptions = { flushMs: 5, maxFrameBytes: 1024 }
 
 describe('observeJobOutput', () => {
+  it('allows an owning root to observe a child without consuming the child model cursor', async () => {
+    const ctx = await harness()
+    const root = await registerAgent(ctx, 'observe-root')
+    const child = await registerAgent(ctx, 'observe-child', root)
+    const job = startJob(ctx, { owner: child.id })
+    job.append('child output')
+    await job.settle({ status: 'completed' })
+    const abort = new AbortController()
+    const frames = await collect(observeJobOutput(ctx.jobs, { sessionId: root.id, jobId: job.id }, OBSERVE, abort.signal), 3, abort)
+    expect(frames.find(frame => frame.type === 'output')).toMatchObject({ chunks: [{ text: 'child output' }] })
+    expect(ctx.jobs.read(job.id, child.id).chunks[0]?.text).toBe('child output')
+    await ctx.fiber.dispose()
+  })
   function observed(ctx: Context, request: { jobId: JobId; sessionId?: SessionId; from?: number }) {
     const abort = new AbortController()
     const frames: JobFollowFrame[] = []

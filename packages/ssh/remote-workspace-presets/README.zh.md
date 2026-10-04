@@ -28,7 +28,7 @@ kind: "package-reference"
 
 主机参数是已有的 OpenSSH 别名，或带可选 `:端口` 的 `用户@主机`。SSH 使用非交互模式，严格检查主机密钥，不转发 SSH Agent。远端主机需要 Node.js 22 或更新版本。本服务不配置 SSH 凭据，也不放宽主机密钥策略。
 
-添加工作区时，`inspect` 还接受 `auth` 登录选择。`{ kind: 'password', password }` 会先拿这个密码向主机验证，主机接受之后才把它保存到凭据库中该主机的记录下（见[密码登录](../ssh/README.zh.md#password-login)）；密码错误不会改变任何内容，下一次请求会重新验证。`{ kind: 'key' }` 用 OpenSSH 密钥、认证代理和配置验证，并清除此前为该主机保存的密码。不带 `auth` 的请求，例如每次恢复会话，使用主机已保存的认证方式。`forget(host)` 删除已保存的密码。主机拒绝时会以 `SshFailure` 报错，其 `kind` 为 `auth`、`unreachable`、`host-key`、`host-key-changed` 或 `unsupported`；错误信息中绝不含密码。
+添加工作区时，`inspect` 还接受 `auth` 登录选择。`{ kind: 'password', password }` 会先拿这个密码向主机验证，主机接受之后才把它保存到凭据库中该主机的记录下（见[密码登录](../ssh/README.zh.md#password-login)）；密码错误不会改变任何内容，下一次请求会重新验证。`{ kind: 'key' }` 用 OpenSSH 密钥、认证代理和配置验证，并清除此前为该主机保存的密码。不带 `auth` 的请求，例如每次恢复会话，使用主机已保存的认证方式。`forget(host)` 删除已保存的密码。主机拒绝时会以 `SshFailure` 报错，其 `kind` 为 `auth`、`unreachable`、`handshake`、`host-key`、`host-key-changed` 或 `unsupported`；错误信息中绝不含密码。
 
 对于添加中的工作区，若失败原因是主机密钥未知，`SshFailure` 还会携带该密钥的 `type` 和 SHA-256 `fingerprint`，它们由 [`scanHostKey`](../ssh/README.zh.md#trusting-a-new-host) 读取，不记录任何内容。调用方把它展示给人并得到确认后，用 `trustHostKey: <该指纹>` 再次调用 `inspect`；服务随后通过 `trustHostKey` 把密钥记录到 `known_hosts`（已记录了不同密钥的主机会被拒绝），并像以前一样在严格的主机密钥检查下验证工作区。没有这次调用，就不会向 `known_hosts` 写入任何内容。
 

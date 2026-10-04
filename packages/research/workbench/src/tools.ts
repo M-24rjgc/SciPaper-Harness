@@ -6,7 +6,8 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ParameterSchemaSpec, type PreToolDecision, type ToolExecution, type ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
+import { z } from 'zod'
 import { isAbsolute, resolve } from 'node:path'
 import type { ResearchWorkbench } from './index.ts'
 import { canonicalPath } from './drafts.ts'
@@ -16,12 +17,105 @@ import { runView } from './project.ts'
 import { remoteResearchAt } from './session-project.ts'
 import { RELATION_GROUNDING_RULE, RELATION_KINDS } from './knowledge-relations-grounding.ts'
 import { traceMeta, withoutTrace } from './knowledge-trace.ts'
-import { autonomies, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
+import { autonomies, boardPatchSchema, checkIds, commandSchema, MODE_DECISION_KEY } from './schema.ts'
 import type { ProjectId, ResearchCommand, ResearchGoal, ResearchProject, ResearchResponse, ResearchStanding } from './types.ts'
 
 const text = (description: string) => ({ type: 'string' as const, description })
 const list = (description: string) => ({ type: 'array' as const, items: { type: 'string' as const }, description })
-const json = (description: string) => ({ type: 'json' as const, description })
+/** Whether object alternatives have required, mutually exclusive literal discriminants. */
+function disjointObjects(variants: z.core.JSONSchema.JSONSchema[]): boolean {
+  return variants.every((left, index) => variants.slice(index + 1).every(right =>
+    (left.required ?? []).some((key) => {
+      if (!right.required?.includes(key)) return false
+      const a = left.properties?.[key]
+      const b = right.properties?.[key]
+      return a !== undefined && b !== undefined && typeof a !== 'boolean' && typeof b !== 'boolean'
+        && a.const !== undefined && b.const !== undefined && a.const !== b.const
+    }),
+  ))
+}
+
+/** Overlapping object unions need an accepting envelope; Zod retains the alternative-specific requirements. */
+function objectUnion(variants: z.core.JSONSchema.JSONSchema[]): z.core.JSONSchema.JSONSchema {
+  const fields = new Map<string, Array<z.core.JSONSchema.JSONSchema | boolean>>()
+  for (const branch of variants) {
+    for (const [key, value] of Object.entries(branch.properties ?? {})) {
+      const values = fields.get(key) ?? []
+      if (!values.some(existing => JSON.stringify(existing) === JSON.stringify(value))) values.push(value)
+      fields.set(key, values)
+    }
+  }
+  const properties = Object.fromEntries([...fields].map(([key, values]): [string, z.core.JSONSchema.JSONSchema | boolean] => {
+    const first = values[0]
+    if (first === undefined) throw new Error('Research object union has an empty property')
+    if (values.length === 1) {
+      // Another alternative can ignore this field, so its literal is not an envelope-wide requirement.
+      if (typeof first !== 'boolean' && variants.some(branch => !Object.hasOwn(branch.properties ?? {}, key))) {
+        const { const: _literal, ...shape } = first
+        return [key, shape]
+      }
+      return [key, first]
+    }
+    const schemas = values.filter((value): value is z.core.JSONSchema.JSONSchema => typeof value !== 'boolean')
+    return [key, schemas.length === values.length ? { anyOf: schemas } : true]
+  }))
+  return {
+    type: 'object', properties,
+    required: (variants[0]?.required ?? []).filter(key => variants.every(branch => branch.required?.includes(key))),
+    additionalProperties: variants.some(branch => branch.additionalProperties !== false),
+  }
+}
+
+/** Project command validators into the tool DSL; numeric, length and overlapping-union constraints remain enforced by Zod. */
+function valueSchema(source: z.core.JSONSchema.JSONSchema | boolean, nullAsAbsent = false): ValueSchemaSpec {
+  if (typeof source === 'boolean') return { type: 'json' }
+  const variants = source.anyOf ?? source.oneOf
+  if (variants) {
+    const objects = variants.filter((branch): branch is z.core.JSONSchema.JSONSchema =>
+      typeof branch !== 'boolean' && branch.type === 'object')
+    if (source.anyOf && objects.length === variants.length && !disjointObjects(objects)) {
+      return valueSchema(objectUnion(objects), nullAsAbsent)
+    }
+    const [first, second, ...rest] = variants.map(branch => valueSchema(branch, nullAsAbsent))
+    if (!first || !second) throw new Error('Research input union needs at least two alternatives')
+    return { oneOf: [first, second, ...rest] }
+  }
+  switch (source.type) {
+    case 'object': {
+      const required = new Set(source.required)
+      const properties: ParameterSchemaSpec = Object.fromEntries(Object.entries(source.properties ?? {}).map(([key, value]) => {
+        const schema = valueSchema(value, nullAsAbsent)
+        const optional = !required.has(key)
+        const nullable: ValueSchemaSpec = nullAsAbsent && optional ? { oneOf: [schema, { type: 'null' }] } : schema
+        return [key, { ...nullable, ...optional ? {} : { required: true as const } }]
+      }))
+      return { type: 'object', properties, additionalProperties: source.additionalProperties !== false }
+    }
+    case 'array': {
+      const items = source.prefixItems?.[0] ?? source.items
+      if (Array.isArray(items)) throw new Error('Research input uses unsupported heterogeneous array items')
+      return { type: 'array', ...(items === undefined ? {} : { items: valueSchema(items, nullAsAbsent) }) }
+    }
+    case 'string': return { type: 'string', ...(typeof source.const === 'string' ? { const: source.const } : {}),
+      ...(source.enum ? { enum: source.enum.filter((value): value is string => typeof value === 'string') } : {}) }
+    case 'integer': return { type: 'integer' }
+    case 'number': return { type: 'number' }
+    case 'boolean': return { type: 'boolean', ...(typeof source.const === 'boolean' ? { const: source.const } : {}) }
+    case 'null': return { type: 'null' }
+    default: throw new Error('Research input validator has no supported JSON type')
+  }
+}
+
+/** Select an action's own field so the advertised object agrees with its execution validator. */
+function structured(action: string, field: string, description: string): ValueSchemaSpec {
+  const option = commandSchema.options.find(item => item.shape.action.value === action)
+  if (!option) throw new Error(`Unknown research action: ${action}`)
+  const fields: Record<string, z.ZodType> = option.shape
+  const schema = fields[field]
+  if (!schema) throw new Error(`Unknown ${action} field: ${field}`)
+  const input = schema === boardPatchSchema ? boardPatchSchema.out : schema
+  return { ...valueSchema(z.toJSONSchema(input, { io: 'input', reused: 'inline', cycles: 'throw' }), schema === boardPatchSchema), description }
+}
 const projectId = text('Optional; defaults to the research linked to this conversation’s workspace.')
 const output = { schema: { type: 'json' as const }, render: (_args: unknown, value: JsonValue) => [{ type: 'text' as const, text: JSON.stringify(value) }] }
 /**
@@ -71,8 +165,8 @@ const FAMILIES: Family[] = [
       evidenceId: text('refresh-evidence'),
       query: text('search-evidence / literature-search'),
       provider: { type: 'string', enum: ['crossref', 'openalex', 'arxiv'], description: 'literature-search' },
-      item: json('literature-import: one item exactly as literature-search returned it'),
-      claim: json('claim: {id, text, kind: hypothesis|method|literature|empirical, state: proposed|supported|contradicted|stale, evidence: [{evidenceId, revision, locator, quote}], artifactIds}'),
+      item: structured('literature-import', 'item', 'literature-import: one item exactly as literature-search returned it'),
+      claim: structured('claim', 'claim', 'claim: claim text, kind, support state and exact evidence references'),
     },
   },
   {
@@ -82,7 +176,7 @@ const FAMILIES: Family[] = [
     description: 'Paper files, LaTeX and export. Files you write with ordinary file tools count too; register-artifact {path, kind} records '
       + 'what the file was made from (evidence links, input artifacts such as the data and script behind a plot). save-artifact {path, content, kind} writes and records; '
       + 'expectedRevision is optional and only guards against overwriting a newer edit. Kinds: manuscript, diagram, figure, code, bibliography, supplement, image. '
-      + 'compile {path?, engine}: builds the PDF (path defaults to the main .tex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. '
+      + 'compile {path?, engine?}: builds the PDF (path defaults to the main .tex; engine defaults to xelatex). render-pages {maxPages?}: PNGs of the latest PDF — look at each with read_image. '
       + 'list-venues {query?}: the template library, 139 CCF venues (words such as "neurips", "CCF-A", "security"). apply-template {venue, stage?: review|final}: '
       + 'the venue\'s official style files, example and guide into template/<venue>/ (a paper there, or anywhere in the project, finds them), and '
       + 'template.json, main.tex.tmpl and the style files into the project root for an assembled paper; review is anonymous where the venue is. '
@@ -93,12 +187,12 @@ const FAMILIES: Family[] = [
       content: text('save-artifact: full file text'),
       kind: { type: 'string', enum: ['manuscript', 'diagram', 'figure', 'code', 'bibliography', 'supplement', 'image'], description: 'save-artifact / register-artifact' },
       expectedRevision: { type: 'integer', description: 'save-artifact: optional optimistic revision' },
-      evidence: json('save/register: [{evidenceId, revision, locator, quote}]'),
+      evidence: structured('register-artifact', 'evidence', 'save/register: evidence citations pinned to an imported revision'),
       claimIds: list('save/register: claims this file states'),
-      inputArtifacts: json('save/register: [{id, revision}] the files this one was made from (e.g. data table and plotting script)'),
+      inputArtifacts: structured('register-artifact', 'inputArtifacts', 'save/register: the artifact revisions this file was made from'),
       artifactId: text('read-artifact / render-pages'),
       paths: list('import-template: template files or directories'),
-      engine: { type: 'string', enum: ['pdflatex', 'xelatex', 'lualatex'], description: 'compile (xelatex for CJK text)' },
+      engine: { type: 'string', enum: ['pdflatex', 'xelatex', 'lualatex'], description: 'compile: defaults to xelatex, including CJK text' },
       maxPages: { type: 'integer', description: 'render-pages: page cap' },
       query: text('list-venues: words matched against venue id, name, family and CCF tier'),
       venue: text('apply-template: a venue id from list-venues'),
@@ -113,8 +207,9 @@ const FAMILIES: Family[] = [
     actions: ['environment'],
     description: 'Create or bind the Python environment experiments run in. environment {environment: {name, kind: uv|existing|conda, target: local|ssh, '
       + 'python, sshHost?, remoteRoot?, requirements: [], isDefault}}. kind uv with a blank python creates a managed 3.12 environment inside the project. '
-      + 'Existing and conda interpreters are inspected, never modified, and binding a local one asks the user first. SSH uses an OpenSSH alias and a dedicated absolute remoteRoot.',
-    fields: { environment: json('the environment description') },
+      + 'Existing and conda interpreters are inspected, never modified, and binding a local one asks the user first. SSH uses OpenSSH config, an alias and a dedicated absolute remoteRoot. '
+      + 'If SSH times out or the handshake fails, consider retrying with the SSH connection bypassing the global proxy.',
+    fields: { environment: structured('environment', 'environment', 'the environment description') },
   },
   {
     name: 'research_experiment',
@@ -129,7 +224,7 @@ const FAMILIES: Family[] = [
       + 'until a run finishes. experiment-logs / -refresh / -cancel / -dismiss {runId}; dismiss only drops a run whose state is unknown.',
     fields: {
       requestId: text('experiment: a new UUID'),
-      spec: json('experiment: the run specification'),
+      spec: structured('experiment', 'spec', 'experiment: the run specification'),
       runId: text('refresh / cancel / dismiss / logs'),
       runIds: list('experiment-wait'),
       timeoutSeconds: { type: 'integer', description: 'experiment-wait' },
@@ -156,7 +251,7 @@ const FAMILIES: Family[] = [
       + 'only this project can read, such as a queue the user runs on a server. board-refresh: probe the machines and run every collector now, '
       + 'reporting each error. board-get: the layout as stored.',
     fields: {
-      board: json('board-update: the layout, or the parts to change'),
+      board: structured('board-update', 'board', 'board-update: the layout, or the parts to change'),
       replace: { type: 'boolean', description: 'board-update: start from an empty board' },
     },
   },
@@ -266,7 +361,7 @@ const FAMILIES: Family[] = [
       verdict: { type: 'string', enum: ['pin', 'irrelevant'], description: 'mark: pin keeps it in recall; irrelevant takes it out' },
       note: text('mark: why, in a few words (at most 280 characters)'),
       id: text('unmark: the mark id, <graph>:<kind>:<id>'),
-      proposals: json('relations-propose: [{kind, from, to, ground}], at most 50'),
+      proposals: structured('relations-propose', 'proposals', 'relations-propose: grounded directed relations, at most 50'),
       relation: text('relations-reject: the relation id, as relations-neighbourhood lists it in brackets'),
       ground: text('relations-reject: the id of one ground, when only that ground is wrong'),
       reason: text('relations-reject: why, in a few words (at most 280 characters)'),
@@ -628,7 +723,8 @@ export function registerResearchTools(
       + 'metrics or data, placeholders (\\tbd{}, "--" cells), included figures exist, the latest compile is current, pages were looked at, the review '
       + `is current, stale files — plus the gates of the project's mode. scope: all (default), a phase of the current mode (with its gates), one base check (${checkIds.join(', ')}) `
       + 'or one of the mode\'s gates; a phase and a base check of the same name mean the phase. It reports and never blocks, and it records '
-      + 'where each phase stands for the user. Not clean means not done: fix the errors and check again.',
+      + 'where each phase stands for the user. Each check reports passed, warnings, failed or skipped; phase results distinguish materialsPresent from checksComplete. '
+      + 'Warnings remain visible and nonblocking; skipped checks have not established coverage. Not clean means not done: fix the errors or finish skipped checks, then check again.',
     parameters: { projectId, scope: text('all, a phase id, a check id or a gate id') },
     output,
     async execute(args, exec) {
@@ -657,7 +753,7 @@ export function registerResearchTools(
       if (request.action === 'complete-visual-review' && exec.agent?.session.id !== request.sessionId) {
         throw new Error('Only the assigned visual-review session can record these findings')
       }
-      return compact(await service.execute(request, exec.signal, 'agent', exec.agent?.session.id))
+      return compact(await service.execute(request, exec.signal, 'agent', exec.agent?.session.id, exec.agent))
     },
     presentCall: () => ({ card: 'generic', title: family.title, kind: 'other' }),
   }))

@@ -79,12 +79,14 @@ describe('ssh failure classification', () => {
     for (const text of [
       'ssh: Could not resolve hostname nowhere.invalid: No such host is known.',
       'ssh: connect to host 10.0.0.9 port 22: Connection refused',
+      'Connection to 10.255.255.1 port 22 timed out',
+    ]) expect(classifySshFailure(text)).toBe('unreachable')
+    for (const text of [
       'banner exchange: Connection to UNKNOWN port -1: Connection refused',
       'kex_exchange_identification: Connection closed by remote host',
       'Connection timed out during banner exchange',
-      'Connection to 10.255.255.1 port 22 timed out',
       'Connection closed by 198.18.1.43 port 22',
-    ]) expect(classifySshFailure(text)).toBe('unreachable')
+    ]) expect(classifySshFailure(text)).toBe('handshake')
     expect(classifySshFailure('No ED25519 host key is known for [127.0.0.1]:2222 and you have requested strict checking.\nHost key verification failed.')).toBe('host-key')
     expect(classifySshFailure('Host key verification failed.')).toBe('host-key')
     expect(classifySshFailure(
