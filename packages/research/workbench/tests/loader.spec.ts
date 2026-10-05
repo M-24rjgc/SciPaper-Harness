@@ -24,6 +24,7 @@ import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-ses
 import type { SessionEvent, SessionHeader } from '@deepseek-ai/dsh-session'
 import type { SessionCreateRequest } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import type { ProcessOptions, ProcessResult } from '../src/process.ts'
 import type { ResearchProject } from '../src/types.ts'
@@ -183,7 +184,7 @@ interface FakeWorkspace { id: WorkspaceId; title: string; setTitle(title: string
 /** A live session as the research service reads it: its id and header. */
 interface FakeSession { id: string; header: { cwd?: string; origin?: 'subagent' } }
 /** A live agent as the research service reads it: its session. */
-interface FakeAgent { session: FakeSession }
+type FakeAgent = Agent
 
 interface Harness {
   service: InstanceType<typeof ResearchWorkbench>
@@ -305,7 +306,11 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
         get archivedSessionIds() { return [...archived] },
       } as unknown as Context['workspaceRegistry'])
-      c.provide('agents', { list: () => agents, get: (id: string) => agents.find(agent => agent.session.id === id) } as unknown as Context['agents'])
+      const agentRegistry = {
+        list: () => agents,
+        get: id => agents.find(agent => agent.id === id),
+      } satisfies Pick<Context['agents'], 'list' | 'get'>
+      c.provide('agents', agentRegistry as Context['agents'])
       c.provide('goals', {
         get: (agent: FakeAgent) => {
           const goal = goals.get(agent.session.id)
@@ -1558,7 +1563,20 @@ describe('the research service records; it never drives the agent', () => {
       id: `goal-${objective}` as GoalView['id'], revision: 1, objective, phase, maxGoalRounds: 10, roundsStarted: 2, createdAt: 0, updatedAt, activation: 'armed',
     })
     const live = (id: string, cwd: string | undefined, origin?: 'subagent'): void => {
-      agents.push({ session: { id, header: { ...(cwd === undefined ? {} : { cwd }), ...(origin === undefined ? {} : { origin }) } } })
+      const sessionId = SessionId(id)
+      const unexpected = (): never => { throw new Error('Goal listing must not drive the agent') }
+      agents.push({
+        id: sessionId,
+        session: Session.create(sessionId, [], {
+          version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 1, isSeeded: false,
+          ...(cwd === undefined ? {} : { cwd }), ...(origin === undefined ? {} : { origin }),
+        }),
+        options: {}, status: 'idle',
+        get ctx() { return unexpected() },
+        get inbox() { return unexpected() },
+        cancel: unexpected, whenIdle: unexpected, runMaintenance: unexpected,
+        send: unexpected, followup: unexpected, steer: unexpected, inject: unexpected,
+      })
     }
     live('paused', join(p.root, 'paper')); goals.set('paused', goal('paused', 'paused', 5))
     live('older', p.root); goals.set('older', goal('older', 'active', 1))

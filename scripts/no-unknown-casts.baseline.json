@@ -664,10 +664,8 @@
     "cc2498d77007a477d8c01ee2b1e428c53cf75833ec6c074491663a24841c03b9": 1
   },
   "packages/client/ui-research/tests/entry-screen.client.spec.tsx": {
-    "28fbcb8556371a1c8ddc5d01fb713ccec06487f91d52ea7ea87bea49e647b3f2": 1,
     "2d7763e5ae7f9c76082711216607f6b80dc80295f6f9bf139491104f6cc8a794": 1,
-    "63003388ed86dd56d4f1ebe83788d58774a01b047a2f846a0f88ad9ad3cdf1f9": 1,
-    "bc7c371dcec833233e8fabaa5ce887d4d601054d4dd1584b26c55616914868bf": 1
+    "63003388ed86dd56d4f1ebe83788d58774a01b047a2f846a0f88ad9ad3cdf1f9": 1
   },
   "packages/client/ui-research/tests/folder-menu.client.spec.tsx": {
     "16dd8839fe56d31d20720ad94c54b77f6a5d65eb9f2987f04135bbb07856299c": 1,
@@ -1633,7 +1631,6 @@
     "e1afcf3bd21c4348c25c31b75c3d96e12710fc3bb3165da6a77a48731cb7e737": 1,
     "e87443b2dcbfcd641eba56e2afb1b9daaa697f89df846c40cdea6bfb9b8a7ef3": 2,
     "f6c513c9c88e440628f945e2245725078f057bac0ac96cddeb4304d7a8a18966": 1,
-    "f6c86f29edc554d5fda72589a77b006468b174a428a5345ce7e88dec698b9829": 1,
     "fdc52fe715c5ffac1baacf2e1ace5c036603f441bd6991e30d0f5f27fb5a3ffd": 1
   },
   "packages/research/workbench/tests/preset.spec.ts": {

@@ -42,21 +42,19 @@ function lineProps(parts: {
 }) {
   const snapshot = parts.snapshot === undefined ? snapshotOf([draft, named, example]) : parts.snapshot
   const view: ResearchView = { snapshot, tasks: [] }
-  const list = { current: parts.current as SessionId | undefined, byId: {} } as unknown as SessionListState
   const showProgress = vi.fn()
   const props = {
     t,
-    useSessions: (select: (state: SessionListState) => unknown) => select(list),
-    useCurrentSession: (select: (value: string | undefined) => unknown) => select(parts.current),
-    useEntry: (select: (state: { notice: EntryNotice | null }) => unknown) => select({ notice: parts.notice ?? null }),
-    useResearch: (select: (state: ResearchView) => unknown) => select(view),
-    useDirectories: (select: (state: Record<string, string>) => unknown) => select(parts.directories ?? {
+    useCurrentSession: select => select(parts.current as SessionId | undefined),
+    useEntry: select => select({ notice: parts.notice ?? null }),
+    useResearch: select => select(view),
+    useDirectories: select => select(parts.directories ?? {
       's-draft': '/home/SciPaper/2026-09-26-1', 's-new': '/research/sparse', 's-example': '/demo/example', 's-loose': '/elsewhere',
     }),
     showProgress,
     dismissNotice: vi.fn(),
-  } as unknown as EntryLineProps
-  return { props, showProgress }
+  } satisfies Pick<EntryLineProps, 't' | 'useCurrentSession' | 'useEntry' | 'useResearch' | 'useDirectories' | 'showProgress' | 'dismissNotice'>
+  return { props: props as EntryLineProps, showProgress }
 }
 
 describe('the line under the headline', () => {
