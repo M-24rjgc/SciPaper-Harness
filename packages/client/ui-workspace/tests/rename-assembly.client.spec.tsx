@@ -14,7 +14,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
  * (session.spec.ts#rename), the entries' own arms with
  * session-actions.client.spec, the row's list rendering with rows.client.spec.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -37,6 +37,7 @@ beforeEach(() => { localStorage.clear() })
 /** Runtime with the locale face installed (the browser entry declares `locale:` — zh default backs the t seat). */
 async function createRuntime(): Promise<SlotTestRuntime> {
   const runtime = await SlotTestRuntime.create()
+  onTestFinished(() => runtime.dispose())
   runtime.ctx.provide('shortcuts', { register: () => () => {}, catalog: createSnapshotStore([]) })
   runtime.ctx.provide('layout', { selectPanel: vi.fn(), beginNavigation: () => new AbortController().signal })
   runtime.releaseWorkspaceSource()
@@ -74,11 +75,13 @@ async function declareFrame(runtime: SlotTestRuntime): Promise<void> {
 
 /** One Workspace holding the fixture Session. */
 async function seedWorkspace(runtime: SlotTestRuntime): Promise<void> {
+  localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId: SID }))
   await runtime.workspaces.update((draft) => {
     draft.items = [{
       workspaceId: 'w1' as WorkspaceId, title: 'alpha', path: '/w/alpha',
+      location: { kind: 'local', path: '/w/alpha' },
       sessionIds: [SID], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    }] as never
+    }]
   })
 }
 
@@ -91,7 +94,6 @@ describe('session rename through the assembled browser', () => {
       summary: { title: 'Persisted title', displayTitle: 'Session title', cwd: '/w/alpha' },
       session: { rename: vi.fn() },
     })
-    await runtime.sessions.retainFor(runtime.ctx, SID, { source: 'mainView' }).ready
     await seedWorkspace(runtime)
     await declareFrame(runtime)
     await runtime.mount({ inject: [...inject], apply })
@@ -140,7 +142,6 @@ describe('session rename through the assembled browser', () => {
     expect(view.queryByRole('menu')).toBeNull()
     await act(async () => { await Promise.resolve() })
     expect(document.activeElement).toBe(trigger)
-    await runtime.dispose()
   })
 
   it('renames via the row menu: binding.session.rename fires, the dialog closes, the row re-labels from the list', async () => {
@@ -153,7 +154,6 @@ describe('session rename through the assembled browser', () => {
       summary: { title: '旧标题', displayTitle: '旧标题', cwd: '/w/alpha' },
       session: { rename },
     })
-    await runtime.sessions.retainFor(runtime.ctx, SID, { source: 'mainView' }).ready
     await seedWorkspace(runtime)
     await declareFrame(runtime)
     await runtime.mount({ inject: [...inject], apply })
@@ -182,7 +182,6 @@ describe('session rename through the assembled browser', () => {
     await runtime.sessions.updateSummary(SID, { displayTitle: '分叉 实验记录', title: '分叉 实验记录' })
     await view.findByText('分叉 实验记录')
     expect(view.queryByText('旧标题')).toBeNull()
-    await runtime.dispose()
   })
 
   it('a rejected rename keeps the dialog open with the error surfaced', async () => {
@@ -195,7 +194,6 @@ describe('session rename through the assembled browser', () => {
       summary: { title: '旧标题', displayTitle: '旧标题', cwd: '/w/alpha' },
       session: { rename },
     })
-    await runtime.sessions.retainFor(runtime.ctx, SID, { source: 'mainView' }).ready
     await seedWorkspace(runtime)
     await declareFrame(runtime)
     await runtime.mount({ inject: [...inject], apply })
@@ -214,7 +212,7 @@ describe('session rename through the assembled browser', () => {
     const alert = await view.findByRole('alert')
     expect(alert.textContent).toContain('title write failed')
     expect(view.getByLabelText('会话名称')).toBeTruthy()
+    expect((input as HTMLInputElement).value).toBe('新名')
     expect(view.getByText('旧标题')).toBeTruthy()
-    await runtime.dispose()
   })
 })

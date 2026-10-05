@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { cp, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { chromium, type Page } from 'playwright'
 import { expect, it, onTestFailed, onTestFinished } from 'vitest'
+import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import {
   assertFixtureInventory, captureStableAria, compareOrRefreshGolden, launchWebScaffold,
   seedSession, watchConsole, webSnapshotMode,
@@ -83,6 +84,53 @@ it('places dynamic Session menu rows by order among the shipped ones and removes
       'bootstrap-rebuild.expected.md', 'enabled.expected.md', 'recovered.expected.md',
       'session-actions.expected.md',
     ])
+  } finally {
+    await browser.close()
+  }
+}, 120_000)
+
+it('retains a failed rename draft, retries, and reloads the persisted session title', async () => {
+  const scaffold = await launchWebScaffold({})
+  onTestFinished(() => scaffold.close())
+  const workspace = await scaffold.ctx.workspaceRegistry.create(scaffold.workspaceCwd)
+  const sessionId = await seedSession(scaffold, await readFile(SESSION_SEED, 'utf8'), 'rename-recovery-web-e2e')
+  await workspace.attachSession(sessionId)
+  await scaffold.ctx.sessionController.rename({ sessionId, title: SESSION_TITLE })
+  let refused = false
+  scaffold.ctx.on('api-session/command-admission', (admission, next) => {
+    if (admission.operation === 'rename' && admission.sessionId === sessionId && !refused) {
+      refused = true
+      throw new RemoteError('gateway/internal', 'Title write unavailable', {})
+    }
+    return next()
+  })
+  const browser = await chromium.launch()
+  try {
+    const page = await newEnglishPage(browser)
+    const consoleState = watchConsole(page)
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-rename-recovery'))
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
+    const row = page.getByRole('treeitem').filter({ has: page.getByText(SESSION_TITLE, { exact: true }) })
+    await row.hover()
+    await row.getByRole('button', { name: `Session actions for ${SESSION_TITLE}` }).click()
+    await page.getByRole('menuitem', { name: 'Rename', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Rename session', exact: true })
+    const input = dialog.getByRole('textbox', { name: 'Session name', exact: true })
+    await input.fill('Renamed session')
+    await dialog.getByRole('button', { name: 'Rename', exact: true }).click()
+    await dialog.getByRole('alert').getByText('Title write unavailable', { exact: false }).waitFor()
+    expect(await input.inputValue()).toBe('Renamed session')
+    expect((await scaffold.ctx.sessionController.inspect(sessionId)).events
+      .findLast(event => event.type === 'session/title')?.data.title).toBe(SESSION_TITLE)
+    await dialog.getByRole('button', { name: 'Rename', exact: true }).click()
+    await dialog.waitFor({ state: 'hidden' })
+    const renamed = page.getByRole('treeitem').filter({ has: page.getByText('Renamed session', { exact: true }) })
+    await renamed.waitFor()
+    expect((await scaffold.ctx.sessionController.inspect(sessionId)).events
+      .findLast(event => event.type === 'session/title')?.data.title).toBe('Renamed session')
+    await page.reload({ waitUntil: 'load' })
+    await renamed.waitFor()
+    expect(consoleState.pageErrors).toEqual([])
   } finally {
     await browser.close()
   }

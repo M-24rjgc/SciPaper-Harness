@@ -7,9 +7,10 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
  * renderer (not a direct `entry.inject()` call, which bypasses that memo) and
  * pins that a home learned after first render reaches the rendered rows.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
@@ -29,6 +30,7 @@ function SidebarFrame({ renderSlot }: FrameProps) {
 /** The assembled sidebar over one Workspace inside the POSIX home the Host reports. */
 async function bench() {
   const runtime = await SlotTestRuntime.create()
+  onTestFinished(() => runtime.dispose())
   runtime.ctx.provide('shortcuts', { register: () => () => {}, catalog: createSnapshotStore([]) })
   runtime.ctx.provide('uiConversation', {})
   runtime.ctx.provide('layout', { selectPanel: vi.fn(), beginNavigation: () => new AbortController().signal })
@@ -39,11 +41,15 @@ async function bench() {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  const sessionId = SessionId('home-session')
+  await runtime.sessions.add({ id: sessionId, summary: { cwd: '/home/u/Documents/project', blank: false } })
+  localStorage.setItem('dsh.sessions.current', JSON.stringify({ sessionId }))
   await runtime.workspaces.update((draft) => {
     draft.items = [{
       workspaceId: 'w1' as WorkspaceId, title: 'Project', path: '/home/u/Documents/project',
-      sessionIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
-    }] as never
+      location: { kind: 'local', path: '/home/u/Documents/project' },
+      sessionIds: [sessionId], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    }]
   })
   await runtime.root.declare(
     { 'sidebar.workspaces': { kind: 'single', scope: 'root' } } as never,
@@ -55,14 +61,16 @@ async function bench() {
 
 /** Open the Workspace row's hover card, which is where the home abbreviation shows. */
 function openHoverCard(): void {
-  const row = screen.getByRole('treeitem').parentElement as HTMLElement
+  const row = within(screen.getByRole('tree')).getByText('Project').closest('[role="treeitem"]')?.parentElement
+  if (row === undefined || row === null) throw new Error('Workspace row is not mounted')
   fireEvent.pointerEnter(row)
   act(() => { vi.advanceTimersByTime(800) })
 }
 
 /** Close it again, so the next hover rebuilds the card from current props. */
 function closeHoverCard(): void {
-  const row = screen.getByRole('treeitem').parentElement as HTMLElement
+  const row = within(screen.getByRole('tree')).getByText('Project').closest('[role="treeitem"]')?.parentElement
+  if (row === undefined || row === null) throw new Error('Workspace row is not mounted')
   fireEvent.pointerLeave(row)
   act(() => { vi.advanceTimersByTime(800) })
 }
@@ -78,12 +86,14 @@ describe('Host home in the assembled browsing region', () => {
     try {
       openHoverCard()
       expect(screen.getByText('/home/u/Documents/project')).toBeTruthy()
-      closeHoverCard()
 
       // The ready frame lands: `$host.home` now answers, and the generation is
       // announced through the reset every consumer already listens to.
       remote.$host = { home: '/home/u', isLoopback: true }
       act(() => { runtime.ctx.emit('connection/reset') })
+      expect(screen.getByText('~/Documents/project')).toBeTruthy()
+      expect(screen.queryByText('/home/u/Documents/project')).toBeNull()
+      closeHoverCard()
       openHoverCard()
 
       expect(screen.getByText('~/Documents/project')).toBeTruthy()

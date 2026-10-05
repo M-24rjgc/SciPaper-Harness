@@ -7,13 +7,13 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
-import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import WorkspaceRegistry, { type WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import WorkspaceController from '../src/index.ts'
 import { DEFAULT_WORKSPACE_DIRECTORY } from '../src/default-workspace.ts'
 import { WorkspaceFeed } from '../src/feed.ts'
 import type { WorkspaceFollowFrame } from '../src/types.ts'
-import { MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
+import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 
 // The controller relays whatever families the providers report; this suite merges its own.
 declare module '@deepseek-ai/dsh-workspace/types' {
@@ -50,14 +50,14 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve }
 }
 
-async function harness(options: { systemDocuments?: boolean; remote?: boolean } = {}) {
+async function harness(options: { systemDocuments?: boolean; remote?: boolean; pool?: MemoryMediaPool } = {}) {
   const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-workspace-controller-')))
   tempDirs.push(root)
   const ctx = new Context()
   roots.push(ctx)
   await ctx.plugin(SessionStore)
   await ctx.plugin(Storage)
-  ctx.storage.backend.register('memory', new MemoryStorageBackend())
+  ctx.storage.backend.register('memory', new MemoryStorageBackend(options.pool))
   const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
@@ -90,6 +90,48 @@ async function nextFrame(
 }
 
 describe('WorkspaceController commands', () => {
+  it('supplies local location identity for legacy records in the baseline, updates, and a reconnect', async () => {
+    const path = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-legacy-workspace-')))
+    tempDirs.push(path)
+    const workspaceId = '00000000-0000-4000-8000-000000000027' as WorkspaceId
+    const record: WorkspaceRecord = {
+      path, title: 'Existing project', sessionIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    }
+    const pool = new MemoryMediaPool()
+    pool.versions.set('workspace', 2)
+    pool.media.set('workspace', {
+      tables: new Map([['workspaces', new Map([[workspaceId, record]])]]),
+      global: { initialized: true, workspaceIds: [workspaceId] },
+    })
+    const { controller } = await harness({ pool })
+    const abort = new AbortController()
+    const iterator = controller.follow(abort.signal)[Symbol.asyncIterator]()
+    const location = { kind: 'local', path }
+    try {
+      await expect(nextFrame(iterator)).resolves.toMatchObject({
+        type: 'baseline', value: { items: [{ workspaceId, path, location, title: 'Existing project' }] },
+      })
+      await controller.rename({ workspaceId, title: 'Renamed project' })
+      await expect(nextFrame(iterator)).resolves.toMatchObject({
+        type: 'upsert', workspace: { workspaceId, path, location, title: 'Renamed project' },
+      })
+    } finally {
+      abort.abort()
+      await iterator.return?.()
+    }
+    const reconnect = new AbortController()
+    const restored = controller.follow(reconnect.signal)[Symbol.asyncIterator]()
+    try {
+      await expect(nextFrame(restored)).resolves.toMatchObject({
+        type: 'baseline', value: { items: [{ workspaceId, path, location, title: 'Renamed project' }] },
+      })
+    } finally {
+      reconnect.abort()
+      await restored.return?.()
+    }
+  })
+
   it('keeps the same remote path on separate SSH hosts as distinct workspaces', async () => {
     const { controller } = await harness()
     const first = await controller.create({ location: { kind: 'ssh', host: 'alpha', path: '/srv/research' } })
