@@ -10,7 +10,7 @@
  * outside a research. Every command it sends is handed to the validator the
  * service parses commands with.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
@@ -79,10 +79,21 @@ const trigger = (): HTMLElement => screen.getByRole('button', { name: /^自主�
 const choices = (): HTMLElement[] => screen.queryAllByRole('menuitem')
 
 describe('the autonomy chip in the composer', () => {
-  it('draws nothing in a conversation outside every research', () => {
+  it('changes only the ordinary conversation preset without creating or changing a project', async () => {
     const stranger = project()
     stranger.sessionId = 'elsewhere'
-    expect(mount(world([stranger])).chip.container.innerHTML).toBe('')
+    const w = world([stranger])
+    const setConversationAutonomy = vi.fn(async () => {})
+    const view = render(<AutonomyChip {...propsOf(w)} setConversationAutonomy={setConversationAutonomy} />)
+    fireEvent.click(trigger())
+    expect(screen.getByRole('menu').textContent).toContain(zh.autonomyConversationHeading)
+    fireEvent.click(choices()[1]!)
+    await settle()
+    expect(setConversationAutonomy).toHaveBeenCalledWith(SESSION, 'automatic')
+    expect(w.commands).toEqual([])
+    w.preset = 'research-auto'
+    view.rerender(<AutonomyChip {...propsOf(w)} setConversationAutonomy={setConversationAutonomy} />)
+    expect(trigger().textContent).toBe(zh.autonomyShortAutomatic)
   })
 
   it('reads as read-only in an example, with nothing to press', () => {

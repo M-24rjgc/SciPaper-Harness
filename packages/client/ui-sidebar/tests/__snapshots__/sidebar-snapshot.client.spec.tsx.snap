@@ -36,7 +36,7 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       </button>
     </div>
     <button
-      aria-label="New research"
+      aria-label="New conversation"
       class="newSession"
       type="button"
     >
@@ -109,7 +109,7 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       data-window-drag="true"
     >
       <button
-        aria-label="New research"
+        aria-label="New conversation"
         class="brand wide"
         type="button"
       >
@@ -178,7 +178,7 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
       </button>
     </div>
     <button
-      aria-label="New research"
+      aria-label="New conversation"
       class="newSession"
       type="button"
     >
@@ -201,7 +201,7 @@ exports[`sidebar shell snapshots > renders Windows caption controls in expanded 
           <span
             class="newSessionLabel wide"
           >
-            New research
+            New conversation
           </span>
         </span>
       </span>
@@ -296,7 +296,7 @@ exports[`sidebar shell snapshots > renders the collapsed rail after the crossfad
       </button>
     </div>
     <button
-      aria-label="New research"
+      aria-label="New conversation"
       class="newSession"
       type="button"
     >
@@ -369,7 +369,7 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       data-window-drag="true"
     >
       <button
-        aria-label="New research"
+        aria-label="New conversation"
         class="brand wide"
         type="button"
       >
@@ -438,7 +438,7 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
       </button>
     </div>
     <button
-      aria-label="New research"
+      aria-label="New conversation"
       class="newSession"
       type="button"
     >
@@ -461,7 +461,7 @@ exports[`sidebar shell snapshots > renders the expanded column (wordmark, capsul
           <span
             class="newSessionLabel wide"
           >
-            New research
+            New conversation
           </span>
         </span>
       </span>
@@ -516,7 +516,7 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
       data-window-drag="true"
     >
       <button
-        aria-label="新研究"
+        aria-label="新对话"
         class="brand wide"
         type="button"
       >
@@ -585,7 +585,7 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
       </button>
     </div>
     <button
-      aria-label="新研究"
+      aria-label="新对话"
       class="newSession"
       type="button"
     >
@@ -608,7 +608,7 @@ exports[`sidebar shell snapshots > renders the expanded column in the default lo
           <span
             class="newSessionLabel wide"
           >
-            新研究
+            新对话
           </span>
         </span>
       </span>

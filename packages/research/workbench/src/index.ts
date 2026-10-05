@@ -143,9 +143,10 @@ const MEMORY_PERSON_ONLY = 'memory-carry is the person\'s switch (the Memory vie
  * The person's commands: open, move or remove the untouched draft research,
  * and remove a research from the list or restore it; the agent never sends them.
  */
-type PersonCommand = Extract<ResearchCommand, { action: 'start-new' | 'relocate' | 'discard-draft' | 'archive-project' | 'unarchive-project' }>
+type PersonCommand = Extract<ResearchCommand, { action: 'start-new' | 'start-conversation' | 'create-project' | 'join-project' | 'relocate' | 'discard-draft' | 'archive-project' | 'unarchive-project' }>
 const PERSON_ACTIONS: ReadonlySet<ResearchCommand['action']> = new Set<PersonCommand['action']>([
   'start-new', 'relocate', 'discard-draft', 'archive-project', 'unarchive-project',
+  'start-conversation', 'create-project', 'join-project',
 ])
 /** Commands on one existing project. */
 type ProjectCommand = Exclude<ResearchCommand, PersonCommand>
@@ -499,6 +500,7 @@ export class ResearchWorkbench extends TypertRemoteService {
       modes: this.modes.summaries(),
       knowledge: { enabled: this.knowledgeEnabled, modules: this.knowledgeModules },
       researchHome: this.researchHome(),
+      conversationHome: this.conversationHome(),
     }
   }
 
@@ -652,6 +654,12 @@ export class ResearchWorkbench extends TypertRemoteService {
     const parsed = preferencesSchema.parse(preferences)
     // Nothing is made among the examples, so new researches cannot go there either.
     if (parsed.researchHome !== undefined && isExampleRoot(parsed.researchHome)) throw new Error(EXAMPLE_READ_ONLY)
+    if (parsed.researchHome !== undefined && parsed.researchHome !== this.domain.global.get().researchHome) {
+      const home = await canonicalPath(parsed.researchHome)
+      const containing = innermost(this.projects(), home)
+      if (containing !== undefined) throw new Error(`研究存放位置不能设在项目「${containing.title}」里面，请选择用于存放多个项目的文件夹 / Choose a parent folder outside the project "${containing.title}"`)
+      assertUsableProjectRoot(home)
+    }
     await this.domain.global.set(parsed)
     return parsed
   }
@@ -959,6 +967,9 @@ export class ResearchWorkbench extends TypertRemoteService {
   private personCommand(request: PersonCommand): Promise<ResearchResponse> {
     switch (request.action) {
       case 'start-new': return this.serialize(() => this.startNew())
+      case 'start-conversation': return this.serialize(() => this.startConversation(request))
+      case 'create-project': return this.serialize(() => this.createNamedProject(request))
+      case 'join-project': return this.serialize(() => this.joinProject(request.projectId, request.sessionId))
       case 'relocate': return this.serialize(() => this.relocate(request))
       case 'discard-draft': return this.serialize(async () => {
         await this.discard(request.projectId)
@@ -1130,8 +1141,100 @@ export class ResearchWorkbench extends TypertRemoteService {
   /** The draft's bound conversation, or a new blank one in its folder when the bound one was removed from the list. */
   private async blankConversation(project: ResearchProject): Promise<string> {
     const bound = project.sessionId
-    if (bound !== undefined && !this.ctx.workspaceRegistry.archivedSessionIds.includes(bound as SessionId)) return bound
-    return (await this.ctx.sessionController.create({ workspaceId: project.workspaceId, agentPreset: 'research' })).sessionId
+    const archived = this.ctx.workspaceRegistry.archivedSessionIds
+    const { items } = await this.ctx.sessionController.list({}, this.lifetime.signal)
+    const reusable = conversationsOf(project, this.projects(), items)
+      .find(item => item.blank && item.origin !== 'subagent' && !archived.includes(item.sessionId))
+    const sessionId = await this.openBlank(project.workspaceId, reusable?.sessionId)
+    if (bound === undefined || !items.some(item => item.sessionId === bound) || archived.includes(bound as SessionId)) {
+      await this.mutate(project.id, (current) => { current.sessionId = sessionId })
+    }
+    return sessionId
+  }
+
+  private conversationHome(): string { return join(resolveDshHome(), 'conversations') }
+
+  /** Reuse a blank session unless a different Host currently owns its writer. */
+  private async openBlank(workspaceId: ResearchProject['workspaceId'], sessionId?: SessionSummary['sessionId']): Promise<string> {
+    const request = { workspaceId, agentPreset: 'research' }
+    try { return (await this.ctx.sessionController.create({ ...request, ...(sessionId === undefined ? {} : { sessionId }) })).sessionId }
+    catch (error) {
+      if (sessionId === undefined || !(error instanceof RemoteError) || error.code !== 'session/writer-held') throw error
+      return (await this.ctx.sessionController.create(request)).sessionId
+    }
+  }
+
+  private async startConversation(request: Extract<PersonCommand, { action: 'start-conversation' }>): Promise<ResearchResponse> {
+    const { items } = await this.ctx.sessionController.list({}, this.lifetime.signal)
+    const projects = this.projects()
+    const selected = request.ordinary === true ? undefined : items.find(item => item.sessionId === request.sessionId)
+    const project = selected === undefined ? undefined : projects.find(item => conversationsOf(item, projects, [selected]).length > 0)
+    if (project !== undefined && !isExampleRoot(project.root) && project.archivedAt === undefined) {
+      const sessionId = await this.blankConversation(project)
+      return { message: 'Conversation opened', project: await this.presented(project), sessionId }
+    }
+    const home = this.conversationHome()
+    const archived = this.ctx.workspaceRegistry.archivedSessionIds
+    const blank = items.find(item => item.blank && item.origin !== 'subagent' && item.execution?.kind !== 'ssh'
+      && item.cwd !== undefined && isInside(home, item.cwd)
+      && innermost(projects, item.cwd) === undefined && !archived.includes(item.sessionId))
+    const root = blank?.cwd ?? join(home, randomUUID())
+    await mkdir(root, { recursive: true })
+    const workspace = await this.ctx.workspaceRegistry.create(root)
+    return { message: 'Conversation opened', sessionId: await this.openBlank(workspace.id, blank?.sessionId) }
+  }
+
+  private async createNamedProject(request: Extract<PersonCommand, { action: 'create-project' }>): Promise<ResearchResponse> {
+    if (request.sessionId !== undefined) await this.joinableConversation(request.sessionId)
+    if (!isAbsolute(request.root)) throw new Error('请选择完整的项目保存路径 / Choose an absolute project folder')
+    const root = await canonicalPath(request.root)
+    assertUsableProjectRoot(root)
+    if (isExampleRoot(root)) throw new Error(EXAMPLE_READ_ONLY)
+    const existing = innermost(this.projects(), root)
+    if (existing !== undefined) {
+      if (!sameDirectory(existing.root, root)) throw new Error(`这个位置在项目「${existing.title}」里面，请选择其他文件夹 / Choose a folder outside the project "${existing.title}"`)
+      if (request.confirmNonEmpty !== true) return { message: 'This folder already belongs to a project', outcome: 'existing', project: await this.presented(existing) }
+      if (existing.archivedAt !== undefined) await this.unarchive(existing.id)
+      return request.sessionId === undefined
+        ? { message: 'Project opened', project: await this.presented(existing), sessionId: await this.blankConversation(existing) }
+        : this.joinProject(existing.id, request.sessionId)
+    }
+    if (sameDirectory(root, await canonicalPath(this.researchHome()))) throw new Error('请选择存放总目录下的独立项目文件夹 / Choose a project folder inside the projects location')
+    if (this.projects().some(project => isInside(root, project.root))) throw new Error('这个文件夹包含已有项目，请选择其他位置 / This folder contains another project')
+    if (await holdsFiles(root) && request.confirmNonEmpty !== true) return { message: 'The folder already holds files', outcome: 'needs-confirm' }
+    const created = await this.createAt({ title: request.title.trim(), root, brief: '' }, undefined)
+    return request.sessionId === undefined
+      ? { message: 'Project created', project: await this.presented(created), sessionId: created.sessionId }
+      : this.joinProject(created.id, request.sessionId)
+  }
+
+  /** Validate a conversation before creating a destination or copying any history. */
+  private async joinableConversation(sessionId: string): Promise<SessionSummary> {
+    const { items } = await this.ctx.sessionController.list({}, this.lifetime.signal)
+    const source = items.find(item => item.sessionId === sessionId)
+    if (source === undefined || source.origin === 'subagent' || source.execution?.kind === 'ssh'
+      || this.ctx.workspaceRegistry.archivedSessionIds.includes(source.sessionId)) throw new Error('这段对话无法加入项目 / This conversation cannot join a project')
+    if (this.projects().some(item => conversationsOf(item, this.projects(), [source]).length > 0)) throw new Error('这段对话已经属于一个项目 / This conversation already belongs to a project')
+    const agent = this.ctx.agents.get(source.sessionId)
+    if (source.running || (agent !== undefined && this.ctx.goals.get(agent)?.phase === 'active')) throw new Error('请先停止对话中的任务，再加入项目 / Stop this conversation before adding it to a project')
+    if (agent !== undefined && (agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0)) throw new Error('请先处理对话中排队的消息，再加入项目 / Handle queued messages before adding this conversation to a project')
+    return source
+  }
+
+  private async joinProject(projectId: ProjectId, sessionId: string): Promise<ResearchResponse> {
+    const project = this.record(projectId)
+    if (isExampleRoot(project.root)) throw new Error(EXAMPLE_READ_ONLY)
+    if (project.archivedAt !== undefined) throw new Error('请先恢复这个项目 / Restore this project first')
+    const source = await this.joinableConversation(sessionId)
+    const history = source.blank ? undefined : await this.ctx.sessionController.inspect(source.sessionId)
+    const lastEvent = history?.events.at(-1)
+    const target = source.blank
+      ? await this.blankConversation(project)
+      : (await this.ctx.sessionController.fork({ sessionId: source.sessionId, workspaceId: project.workspaceId,
+        ...(lastEvent === undefined ? {} : { atSeq: lastEvent.seq }),
+      })).sessionId
+    await this.ctx.workspaceRegistry.archiveSession(source.sessionId)
+    return { message: 'Conversation added to project', project: await this.presented(project), sessionId: target }
   }
 
   /**

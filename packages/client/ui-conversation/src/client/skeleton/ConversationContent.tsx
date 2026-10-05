@@ -112,6 +112,7 @@ export function ConversationContent(props: ConversationContentProps) {
       <WorkspaceChip
         buttonRef={pickerAnchor}
         label={chipTitle}
+        labelContent={renderSlot('conversation.hero.workspace.label', { label: chipTitle, workspaceId: pendingWorkspaceId ?? sessionWorkspace?.workspaceId }, { fallback: chipTitle ?? t('hero.chooseWorkspace') })}
         menuOpen={pickerOpen}
         onClick={() => { setPickerOpen(open => !open) }}
         t={t}

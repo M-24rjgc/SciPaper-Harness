@@ -553,6 +553,8 @@ export interface ResearchSnapshot {
    * Every snapshot the service returns carries it.
    */
   researchHome?: string | undefined
+  /** Private working folders for conversations that have not joined a project. */
+  conversationHome?: string | undefined
 }
 /** A provider's bibliographic search result; an abstract or citation does not establish full-text coverage. */
 export interface LiteratureItem {
@@ -1816,6 +1818,12 @@ export type ResearchCommand =
    * open. The desktop's command only; the agent is refused.
    */
   | { action: 'start-new' }
+  /** Open a blank conversation in the selected project, or an ordinary conversation when none is selected. User only. */
+  | { action: 'start-conversation'; sessionId?: string | undefined; ordinary?: boolean | undefined }
+  /** Create a named project at an explicit location; populated folders require confirmation. User only. */
+  | { action: 'create-project'; title: string; root: string; confirmNonEmpty?: boolean | undefined; sessionId?: string | undefined }
+  /** Continue an ordinary conversation in an existing project's directory, retaining its completed history. User only. */
+  | { action: 'join-project'; projectId: ProjectId; sessionId: string }
   /**
    * Move an untouched draft to the folder the person chose (更改位置, Change
    * location); the answer's `outcome` says what happened. The desktop's command only.

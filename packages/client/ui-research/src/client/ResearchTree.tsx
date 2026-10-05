@@ -30,6 +30,7 @@ import {
 } from './treeValues.ts'
 import { standingPhrase, type Translate } from './format.ts'
 import { ActionError, useAction } from './Action.tsx'
+import { JoinProjectDialog, ProjectDialog } from './ProjectDialog.tsx'
 import styles from './ResearchTree.module.css'
 
 /** Composed props of the tree: the sidebar's owner share and globals, the viewing store, the dictionary and the tree face. */
@@ -98,6 +99,8 @@ type TreeDialog =
   | { kind: 'rename-research'; project: ResearchProject }
   | { kind: 'rename-conversation'; conversation: TreeConversation }
   | { kind: 'make-research'; folder: TreeFolder }
+  | { kind: 'create-project'; sessionId?: string | undefined }
+  | { kind: 'join-project'; sessionId: string }
 
 /** A row's ⋯ menu: its rows, and the work each one starts. */
 interface RowMenu {
@@ -221,7 +224,7 @@ function Arrow(props: { open: boolean; current?: boolean }): ReactNode {
 /** What the body needs besides the model: the face, the dictionary, and who opens dialogs. */
 type BodyProps = Pick<
   ResearchTreeProps,
-  't' | 'actions' | 'openSession' | 'openWorkspace' | 'startSession' | 'run' | 'reveal' | 'archiveConversation' | 'removeFolder'
+  't' | 'actions' | 'openSession' | 'openWorkspace' | 'startSession' | 'startOrdinary' | 'run' | 'reveal' | 'archiveConversation' | 'removeFolder'
 > & {
   model: TreeModel
   rows: TreeRow[]
@@ -300,7 +303,13 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
         label: researchName(project, t),
         italic: project.untitled === true,
         lead: expanded === undefined ? undefined : <Arrow open={expanded} current={research.current} />,
-        trail: example ? <span className={styles.exampleTag}>{t('exampleTag')}</span> : phrase,
+        trail: example ? <span className={styles.exampleTag}>{t('exampleTag')}</span> : <span className={styles.projectTrail}>{phrase}
+          <Tooltip label={t('treeAddConversationIn', { title: researchName(project, t) })}>
+            <button type="button" className={styles.iconButton} aria-label={t('treeAddConversationIn', { title: researchName(project, t) })}
+              onClick={(event) => { event.stopPropagation(); props.startSession(project.workspaceId) }}>
+              <IconPlusOutlineRegular size={12} /></button>
+          </Tooltip>
+        </span>,
         signal: research.signal,
         selected: expanded === undefined && research.current && props.selectedId !== undefined,
         className: styles.research,
@@ -311,6 +320,8 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
     case 'conversation': {
       const { conversation } = row
       const writable = !row.readOnly && !conversation.blank
+      const ordinary = props.model.loose.some(item => item.id === conversation.id)
+        || props.model.folders.some(folder => folder.location.kind === 'local' && folder.conversations.some(item => item.id === conversation.id))
       return {
         label: conversationName(conversation, t),
         italic: conversation.blank,
@@ -321,9 +332,17 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
           ? {
             items: [
               { id: 'rename', label: t('treeRename'), icon: <IconEditOutlineRegular /> },
+              ...(ordinary ? [
+                { id: 'join', label: t('projectJoin'), icon: <IconFolderOpenOutlineRegular size={16} /> },
+                { id: 'project', label: t('projectConvert'), icon: <IconProjectAddOutlineRegular size={16} /> },
+              ] : []),
               { id: 'remove', label: t('treeRemove'), icon: <IconArchiveOutlineRegular size={16} /> },
             ],
             choose: (id) => {
+              if (id === 'join' || id === 'project') {
+                props.openDialog({ kind: id === 'join' ? 'join-project' : 'create-project', sessionId: conversation.id })
+                return undefined
+              }
               if (id === 'rename') {
                 props.openDialog({ kind: 'rename-conversation', conversation })
                 return undefined
@@ -387,6 +406,9 @@ function itemView(props: BodyProps, row: TreeRow): ItemView {
         lead: <Arrow open={row.expanded} current={props.model.looseCurrent} />,
         selected: false,
         className: styles.research,
+        trail: <Tooltip label={t('projectOrdinary')}><button type="button" className={styles.iconButton}
+          aria-label={t('projectOrdinary')} onClick={(event) => { event.stopPropagation(); props.startOrdinary() }}>
+          <IconPlusOutlineRegular size={12} /></button></Tooltip>,
         activate: toggle(row.expanded),
       }
   }
@@ -746,8 +768,9 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
   const model = useMemo(() => deriveTree({
     projects: snapshot?.projects ?? [], current, list, workspaces, pending, drafts,
     showExamples: snapshot?.preferences.showExamples !== false,
+    conversationHome: snapshot?.conversationHome,
   }), [snapshot, current, list, workspaces, pending, drafts])
-  const rows = useMemo(() => flattenTree(model, chosen), [model, chosen])
+  const rows = useMemo(() => snapshot === null ? [] : flattenTree(model, chosen), [model, chosen, snapshot])
   const selectedId = panelActive ? undefined : current
 
   const [dialog, setDialog] = useState<TreeDialog | null>(null)
@@ -796,7 +819,8 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
     setSearchOpen(false)
   }
   const bodyProps: BodyProps = {
-    t, actions: props.actions, openSession: props.openSession, openWorkspace: props.openWorkspace, startSession: props.startSession,
+    t, actions: props.actions, openSession: props.openSession, openWorkspace: props.openWorkspace,
+    startSession: props.startSession, startOrdinary: props.startOrdinary,
     run: props.run, reveal: props.reveal, archiveConversation: props.archiveConversation, removeFolder: props.removeFolder,
     model, rows, selectedId, ready: snapshot !== null, canReveal, openDialog: setDialog,
   }
@@ -816,7 +840,7 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
       const { project } = place.research
       expandAll([...project.example === true ? [treeKey.examples] : [], treeKey.research(project)])
     } else if (place.kind === 'folder') expandAll([treeKey.others, treeKey.folder(place.folder)])
-    else expandAll([treeKey.others, treeKey.loose])
+    else expandAll([treeKey.loose])
     props.openSession(hit.conversation.id)
   }
 
@@ -844,9 +868,14 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
     </div>
     : <>
       <span className={styles.heading}>{t('treeTitle')}</span>
+      <Tooltip label={t('projectNew')} side="bottom" delayMs={500}>
+        <button type="button" className={styles.iconButton} aria-label={t('projectNew')} disabled={snapshot === null} onClick={() => { setDialog({ kind: 'create-project' }) }}>
+          <IconPlusOutlineRegular size={14} />
+        </button>
+      </Tooltip>
       <Tooltip label={t('treeSshAdd')} side="bottom" delayMs={500}>
         <button type="button" className={styles.iconButton} aria-label={t('treeSshAdd')} onClick={() => { setSshOpen(true) }}>
-          <IconPlusOutlineRegular size={14} />
+          <IconFolderOpenOutlineRegular size={14} />
         </button>
       </Tooltip>
       <Tooltip label={t('treeSearch')} side="bottom" delayMs={500}>
@@ -887,6 +916,10 @@ export function ResearchTree(props: ResearchTreeProps): ReactNode {
         : await props.createSshWorkspace(host, path, auth, trustedHostKey)
       await props.openWorkspace(workspaceId)
     }} onClose={() => { setSshOpen(false) }} />}
+    {dialog?.kind === 'create-project' && <ProjectDialog t={t} home={snapshot?.researchHome ?? ''} sourceSessionId={dialog.sessionId}
+      run={props.run} chooseFolder={props.chooseFolder} openResult={props.openResult} onClose={() => { setDialog(null) }} />}
+    {dialog?.kind === 'join-project' && <JoinProjectDialog t={t} projects={snapshot?.projects ?? []} sessionId={dialog.sessionId}
+      run={props.run} openResult={props.openResult} onClose={() => { setDialog(null) }} />}
     {dialog?.kind === 'rename-research' && <NameDialog
       t={t}
       title={t('treeRenameResearchTitle')}

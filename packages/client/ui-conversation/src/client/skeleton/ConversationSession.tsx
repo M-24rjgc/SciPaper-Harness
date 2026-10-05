@@ -71,6 +71,7 @@ export function ConversationSessionHeader({
           <>
             <div className={css.titleCluster}>
               <nav className={css.crumbs} aria-label={t('session.hierarchy')}>
+                {renderSlot('conversation.session.header.context', {})}
                 {ancestry.map((summary, index) => {
                   const last = index === ancestry.length - 1
                   // The current crumb has no navigation, so it is plain text

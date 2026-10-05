@@ -15,7 +15,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { ResearchGoal, ResearchProject } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import { ResearchStatusChip, type StatusChipProps } from '../src/client/Header.tsx'
+import { ResearchProjectContext, ResearchStatusChip, type StatusChipProps } from '../src/client/Header.tsx'
 import type { ResearchView } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { MODES } from './fixtures/modes.ts'
@@ -66,6 +66,15 @@ const chipText = (projects: ResearchProject[], page?: Page): string | null =>
   render(<ResearchStatusChip {...propsFor(projects, log(), page)} />).container.textContent
 
 describe('the chip names where this session\'s research stands', () => {
+  it('adds only the owning project before the conversation titles, with an ordinary-conversation fallback', () => {
+    const mine = project('C:\\research\\mine')
+    mine.sessionId = SESSION
+    const view = render(<ResearchProjectContext {...propsFor([mine], log())} />)
+    expect(view.container.textContent).toBe(`${mine.title}/`)
+    view.rerender(<ResearchProjectContext {...propsFor([], log())} />)
+    expect(view.container.textContent).toBe(`${zh.treeLoose}/`)
+  })
+
   it('draws nothing until the session works in a research', () => {
     const stranger = project('C:\\research\\other', 'spark-to-paper')
     stranger.sessionId = 'session-elsewhere'

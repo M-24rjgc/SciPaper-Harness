@@ -2,6 +2,8 @@
 .chip:hover { background: var(--dsw-alias-interactive-bg-hover); }
 .chip:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
 .separator { color: var(--dsw-alias-label-caption); }
+.breadcrumb { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.projectName { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-secondary); font-size: 13px; }
 .stage { color: var(--dsw-alias-label-secondary); }
 .verified { color: var(--dsw-alias-state-success-primary); }
 .example { padding: 0 4px; border: 0.5px dashed var(--dsw-alias-border-l4); border-radius: 4px; color: var(--dsw-alias-label-secondary); }

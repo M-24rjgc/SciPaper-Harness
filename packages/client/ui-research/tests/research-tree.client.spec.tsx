@@ -141,6 +141,9 @@ function faceOf() {
     openSession: vi.fn(),
     openWorkspace: vi.fn((_workspaceId: string) => Promise.resolve()),
     startSession: vi.fn(),
+    startOrdinary: vi.fn(),
+    chooseFolder: vi.fn(async () => ({ kind: 'unavailable' as const })),
+    openResult: vi.fn(async (_result: ResearchResponse) => {}),
     createSshWorkspace: vi.fn(async (_host: string, _path: string, _auth: SshAuthChoice, _trustedHostKey?: string) => 'w-ssh' as WorkspaceId),
     run: vi.fn((command: ResearchCommand): Promise<ResearchResponse> => {
       commands.push(command)
@@ -190,7 +193,7 @@ function menuItem(name: string): HTMLElement {
 
 /** Open a row's ⋯ menu with the pointer. */
 function openMenu(key: string): void {
-  fireEvent.click(within(row(key)).getByRole('button'))
+  fireEvent.click(within(row(key)).getByRole('button', { name: /的更多操作$/ }))
 }
 
 async function settle(): Promise<void> {
@@ -298,7 +301,7 @@ describe('what the tree lists', () => {
     expect(tree.getByRole('tree', { name: zh.treeTitle })).toBeTruthy()
     expect(tree.getByText(zh.treeTitle)).toBeTruthy()
     expect(keys()).toEqual([
-      R(draft), R(sparse), 'conversation:s-cite', 'conversation:s-plan', `add:${sparse.id}`, R(long), R(quiet), 'group:examples', 'group:others',
+      R(draft), R(sparse), 'conversation:s-cite', 'conversation:s-plan', `add:${sparse.id}`, R(long), R(quiet), 'group:loose', 'conversation:s-loose', 'group:examples', 'group:others',
     ])
     // The draft reads 新研究 in italics and opens nothing under it.
     const first = row(R(draft))
@@ -328,17 +331,18 @@ describe('what the tree lists', () => {
 
   it('marks examples with a dashed tag, lists nothing before the record arrives, and says so when there is nothing', () => {
     const none = mount({ projects: [draft, example], sessions: [], workspaces: [] })
-    expect(keys()).toEqual([R(draft), 'group:examples', R(example)])
+    expect(keys()).toEqual([R(draft), 'group:loose', 'group:examples', R(example)])
     expect(within(row(R(example))).getByText(zh.exampleTag)).toBeTruthy()
     none.unmount()
     const loading = mount({ projects: null, sessions: [], workspaces: [] })
     expect(keys()).toEqual([])
     expect(loading.queryByText(zh.treeEmpty)).toBeNull()
     loading.update({ projects: [], sessions: [], workspaces: [] })
-    expect(loading.getByText(zh.treeEmpty)).toBeTruthy()
+    expect(keys()).toEqual(['group:loose'])
+    expect(loading.getByRole('button', { name: zh.projectOrdinary })).toBeTruthy()
     // With the examples hidden, the group goes too.
     loading.update({ projects: [draft, example], sessions: [], workspaces: [], showExamples: false })
-    expect(keys()).toEqual([R(draft)])
+    expect(keys()).toEqual([R(draft), 'group:loose'])
   })
 
   it('selects nothing while a panel covers the conversation, and selects the draft while its blank conversation is on screen', () => {
@@ -412,11 +416,11 @@ describe('where a click goes', () => {
     expect(tree.face.startSession).toHaveBeenCalledWith('w-sparse')
     fireEvent.click(row('group:others'))
     await settle()
-    expect(keys().slice(-3)).toEqual(['group:others', 'folder:w-legacy', 'group:loose'])
+    expect(keys().slice(-2)).toEqual(['group:others', 'folder:w-legacy'])
     fireEvent.click(row('folder:w-legacy'))
-    fireEvent.click(row('group:loose'))
     await settle()
-    expect(keys().slice(-4)).toEqual(['folder:w-legacy', 'conversation:s-legacy', 'group:loose', 'conversation:s-loose'])
+    expect(keys().slice(-3)).toEqual(['group:others', 'folder:w-legacy', 'conversation:s-legacy'])
+    expect(keys()).toContain('conversation:s-loose')
     tree.face.openWorkspace.mockRejectedValueOnce(new Error('那个文件夹不见了'))
     fireEvent.click(row(R(long)))
     await settle()
@@ -499,7 +503,7 @@ describe('the keyboard', () => {
     expect(tree.face.commands).toEqual([{ action: 'archive-project', projectId: sparse.id }])
     expect(document.activeElement).toBe(target)
     // The ⋯ button's own keys and focus are not the row's.
-    const more = within(target).getByRole('button')
+    const more = within(target).getByRole('button', { name: /的更多操作$/ })
     more.focus()
     fireEvent.keyDown(more, { key: 'ArrowDown' })
     fireEvent.keyDown(more, { key: 'Enter' })
@@ -947,7 +951,7 @@ describe('searching', () => {
     fireEvent.click(within(results).getByText('旧笔记'))
     expect(tree.face.openSession).toHaveBeenCalledWith('s-legacy')
     expect(tree.queryByRole('textbox')).toBeNull()
-    expect(keys().slice(-3)).toEqual(['folder:w-legacy', 'conversation:s-legacy', 'group:loose'])
+    expect(keys().slice(-3)).toEqual(['group:others', 'folder:w-legacy', 'conversation:s-legacy'])
   })
 
   it('opens a research, an example and the draft from their names, and conversations in each kind of place', async () => {
@@ -983,7 +987,8 @@ describe('searching', () => {
     fireEvent.click(hit)
     expect(row(R(sparse)).getAttribute('aria-expanded')).toBe('true')
     fireEvent.click(within(await search('零散')).getByText('零散想法'))
-    expect(keys().slice(-2)).toEqual(['group:loose', 'conversation:s-loose'])
+    expect(keys()).toContain('conversation:s-loose')
+    expect(row('conversation:s-loose').getAttribute('aria-level')).toBe('2')
     expect(tree.face.openSession).toHaveBeenLastCalledWith('s-loose')
   })
 

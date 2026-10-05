@@ -18,6 +18,15 @@ import styles from './Header.module.css'
 /** Composed props of the chip: the header actions seat's runtime share and the research face. */
 export type StatusChipProps = PropsRuntime<'conversation.session.header.actions'> & WorkbenchProps
 
+/** Name the owning project before the shell's conversation titles and ancestor navigation. */
+export function ResearchProjectContext(props: PropsRuntime<'conversation.session.header.context'> & WorkbenchProps): ReactNode {
+  const project = useSessionProject(props)
+  return <span className={styles.breadcrumb}>
+    <span className={styles.projectName}>{project?.title ?? props.t('treeLoose')}</span>
+    <span className={styles.separator}>/</span>
+  </span>
+}
+
 /**
  * What the chip says: 模式待定 before the mode is chosen; the mode alone in
  * a mode without phases (通用); `{mode} · 已完成` with a verified ✓ once the

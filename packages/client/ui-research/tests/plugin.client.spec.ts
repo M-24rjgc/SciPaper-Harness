@@ -1185,7 +1185,7 @@ describe('where startup and 新研究 go', () => {
     const opening = b.policies[0]!.startNew()
     b.publishSessions({ 's-sparse': { cwd: '/research/sparse' }, 's-draft': { cwd: draft.root, blank: true } })
     await opening
-    expect(b.remote.command).toHaveBeenLastCalledWith({ action: 'start-new' }, expect.any(AbortSignal))
+    expect(b.remote.command).toHaveBeenLastCalledWith({ action: 'start-conversation', sessionId: 's-sparse' }, expect.any(AbortSignal))
     expect(b.uiWorkspace.openSession).toHaveBeenLastCalledWith('s-draft')
     await stop(b)
     expect(b.policies).toEqual([])

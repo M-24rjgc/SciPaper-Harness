@@ -35,9 +35,10 @@ export function workspaceLabel(cwd: string): string {
  * @param props.onClick - menu toggle.
  * @returns the chip button element.
  */
-export function WorkspaceChip({ buttonRef, label, menuOpen = false, onClick, t }: {
+export function WorkspaceChip({ buttonRef, label, labelContent, menuOpen = false, onClick, t }: {
   buttonRef?: RefObject<HTMLButtonElement>
   label?: string | undefined
+  labelContent?: ReactNode
   menuOpen?: boolean
   onClick?: () => void
   t: HeroTranslate
@@ -55,7 +56,7 @@ export function WorkspaceChip({ buttonRef, label, menuOpen = false, onClick, t }
       {label === undefined
         ? <IconFolderCloseRegular className={css.folder} size={16} />
         : <IconFolderOpenRegular className={css.folder} size={16} />}
-      <span className={css.workspaceLabel}>{label ?? t('hero.chooseWorkspace')}</span>
+      <span className={css.workspaceLabel}>{labelContent ?? label ?? t('hero.chooseWorkspace')}</span>
       <IconChevronDownOutlineRegular className={css.chevron} size={12} />
     </button>
   )

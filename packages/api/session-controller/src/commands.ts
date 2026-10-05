@@ -272,7 +272,12 @@ export class SessionCommandController {
     const seed = buildForkSeed(source.events, boundary)
     let workspace: Workspace | undefined
     try {
-      workspace = await this.forkWorkspace(source.header)
+      workspace = request.workspaceId === undefined
+        ? await this.forkWorkspace(source.header)
+        : this.ctx.workspaceRegistry.get(request.workspaceId)
+      if (request.workspaceId !== undefined && (workspace === undefined || workspace.location.kind !== 'local' || source.header.execution?.kind === 'ssh')) {
+        throw new Error('Conversation destinations must be existing local workspaces')
+      }
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',
@@ -281,8 +286,13 @@ export class SessionCommandController {
       )
     }
     const childId = brandString<SessionId>(`session-${randomUUID()}`)
+    const cwd = request.workspaceId === undefined ? source.header.cwd : workspace?.path
+    const execution = request.workspaceId === undefined ? source.header.execution : { kind: 'local' as const }
+    if (request.workspaceId !== undefined && workspace !== undefined) {
+      await this.admit({ operation: 'create', sessionId: childId, cwd: workspace.path, request: { workspaceId: request.workspaceId } })
+    }
     const composition = await this.agents.composeAgent(
-      this.agents.presetForObservation(source), source.header.execution, source.header.cwd,
+      this.agents.presetForObservation(source), execution, cwd,
     )
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
@@ -291,8 +301,8 @@ export class SessionCommandController {
         seed,
         inheritedEventCount: SessionLogOffset(boundary + 1),
         meta: {
-          ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
-          execution: source.header.execution ?? { kind: 'local' },
+          ...(cwd === undefined ? {} : { cwd }),
+          execution: execution ?? { kind: 'local' },
           parentSession: source.header.id,
           isSeeded: true,
           ...(composition.agentPreset === undefined

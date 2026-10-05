@@ -357,7 +357,7 @@ describe('dsh web keyless CLI smoke', () => {
         }
       })
       await page.goto(readyUrl)
-      await page.getByRole('button', { name: 'New research', exact: true }).first().waitFor({ timeout: 30_000 })
+      await page.getByRole('button', { name: 'New conversation', exact: true }).first().waitFor({ timeout: 30_000 })
       const batchPaths = [...new Set(pluginScripts)].sort()
       // The bootstrap phase is the modules package alone; the application phase
       // spans two combos because its map-form URL is over the 3 KiB combo limit

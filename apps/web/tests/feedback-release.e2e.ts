@@ -288,7 +288,7 @@ describe.each(MODE === 'record' ? ['deepseek-official'] : ['deepseek-official', 
     await selectModel('Feedback mock')
     await selectModel('DeepSeek-V4-Flash')
     expect(captured()).toHaveLength(releasedCount)
-    await page.getByRole('button', { name: 'New research', exact: true }).last().click()
+    await page.getByRole('button', { name: 'New conversation', exact: true }).last().click()
     const input = page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
     await input.waitFor({ timeout: 15_000 })
     await input.fill('/feedback Feedback before any model request.')

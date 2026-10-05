@@ -1,5 +1,5 @@
 /**
- * Where the person lands and what 新研究 (New research) opens. This is the
+ * Where the person lands and what New conversation opens. This is the
  * research's entry policy for ui-workspace (`land`, `startNew`), the startup
  * rule that never keeps an example selected, and the moves of the untouched
  * draft research to a folder or a research the person chose.
@@ -48,8 +48,10 @@ export interface EntrySources {
 export interface ResearchEntry {
   /** ui-workspace's `land()`; `replacing` names a selection landing may replace (an example restored at startup). */
   land(replacing?: SessionId): Promise<void>
-  /** ui-workspace's `startNew()`: the untouched draft, created when there is none, opened. */
+  /** Open or reuse a blank conversation in the current project, otherwise an ordinary conversation. */
   startNew(): Promise<void>
+  /** Open an ordinary conversation even when the current conversation belongs to a project. */
+  startOrdinary(): Promise<void>
   /**
    * At startup only: once the lists and the record are read, a selection
    * restored inside an example gives way to where the person would land.
@@ -118,7 +120,7 @@ export interface LandingTarget {
 /**
  * Where the person lands: the own research used most recently, on its newest
  * conversation that has started. Own means not an example, not the untouched
- * draft (新研究 reopens that one), not removed from the list, and with its
+ * legacy draft, not removed from the list, and with its
  * folder still in the Workspace list. A conversation counts when it is
  * listed, top-level, not archived, not blank and not a visual-review
  * reviewer; a research is used when one of its conversations or its record
@@ -140,7 +142,7 @@ export function landingTarget(
   const newest = new Map<string, { sessionId: SessionId; at: number }>()
   for (const id of list.ids) {
     const summary = list.byId[id]
-    if (summary === undefined || summary.blank || summary.parentId !== undefined || summary.origin === 'subagent') continue
+    if (summary === undefined || summary.blank || summary.origin === 'subagent') continue
     if (archived.has(id) || reviewers.has(id)) continue
     const project = sessionProject(own, id, directories)
     if (project === undefined) continue
@@ -166,6 +168,7 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
   /** Moves under way; while any runs, a lost selection is the move's own and `land()` leaves it alone. */
   let moving = 0
   let landing: Promise<void> | undefined
+  let starting: Promise<void> | undefined
   let noticeTimer: ReturnType<typeof setTimeout> | undefined
   lifetime.addEventListener('abort', () => { clearTimeout(noticeTimer) })
   const current = (): SessionId | undefined => sources.current.getSnapshot()
@@ -184,12 +187,12 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
     : workspaces.list.getSnapshot().items.find(item => item.sessionIds.includes(sessionId))?.workspaceId
   const lists = [sessions.list, workspaces.list, sources.current] as const
 
-  /** Open the draft `start-new` answers with, while `free()` says nothing superseded this navigation. */
-  const openDraft = async (free: () => boolean): Promise<void> => {
+  /** Open the requested blank conversation while nothing superseded this navigation. */
+  const openConversation = async (free: () => boolean, ordinary = false): Promise<void> => {
     const from = current()
     let answer: ResearchResponse
     try {
-      answer = await sources.command({ action: 'start-new' })
+      answer = await sources.command({ action: 'start-conversation', ...(from === undefined ? {} : { sessionId: from }), ...(ordinary ? { ordinary: true } : {}) })
     } catch (error) {
       fail('new', error)
       throw error
@@ -222,7 +225,7 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
       return
     }
     const target = landingTarget(snapshot.projects, sessions.list.getSnapshot(), workspaces.list.getSnapshot())
-    if (target === undefined) return openDraft(free)
+    if (target === undefined) return openConversation(free, true)
     if (target.sessionId !== undefined) {
       sources.openSession(target.sessionId)
       return
@@ -251,13 +254,20 @@ export function createResearchEntry(sources: EntrySources): ResearchEntry {
     }
   }
 
+  const start = (ordinary: boolean): Promise<void> => {
+    if (starting !== undefined) return starting
+    const navigation = sources.beginNavigation()
+    const from = current()
+    entry.set({ notice: null, pending: true })
+    starting = openConversation(() => !navigation.aborted && !lifetime.aborted && current() === from, ordinary)
+      .finally(() => { starting = undefined; entry.set({ notice: entry.getSnapshot().notice }) })
+    return starting
+  }
+
   return {
     land,
-    startNew: () => {
-      const navigation = sources.beginNavigation()
-      const from = current()
-      return openDraft(() => !navigation.aborted && !lifetime.aborted && current() === from)
-    },
+    startNew: () => start(false),
+    startOrdinary: () => start(true),
     leaveStartupExample: () => {
       let restored: { sessionId: SessionId | undefined } | undefined
       const check = (): boolean => {

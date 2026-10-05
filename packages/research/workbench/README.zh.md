@@ -39,7 +39,7 @@ kind: "package-reference"
 
 服务还通过 Session Controller 的命令准入 waterfall，在激活 Agent 或写入前拒绝示例对话的分支、重命名、发消息、队列修改和新增对话。已登记的示例对话仍可幂等收养；创建和缺失对话恢复仅允许初始化器的原始进程内请求。保护依据实际目录和已登记的项目身份，涵盖 home 别名，不依赖 Session 名称前缀。普通研究对话仍可正常分支和编辑。
 
-「新研究」是桌面端的 `start-new` 命令：它打开唯一一份未动过的草稿研究，没有时在 `<研究存放位置>/<yyyy-mm-dd>-<n>` 新建一份，连同文件夹的 Workspace 和一段空白对话。`relocate` 把草稿移到用户选择的文件夹，`discard-draft` 删除草稿以及它建立的空文件夹。研究存放位置取用户的 `researchHome` 偏好，没有时取配置的 `researchHome`，再没有时取 `<用户目录>/SciPaper`。agent 不能发送这几个命令（[详情](../../../docs/subsystems/research.zh.md#new-research-draft)）。
+`start-conversation` 在当前项目中打开或复用空白对话，或在 `<数据目录>/conversations/<id>` 打开普通对话，不创建项目记录和科研目录结构。`create-project` 按明确的名称和位置创建项目：已有项目根目录返回 `existing`，已有文件的目录返回 `needs-confirm`，拒绝项目目录重叠或将研究存放总目录本身作为项目。`join-project` 在项目目录中保留普通对话的完整历史，再归档来源对话，保留原文件。这些命令仅供用户操作。旧的 `start-new`、`relocate`、`discard-draft` 保留用于已有草稿项目（[详情](../../../docs/subsystems/research.zh.md#new-research-draft)）。
 
 「移出列表」是桌面端的 `archive-project`：它归档这项研究的对话，并在记录上标记 `archivedAt`，磁盘上的内容都不改变；它的运行不再被观测，直到 `unarchive-project` 恢复它，并恰好取消归档它当初归档的那些对话。存在活跃对话时，操作在任何写入之前拒绝归档；随后发生归档失败时，撤销本次已经完成的归档，如果撤销也失败则保留恢复所需的对话记录。归档不会停止独立实验进程。agent 同样不能发送这两个命令（[详情](../../../docs/subsystems/research.zh.md#remove-from-list)）。
 

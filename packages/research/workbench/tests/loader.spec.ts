@@ -305,7 +305,7 @@ async function boot(pool: MemoryMediaPool, options: BootOptions = {}): Promise<H
         },
         get archivedSessionIds() { return [...archived] },
       } as unknown as Context['workspaceRegistry'])
-      c.provide('agents', { list: () => agents } as unknown as Context['agents'])
+      c.provide('agents', { list: () => agents, get: (id: string) => agents.find(agent => agent.session.id === id) } as unknown as Context['agents'])
       c.provide('goals', {
         get: (agent: FakeAgent) => {
           const goal = goals.get(agent.session.id)
@@ -2451,6 +2451,71 @@ describe('新研究 opens one untouched draft research, which can move and be di
     service.execute(request as never, signal, actor)
   const startNew = (service: Harness['service']) => command(service, { action: 'start-new' })
 
+  it('opens ordinary conversations without projects and reuses blanks even when the old research home is already a project', async () => {
+    root = await temporaryRoot('conversation-entry-')
+    vi.stubEnv('DSH_HOME', root)
+    const home = join(root, 'SciPaper')
+    const { service, turns } = await boot(new MemoryMediaPool(), { researchHome: home })
+    const existing = await service.create({ title: 'Existing project', root: home, brief: '' })
+    turns.add(existing.sessionId!)
+    const before = service.projects().map(project => project.id)
+    const ordinary = await command(service, { action: 'start-conversation', ordinary: true })
+    const same = await command(service, { action: 'start-conversation', sessionId: ordinary.sessionId })
+    expect(same.sessionId).toBe(ordinary.sessionId)
+    expect(same.project).toBeUndefined()
+    expect(service.projects().map(project => project.id)).toEqual(before)
+    const list = await ctx!.sessionController.list({}, signal)
+    const folder = list.items.find(item => item.sessionId === ordinary.sessionId)!.cwd!
+    expect(dirname(folder)).toBe(join(resolveDshHome(), 'conversations'))
+    expect(await readdir(folder)).not.toContain('.research')
+    const inProject = await command(service, { action: 'start-conversation', sessionId: existing.sessionId })
+    expect(inProject.project?.id).toBe(existing.id)
+    expect(inProject.sessionId).not.toBe(existing.sessionId)
+    expect((await command(service, { action: 'start-conversation', sessionId: existing.sessionId })).sessionId).toBe(inProject.sessionId)
+    expect(service.projects().map(project => project.id)).toEqual(before)
+    await expect(command(service, { action: 'start-conversation' }, 'agent')).rejects.toThrow(PERSON_ONLY)
+  })
+
+  it('creates named projects only after folder confirmation and rejects overlapping roots before creating files', async () => {
+    root = await temporaryRoot('explicit-project-')
+    const { service } = await boot(new MemoryMediaPool(), { researchHome: join(root, 'studies') })
+    const create = (path: string, confirmNonEmpty = false) => command(service, { action: 'create-project', title: 'Named project', root: path, confirmNonEmpty })
+    const busy = join(root, 'studies', 'populated')
+    await write(join(busy, 'notes.txt'), 'Keep these notes')
+    expect(await create(busy)).toMatchObject({ outcome: 'needs-confirm' })
+    expect(service.projects()).toHaveLength(0)
+    expect(existsSync(join(busy, '.research'))).toBe(false)
+    const created = await create(busy, true)
+    expect(created.project).toMatchObject({ title: 'Named project', root: busy })
+    expect(created.project?.draft).not.toBe(true)
+    expect(await readFile(join(busy, 'notes.txt'), 'utf8')).toBe('Keep these notes')
+    expect(await create(busy)).toMatchObject({ outcome: 'existing', project: { id: created.project?.id } })
+    const nested = join(busy, 'new-child')
+    await expect(create(nested)).rejects.toThrow(/outside the project/)
+    expect(existsSync(nested)).toBe(false)
+    await expect(create(join(root, 'studies'))).rejects.toThrow(/project folder inside/)
+    await expect(create(root)).rejects.toThrow(/contains another project/)
+    const invalidSourceRoot = join(root, 'invalid-source')
+    await expect(command(service, { action: 'create-project', title: 'Invalid', root: invalidSourceRoot, sessionId: 'gone' })).rejects.toThrow(/cannot join/)
+    expect(existsSync(invalidSourceRoot)).toBe(false)
+    expect(service.projects()).toHaveLength(1)
+  })
+
+  it('recreates a missing bound blank instead of returning an unlistable session id', async () => {
+    root = await temporaryRoot('missing-blank-')
+    const { service } = await boot(new MemoryMediaPool())
+    const project = await service.create({ title: 'Study', root: join(root, 'study'), brief: '' })
+    const original = ctx!.sessionController.list.bind(ctx!.sessionController)
+    vi.spyOn(ctx!.sessionController, 'list').mockImplementation(async (request, signal) => {
+      const answer = await original(request, signal)
+      return { ...answer, items: answer.items.filter(item => item.sessionId !== project.sessionId) }
+    })
+    const opened = await command(service, { action: 'create-project', title: project.title, root: project.root, confirmNonEmpty: true })
+    expect(opened.sessionId).not.toBe(project.sessionId)
+    expect((await ctx!.sessionController.list({}, signal)).items.map(item => item.sessionId)).toContain(opened.sessionId)
+    expect(service.getProject(project.id).sessionId).toBe(opened.sessionId)
+  })
+
   it('creates the draft in the research home and reuses it until something is done in it', async () => {
     root = await temporaryRoot('research-drafts-')
     const home = join(root, 'SciPaper')
@@ -2509,7 +2574,7 @@ describe('新研究 opens one untouched draft research, which can move and be di
     expect(reopened.project?.id).toBe(fourth.project?.id)
     expect(reopened.sessionId).not.toBe(fourth.sessionId)
     expect(existsSync(join(fourth.project!.root, 'paper'))).toBe(true)
-    expect(service.getProject(fourth.project!.id).sessionId).toBe(fourth.sessionId)
+    expect(service.getProject(fourth.project!.id).sessionId).toBe(reopened.sessionId)
   })
 
   it('takes the research home from the settings, then the configuration, then SciPaper in the profile', async () => {
@@ -2535,10 +2600,8 @@ describe('新研究 opens one untouched draft research, which can move and be di
     root = await temporaryRoot('research-drafts-refused-')
     const { service } = await boot(new MemoryMediaPool())
     const outer = await service.create({ title: 'Outer', root: join(root, 'outer'), brief: '' })
-    await service.configure({ researchHome: outer.root })
-    await expect(startNew(service)).rejects.toThrow('研究存放位置在研究「Outer」里面，请在设置里换一个位置 / The research location lies inside the research "Outer"; choose another one in Settings')
-    await service.configure({ researchHome: process.platform === 'win32' ? 'C:\\Windows' : '/usr' })
-    await expect(startNew(service)).rejects.toThrow(/outside system locations/)
+    await expect(service.configure({ researchHome: outer.root })).rejects.toThrow(/Choose a parent folder outside the project/)
+    await expect(service.configure({ researchHome: process.platform === 'win32' ? 'C:\\Windows' : '/usr' })).rejects.toThrow(/outside system locations/)
     await service.configure({ researchHome: join(root, 'demo', 'mine') })
     vi.stubEnv('DSH_HOME', root)
     try {

@@ -33,9 +33,15 @@
 记录存放在 `research_workbench` 存储域中（单文档布局，版本 1）。旧形态的记录会在读取时迁移：阶段机字段被移除，已确认的阶段转为用户决策；原先内置的 `paper-first` 与 `from-results` 模式转为 spark-to-paper 模式包的 `proposal` 与 `data` 路线，`free` 或未设置的模式转为 `general`。模式、路线、阶段与检查的 id 都以字符串存储，因此即使记录所指的模式包已被移除，记录照样能打开，项目按 `general` 运行。抽取出的证据文本存放在快照旁的 `.research/chunks/<evidence>/<revision>.json`，而不在记录里，因此一次变更只重写台账，不会重写每份资料的全文。
 
 <a id="new-research-draft"></a>
-## 新研究草稿
+## 对话与研究项目
 
-「新研究」通过桌面端的 `start-new` 命令打开唯一一份未动过的草稿研究。新研究放在研究存放位置：用户在 设置 › 科研 › 研究存放位置 中设置的 `researchHome` 偏好；没有时用服务配置的 `researchHome`；再没有时用 `<用户目录>/SciPaper`（Windows 上是 `%USERPROFILE%\SciPaper`：不在常被 OneDrive 同步的「文档」里，路径也是纯 ASCII，方便 TeX）。`snapshot().researchHome` 报告当前生效的位置；`configure` 拒绝相对路径和位于示例之中的路径。
+「新对话」调用桌面端的 `start-conversation {sessionId?, ordinary?}` 命令，在当前项目中复用或创建空白对话。没有当前项目，或指定 `ordinary: true` 时，在 `<数据目录>/conversations` 下打开普通对话，不创建研究记录和项目目录结构。快照用 `conversationHome` 报告这个位置。
+
+「新建研究项目」先显示名称和位置窗口，确认后才发送 `create-project {title, root, confirmNonEmpty?, sessionId?}`。命令拒绝系统和示例位置、研究存放总目录，以及位于另一项目内部或包含另一项目的文件夹。已有项目和非空文件夹需要确认。`join-project {projectId, sessionId}` 把空闲普通对话的完整事件历史复制到项目目录下的对话，并归档来源对话；原有文件保留在来源目录。向 `create-project` 传入 `sessionId`，则在创建或重新打开项目后完成同样的归入操作。这些命令只供用户使用。
+
+新项目的建议父目录依次取 `researchHome` 偏好、服务配置的 `researchHome`、`<用户目录>/SciPaper`。`snapshot().researchHome` 报告当前生效的位置。通过 `configure` 更改的位置必须是绝对路径，且不能位于系统文件夹、示例或已有项目之中。
+
+旧的 `start-new`、`relocate` 和 `discard-draft` 命令保留，用于已有的未动过的草稿项目。主入口「新对话」不再调用 `start-new`。
 
 一项研究在以下条件全部成立时就是未动过的草稿，快照以及这几个命令的答复里标为 `draft: true`（推导得出，从不存储）：
 

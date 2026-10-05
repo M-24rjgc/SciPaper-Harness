@@ -33,9 +33,15 @@ A research created as a draft (below) records `createdRoot` when creating it als
 Records live in the `research_workbench` storage domain (single-document layout, version 1). Records of earlier shapes are migrated when read: stage-machine fields are dropped and confirmed stages become user decisions; the built-in `paper-first` and `from-results` modes become the spark-to-paper pack's `proposal` and `data` routes, and `free` or an unset mode becomes `general`. Mode, route, phase and check ids are stored as strings, so a record still opens when the pack it names is gone; the project then runs as `general`. Extracted evidence text is kept beside the snapshots in `.research/chunks/<evidence>/<revision>.json` rather than in the record, so a mutation rewrites the ledger and not the text of every source.
 
 <a id="new-research-draft"></a>
-## The new-research draft
+## Conversations and research projects
 
-新研究 (New research) opens one untouched draft research through the desktop's `start-new` command. New researches go to the research home: the `researchHome` preference, which the person sets in 设置 › 科研 › 研究存放位置, else the service's configured `researchHome`, else `<profile home>/SciPaper` (`%USERPROFILE%\SciPaper` on Windows: outside Documents, which OneDrive often syncs, and an ASCII path for TeX). `snapshot().researchHome` reports the one in effect; `configure` refuses a relative path or one among the examples.
+New conversation calls the desktop's `start-conversation {sessionId?, ordinary?}` command. It reuses or creates a blank conversation in the current project. Without a current project, or with `ordinary: true`, it opens an ordinary conversation under `<data home>/conversations`, without creating a research record or scaffold. Snapshots report this location as `conversationHome`.
+
+New research project opens a name-and-location dialog. Only confirmation sends `create-project {title, root, confirmNonEmpty?, sessionId?}`. The command refuses system and example locations, the research home itself, and folders inside or containing another project. An existing project or a nonempty folder requires confirmation. `join-project {projectId, sessionId}` copies an idle ordinary conversation's complete event history into the project's directory and archives its source; existing files stay in the source directory. Passing `sessionId` to `create-project` does the same after creating or reopening the project. These commands are available only to the person.
+
+The suggested parent for new projects is the `researchHome` preference, then the configured `researchHome`, then `<profile home>/SciPaper`. `snapshot().researchHome` reports the effective location. A changed `configure` location must be absolute, outside system and example folders, and outside existing projects.
+
+The older `start-new`, `relocate` and `discard-draft` commands remain for existing untouched draft projects. The main conversation button no longer calls `start-new`.
 
 A research is the untouched draft, marked `draft: true` in snapshots and in these commands' answers (derived, never stored), while all of these hold:
 

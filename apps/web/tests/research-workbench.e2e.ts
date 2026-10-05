@@ -1,7 +1,7 @@
 /** The research edition through the shipped browser and durable host: the agent drives, the ledger records. */
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { chromium, type Browser, type Page } from 'playwright'
@@ -75,9 +75,6 @@ afterAll(async () => {
 
 beforeEach(() => { onTestFailed(() => saveFailureShot(page, 'research-workbench-flow')) })
 
-/** A line break the folder menu puts after each path separator, so a long path wraps. */
-const WRAP = String.fromCodePoint(0x200b)
-
 /**
  * What is left in a discarded draft's folder. Windows keeps the emptied folder
  * while a skill watcher still holds it, so it may remain, but never with
@@ -92,19 +89,6 @@ async function projects(): Promise<ResearchProject[]> {
   return (await scaffold.ctx.research.snapshot()).projects.filter(project => project.example !== true)
 }
 
-/**
- * 更改位置 (Change location) from the entry screen's folder menu. The scaffold
- * composes the browse directory picker, which has no native chooser, so the
- * menu asks for the folder as a typed path.
- */
-async function changeLocation(on: Page, folder: string): Promise<void> {
-  await on.getByRole('button', { name: 'Choose research', exact: true }).first().click()
-  await on.getByRole('menuitem', { name: 'Change location…', exact: true }).click()
-  const dialog = on.getByRole('dialog', { name: 'Change location', exact: true })
-  await dialog.getByLabel('Folder path', { exact: true }).fill(folder)
-  await dialog.getByRole('button', { name: 'Move here', exact: true }).click()
-}
-
 async function command(request: ResearchCommand): Promise<ResearchResponse> {
   const response = await scaffold.ctx.research.command(request, new AbortController().signal)
   if (!response.jobId) return response
@@ -117,59 +101,45 @@ async function command(request: ResearchCommand): Promise<ResearchResponse> {
   return task.result
 }
 
-it('lands on a new research, moves it to a chosen folder, records evidence and opens a claim with its sources', async () => {
-  // With no research of the person's own, startup opens the one untouched draft, in the research home the scaffold pins.
+it('starts with an ordinary conversation, creates an explicit project, and opens claim evidence', async () => {
   await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
-  await expect.poll(async () => (await projects()).length, { timeout: 15000 }).toBe(1)
-  const draft = (await projects())[0]!
-  expect(draft).toMatchObject({ draft: true, untitled: true, title: '新研究', mode: 'general', autonomy: 'checkpoints' })
-  expect(draft.modeSetBy).toBeUndefined()
-  expect(dirname(draft.root)).toBe(join(scaffold.workspaceCwd, 'SciPaper'))
-  expect(basename(draft.root)).toMatch(/^\d{4}-\d{2}-\d{2}-1$/)
-  // The folder chip names the draft's folder; two example sentences sit above the composer, which invites the question.
-  const chip = page.getByRole('button', { name: 'Choose research', exact: true }).first()
-  await chip.filter({ hasText: basename(draft.root) }).waitFor({ timeout: 15000 })
-  await page.getByText('Try:', { exact: true }).first().waitFor({ timeout: 15000 })
-  await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
-    .first().waitFor()
-  // The entry screen offers no cards, no promise row and no folder buttons of its own.
-  expect(await page.getByText('I already have material', { exact: true }).count()).toBe(0)
-  expect(await page.getByText('Every conclusion points back to the page it came from', { exact: true }).count()).toBe(0)
-  expect(await page.getByRole('button', { name: 'New project folder…' }).count()).toBe(0)
+  await page.getByText('Ordinary conversation · You can add it to a project later', { exact: true }).waitFor()
+  expect(await projects()).toHaveLength(0)
+  await page.getByRole('button', { name: /^Autonomy/ }).click()
+  await page.getByRole('menuitem').filter({ hasText: 'Automatic' }).click()
+  await expect.poll(() => page.getByRole('button', { name: /^Autonomy/ }).innerText()).toContain('Automatic')
+  expect(await projects()).toHaveLength(0)
+  const chip = page.getByRole('button', { name: 'Choose project', exact: true }).first()
+  await chip.filter({ hasText: 'Ordinary conversations' }).waitFor()
+  await page.getByText('Try:', { exact: true }).first().waitFor()
   await saveFailureShot(page, 'research-welcome')
   const viewport = page.viewportSize()!
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.locator('html').evaluate(element => element.scrollWidth)).toBeLessThanOrEqual(390)
   await saveFailureShot(page, 'research-welcome-mobile')
   await page.setViewportSize(viewport)
-  // The chip's menu says where the draft is saved; the draft moves to a folder the person names.
-  await chip.click()
-  const menu = page.getByRole('menu').first()
-  await expect.poll(async () => (await menu.innerText()).replaceAll(WRAP, '')).toContain(`Saved in ${draft.root}`)
-  await page.keyboard.press('Escape')
-  // A Try sentence only fills the composer; the person still writes and sends.
-  const materials = 'Import these 6 PDFs and results.csv, and sort out what each one actually shows'
-  const composer = page.locator('[data-composer-input][contenteditable="true"]').first()
-  await page.getByRole('button', { name: `“${materials}”`, exact: true }).click({ timeout: 15000 })
-  await expect.poll(() => composer.innerText()).toBe(materials)
   const chosen = join(scaffold.workspaceCwd, '研究 project')
-  await changeLocation(page, chosen)
+  await page.getByRole('button', { name: 'New research project', exact: true }).click()
+  let dialog = page.getByRole('dialog', { name: 'New research project', exact: true })
+  await dialog.getByLabel('Project name', { exact: true }).fill('Evidence study')
+  await dialog.getByLabel('Save location', { exact: true }).fill(chosen)
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(await projects()).toHaveLength(0)
+  expect(existsSync(chosen)).toBe(false)
+  await page.getByRole('button', { name: 'New research project', exact: true }).click()
+  dialog = page.getByRole('dialog', { name: 'New research project', exact: true })
+  await dialog.getByLabel('Project name', { exact: true }).fill('Evidence study')
+  await dialog.getByLabel('Save location', { exact: true }).fill(chosen)
+  await saveFailureShot(page, 'research-create-project')
+  await dialog.getByRole('button', { name: 'Create project', exact: true }).click()
   await expect.poll(async () => (await projects()).map(item => item.root), { timeout: 15000 }).toEqual([chosen])
   const project = (await projects())[0]!
   projectId = project.id
-  // Moving discards the draft, its conversation and the folder it made; the new folder takes its place under the chip.
-  expect(project).toMatchObject({ draft: true, untitled: true, mode: 'general' })
-  expect(leftInFolder(draft.root)).toEqual([])
-  await chip.filter({ hasText: '研究 project' }).waitFor({ timeout: 15000 })
-  // What was typed moved with it into the new folder's conversation.
-  expect(scaffold.ctx.research.getProject(projectId).sessionId).not.toBe(draft.sessionId)
-  await expect.poll(() => composer.innerText()).toBe(materials)
-  // Nothing starts on its own: the mode is not chosen until the assistant or the person chooses it.
+  expect(project).toMatchObject({ title: 'Evidence study', mode: 'general' })
+  expect(project.draft).not.toBe(true)
   expect(project.modeSetBy).toBeUndefined()
-  await command({ action: 'rename', projectId, title: 'Evidence study' })
-  // Naming the research ends its placeholder title.
-  expect(scaffold.ctx.research.getProject(projectId).title).toBe('Evidence study')
-  expect(scaffold.ctx.research.getProject(projectId).untitled).toBeUndefined()
+  await chip.filter({ hasText: 'Evidence study' }).waitFor({ timeout: 15000 })
+  await page.getByText('New conversation in “Evidence study”', { exact: true }).waitFor()
   const sourcePath = join(scaffold.workspaceCwd, 'source.csv')
   await writeFile(sourcePath, 'measurement,value\nsample,42\n')
   await command({ action: 'import', projectId, paths: [sourcePath] })
@@ -375,57 +345,44 @@ it.skipIf(!texBin)('compiles a real PDF and keeps visual review configuration ex
   expect(consoleState.pageErrors).toEqual([])
 })
 
-it('reuses one draft for New research, and carries its typed question into a research chosen by its folder', async () => {
-  const newResearch = page.getByRole('button', { name: 'New research', exact: true }).last()
-  await newResearch.click()
-  await page.getByText('What shall we work on today?', { exact: true }).first().waitFor()
-  await expect.poll(async () => (await projects()).filter(item => item.draft === true).length, { timeout: 15000 }).toBe(1)
-  const draft = (await projects()).find(item => item.draft === true)!
-  expect(dirname(draft.root)).toBe(join(scaffold.workspaceCwd, 'SciPaper'))
-  const chip = page.getByRole('button', { name: 'Choose research', exact: true }).first()
-  await chip.filter({ hasText: basename(draft.root) }).waitFor({ timeout: 15000 })
-  // 新研究 again opens the same draft, and the entry line says so; no second folder is made.
-  await newResearch.click()
-  await page.getByText('This already is a new research; just describe your question.', { exact: true }).first().waitFor({ timeout: 15000 })
-  expect(await projects()).toHaveLength(2)
-  // The edition ships no preset chooser: no preset chip beside the composer.
-  expect(await page.getByTitle('Agent preset for the session you are about to start').count()).toBe(0)
-  await page.locator('[data-composer-input][data-placeholder="Describe your research question, or drop in papers and data; / for commands, @ for files or conversations"]')
-    .first().waitFor()
-  // A Try sentence goes into the composer and nothing is sent; with the draft no longer empty the sentences leave.
-  const idea = 'Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?'
-  await page.getByRole('button', { name: `“${idea}”`, exact: true }).click()
-  const input = page.locator('[data-composer-input][contenteditable="true"]').first()
-  await expect.poll(() => input.innerText()).toBe(idea)
-  await expect.poll(() => page.getByText('Try:', { exact: true }).count()).toBe(0)
-  // A folder that holds files is asked about first; leaving it keeps the draft where it is.
+it('opens and reuses a project conversation, separates ordinary conversations, and carries an unsent draft into a project', async () => {
+  const newConversation = page.getByRole('button', { name: 'New conversation', exact: true }).last()
+  await newConversation.click()
+  const chip = page.getByRole('button', { name: 'Choose project', exact: true }).first()
+  await chip.filter({ hasText: 'Evidence study' }).waitFor({ timeout: 15000 })
+  await newConversation.click()
+  await page.getByText('This conversation is ready; describe your question.', { exact: true }).first().waitFor()
+  expect(await projects()).toHaveLength(1)
+  await page.getByRole('button', { name: 'New ordinary conversation', exact: true }).click()
+  await chip.filter({ hasText: 'Ordinary conversations' }).waitFor()
+  expect(await projects()).toHaveLength(1)
   const crowded = join(scaffold.workspaceCwd, 'notes folder')
   await mkdir(crowded, { recursive: true })
   await writeFile(join(crowded, 'notes.txt'), 'kept as it is\n')
-  await changeLocation(page, crowded)
-  const question = page.getByRole('menu').filter({ hasText: 'This folder already holds files.' })
-  await question.waitFor({ timeout: 15000 })
-  await question.getByRole('menuitem', { name: 'Cancel', exact: true }).click()
-  expect((await projects()).find(item => item.draft === true)?.root).toBe(draft.root)
-  // The first research's folder already is a research: opening it carries the question there and discards the draft.
-  await changeLocation(page, join(scaffold.workspaceCwd, '研究 project'))
-  const existing = page.getByRole('menu').filter({ hasText: 'This folder already is the research “Evidence study”.' })
-  await existing.waitFor({ timeout: 15000 })
-  await existing.getByRole('menuitem', { name: 'Open it', exact: true }).click()
-  await expect.poll(async () => (await projects()).map(item => item.id), { timeout: 15000 }).toEqual([projectId])
-  expect(leftInFolder(draft.root)).toEqual([])
-  await chip.filter({ hasText: 'Evidence study' }).waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'New research project', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'New research project', exact: true })
+  await dialog.getByLabel('Project name', { exact: true }).fill('Notes')
+  await dialog.getByLabel('Save location', { exact: true }).fill(crowded)
+  await dialog.getByRole('button', { name: 'Create project', exact: true }).click()
+  await dialog.getByText('This folder contains files. Use it for the project?', { exact: true }).waitFor()
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(await projects()).toHaveLength(1)
+  expect(leftInFolder(crowded)).toEqual(['notes.txt'])
+  const idea = 'Can block-sparse attention hold long-context accuracy at a quarter of the FLOPs?'
+  await page.getByRole('button', { name: `“${idea}”`, exact: true }).click()
+  await chip.click()
+  await page.getByRole('menuitem', { name: 'Move to another research', exact: true }).hover()
+  await page.getByRole('menuitem', { name: 'Evidence study', exact: true }).click()
+  await chip.filter({ hasText: 'Evidence study' }).waitFor()
   await expect.poll(() => page.locator('[data-composer-input][contenteditable="true"]').first().innerText()).toBe(idea)
-  // The entry line names a new conversation of the research, and opens its record beside it.
   const record = page.getByRole('button', { name: 'Research record', exact: true })
-  await record.waitFor({ timeout: 15000 })
   await record.click()
-  await page.getByText('Decisions', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 })
+  await page.getByText('Decisions', { exact: true }).filter({ visible: true }).first().waitFor()
   await saveFailureShot(page, 'research-second-conversation')
 })
 
 it('lists the researches in the sidebar, opens a second conversation, and removes a research from the list until it is restored', async () => {
-  const tree = page.getByRole('tree', { name: 'Researches', exact: true })
+  const tree = page.getByRole('tree', { name: 'Research projects', exact: true })
   await tree.waitFor({ timeout: 15000 })
   // The shell's workspace browser is shadowed: no workspace list, no Add workspace, no view options.
   expect(await page.getByRole('button', { name: 'Add workspace' }).count()).toBe(0)
@@ -467,12 +424,12 @@ it('lists the researches in the sidebar, opens a second conversation, and remove
   await expect.poll(() => scaffold.ctx.research.getProject(projectId).title, { timeout: 15000 }).toBe('Evidence study, measured')
   const renamed = tree.getByRole('treeitem', { name: /^Evidence study, measured/ })
   await renamed.waitFor({ timeout: 15000 })
-  // 移出列表 archives the research and its conversations; the conversation on screen went with it, so the person lands on the untouched draft.
+  // Removing a project archives its conversations and opens an ordinary conversation.
   await menuOf('Evidence study, measured')
   await page.getByRole('menuitem', { name: 'Remove from list', exact: true }).click()
   await expect.poll(async () => (await projects()).find(item => item.id === projectId)?.archived, { timeout: 15000 }).toBe(true)
   await expect.poll(() => renamed.count(), { timeout: 15000 }).toBe(0)
-  await expect.poll(() => tree.getByRole('treeitem', { name: 'New research', exact: true }).getAttribute('aria-selected'), { timeout: 15000 }).toBe('true')
+  await page.getByText('Ordinary conversation · You can add it to a project later', { exact: true }).waitFor({ timeout: 15000 })
   expect(existsSync(scaffold.ctx.research.getProject(projectId).root)).toBe(true)
   // Settings list it among the removed researches, and 恢复 puts it back; the examples switch saves at once.
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
@@ -494,19 +451,16 @@ it('lists the researches in the sidebar, opens a second conversation, and remove
   await page.getByRole('button', { name: 'Plugins', exact: true }).click()
   const plugins = page.locator('[data-plugin-panel]')
   await plugins.getByRole('heading', { name: 'Plugins', exact: true }).waitFor({ timeout: 15000 })
-  expect(await plugins.locator('[data-plugin-package]').count()).toBeGreaterThan(0)
+  await expect.poll(() => plugins.locator('[data-plugin-package]').count(), { timeout: 15000 }).toBeGreaterThan(0)
   await renamed.click()
 })
 
 it('shows a settled reply with no feedback buttons or view tabs', async () => {
   await seedSession(scaffold, await readFile(SETTLED_SEED, 'utf8'), 'research-edition-settled')
   await page.reload({ waitUntil: 'load' })
-  // A conversation outside every folder is listed under 其他文件夹 (Other folders).
-  const tree = page.getByRole('tree', { name: 'Researches', exact: true })
-  const others = tree.getByRole('treeitem', { name: 'Other folders', exact: true })
-  await others.waitFor({ timeout: 15000 })
-  if (await others.getAttribute('aria-expanded') !== 'true') await others.click()
-  const loose = tree.getByRole('treeitem', { name: 'Conversations in no folder', exact: true })
+  // A conversation outside every folder is listed with ordinary conversations.
+  const tree = page.getByRole('tree', { name: 'Research projects', exact: true })
+  const loose = tree.getByRole('treeitem', { name: /^Ordinary conversations/ })
   await loose.waitFor({ timeout: 15000 })
   if (await loose.getAttribute('aria-expanded') !== 'true') await loose.click()
   // Until its log is read, the seeded conversation's row is labelled with its folder's name.
@@ -529,23 +483,66 @@ it('shows a settled reply with no feedback buttons or view tabs', async () => {
   await saveFailureShot(page, 'research-settled-reply')
 })
 
-it('speaks Chinese on the entry screen of a new research', async () => {
+it('speaks Chinese on the entry screen of an ordinary conversation', async () => {
   const zhPage = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE, timezoneId: 'Asia/Shanghai' })
   try {
     await zhPage.goto(scaffold.authenticatedUrl)
     // A new window lands on the research used last, on its conversation that has started.
     await zhPage.getByTitle('研究记录', { exact: true }).first().waitFor({ timeout: 30000 })
-    await zhPage.getByRole('button', { name: '新研究', exact: true }).last().click({ timeout: 30000 })
+    await zhPage.getByRole('button', { name: '新建普通对话', exact: true }).last().click({ timeout: 30000 })
     await zhPage.getByText('今天想推进什么？', { exact: true }).first().waitFor({ timeout: 15000 })
     await zhPage.locator('[data-composer-input][data-placeholder="说说你的研究问题，或把论文、数据拖进来（/ 调用指令，@ 引用文件或对话）"]')
       .first().waitFor({ timeout: 15000 })
     await zhPage.getByText('试试：', { exact: true }).first().waitFor({ timeout: 15000 })
-    await zhPage.getByRole('button', { name: '选择研究', exact: true }).first().click()
-    await zhPage.getByRole('menuitem', { name: '更改位置…', exact: true }).waitFor()
+    await zhPage.getByRole('button', { name: '选择项目', exact: true }).first().click()
+    await zhPage.getByRole('menuitem', { name: '换到另一项研究', exact: true }).waitFor()
     await saveFailureShot(zhPage, 'research-welcome-zh')
   } finally {
     await zhPage.close()
   }
+})
+
+it('continues an ordinary conversation in a project with its full history and keeps the source files', async () => {
+  const tree = page.getByRole('tree', { name: 'Research projects', exact: true })
+  await page.getByRole('button', { name: 'New ordinary conversation', exact: true }).click()
+  await page.getByText('Ordinary conversation · You can add it to a project later', { exact: true }).waitFor()
+  const input = page.locator('[data-composer-input][contenteditable="true"]').first()
+  const question = 'Compare the two measurements in this ordinary conversation'
+  await writeComposerDraft(page, input, question)
+  await input.press('Enter')
+  await page.getByText('Noted.', { exact: true }).first().waitFor({ timeout: 30000 })
+  const selected = tree.locator('[role="treeitem"][aria-selected="true"][data-key^="conversation:"]')
+  const sourceId = (await selected.getAttribute('data-key'))!.slice('conversation:'.length)
+  await expect.poll(async () => {
+    const { items } = await scaffold.ctx.sessionController.list({}, new AbortController().signal)
+    return items.find(item => item.sessionId === sourceId)?.running
+  }).toBe(false)
+  const source = await scaffold.ctx.sessionController.inspect(sourceId as never)
+  const note = join(source.meta.cwd!, 'notes.txt')
+  await writeFile(note, 'Original conversation files remain available')
+  await selected.hover()
+  await selected.getByRole('button', { name: /^More for/ }).click()
+  await page.getByRole('menuitem', { name: 'Add to project', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add this conversation to a project', exact: true })
+  await dialog.getByRole('radio', { name: scaffold.ctx.research.getProject(projectId).title, exact: true }).check()
+  await dialog.getByRole('button', { name: 'Add to project', exact: true }).click()
+  await expect.poll(() => dialog.count(), { timeout: 15000 }).toBe(0)
+  await page.getByText(question, { exact: true }).first().waitFor()
+  await page.getByText('Noted.', { exact: true }).first().waitFor()
+  const targetId = (await selected.getAttribute('data-key'))!.slice('conversation:'.length)
+  expect(targetId).not.toBe(sourceId)
+  const target = await scaffold.ctx.sessionController.inspect(targetId as never)
+  expect(target.meta.cwd).toBe(scaffold.ctx.research.getProject(projectId).root)
+  expect(target.events.slice(0, source.events.length)).toEqual(source.events)
+  const hierarchy = page.getByRole('navigation', { name: 'Session hierarchy', exact: true })
+  expect(await hierarchy.getByText(/^Compare the two measurements/).count()).toBe(1)
+  expect(scaffold.ctx.workspaceRegistry.archivedSessionIds).toContain(sourceId)
+  expect(await readFile(note, 'utf8')).toBe('Original conversation files remain available')
+  await page.reload({ waitUntil: 'load' })
+  await tree.locator(`[data-key="conversation:${targetId}"]`).click({ timeout: 15000 })
+  await page.getByText(question, { exact: true }).first().waitFor()
+  await page.getByText('Noted.', { exact: true }).first().waitFor()
+  await saveFailureShot(page, 'research-conversation-assigned')
 })
 
 it('moves a draft to another research without replacing its existing unsent draft', async () => {
@@ -557,8 +554,8 @@ it('moves a draft to another research without replacing its existing unsent draf
   const second = await scaffold.ctx.research.create({
     title: 'Draft source', root: join(scaffold.workspaceCwd, 'draft-source'), brief: 'Move the second question',
   })
-  const tree = page.getByRole('tree', { name: 'Researches', exact: true })
-  const chip = page.getByRole('button', { name: 'Choose research', exact: true }).first()
+  const tree = page.getByRole('tree', { name: 'Research projects', exact: true })
+  const chip = page.getByRole('button', { name: 'Choose project', exact: true }).first()
   const firstDraft = 'X: preserve this unfinished research question'
   const carriedDraft = 'Y: move this question into the destination research'
   const firstSessions = () => scaffold.ctx.workspaceRegistry.get(first.workspaceId)!.sessionIds

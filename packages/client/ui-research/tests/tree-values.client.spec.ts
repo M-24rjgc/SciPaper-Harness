@@ -107,7 +107,7 @@ describe('which conversation belongs where', () => {
         session('s-in', 'c:/research/sparse/figures', { updatedAt: 2000 }),
         session('s-listed', undefined, { updatedAt: 1500 }),
         session('s-nested', undefined, { updatedAt: 1400 }),
-        session('s-child', 'C:\\Research\\sparse', { parentId: 's-in' as SessionId, running: true }),
+        session('s-child', 'C:\\Research\\sparse', { parentId: 's-in' as SessionId, origin: 'subagent', running: true }),
         session('s-agent', 'C:\\Research\\sparse', { origin: 'subagent' }),
         session('s-reviewer', 'C:\\Research\\sparse'),
         session('s-archived', 'C:\\Research\\sparse'),
@@ -237,13 +237,15 @@ describe('the rows as drawn', () => {
     const model = world('s-own')
     expect(model.hasOwn).toBe(true)
     expect(shape(model)).toEqual([
-      [`research:${draft.id}`, 1, undefined, 1, 5, undefined],
-      [`research:${own.id}`, 1, undefined, 2, 5, true],
+      [`research:${draft.id}`, 1, undefined, 1, 6, undefined],
+      [`research:${own.id}`, 1, undefined, 2, 6, true],
       ['conversation:s-own', 2, `research:${own.id}`, 1, 2, 'leaf'],
       [`add:${own.id}`, 2, `research:${own.id}`, 2, 2, 'leaf'],
-      [`research:${other.id}`, 1, undefined, 3, 5, false],
-      [treeKey.examples, 1, undefined, 4, 5, false],
-      [treeKey.others, 1, undefined, 5, 5, false],
+      [`research:${other.id}`, 1, undefined, 3, 6, false],
+      [treeKey.loose, 1, undefined, 4, 6, true],
+      ['conversation:s-loose', 2, treeKey.loose, 1, 1, 'leaf'],
+      [treeKey.examples, 1, undefined, 5, 6, false],
+      [treeKey.others, 1, undefined, 6, 6, false],
     ])
   })
 
@@ -259,8 +261,8 @@ describe('the rows as drawn', () => {
 
   it('opens the examples while the person has none of their own, and follows every explicit choice', () => {
     const none = deriveTree(sources({ projects: [draft, example], sessions: [] }))
-    expect(flattenTree(none, {}).map(row => row.key)).toEqual(['research:' + draft.id, treeKey.examples, 'research:' + example.id])
-    expect(flattenTree(none, { [treeKey.examples]: false }).map(row => row.key)).toEqual(['research:' + draft.id, treeKey.examples])
+    expect(flattenTree(none, {}).map(row => row.key)).toEqual(['research:' + draft.id, treeKey.loose, treeKey.examples, 'research:' + example.id])
+    expect(flattenTree(none, { [treeKey.examples]: false }).map(row => row.key)).toEqual(['research:' + draft.id, treeKey.loose, treeKey.examples])
     const chosen = flattenTree(world(), {
       [`research:${other.id}`]: true, [treeKey.others]: true, ['folder:w-legacy']: true, [treeKey.loose]: true,
     })
@@ -269,26 +271,26 @@ describe('the rows as drawn', () => {
       ['research:' + own.id, 1],
       ['research:' + other.id, 1],
       ['add:' + other.id, 2],
+      [treeKey.loose, 1],
+      ['conversation:s-loose', 2],
       [treeKey.examples, 1],
       [treeKey.others, 1],
       ['folder:w-legacy', 2],
       ['conversation:s-legacy', 3],
-      [treeKey.loose, 2],
-      ['conversation:s-loose', 3],
     ])
   })
 
   it('opens the other folders on the conversation on screen, in a folder or in none', () => {
     const inFolder = flattenTree(world('s-legacy'), {})
-    expect(inFolder.slice(-3).map(row => row.key)).toEqual(['folder:w-legacy', 'conversation:s-legacy', treeKey.loose])
+    expect(inFolder.slice(-3).map(row => row.key)).toEqual([treeKey.others, 'folder:w-legacy', 'conversation:s-legacy'])
     const inNone = flattenTree(world('s-loose'), {})
-    expect(inNone.slice(-2).map(row => row.key)).toEqual([treeKey.loose, 'conversation:s-loose'])
+    expect(inNone.find(row => row.key === 'conversation:s-loose')).toMatchObject({ parent: treeKey.loose, level: 2 })
     // Only folders, or only folderless conversations, still make the group.
     const foldersOnly = deriveTree(sources({ projects: [], sessions: [], workspaces: [workspace('w-legacy', '/legacy', [])] }))
-    expect(flattenTree(foldersOnly, { [treeKey.others]: true }).map(row => row.kind)).toEqual(['group', 'folder'])
+    expect(flattenTree(foldersOnly, { [treeKey.others]: true }).map(row => row.kind)).toEqual(['loose', 'group', 'folder'])
     const looseOnly = deriveTree(sources({ projects: [], sessions: [session('s-loose', '/elsewhere')] }))
-    expect(flattenTree(looseOnly, {}).map(row => row.kind)).toEqual(['group'])
-    expect(flattenTree(deriveTree(sources({ projects: [], sessions: [] })), {})).toEqual([])
+    expect(flattenTree(looseOnly, {}).map(row => row.kind)).toEqual(['loose', 'conversation'])
+    expect(flattenTree(deriveTree(sources({ projects: [], sessions: [] })), {}).map(row => row.key)).toEqual([treeKey.loose])
   })
 })
 

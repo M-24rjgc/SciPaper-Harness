@@ -146,6 +146,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         hideChrome: boolean
       }
     }
+    /** Add context before the session breadcrumbs. Receives the current session scope; absent registrations draw nothing. */
+    'conversation.session.header.context': { kind: 'single'; scope: 'session' }
     /** Optional replacement for one Session breadcrumb title. */
     'conversation.session.header.lineage': {
       kind: 'single'
@@ -187,6 +189,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.composer': { kind: 'chain'; scope: 'session'; owner: ComposerChainProps }
     /** Workspace picker shown by the blank-session Hero. */
     'conversation.hero.workspace': { kind: 'single'; scope: 'root'; owner: EmptyWorkspaceOwnerProps }
+    /**
+     * Replace the blank-session workspace chip's text. Receives the workspace id and
+     * its current label; an absent registration uses that label or the picker prompt.
+     */
+    'conversation.hero.workspace.label': { kind: 'single'; scope: 'root'; owner: { label: string | undefined; workspaceId: WorkspaceId | undefined } }
     /** Welcome content below the blank-session headline. */
     'conversation.hero.welcome': { kind: 'list'; scope: 'root' }
     /** Supporting content below the blank-session composer. */
@@ -241,6 +248,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         'conversation.hero.footer': { kind: 'list'; scope: 'root' }
         'conversation.hero.brand.mark': { kind: 'single'; scope: 'root' }
         'conversation.hero.workspace': { kind: 'single'; scope: 'root' }
+        'conversation.hero.workspace.label': { kind: 'single'; scope: 'root' }
         'conversation.hero.agentPreset': { kind: 'single'; scope: 'session-maybe' }
       }
       inject: ConversationInjected
@@ -506,6 +514,7 @@ export type ConversationSessionHeaderSlotProps =
   PropsRuntime<'conversation.session.header'>
   & PropsRenderSlots<
     'conversation.session.header.lineage'
+    | 'conversation.session.header.context'
     | 'conversation.session.header.actions'
     | 'conversation.session.header.utilities'
     | 'conversation.session.header.corner'

@@ -36,10 +36,10 @@ import { ResearchSourcesTab } from './Sources.tsx'
 import { diagramTitle, ResearchDiagramTab } from './Diagram.tsx'
 import { ResearchClaimSheet } from './ClaimSheet.tsx'
 import { ResearchRuns } from './RunPanel.tsx'
-import { ResearchStatusChip } from './Header.tsx'
+import { ResearchProjectContext, ResearchStatusChip } from './Header.tsx'
 import { ResearchTree } from './ResearchTree.tsx'
 import { createResearchTreeStore } from './treeStore.ts'
-import { ResearchEntryLine, ResearchTryChips } from './EntryScreen.tsx'
+import { ResearchEntryFeedback, ResearchEntryLine, ResearchTryChips, ResearchWorkspaceLabel } from './EntryScreen.tsx'
 import { ResearchFolderMenu } from './FolderMenu.tsx'
 import { ResearchSettingsSection } from './ResearchSettings.tsx'
 import { SkipHarnessNotice } from './Onboarding.tsx'
@@ -347,8 +347,14 @@ export function apply(ctx: Context): void {
     openGallery: () => { openTab(GALLERY_TAB.kind, WIDE_TAB_PX) },
     openKnowledge,
     startNew: () => { ctx.uiWorkspace.startSession() },
+    setConversationAutonomy: async (sessionId, autonomy) => {
+      const session = sessions.binding(sessionId)?.session
+      if (session === undefined) throw new Error(ctx.locale.bind('research')('entryNotListed'))
+      const response = unwrap(await session.command(`/permission ${autonomy === 'automatic' ? 'research-auto' : 'workspace-write'}`))
+      if (!response.matched) throw new Error(ctx.locale.bind('research')('autonomyUnavailable'))
+    },
   })
-  // Where startup and 新研究 go (ui-workspace's entry policy), and the untouched draft's moves.
+  // Conversation entry policy and compatibility with existing draft projects.
   const entryView = createSnapshotStore<EntryView>({ notice: null })
   const researchEntry = createResearchEntry({
     sessions, workspaces, current: currentSession, research: state, entry: entryView, reread,
@@ -389,12 +395,23 @@ export function apply(ctx: Context): void {
       })
     },
     showProgress,
+    dismissNotice: () => { entryView.set({ notice: null }) },
   })
   const treeInjected = (drafts: ObservableSnapshot<ConversationDrafts>): ResearchTreeInjected => ({
     hooks: { currentSession, research: state, directories, canReveal, drafts },
     openSession: (sessionId) => { ctx.uiWorkspace.openSession(sessionId) },
     openWorkspace: workspaceId => ctx.uiWorkspace.openWorkspace(workspaceId),
     startSession: (workspaceId) => { ctx.uiWorkspace.startSession(workspaceId) },
+    startOrdinary: () => {
+      void researchEntry.startOrdinary().catch((_error: unknown) => { /* The shell feedback displays the failure. */ })
+    },
+    chooseFolder: pickFolder,
+    openResult: async (result) => {
+      const id = result.sessionId as SessionId | undefined
+      if (id === undefined) return
+      if (!await whenListed(id)) throw new Error(ctx.locale.bind('research')('entryNotListed'))
+      ctx.uiWorkspace.openSession(id)
+    },
     createSshWorkspace: async (host, path, auth, trustedHostKey) => {
       try {
         return (await workspaces.create({
@@ -429,9 +446,11 @@ export function apply(ctx: Context): void {
   ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark' }, ResearchMark))
   // Where the research stands, from the conversation header; clicking it opens the research tab, or closes the panel showing it.
   ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({ name: 'conversation.session.header.actions', id: 'research-status', order: 5, locale: 'research', inject: injected }, ResearchStatusChip))
+  ctx.slots.inject('conversation.session.header.context', () => ctx.slots.register({ name: 'conversation.session.header.context', priority: -1, locale: 'research', inject: injected }, ResearchProjectContext))
   // The blank-session entry: the research mark, the line under the headline, and two example sentences to start from.
   ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark' }, ResearchHeroMark))
   ctx.slots.inject('conversation.hero.welcome', () => ctx.slots.register({ name: 'conversation.hero.welcome', id: 'research-entry', order: 10, locale: 'research', inject: entryInjected }, ResearchEntryLine))
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'research-entry-feedback', locale: 'research', inject: entryInjected }, ResearchEntryFeedback))
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-try', order: 7, locale: 'research', inject: entryInjected }, ResearchTryChips))
   // Submitted runs outlive the window, so the group reports itself above the composer.
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({ name: 'conversation.input.dock', id: 'research-runs', order: 6, locale: 'research', inject: injected }, ResearchRuns))
@@ -476,6 +495,7 @@ export function apply(ctx: Context): void {
     ctx.slots.inject('settings.onboarding', () => ctx.slots.register({ name: 'settings.onboarding', id: 'welcome-notice', priority: -1 }, SkipHarnessNotice))
     ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({ name: 'conversation.input.permission', priority: -1, locale: 'research', inject: injected }, AutonomyChip))
     ctx.slots.inject('conversation.hero.workspace', () => ctx.slots.register({ name: 'conversation.hero.workspace', priority: -1, locale: 'research', inject: entryInjected }, ResearchFolderMenu))
+    ctx.slots.inject('conversation.hero.workspace.label', () => ctx.slots.register({ name: 'conversation.hero.workspace.label', priority: -1, locale: 'research', inject: entryInjected }, ResearchWorkspaceLabel))
     // The sidebar lists researches and their conversations in place of the shell's workspace browser, which
     // stays registered underneath and keeps declaring its directory-flow child for the folder pickers.
     ctx.inject(['conversation'], scope => scope.slots.inject('sidebar.workspaces', () => scope.slots.register({

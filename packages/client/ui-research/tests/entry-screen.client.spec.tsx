@@ -12,7 +12,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import type { ResearchProject, ResearchSnapshot } from '@deepseek-ai/dsh-research-workbench/types'
-import { ResearchEntryLine, ResearchTryChips, type EntryLineProps, type TryChipsProps } from '../src/client/EntryScreen.tsx'
+import { ResearchEntryFeedback, ResearchEntryLine, ResearchTryChips, type EntryLineProps, type TryChipsProps } from '../src/client/EntryScreen.tsx'
 import type { EntryNotice, ResearchView } from '../src/client/contract.ts'
 import { zh } from '../src/client/locales.ts'
 import { standingOf } from './fixtures/standing.ts'
@@ -54,30 +54,32 @@ function lineProps(parts: {
       's-draft': '/home/SciPaper/2026-09-26-1', 's-new': '/research/sparse', 's-example': '/demo/example', 's-loose': '/elsewhere',
     }),
     showProgress,
+    dismissNotice: vi.fn(),
   } as unknown as EntryLineProps
   return { props, showProgress }
 }
 
 describe('the line under the headline', () => {
-  it('says nothing for the untouched draft, a conversation outside every research, or no conversation', () => {
-    for (const current of ['s-draft', 's-loose', undefined]) {
+  it('identifies ordinary conversations and preserves the legacy draft project identity', () => {
+    for (const current of ['s-loose', undefined]) {
       const { props } = lineProps({ ...(current === undefined ? {} : { current }) })
-      expect(render(<ResearchEntryLine {...props} />).container.innerHTML).toBe('')
+      expect(render(<ResearchEntryLine {...props} />).container.textContent).toBe(zh.entryOrdinary)
       cleanup()
     }
+    expect(render(<ResearchEntryLine {...lineProps({ current: 's-draft' }).props} />).container.textContent).toContain(t('entryInProject', { title: draft.title }))
   })
 
   it('names a new conversation of a research with where the research stands, and opens the research tab from it', () => {
     const { props, showProgress } = lineProps({ current: 's-new' })
     const view = render(<ResearchEntryLine {...props} />)
     // Before the modes arrive, the mode reads by its id.
-    expect(view.container.textContent).toBe(`${zh.entryNewConversation}·general·${zh.entryRecord}`)
+    expect(view.container.textContent).toBe(`${t('entryInProject', { title: named.title })}·general·${zh.entryRecord}`)
     fireEvent.click(view.getByRole('button', { name: zh.entryRecord }))
     expect(showProgress).toHaveBeenCalledOnce()
     cleanup()
     const phased = { ...named, mode: 'spark-to-paper', route: 'data', standing: standingOf([['data', 'done'], ['plan', 'current'], ['cite', 'pending']]) }
     const staged = lineProps({ current: 's-new', snapshot: snapshotOf([phased], MODES) })
-    expect(render(<ResearchEntryLine {...staged.props} />).container.textContent).toBe('新对话·spark-to-paper · 规划 1/3·研究记录')
+    expect(render(<ResearchEntryLine {...staged.props} />).container.textContent).toBe(`${t('entryInProject', { title: named.title })}·spark-to-paper · 规划 1/3·研究记录`)
   })
 
   it('says an example is only to be viewed', () => {
@@ -85,23 +87,24 @@ describe('the line under the headline', () => {
     expect(render(<ResearchEntryLine {...props} />).container.textContent).toBe(zh.entryExample)
   })
 
-  it('shows a notice only on the screen it was raised on', () => {
+  it('shows feedback even after the selected conversation changes', () => {
     const here: EntryNotice = { kind: 'here', sessionId: 's-draft' }
-    const shown = render(<ResearchEntryLine {...lineProps({ current: 's-draft', notice: here }).props} />)
-    expect(shown.getByRole('status').textContent).toBe(zh.entryHere)
+    const shown = render(<ResearchEntryFeedback {...lineProps({ current: 's-draft', notice: here }).props} />)
+    expect(shown.getByRole('alert').textContent).toBe(zh.entryHere)
     cleanup()
-    expect(render(<ResearchEntryLine {...lineProps({ current: 's-new', notice: here }).props} />).queryByRole('status')).toBeNull()
+    expect(render(<ResearchEntryFeedback {...lineProps({ current: 's-new', notice: here }).props} />).getByRole('alert').textContent).toBe(zh.entryHere)
   })
 
   it('says why a landing, 新研究, a move or a reveal failed, beside the line it may follow', () => {
     const sentences = { land: zh.entryLandFailed, new: zh.entryNewFailed, move: zh.entryMoveFailed, reveal: zh.entryRevealFailed }
     for (const [action, sentence] of Object.entries(sentences)) {
       const notice = { kind: 'failed', action, reason: '磁盘已满', sessionId: undefined } as EntryNotice
-      const view = render(<ResearchEntryLine {...lineProps({ notice, snapshot: null }).props} />)
+      const view = render(<ResearchEntryFeedback {...lineProps({ notice, snapshot: null }).props} />)
       expect(view.getByRole('alert').textContent).toBe(sentence.replace('{reason}', '磁盘已满'))
       cleanup()
     }
-    const both = render(<ResearchEntryLine {...lineProps({ current: 's-new', notice: { kind: 'failed', action: 'new', reason: 'x', sessionId: 's-new' } }).props} />)
+    const props = lineProps({ current: 's-new', notice: { kind: 'failed', action: 'new', reason: 'x', sessionId: 's-new' } }).props
+    const both = render(<><ResearchEntryLine {...props} /><ResearchEntryFeedback {...props} /></>)
     expect(both.getByRole('alert')).toBeTruthy()
     expect(both.getByRole('button', { name: zh.entryRecord })).toBeTruthy()
   })

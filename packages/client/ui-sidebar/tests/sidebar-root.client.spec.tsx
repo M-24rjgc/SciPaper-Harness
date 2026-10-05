@@ -104,10 +104,10 @@ describe('SidebarRoot shell', () => {
     const shortcut: ShortcutCatalogEntry = { id: 'session.new' as ShortcutCommandId, label: 'New', aliases: [],
       binding: null, modified: true, conflicts: [], issue: null, keys: ['Ctrl', 'N'], aria: 'Control+N' }
     mountShell({ shortcuts: [shortcut] })
-    for (const button of screen.getAllByRole('button', { name: 'New research' })) {
+    for (const button of screen.getAllByRole('button', { name: 'New conversation' })) {
       expect(button.getAttribute('aria-keyshortcuts')).toBe('Control+N')
     }
-    const expanded = screen.getAllByRole('button', { name: 'New research' }).find(button => button.querySelector('kbd') !== null)!
+    const expanded = screen.getAllByRole('button', { name: 'New conversation' }).find(button => button.querySelector('kbd') !== null)!
     fireEvent.mouseEnter(expanded)
     fireEvent.focus(expanded)
     expect(screen.queryByRole('tooltip')).toBeNull()
@@ -117,7 +117,7 @@ describe('SidebarRoot shell', () => {
       usePanelInfo={neverHook} useSessions={neverHook} useSessionStatus={neverHook}
       useSessionRetainInfo={neverHook} useResource={useResource} useWorkspaces={neverHook}
       usePanels={select => select([])} useShortcuts={select => select([shortcut])} />)
-    const button = screen.getByRole('button', { name: 'New research' })
+    const button = screen.getByRole('button', { name: 'New conversation' })
     expect(button.getAttribute('aria-keyshortcuts')).toBe('Control+N')
     fireEvent.focus(button)
     expect(Array.from(screen.getByRole('tooltip').querySelectorAll('kbd'), key => key.textContent)).toEqual(['Ctrl', 'N'])
@@ -127,7 +127,7 @@ describe('SidebarRoot shell', () => {
     expect(screen.getByTestId('custom-brand-mark')).toBeTruthy()
     expect(screen.getByTestId('custom-brand-name')).toBeTruthy()
     // Expanded, both the wordmark and the capsule start a session.
-    const starters = screen.getAllByRole('button', { name: 'New research' })
+    const starters = screen.getAllByRole('button', { name: 'New conversation' })
     expect(starters).toHaveLength(2)
     for (const button of starters) fireEvent.click(button)
     expect(b.startSession).toHaveBeenCalledTimes(2)
@@ -255,7 +255,7 @@ it('keeps the macOS sidebar toggle in its top strip', () => {
   // The brand stays part of the logo row's window-drag surface: no button
   // role (the global no-drag rule would subtract it); only the dedicated
   // New Session capsule starts a session.
-  expect(screen.getAllByRole('button', { name: 'New research' })).toHaveLength(1)
+  expect(screen.getAllByRole('button', { name: 'New conversation' })).toHaveLength(1)
   expect(screen.getByTestId('custom-brand-mark')).toBeTruthy()
 })
 
@@ -294,7 +294,7 @@ describe('Windows caption tooltips', () => {
     vi.useFakeTimers()
     document.documentElement.setAttribute('data-windows-titlebar', '')
     mountShell({ collapsed: true, width: 0 })
-    hover(screen.getByRole('button', { name: 'New research' }))
+    hover(screen.getByRole('button', { name: 'New conversation' }))
     expect(screen.getByRole('tooltip').getAttribute('data-side')).toBe('bottom')
   })
 

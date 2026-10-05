@@ -172,7 +172,7 @@ describe('where the person lands', () => {
       session('s-older', '/research/sparse', { updatedAt: 1500 }),
       session('s-blank', '/research/sparse', { blank: true, updatedAt: 9000 }),
       session('s-archived', '/research/sparse', { updatedAt: 9000 }),
-      session('s-child', '/research/sparse', { parentId: 's-new' as SessionId, updatedAt: 9000 }),
+      session('s-child', '/research/sparse', { parentId: 's-new' as SessionId, origin: 'subagent', updatedAt: 9000 }),
       session('s-agent', '/research/sparse', { origin: 'subagent', updatedAt: 9000 }),
       session('s-reviewer', '/research/sparse', { updatedAt: 9000 }),
       session('s-long', '/research/long', { updatedAt: 2500 }),
@@ -218,7 +218,7 @@ describe('landing', () => {
     w.answers.push(() => ({ message: 'New research created', sessionId: 's-draft' }))
     const landing = w.flows.land()
     await flush()
-    expect(w.command).toHaveBeenCalledWith({ action: 'start-new' })
+    expect(w.command).toHaveBeenCalledWith({ action: 'start-conversation', ordinary: true })
     // The draft's conversation opens once the list carries it.
     expect(w.openSession).not.toHaveBeenCalled()
     w.listSessions([session('s-draft', '/home/SciPaper/2026-09-26-1', { blank: true })])
@@ -418,7 +418,7 @@ describe('moving the untouched draft', () => {
     expect(await w.flows.move({ projectId: draft.id, root: '/picked' }, vi.fn())).toBeUndefined()
     expect(w.entry.getSnapshot().notice).toMatchObject({ kind: 'failed', action: 'move', reason: '这项研究已经开始' })
     await sleep(0)
-    expect(w.command).toHaveBeenLastCalledWith({ action: 'start-new' })
+    expect(w.command).toHaveBeenLastCalledWith({ action: 'start-conversation', ordinary: true })
     expect(w.openSession).toHaveBeenCalledWith('s-draft')
   })
 
@@ -488,7 +488,7 @@ describe('moving the untouched draft', () => {
     w.answers.push(() => ({ message: 'The untouched new research', sessionId: 's-draft' }))
     await w.flows.adopt(draft.id, 'w-other' as WorkspaceId, vi.fn())
     await sleep(0)
-    expect(w.command).toHaveBeenCalledWith({ action: 'start-new' })
+    expect(w.command).toHaveBeenCalledWith({ action: 'start-conversation', ordinary: true })
     w.command.mockClear()
     w.select('s-draft')
     await w.flows.adopt(draft.id, 'w-other' as WorkspaceId, vi.fn())

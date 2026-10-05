@@ -4,6 +4,7 @@
  * sentences for a new research. Neither starts anything.
  */
 import type { ReactNode } from 'react'
+import { IconLoadingOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -27,6 +28,13 @@ function noticeText(notice: EntryNotice, t: Translate): string {
 /** Composed props of the entry line: the headline's welcome seat and the entry face. */
 export type EntryLineProps = PropsRuntime<'conversation.hero.welcome'> & EntryProps
 
+/** Name the selected project or the ordinary conversation without exposing its private working folder. */
+export function ResearchWorkspaceLabel(props: PropsRuntime<'conversation.hero.workspace.label'> & EntryProps): ReactNode {
+  const snapshot = props.useResearch(state => state.snapshot)
+  const project = snapshot?.projects.find(item => item.workspaceId === props.workspaceId)
+  return project?.title ?? props.t('treeLoose')
+}
+
 /**
  * The one line under the headline. A new research (the untouched draft) has
  * none; a new conversation in a research reads `新对话 · {mode} · {phase}
@@ -36,30 +44,34 @@ export type EntryLineProps = PropsRuntime<'conversation.hero.welcome'> & EntryPr
 export function ResearchEntryLine(props: EntryLineProps): ReactNode {
   const { t } = props
   const current = props.useCurrentSession(state => state)
-  const notice = props.useEntry(state => state.notice)
   const snapshot = props.useResearch(state => state.snapshot)
   const directories = props.useDirectories(state => state)
-  const modes = snapshot?.modes ?? []
-  const project = current === undefined ? undefined : sessionProject(snapshot?.projects, current, directories)
-  const shown = notice !== null && notice.sessionId === current ? notice : null
+  if (snapshot === null) return null
+  const modes = snapshot.modes
+  const project = current === undefined ? undefined : sessionProject(snapshot.projects, current, directories)
   let line: ReactNode = null
   if (project?.example === true) line = <p className={styles.line}>{t('entryExample')}</p>
-  else if (project !== undefined && project.draft !== true) {
+  else if (project !== undefined) {
     line = <p className={styles.line}>
-      <span>{t('entryNewConversation')}</span>
+      <span>{t('entryInProject', { title: project.title })}</span>
       <span className={styles.separator}>·</span>
       <span>{standingText(project, modes, t)}</span>
       <span className={styles.separator}>·</span>
       <button type="button" className={styles.record} onClick={() => { props.showProgress() }}>{t('entryRecord')}</button>
     </p>
   }
-  if (line === null && shown === null) return null
+  else line = <p className={styles.line}>{t('entryOrdinary')}</p>
   return <div className={styles.root}>
     {line}
-    {shown !== null && <p className={shown.kind === 'failed' ? styles.failed : styles.notice} role={shown.kind === 'failed' ? 'alert' : 'status'}>
-      {noticeText(shown, t)}
-    </p>}
   </div>
+}
+
+/** Show conversation-opening progress and outcomes independently of the selected conversation. */
+export function ResearchEntryFeedback(props: PropsRuntime<'shell.overlay'> & EntryProps): ReactNode {
+  const view = props.useEntry(state => state)
+  if (view.pending === true) return <div className={styles.pending} role="status" aria-label={props.t('entryOpening')}><IconLoadingOutlineRegular className={styles.spinner} /></div>
+  if (view.notice === null) return null
+  return <Toast key={noticeText(view.notice, props.t)} text={noticeText(view.notice, props.t)} holdMs={6000} onDone={props.dismissNotice} />
 }
 
 /** Composed props of the Try sentences: the input dock's seat and the entry face. */
@@ -72,11 +84,12 @@ export type TryChipsProps = PropsRuntime<'conversation.input.dock'> & EntryProps
  */
 export function ResearchTryChips(props: TryChipsProps): ReactNode {
   const { t, input } = props
-  const projects = props.useResearch(state => state.snapshot)?.projects
+  const snapshot = props.useResearch(state => state.snapshot)
+  const projects = snapshot?.projects
   const project = sessionProject(projects, props.sessionId, props.useDirectories(state => state))
   // Blank until the first turn starts; the draft flag follows only on the next read of the record.
   const blank = props.useSessions(state => state.byId[props.sessionId]?.blank === true)
-  if (project?.draft !== true || !blank || input.draft.trim() !== '') return null
+  if (snapshot === null || (project !== undefined && project.draft !== true) || !blank || input.draft.trim() !== '') return null
   return <div className={styles.try}>
     <span className={styles.tryLabel}>{t('entryTry')}</span>
     {TRY_SENTENCES.map(key => <button key={key} type="button" className={styles.tryChip} title={t('entryTryHint')}

@@ -343,6 +343,8 @@ export interface SessionRenameValue {
 /** Session fork request. */
 export interface SessionForkRequest {
   readonly sessionId: SessionId
+  /** Optional local destination Workspace for continuing a conversation in a project. */
+  readonly workspaceId?: WorkspaceId
   /** Exact inclusive source event seq; omission selects the latest completed-turn prefix. */
   readonly atSeq?: number
 }

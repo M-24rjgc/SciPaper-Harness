@@ -7245,7 +7245,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ResearchSnapshot',
-    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n    knowledge?: {\n        enabled: boolean;\n        modules: KnowledgeModules;\n    } | undefined;\n    researchHome?: string | undefined;\n}',
+    declaration: 'export interface ResearchSnapshot {\n    projects: ResearchProject[];\n    preferences: ResearchPreferences;\n    components: ComponentStatus[];\n    modes: ModeSummary[];\n    knowledge?: {\n        enabled: boolean;\n        modules: KnowledgeModules;\n    } | undefined;\n    researchHome?: string | undefined;\n    conversationHome?: string | undefined;\n}',
   },
   {
     name: 'ResearchStanding',
@@ -7641,7 +7641,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionForkRequest',
-    declaration: 'export interface SessionForkRequest {\n    readonly sessionId: SessionId;\n    readonly atSeq?: number;\n}',
+    declaration: 'export interface SessionForkRequest {\n    readonly sessionId: SessionId;\n    readonly workspaceId?: WorkspaceId;\n    readonly atSeq?: number;\n}',
   },
   {
     name: 'SessionForkSource',

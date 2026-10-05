@@ -36,7 +36,7 @@ describe('startup RPC budget', () => {
     await page.goto(scaffold.authenticatedUrl)
     // Boot settles when the workspace picker is interactive; the trailing wait
     // absorbs the first-connection reset wave the budget must include.
-    await page.getByRole('textbox', { name: 'Choose research' }).waitFor({ timeout: 30_000 })
+    await page.getByRole('textbox', { name: 'Choose project' }).waitFor({ timeout: 30_000 })
     await page.waitForTimeout(3000)
     const describeCount = calls.filter(method => method === 'settings/describe').length
     expect(describeCount, `startup /api calls:\n${calls.join('\n')}`).toBe(DESCRIBE_BUDGET)

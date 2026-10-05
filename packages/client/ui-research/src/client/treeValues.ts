@@ -78,6 +78,8 @@ export interface TreeModel {
 
 /** What the tree is derived from. */
 export interface TreeSources {
+  /** Host-owned ordinary conversation directory; its workspaces are displayed as conversations. */
+  conversationHome?: string | undefined
   drafts: ConversationDrafts
   projects: readonly ResearchProject[]
   list: SessionListState
@@ -107,6 +109,8 @@ export function deriveTree(sources: TreeSources): TreeModel {
   const { projects, list, workspaces, pending } = sources
   const current = sources.current
   const archived = new Set<string>(workspaces.archivedSessionIds)
+  const ordinary = (path: string): boolean => sources.conversationHome !== undefined
+    && projectAtPath([{ root: sources.conversationHome }], path) !== undefined
   const reviewers = new Set<string>(projects.flatMap(project => project.visualReviews.flatMap(review => review.sessionId ?? [])))
   const directories = sessionDirectoriesOf(list.byId)
   const byWorkspace = new Map(projects.map(project => [project.workspaceId as string, project]))
@@ -136,7 +140,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
     const project = researchOf(id)
     const signal = conversationSignal(summary, pending)
     if (project !== undefined && signal !== undefined) push(signals, project.id, signal)
-    const topLevel = summary.parentId === undefined && summary.origin !== 'subagent' && !reviewers.has(id)
+    const topLevel = summary.origin !== 'subagent' && !reviewers.has(id)
     const draft = sources.drafts[id]
     if (!topLevel || (summary.blank && id !== current && draft === undefined)) continue
     const title = summary.blank ? (draft?.text.trim().split(/\r?\n/u)[0] ?? '') : summary.displayTitle
@@ -144,7 +148,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
     if (project !== undefined) push(rows, project.id, row)
     else {
       const folder = listedBy.get(id)
-      if (folder === undefined) loose.push(row)
+      if (folder === undefined || (folder.location.kind === 'local' && ordinary(folder.path))) loose.push(row)
       else push(folderRows, folder.workspaceId, row)
     }
   }
@@ -175,7 +179,7 @@ export function deriveTree(sources: TreeSources): TreeModel {
 
   const folders = workspaces.items
     .filter(item => item.location.kind === 'ssh'
-      || (!byWorkspace.has(item.workspaceId) && projectAtPath(projects, item.path) === undefined))
+      || (!ordinary(item.path) && !byWorkspace.has(item.workspaceId) && projectAtPath(projects, item.path) === undefined))
     .map((item): TreeFolder => {
       const conversations = (folderRows.get(item.workspaceId) ?? []).sort(byRecency)
       return {
@@ -261,12 +265,15 @@ export function flattenTree(model: TreeModel, chosen: Readonly<Record<string, bo
     if (!readOnly && !research.onBlank) rows.push({ kind: 'add', key: treeKey.add(research.project), parent: key, level: level + 1, research })
   }
   for (const research of model.own) researchRows(research, undefined, 1)
+  const looseOpen = open(treeKey.loose, true)
+  rows.push({ kind: 'loose', key: treeKey.loose, level: 1, expanded: looseOpen })
+  if (looseOpen) conversations(model.loose, treeKey.loose, 2, false)
   if (model.examples.length > 0) {
     const expanded = open(treeKey.examples, !model.hasOwn || model.examples.some(research => research.current))
     rows.push({ kind: 'group', key: treeKey.examples, level: 1, group: 'examples', expanded })
     if (expanded) for (const research of model.examples) researchRows(research, treeKey.examples, 2)
   }
-  if (model.folders.length > 0 || model.loose.length > 0) {
+  if (model.folders.length > 0) {
     const expanded = open(treeKey.others, model.looseCurrent || model.folders.some(folder => folder.current))
     rows.push({ kind: 'group', key: treeKey.others, level: 1, group: 'others', expanded })
     if (expanded) {
@@ -275,11 +282,6 @@ export function flattenTree(model: TreeModel, chosen: Readonly<Record<string, bo
         const folderOpen = open(key, folder.current)
         rows.push({ kind: 'folder', key, parent: treeKey.others, level: 2, folder, expanded: folderOpen })
         if (folderOpen) conversations(folder.conversations, key, 3, false)
-      }
-      if (model.loose.length > 0) {
-        const looseOpen = open(treeKey.loose, model.looseCurrent)
-        rows.push({ kind: 'loose', key: treeKey.loose, parent: treeKey.others, level: 2, expanded: looseOpen })
-        if (looseOpen) conversations(model.loose, treeKey.loose, 3, false)
       }
     }
   }

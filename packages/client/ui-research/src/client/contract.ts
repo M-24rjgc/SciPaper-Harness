@@ -7,7 +7,7 @@ import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/clie
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
-  BoardSnapshot, CreateProjectRequest, EvidenceRecord, GalleryPage, KnowledgeMarkView, ModeSummary, ProjectId, ResearchCommand,
+  Autonomy, BoardSnapshot, CreateProjectRequest, EvidenceRecord, GalleryPage, KnowledgeMarkView, ModeSummary, ProjectId, ResearchCommand,
   ResearchPreferences, ResearchProject, ResearchResponse, ResearchSnapshot, ResearchTask,
 } from '@deepseek-ai/dsh-research-workbench/types'
 import type { PresetDefaults } from './presets.ts'
@@ -139,6 +139,8 @@ export type EntryNotice =
 /** The entry screen's shared state: the notice, if any. */
 export interface EntryView {
   notice: EntryNotice | null
+  /** A user-requested conversation is being opened. */
+  pending?: boolean | undefined
 }
 
 /** A folder to move the untouched draft research to. */
@@ -186,6 +188,8 @@ export interface ResearchEntryInjected {
   reveal(path: string): void
   /** Open the research tab beside the conversation; only the person's click calls it. */
   showProgress(): void
+  /** Dismiss the current operation notice. */
+  dismissNotice(): void
 }
 
 /** Composed props of every entry-screen research seat: the dictionary plus the injected face. */
@@ -281,10 +285,12 @@ export interface ResearchInjected {
   /** Inspect the current research's graph beside the conversation. */
   openKnowledge(params?: ResearchKnowledgeParams): void
   /**
-   * 新研究 (New research): the entry the sidebar's button takes, which opens the untouched draft or creates one
+   * New conversation: the sidebar entry, reusing the current project or opening an ordinary conversation
    * (`uiWorkspace.startSession` without a Workspace).
    */
   startNew(): void
+  /** Change the access preset of an ordinary conversation without creating a project. */
+  setConversationAutonomy(sessionId: SessionId, autonomy: Autonomy): Promise<void>
 }
 
 /**
@@ -404,6 +410,12 @@ export interface ResearchTreeInjected {
   openWorkspace(workspaceId: WorkspaceId): Promise<void>
   /** ＋ 新对话 (New conversation): the folder's blank conversation, reused or created, opened (`uiWorkspace.startSession`). */
   startSession(workspaceId: WorkspaceId): void
+  /** Open an ordinary conversation, independently of the current project. */
+  startOrdinary(): void
+  /** Ask for a project directory without creating it. */
+  chooseFolder(): Promise<FolderPick>
+  /** Open a command's conversation after it reaches the session list. */
+  openResult(result: ResearchResponse): Promise<void>
   /**
    * Register a remote directory as a workspace and return its identity.
    * @param host - SSH alias or `user@host`, with `:port` when a port is chosen.

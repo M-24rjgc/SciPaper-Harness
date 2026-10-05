@@ -6,8 +6,8 @@
  * reads this conversation's preset from the `permissions` projection, so a
  * preset typed by hand with `/permission` shows here until the next choice
  * applies the autonomy again. An example reads as read-only. A conversation
- * outside every research shows nothing: a cell that shadows another cannot
- * hand its seat back, and `/permission` still opens the shell's own picker.
+ * outside every research changes its own access preset through the session
+ * command, without creating a project or changing another conversation.
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconChevronDownOutlineRegular, Menu, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -75,23 +75,26 @@ export function AutonomyChip(props: AutonomyChipProps): ReactNode {
   const [open, setOpen] = useState(false)
   const [choice, setChoice] = useState<Autonomy>('checkpoints')
   useEffect(() => { if (locked) setOpen(false) }, [locked])
-  if (project === undefined) return null
-  if (project.example === true) return <span className={styles.example} title={t('exampleBanner')}>{t('autonomyExample')}</span>
+  if (project === undefined && preset === undefined) return null
+  if (project?.example === true) return <span className={styles.example} title={t('exampleBanner')}>{t('autonomyExample')}</span>
   // While a choice is being saved the chip already names it; the host moves every conversation's preset with it.
-  const autonomy = change.pending ? choice : project.autonomy
+  const savedAutonomy = project?.autonomy ?? (preset === 'research-auto' ? 'automatic' : 'checkpoints')
+  const autonomy = change.pending ? choice : savedAutonomy
   const name = autonomyName(autonomy, t)
-  const handSet = !change.pending && preset !== undefined && preset !== AUTONOMY_PRESET[project.autonomy]
+  const handSet = !change.pending && preset !== undefined && preset !== AUTONOMY_PRESET[savedAutonomy]
     ? presetName(preset, t)
     : undefined
   const choose = (id: string): void => {
     setOpen(false)
     const next = id as Autonomy
     // Choosing the autonomy already in force changes nothing, unless this conversation left it by hand.
-    if (next === project.autonomy && handSet === undefined) return
+    if (next === savedAutonomy && handSet === undefined) return
     setChoice(next)
-    change.start(() => props.run({ action: 'set-autonomy', projectId: project.id, autonomy: next }))
+    change.start(() => project === undefined
+      ? props.setConversationAutonomy(props.sessionId, next)
+      : props.run({ action: 'set-autonomy', projectId: project.id, autonomy: next }))
   }
-  const items: MenuEntry[] = [{ type: 'label', id: 'heading', text: t('autonomyMenuHeading') }, ...AUTONOMIES.map(value => option(value, t))]
+  const items: MenuEntry[] = [{ type: 'label', id: 'heading', text: t(project === undefined ? 'autonomyConversationHeading' : 'autonomyMenuHeading') }, ...AUTONOMIES.map(value => option(value, t))]
   return <div className={styles.root}>
     <Menu
       open={open}

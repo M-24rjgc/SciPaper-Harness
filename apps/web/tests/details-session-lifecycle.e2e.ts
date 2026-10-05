@@ -272,7 +272,7 @@ describe.skipIf(MODE === 'record')('web e2e: details panel follows the current S
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)
 
-    await page.getByRole('button', { name: /^(?:New research|新研究)$/ }).last().click()
+    await page.getByRole('button', { name: /^(?:New conversation|新对话)$/ }).last().click()
     await page.getByText('What shall we work on today?', { exact: false }).waitFor({ timeout: 15_000 })
     await expect.poll(() => detailsTrack(page), { timeout: 5_000 }).toBe(0)
     expect(await page.getByText('Details', { exact: true }).isVisible()).toBe(false)

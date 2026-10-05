@@ -7,6 +7,10 @@
 .record:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; border-radius: 4px; }
 .notice { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-secondary); }
 .failed { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+.pending { position: fixed; top: calc(var(--dsh-frame-top-clearance, 0px) + 24px); left: 50%; z-index: 100; padding: 10px; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); }
+.spinner { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
 
 /* Try: one quiet row above the composer card, starting under the folder chip's icon. */
 .try { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; padding: 0 16px 0 28px; }

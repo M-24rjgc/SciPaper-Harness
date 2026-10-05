@@ -181,6 +181,42 @@ function resolvedHandle(ctx: Context, sessionId: SessionId): AgentHandle {
 }
 
 describe('Session fork failures', () => {
+  it('copies the full requested history into a local destination without changing the source, and admits the destination first', async () => {
+    const ctx = await baseContext()
+    try {
+      const source = completedSession(ctx, 'ordinary', '/ordinary')
+      source.append('user/message', createUserMessage({ content: [{ type: 'text', text: 'Keep this last input too' }], source: { kind: 'user' } }), { surfaceOp: 'append' })
+      const events = source.snapshotEvents()
+      const workspace = { id: 'destination' as WorkspaceId, path: '/project', location: { kind: 'local' as const, path: '/project' }, attachSession: vi.fn(async () => {}) }
+      ctx.provide('workspaceRegistry', { get: () => workspace, list: () => [workspace] } as never)
+      const create = vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+        ctx.sessions.create(options.sessionId, { meta: options.meta ?? {}, seed: options.seed === undefined ? [] : [...options.seed],
+          ...(options.inheritedEventCount === undefined ? {} : { inheritedEventCount: options.inheritedEventCount }),
+        })
+        return resolvedHandle(ctx, options.sessionId)
+      })
+      const admitted: string[] = []
+      ctx.on('api-session/command-admission', async (admission, next) => { admitted.push(`${admission.operation}:${admission.cwd}`); await next() })
+      const controller = new SessionCommandController(ctx, controllerAgents(), '/default')
+      const child = await controller.fork({ sessionId: source.id, workspaceId: workspace.id, atSeq: events.at(-1)!.seq })
+      expect(admitted).toEqual(['fork:/ordinary', 'create:/project'])
+      expect(workspace.attachSession).toHaveBeenCalledWith(child.sessionId)
+      const copied = ctx.sessions.get(child.sessionId)!
+      expect(copied.header).toMatchObject({ cwd: '/project', parentSession: source.id, execution: { kind: 'local' } })
+      expect(copied.snapshotEvents().slice(0, events.length)).toEqual(events)
+      expect(copied.deriveMessages()).toEqual(source.deriveMessages())
+      expect(source.header.cwd).toBe('/ordinary')
+      expect(source.snapshotEvents()).toEqual(events)
+      create.mockClear()
+      ctx.on('api-session/command-admission', async (admission, next) => {
+        if (admission.operation === 'create') throw new RemoteError('gateway/bad-request', 'Destination is read-only', {})
+        await next()
+      })
+      await expect(controller.fork({ sessionId: source.id, workspaceId: workspace.id })).rejects.toThrow('Destination is read-only')
+      expect(create).not.toHaveBeenCalled()
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('maps missing cold sources with and without persistence', async () => {
     const withoutPersistence = await baseContext()
     withoutPersistence.provide('workspaceRegistry', { list: () => [] } as never)
