@@ -1,0 +1,21 @@
+.editor {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 160px;
+  max-height: 50vh;
+  padding: 12px;
+  resize: vertical;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
+.hint {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.error {
+  color: var(--dsw-alias-label-primary);
+}

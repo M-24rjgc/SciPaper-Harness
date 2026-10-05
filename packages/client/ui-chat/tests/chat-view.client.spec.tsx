@@ -1628,7 +1628,7 @@ describe('ChatView', () => {
     expect(pendingBubble).not.toBeNull()
     fireEvent.click(within(pendingBubble as HTMLElement).getByRole('button', { name: '复制' }))
     expect(writeText).toHaveBeenCalledWith('interrupt now')
-    expect(within(pendingBubble as HTMLElement).queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    expect(within(pendingBubble as HTMLElement).queryByRole('button', { name: '回到此处继续' })).toBeNull()
     expect(turnProcessControl(view.container)).toBeNull()
     expect(runningContent(view.container)?.textContent).toMatch(/^深度求索中，用时 \d+秒 ···$/)
     expect(view.getByRole('status').compareDocumentPosition(view.getByText('interrupt now'))
@@ -1654,7 +1654,7 @@ describe('ChatView', () => {
     // carries a branch action.
     expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(1)
     const durableBubble = view.getByText('interrupt now').closest('[class*="userRow"]') as HTMLElement
-    expect(within(durableBubble).queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    expect(within(durableBubble).queryByRole('button', { name: '回到此处继续' })).toBeNull()
 
     act(() => {
       h.setSession({ running: false })
@@ -1662,7 +1662,7 @@ describe('ChatView', () => {
     })
     // The Turn Tail belongs to the closed Turn, independently of a later
     // steering bubble's placement in the Chat list.
-    const branchButtons = view.getAllByRole('button', { name: '在新对话中分支' })
+    const branchButtons = view.getAllByRole('button', { name: '回到此处继续' })
     expect(branchButtons).toHaveLength(1)
     expect(branchButtons[0]!.getAttribute('aria-disabled')).toBeNull()
     fireEvent.click(branchButtons[0]!)
@@ -2184,7 +2184,7 @@ describe('ChatView', () => {
     const view = render(<h.ChatView {...h.props} />)
     // Branch renders only under assistant answers; user bubbles keep copy alone.
     expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(4)
-    const branchButtons = view.getAllByRole('button', { name: '在新对话中分支' })
+    const branchButtons = view.getAllByRole('button', { name: '回到此处继续' })
     expect(branchButtons).toHaveLength(2)
     expect(branchButtons.map(button => button.getAttribute('aria-disabled'))).toEqual([null, null])
   })
@@ -3097,11 +3097,27 @@ describe('ChatView', () => {
     })
     const view = render(<h.ChatView {...h.props} />)
     // The user bubble offers no branch; the settled answer's is live.
-    const buttons = view.getAllByRole('button', { name: '在新对话中分支' })
+    const buttons = view.getAllByRole('button', { name: '回到此处继续' })
     expect(buttons).toHaveLength(1)
     expect(buttons[0]!.getAttribute('aria-disabled')).toBeNull()
     fireEvent.click(buttons[0]!)
     expect(h.forkAt.mock.calls).toEqual([[3]])
+  })
+
+  it('offers editing and resending on sent human messages and blocks them while running or read-only', () => {
+    const h = makeHarness({ nodes: [user(1, 'Original question'), assistant(2, 'answer')], turnEnds: new Map([[1, 3]]) })
+    const revise = vi.fn()
+    const view = render(<h.ChatView {...h.props} reviseMessage={revise} />)
+    fireEvent.click(view.getByRole('button', { name: '编辑并重发' }))
+    expect(revise).toHaveBeenLastCalledWith(1, { text: 'Original question', hasAttachments: false })
+    fireEvent.click(view.getByRole('button', { name: '重发' }))
+    expect(revise).toHaveBeenLastCalledWith(1)
+    act(() => { h.setSession({ running: true }) })
+    fireEvent.click(view.getByRole('button', { name: '编辑并重发' }))
+    expect(revise).toHaveBeenCalledTimes(2)
+    act(() => { h.composerBlock.set({ reason: 'Example', readOnly: true }) })
+    expect(view.queryByRole('button', { name: '编辑并重发' })).toBeNull()
+    expect(view.queryByRole('button', { name: '重发' })).toBeNull()
   })
 
   it('hides branch actions for read-only conversations while preserving copy and ordinary branching', () => {
@@ -3111,20 +3127,20 @@ describe('ChatView', () => {
     })
     const view = render(<h.ChatView {...h.props} />)
     act(() => { h.composerBlock.set({ reason: 'view only', readOnly: true }) })
-    expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    expect(view.queryByRole('button', { name: '回到此处继续' })).toBeNull()
     expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(2)
     expect(h.forkAt).not.toHaveBeenCalled()
 
     act(() => { h.composerBlock.set({ reason: 'select a model first' }) })
-    const branch = view.getByRole('button', { name: '在新对话中分支' })
+    const branch = view.getByRole('button', { name: '回到此处继续' })
     expect(branch.getAttribute('aria-disabled')).toBeNull()
     fireEvent.click(branch)
     expect(h.forkAt.mock.calls).toEqual([[3]])
 
     act(() => { h.composerBlock.set({ reason: 'view only', readOnly: true }) })
-    expect(view.queryByRole('button', { name: '在新对话中分支' })).toBeNull()
+    expect(view.queryByRole('button', { name: '回到此处继续' })).toBeNull()
     act(() => { h.composerBlock.set(undefined) })
-    expect(view.getByRole('button', { name: '在新对话中分支' })).toBeTruthy()
+    expect(view.getByRole('button', { name: '回到此处继续' })).toBeTruthy()
   })
 
   it('enables registered plain-text file previews when an existing example becomes read-only', () => {
@@ -3194,7 +3210,7 @@ describe('ChatView', () => {
     const view = render(<h.ChatView {...h.props} />)
     expect(view.getByText('change direction')).toBeTruthy()
     expect(chat.locations.getTurn(1)).toContain(later.key)
-    const branch = view.getByRole('button', { name: '在新对话中分支' })
+    const branch = view.getByRole('button', { name: '回到此处继续' })
     expect(branch.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(branch)
     expect(h.forkAt).not.toHaveBeenCalled()
@@ -3211,7 +3227,7 @@ describe('ChatView', () => {
     })
     const view = render(<h.ChatView {...h.props} />)
     expect(view.getAllByRole('button', { name: '复制' })).toHaveLength(2)
-    const buttons = view.getAllByRole('button', { name: '在新对话中分支' })
+    const buttons = view.getAllByRole('button', { name: '回到此处继续' })
     expect(buttons).toHaveLength(1)
     expect(buttons[0]!.getAttribute('aria-disabled')).toBe('true')
     fireEvent.click(buttons[0]!)

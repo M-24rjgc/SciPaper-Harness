@@ -1,6 +1,7 @@
 /** Session commands whose activation policy is explicit at each Remote method. */
 
 import { modelAvailable } from './catalog.ts'
+import { prepareMessageRevision } from './message-revision.ts'
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -232,6 +233,9 @@ export class SessionCommandController {
    */
   async fork(input: SessionForkRequest): Promise<SessionForkValue> {
     const request = { ...input }
+    if (request.revision !== undefined && (request.atSeq !== undefined || request.workspaceId !== undefined)) {
+      throw new RemoteError('gateway/bad-request', 'A message revision cannot also change the fork boundary or workspace.', {})
+    }
     let atSeq: ReturnType<typeof SessionSeq> | undefined
     try {
       atSeq = request.atSeq === undefined ? undefined : SessionSeq(request.atSeq)
@@ -259,17 +263,50 @@ export class SessionCommandController {
       operation: 'fork', sessionId: source.header.id,
       ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
     })
+    const revision = request.revision === undefined ? undefined : prepareMessageRevision(source.events, request.revision)
     const boundary = atSeq ?? latestCompletedPrefixBoundary(source.events)
-    if (boundary === undefined || source.events[boundary]?.seq !== boundary) {
-      throw new RemoteError(
+    let seed: SessionEvent[]
+    let inheritedEventCount: number
+    if (revision === undefined) {
+      if (boundary === undefined || source.events[boundary]?.seq !== boundary) throw new RemoteError(
         'session/fork-unavailable',
         request.atSeq === undefined
           ? `session "${request.sessionId}" has no completed turn to fork from`
           : `event ${String(request.atSeq)} does not exist in session "${request.sessionId}" (last seq: ${String(source.events.at(-1)?.seq ?? 'none')})`,
         { sessionId: request.sessionId },
       )
+      seed = buildForkSeed(source.events, boundary)
+      inheritedEventCount = boundary + 1
+    } else {
+      seed = revision.seed
+      inheritedEventCount = revision.inheritedEventCount
     }
-    const seed = buildForkSeed(source.events, boundary)
+    let revisionSelection: AgentModelSelection | undefined
+    if (revision !== undefined) {
+      await this.admit({
+        operation: 'prompt', sessionId: source.header.id,
+        ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+      })
+      if (this.ctx.agents.get(request.sessionId)?.status === 'running') {
+        throw new RemoteError('session/agent-busy', 'Stop the current response before editing or resending a message.', { reason: 'running' })
+      }
+      const selected = source.projections?.values.modelSelection?.next ?? this.ctx.agentDefaultModel.currentSelection()
+      await this.requireModel(selected)
+      const resolved = await this.ctx.llm.resolveCallConfig({
+        provider: selected.provider, model: selected.model,
+        ...selected.reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(selected.reasoningEffort) },
+      })
+      revisionSelection = {
+        provider: resolved.provider, model: resolved.model,
+        ...resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort },
+      }
+      if (revision.message.content.some(part => part.type === 'image')) {
+        const info = await this.ctx.llm.resolveModelInfo(selected.provider, selected.model)
+        if (info.inputModalities !== undefined && !info.inputModalities.includes('image')) {
+          throw new RemoteError('session/attachment-invalid', `Model "${selected.model}" does not support image input.`, { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' })
+        }
+      }
+    }
     let workspace: Workspace | undefined
     try {
       workspace = request.workspaceId === undefined
@@ -294,12 +331,13 @@ export class SessionCommandController {
     const composition = await this.agents.composeAgent(
       this.agents.presetForObservation(source), execution, cwd,
     )
+    let child: Agent
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-      await this.ctx.agents.create({
+      const handle = await this.ctx.agents.create({
         sessionId: childId,
         seed,
-        inheritedEventCount: SessionLogOffset(boundary + 1),
+        inheritedEventCount: SessionLogOffset(inheritedEventCount),
         meta: {
           ...(cwd === undefined ? {} : { cwd }),
           execution: execution ?? { kind: 'local' },
@@ -312,6 +350,7 @@ export class SessionCommandController {
         agentOptions: { provider, model },
         setup: composition.setup,
       })
+      child = handle.agent
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',
@@ -329,6 +368,10 @@ export class SessionCommandController {
           { sessionId: childId, workspaceId: workspace.id },
         )
       }
+    }
+    if (revision !== undefined && revisionSelection !== undefined) {
+      this.agents.selectForNextRequest(child, revisionSelection)
+      child.followup(revision.message)
     }
     return { sessionId: childId }
   }

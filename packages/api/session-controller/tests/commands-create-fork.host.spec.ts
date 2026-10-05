@@ -12,6 +12,7 @@ import {
   ApiSessionCwdConflict,
 } from '../src/agent.ts'
 import { SessionCommandController } from '../src/commands.ts'
+import { installModelSelectionProjection } from '../src/model-selection-projection.ts'
 import { installSessionReadTestServices, testSessionPersistence } from './test-remote.ts'
 
 async function expectFailure(operation: Promise<unknown>, code: string): Promise<void> {
@@ -181,6 +182,51 @@ function resolvedHandle(ctx: Context, sessionId: SessionId): AgentHandle {
 }
 
 describe('Session fork failures', () => {
+  it('revises a historical prompt with the current model and refuses revisions while running or before admission', async () => {
+    const ctx = await baseContext()
+    try {
+      installModelSelectionProjection(ctx)
+      const source = completedSession(ctx, 'revise-source', '/workspace')
+      source.append('model/selection', { provider: 'custom', model: 'reasoner', reasoningEffort: 'high' })
+      const original = source.snapshotEvents()
+      const user = original.find(event => event.type === 'user/message')
+      if (user === undefined) throw new Error('missing source prompt')
+      ctx.provide('workspaceRegistry', { list: () => [] } as never)
+      ctx.provide('llm', {
+        listProviders: () => [{ id: 'custom' }],
+        listModels: async () => [{ id: 'reasoner' }],
+        resolveCallConfig: async (selection: object) => selection,
+      } as never)
+      const followup = vi.fn()
+      const selectForNextRequest = vi.fn()
+      const create = vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+        const session = ctx.sessions.create(options.sessionId, {
+          meta: options.meta ?? {}, seed: [...options.seed ?? []],
+          ...(options.inheritedEventCount === undefined ? {} : { inheritedEventCount: options.inheritedEventCount }),
+        })
+        const handle = resolvedHandle(ctx, session.id)
+        Object.assign(handle.agent, { session, followup })
+        return handle
+      })
+      const controller = new SessionCommandController(ctx, controllerAgents({ selectForNextRequest }), '/default')
+      const revised = await controller.fork({ sessionId: source.id, revision: { messageSeq: user.seq, text: 'Better question' } })
+      expect(selectForNextRequest).toHaveBeenCalledWith(expect.objectContaining({ id: revised.sessionId }), { provider: 'custom', model: 'reasoner', reasoningEffort: 'high' })
+      expect(followup).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ content: [{ type: 'text', text: 'Better question' }] }))
+      expect(source.snapshotEvents()).toEqual(original)
+      expect(ctx.sessions.get(revised.sessionId)?.deriveMessages()).toEqual([])
+      const current = vi.spyOn(ctx.agents, 'get').mockReturnValue({ status: 'running' } as Agent)
+      await expect(controller.fork({ sessionId: source.id, revision: { messageSeq: user.seq } })).rejects.toMatchObject({ code: 'session/agent-busy' })
+      current.mockRestore()
+      await expect(controller.fork({ sessionId: source.id, atSeq: user.seq, revision: { messageSeq: user.seq } })).rejects.toMatchObject({ code: 'gateway/bad-request' })
+      ctx.on('api-session/command-admission', (admission, next) => {
+        if (admission.operation === 'prompt') throw new RemoteError('gateway/bad-request', 'Read only', {})
+        return next()
+      })
+      await expect(controller.fork({ sessionId: source.id, revision: { messageSeq: user.seq } })).rejects.toThrow('Read only')
+      expect(create).toHaveBeenCalledTimes(1)
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('copies the full requested history into a local destination without changing the source, and admits the destination first', async () => {
     const ctx = await baseContext()
     try {

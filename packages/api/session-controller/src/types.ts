@@ -347,6 +347,15 @@ export interface SessionForkRequest {
   readonly workspaceId?: WorkspaceId
   /** Exact inclusive source event seq; omission selects the latest completed-turn prefix. */
   readonly atSeq?: number
+  /** Fork immediately before a human message and send it again, optionally replacing its text. */
+  readonly revision?: SessionMessageRevision
+}
+
+/** A source-authorized edit or resend; existing image and file attachments are retained. */
+export interface SessionMessageRevision {
+  readonly messageSeq: number
+  /** Omission resends the original content exactly. */
+  readonly text?: string
 }
 
 /** Identity of a newly forked Session. */

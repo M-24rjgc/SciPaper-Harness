@@ -23,6 +23,7 @@
     "apps/web/tests/scaffold.ts",
     "apps/web/tests/research-scaffold.ts",
     "apps/web/tests/research-workbench.e2e.ts",
+    "apps/web/tests/conversation-revision.e2e.ts",
     "apps/web/tests/research-demo.e2e.ts",
     "apps/web/tests/voice-input.e2e.ts",
     "apps/web/tests/voice-setup.e2e.ts",

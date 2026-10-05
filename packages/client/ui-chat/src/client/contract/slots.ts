@@ -181,6 +181,10 @@ export interface ChatNodeOwnerProps {
   inspectCall: ((callId: ToolCallId) => void) | undefined
   /** Omitted for a conversation whose block marks it read-only. */
   forkAt: ((seq: number) => void) | undefined
+  /** Edit or resend a recorded human message; omitted on read-only content. */
+  reviseMessage?: ((seq: number, edit?: { text: string; hasAttachments: boolean }) => void) | undefined
+  /** Stop the active response before revising its history. */
+  historyUnavailable?: boolean | undefined
   /**
    * Session-authorized image loader, down-threaded from the Chat view so a
    * chat-node renderer can render the attachment presentation slot directly
@@ -273,6 +277,7 @@ export interface ChatViewInjected {
     read: () => ChatScrollPosition | null
   }
   forkAt: (seq: number) => void
+  reviseMessage?: (seq: number, edit?: { text: string; hasAttachments: boolean }) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /** Exact registered-file membership; absent when no owner supplies it. */
   knownFilePath?: ((path: string) => boolean) | undefined

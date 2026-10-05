@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import {
-  IconBranchOutlineRegular, IconCheckOutlineRegular, IconCopyOutlineRegular, Tooltip, writeClipboard,
+  IconBranchOutlineRegular, IconCheckOutlineRegular, IconCopyOutlineRegular,
+  IconEditOutlineRegular, IconRefreshOutlineRegular, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { formatMessageClock } from './message-chrome.ts'
@@ -19,6 +20,9 @@ export interface MessageIconActionsProps {
   clock: 'start' | 'end'
   /** Fork the session at this message; omission hides the branch action. */
   onBranch?: (() => void) | undefined
+  onEdit?: (() => void) | undefined
+  onResend?: (() => void) | undefined
+  historyUnavailable?: boolean | undefined
   /** The message is not a completed transcript tail, so branch stays visible but unavailable. */
   branchUnavailable?: boolean | undefined
   /** Parent layout class composed onto the actions row. */
@@ -45,6 +49,7 @@ export interface MessageIconActionsProps {
 export function MessageIconActions({
   text, time, clock, onBranch, branchUnavailable = false, className,
   extraActions, usageAction, t,
+  onEdit, onResend, historyUnavailable,
 }: MessageIconActionsProps) {
   const day = useCalendarDay()
   const reasonId = useId()
@@ -88,6 +93,13 @@ export function MessageIconActions({
         </button>
       </Tooltip>
       {extraActions}
+      {([{ action: onEdit, label: t('message.edit'), Icon: IconEditOutlineRegular },
+        { action: onResend, label: t('message.resend'), Icon: IconRefreshOutlineRegular }]).map(({ action, label, Icon }) =>
+        action === undefined ? null : <Tooltip key={label} label={historyUnavailable ? t('message.stopToRevise') : label} side="bottom">
+          <button type="button" className={css.action} aria-label={label}
+            aria-disabled={historyUnavailable || undefined} data-unavailable={historyUnavailable || undefined}
+            onClick={historyUnavailable ? undefined : action}><Icon /></button>
+        </Tooltip>)}
       {onBranch !== undefined && (
         <Tooltip label={branchUnavailable ? t('message.branchUnavailable') : t('message.branch')} side="bottom">
           {/* Native disabled buttons do not deliver the hover/focus events Tooltip needs. */}

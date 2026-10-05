@@ -318,7 +318,7 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, openFile, openSkill, t,
+  node, renderMessageImages, openFile, openSkill, t, reviseMessage, historyUnavailable,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
   return (
@@ -334,6 +334,12 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           text={text}
           time={data.time}
           clock="start"
+          onEdit={reviseMessage === undefined ? undefined : () => { reviseMessage(data.seq, {
+            text: data.content.filter(part => part.type === 'text').map(part => part.text).join('\n'),
+            hasAttachments: data.content.some(part => part.type !== 'text'),
+          }) }}
+          onResend={reviseMessage === undefined ? undefined : () => { reviseMessage(data.seq) }}
+          historyUnavailable={historyUnavailable}
           className={css.actions}
           t={t}
         />

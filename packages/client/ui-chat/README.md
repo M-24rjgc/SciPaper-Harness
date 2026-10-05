@@ -75,6 +75,8 @@ The completed-turn action footer follows the recorded Turn end. Its action row s
 
 A conversation block with `readOnly: true` hides the branch action and prevents its callback from creating a Session. Copy remains available; ordinary input blocks, such as a missing model selection, do not disable branching.
 
+Sent human messages offer **Edit and resend** and **Resend**. Revisions inherit the history before that message, retain its attachments, clear inherited pending input, and use the source conversation's current model selection. The original conversation is retained in the same project or ordinary-conversation group. **Continue from here** opens a branch at a completed answer. These actions change conversation context; they do not restore files or undo executed operations. Editing and resending wait until the source response stops. The frame-owned editor keeps the draft on failure, blocks duplicate submissions, and hides revision actions on read-only content.
+
 -----
 
 <a id="turn-process-folding"></a>

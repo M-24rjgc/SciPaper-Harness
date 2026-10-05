@@ -32,6 +32,7 @@ import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { QuotaNoticeHost } from './chat/QuotaNoticeHost.tsx'
+import { MessageRevisionHost, type MessageRevisionInjected, type MessageRevisionState } from './chat/MessageRevisionHost.tsx'
 import { en, NS, zh } from './locale.ts'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
@@ -116,6 +117,49 @@ export function apply(ctx: Context): void {
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-chat: dictionaries')
   const t = ctx.locale.bind(NS)
+  const revisionState = createSnapshotStore<MessageRevisionState>({ draft: null, pending: false, error: null })
+  const submitRevision = async (): Promise<void> => {
+    const { draft, pending } = revisionState.getSnapshot()
+    if (draft === null || pending) return
+    if (ctx.conversation.blocks.storeFor(draft.sessionId).getSnapshot()?.readOnly === true) return
+    if (ctx.sessions.list.getSnapshot().byId[draft.sessionId]?.running === true) {
+      revisionState.set({ draft, pending: false, error: t('message.stopToRevise') })
+      return
+    }
+    revisionState.set({ draft, pending: true, error: null })
+    let created: SessionId | undefined
+    try {
+      const childId = await ctx.sessions.fork({
+        sessionId: draft.sessionId,
+        revision: { messageSeq: draft.seq, ...draft.mode === 'retry' ? {} : { text: draft.text } },
+        increaseTitle: true,
+        onCreated: (childId) => { created = childId },
+      })
+      revisionState.set({ draft: null, pending: false, error: null })
+      ctx.uiWorkspace.openSession(childId)
+    } catch (error) {
+      revisionState.set({ draft: created === undefined ? draft : null, pending: false,
+        error: t('message.historyFailed', { reason: error instanceof Error ? error.message : String(error) }) })
+      // The prompt was accepted before a title rename failed; expose that
+      // child instead of letting a retry submit the same revision twice.
+      if (created !== undefined) ctx.uiWorkspace.openSession(created)
+    }
+  }
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay', id: 'chat.message-revision', locale: NS,
+    inject: (): MessageRevisionInjected => ({
+      hooks: { revision: revisionState },
+      changeText: (text) => {
+        const state = revisionState.getSnapshot()
+        if (state.draft !== null && !state.pending) revisionState.set({ ...state, draft: { ...state.draft, text } })
+      },
+      submitRevision: () => { void submitRevision() },
+      closeRevision: () => {
+        if (!revisionState.getSnapshot().pending) revisionState.set({ draft: null, pending: false, error: null })
+      },
+      dismissError: () => { revisionState.set({ ...revisionState.getSnapshot(), error: null }) },
+    }),
+  }, MessageRevisionHost))
   const chatStore = createChatStore()
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
   const chatSettings = ctx.configForms.get<ChatSettings>(CHAT_SETTINGS_NAMESPACE)
@@ -256,9 +300,20 @@ export function apply(ctx: Context): void {
               ctx.get('productAnalytics')?.track('branch_session_click', { session_id: childId, parent_session_id: sessionId, ...messageId === undefined ? {} : { parent_message_id: messageId }, click_position: 'footer' })
             } })
               .then((childId) => { ctx.uiWorkspace.openSession(childId) })
-              .catch(() => {
-                // Fork or child-title failure leaves the source view unchanged.
+              .catch((error: unknown) => {
+                revisionState.set({ ...revisionState.getSnapshot(), error: t('message.historyFailed', {
+                  reason: error instanceof Error ? error.message : String(error),
+                }) })
               })
+          },
+          reviseMessage: (seq, edit) => {
+            if (composerBlock.getSnapshot()?.readOnly === true || revisionState.getSnapshot().pending) return
+            revisionState.set({
+              draft: { sessionId, seq, text: edit?.text ?? '', hasAttachments: edit?.hasAttachments ?? false,
+                mode: edit === undefined ? 'retry' : 'edit' },
+              pending: false, error: null,
+            })
+            if (edit === undefined) void submitRevision()
           },
         }
       },

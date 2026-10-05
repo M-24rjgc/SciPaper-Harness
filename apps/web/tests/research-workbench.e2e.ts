@@ -469,7 +469,7 @@ it('shows a settled reply with no feedback buttons or view tabs', async () => {
   await reply.waitFor({ timeout: 30000 })
   await reply.hover()
   // The reply's action strip is drawn, without the ratings that authorise a Session-log upload.
-  await page.getByRole('button', { name: 'Branch into a new conversation' }).first().waitFor({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Continue from here' }).first().waitFor({ timeout: 15000 })
   expect(await page.getByRole('button', { name: 'Good response' }).count()).toBe(0)
   expect(await page.getByRole('button', { name: 'Bad response' }).count()).toBe(0)
   // The composer carries no turn, step, token-rate or cache-hit pills.

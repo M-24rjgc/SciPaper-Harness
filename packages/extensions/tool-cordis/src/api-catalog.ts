@@ -7641,7 +7641,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionForkRequest',
-    declaration: 'export interface SessionForkRequest {\n    readonly sessionId: SessionId;\n    readonly workspaceId?: WorkspaceId;\n    readonly atSeq?: number;\n}',
+    declaration: 'export interface SessionForkRequest {\n    readonly sessionId: SessionId;\n    readonly workspaceId?: WorkspaceId;\n    readonly atSeq?: number;\n    readonly revision?: SessionMessageRevision;\n}',
   },
   {
     name: 'SessionForkSource',
@@ -7730,6 +7730,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionMessageProjectionContext',
     declaration: 'export interface SessionMessageProjectionContext {\n    nodes: readonly SessionSeq[];\n    events: readonly SessionEvent[];\n    baseSeq: SessionLogOffset;\n    messages: ReadonlyMap<SessionSeq, Message>;\n}',
+  },
+  {
+    name: 'SessionMessageRevision',
+    declaration: 'export interface SessionMessageRevision {\n    readonly messageSeq: number;\n    readonly text?: string;\n}',
   },
   {
     name: 'SessionObservation',

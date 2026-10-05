@@ -308,7 +308,7 @@ describe('web e2e: long Chat interaction contract', () => {
       .toBe(expectedUserText)
 
     await turnTailRow.hover()
-    await turnTailRow.getByRole('button', { name: 'Branch into a new conversation', exact: true }).click()
+    await turnTailRow.getByRole('button', { name: 'Continue from here', exact: true }).click()
     await expect.poll(
       () => scaffold.ctx.agents.list().find(agent => agent.session.header.parentSession === SessionId(SESSION_ID)),
       { timeout: 15_000 },

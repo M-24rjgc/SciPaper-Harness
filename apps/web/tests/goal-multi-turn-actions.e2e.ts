@@ -185,7 +185,7 @@ describe('web e2e: Goal keeps one assistant action row per completed turn', () =
     expect(await page.locator(
       '[data-chat-flow-kind="system-prompt"]',
     ).count()).toBe(0)
-    const branchButtons = page.getByRole('button', { name: 'Branch into a new conversation' })
+    const branchButtons = page.getByRole('button', { name: 'Continue from here' })
     await expect.poll(() => branchButtons.count(), { timeout: 15_000 }).toBe(2)
     expect(await branchButtons.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-disabled'))))
       .toEqual([null, null])

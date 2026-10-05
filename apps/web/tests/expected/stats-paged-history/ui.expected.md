@@ -42,7 +42,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m2 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -51,7 +51,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m3 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -60,7 +60,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m4 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -69,7 +69,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m5 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -78,7 +78,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m6 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -87,7 +87,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m7 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -96,7 +96,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m8 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -105,7 +105,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m9 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -114,7 +114,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m10 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -123,7 +123,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m11 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -132,7 +132,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m12 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -141,7 +141,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m13 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -150,7 +150,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m14 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -159,7 +159,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m15 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -168,7 +168,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m16 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -177,7 +177,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m17 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -186,7 +186,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m18 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -195,7 +195,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m19 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -204,7 +204,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m20 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -213,7 +213,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m21 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -222,7 +222,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m22 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -231,7 +231,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m23 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -240,7 +240,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m24 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -249,7 +249,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m25 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -258,7 +258,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m26 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -267,7 +267,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m27 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -276,7 +276,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}} m28 7/25 {{clock}}
 - button "Copy"
 - status: Completed
@@ -285,7 +285,7 @@
 - button "Copy"
 - button "Good response"
 - button "Bad response"
-- button "Branch into a new conversation"
+- button "Continue from here"
 - text: 7/25 {{clock}}
 - button "Back to bottom"
 - textbox "Message or run a task, / commands, @ files or sessions"

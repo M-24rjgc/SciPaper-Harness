@@ -173,7 +173,7 @@ describe('web e2e: queued image submission', () => {
     await chatImage.first().waitFor({ timeout: 15_000 })
     // Host persistence precedes delivery to the browser; require the waking turn's settled tail.
     await page.locator('[data-turn-tail="3"]')
-      .getByRole('button', { name: 'Branch into a new conversation', exact: true })
+      .getByRole('button', { name: 'Continue from here', exact: true })
       .waitFor({ timeout: 15_000 })
     await expect.poll(
       () => page.getByRole('button', { name: /^3 turns 3 steps/ }).count(),

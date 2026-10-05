@@ -150,6 +150,7 @@
     "tests/agent-preset-authoring.e2e.ts",
     "tests/shipped-composition.e2e.ts",
     "tests/research-workbench.e2e.ts",
+    "tests/conversation-revision.e2e.ts",
     "tests/research-scaffold.ts",
     "tests/research-demo.e2e.ts",
     "tests/schedule-after.e2e.ts",

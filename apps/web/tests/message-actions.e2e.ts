@@ -242,7 +242,7 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     const copyButtons = page.getByRole('button', { name: 'Copy' })
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(4)
     await copyButtons.first().focus()
-    const branchButtons = page.getByRole('button', { name: 'Branch into a new conversation' })
+    const branchButtons = page.getByRole('button', { name: 'Continue from here' })
     await expect.poll(() => branchButtons.count(), { timeout: 5_000 }).toBe(3)
     await expect.poll(
       () => branchButtons.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-disabled'))),
@@ -252,7 +252,8 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
     await page.keyboard.press('Tab')
     await expect.poll(() => page.getByRole('tooltip').allTextContents(), { timeout: 5_000 })
       .toEqual(['Available only on the last message of a completed turn'])
-    await expect.poll(() => page.getByRole('button', { name: 'Edit' }).count(), { timeout: 5_000 }).toBe(0)
+    await expect.poll(() => page.getByRole('button', { name: 'Edit and resend', exact: true }).count(), { timeout: 5_000 }).toBe(3)
+    await expect.poll(() => page.getByRole('button', { name: 'Resend', exact: true }).count(), { timeout: 5_000 }).toBe(3)
   }, 60_000)
 
   it.skipIf(MODE === 'record')('keeps an action tooltip above the sticky composer', async () => {
@@ -357,7 +358,7 @@ describe('web e2e: message IconActions and clocks on settled history', () => {
   it.skipIf(MODE === 'record')('forks through the settled-message and session-row actions', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-message-fork'))
     // The second answer is followed by another completed user turn in the source.
-    await page.getByRole('button', { name: 'Branch into a new conversation' }).nth(1).click()
+    await page.getByRole('button', { name: 'Continue from here' }).nth(1).click()
     await expect.poll(
       () => scaffold.ctx.agents.list().find(agent => agent.session.header.parentSession === SessionId(SEED_ID)),
       { timeout: 15_000 },

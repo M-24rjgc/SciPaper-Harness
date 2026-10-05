@@ -172,7 +172,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     // branch action): the narration is not the answer yet.
     const copyButtons = page.getByRole('button', { name: 'Copy' })
     await expect.poll(() => copyButtons.count(), { timeout: 10_000 }).toBe(1)
-    expect(await page.getByRole('button', { name: 'Branch into a new conversation' }).count()).toBe(0)
+    expect(await page.getByRole('button', { name: 'Continue from here' }).count()).toBe(0)
     await expectFocusTooltip(page, copyButtons.first())
     const running = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
     await compareOrRefreshGolden(RUNNING_EXPECTED, running, MODE)

@@ -174,7 +174,7 @@ describe('web e2e: exact-boundary fork seeds branch closers and continues', () =
     await page.getByText(`${DONE_MARKER}.`, { exact: false }).last().waitFor({ timeout: 10_000 })
     const flow = page.locator('[data-chat-flow]')
     const branchAction = flow.locator('[data-turn-tail="2"]').getByRole('button', {
-      name: 'Branch into a new conversation', exact: true,
+      name: 'Continue from here', exact: true,
     })
     await branchAction.waitFor({ timeout: 10_000 })
     expect(await branchAction.isEnabled()).toBe(true)

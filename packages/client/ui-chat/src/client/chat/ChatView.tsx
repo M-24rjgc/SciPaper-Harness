@@ -102,7 +102,7 @@ const ChatNodeList = memo(function ChatNodeList({ entries, useChatGroup, pending
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useChatGroup, useConversation, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt,
-  fileMentions, knownFilePath,
+  fileMentions, knownFilePath, reviseMessage,
   usePresentation, useComposerBlock, useProjection, t,
 }: ChatViewSlotProps) {
   const readOnly = useComposerBlock(block => block?.readOnly === true)
@@ -281,6 +281,8 @@ export function ChatView({
                 openSkill={openSkill}
                 inspectCall={inspectCall}
                 forkAt={readOnly ? undefined : forkAt}
+                reviseMessage={readOnly ? undefined : reviseMessage}
+                historyUnavailable={running}
                 loadImage={loadImage}
                 renderMessageImages={renderMessageImages}
                 fileMentions={fileMentions}

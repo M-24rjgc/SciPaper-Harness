@@ -5,6 +5,7 @@
  * explicit act of widening what features may do to the sessions domain.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import type { SessionMessageRevision } from '../../types.ts'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
@@ -132,6 +133,7 @@ export interface ISessions {
   fork(opts: {
     sessionId: SessionId
     atSeq?: number
+    revision?: SessionMessageRevision
     increaseTitle?: boolean
     onCreated?: (childId: SessionId) => void
   }): Promise<SessionId>

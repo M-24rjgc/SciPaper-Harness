@@ -22,6 +22,7 @@ import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { createChatStore } from '../src/client/stores.ts'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
+import type { MessageRevisionInjected } from '../src/client/chat/MessageRevisionHost.tsx'
 import type { LinkOpeningRowInjected } from '../src/client/settings/LinkOpeningRow.tsx'
 
 usePinnedBrowserLanguages('zh-CN')
@@ -100,6 +101,7 @@ async function bench(initialSettings?: ChatSettings, withBrowserRegistry = true,
   await runtime.root.declare({
     'main': { kind: 'keyed', scope: 'root' },
     'settings.general.item': { kind: 'list', scope: 'root' },
+    'shell.overlay': { kind: 'list', scope: 'root' },
   }, (_props: { renderSlot?: unknown }) => null)
   await runtime.mount({ inject: [...injectConversation], apply: applyConversation })
   const registerGroups = withProcessGroups ? undefined
@@ -130,6 +132,44 @@ async function bench(initialSettings?: ChatSettings, withBrowserRegistry = true,
 }
 
 describe('Chat inject API', () => {
+  it('retains edited text on failure, prevents duplicate sends, and navigates only after a revision is created', async () => {
+    const b = await bench()
+    try {
+      const { injected } = b.chatViewApi(b.rootReference)
+      const entry = b.runtime.slots.entries('shell.overlay').find(item => item.options.id === 'chat.message-revision')
+      if (entry?.inject === undefined) throw new Error('revision overlay missing')
+      const face: object = entry.inject()
+      const editor = face as MessageRevisionInjected
+      injected.reviseMessage?.(12, { text: 'Original', hasAttachments: true })
+      editor.changeText('Edited with attachments')
+      const failure = Promise.withResolvers<SessionId>()
+      const fork = vi.spyOn(b.runtime.sessions, 'fork').mockReturnValueOnce(failure.promise).mockResolvedValue(ROOT)
+      editor.submitRevision()
+      editor.submitRevision()
+      expect(fork).toHaveBeenCalledTimes(1)
+      expect(b.openSession).not.toHaveBeenCalled()
+      failure.reject(new Error('Connection interrupted'))
+      await vi.waitFor(() => { expect(editor.hooks.revision.getSnapshot().pending).toBe(false) })
+      expect(editor.hooks.revision.getSnapshot()).toMatchObject({
+        draft: { seq: 12, text: 'Edited with attachments', hasAttachments: true },
+      })
+      expect(editor.hooks.revision.getSnapshot().error).toContain('Connection interrupted')
+      editor.submitRevision()
+      await vi.waitFor(() => { expect(b.openSession).toHaveBeenCalledWith(ROOT) })
+      expect(fork).toHaveBeenLastCalledWith({
+        sessionId: ROOT, revision: { messageSeq: 12, text: 'Edited with attachments' },
+        increaseTitle: true, onCreated: expect.any(Function) as (childId: SessionId) => void,
+      })
+      expect(editor.hooks.revision.getSnapshot().draft).toBeNull()
+      injected.reviseMessage?.(13)
+      await vi.waitFor(() => { expect(fork).toHaveBeenCalledTimes(3) })
+      expect(fork.mock.calls[2]?.[0].revision).toEqual({ messageSeq: 13 })
+      b.runtime.ctx.conversation.blocks.set(ROOT, { reason: 'Read only', readOnly: true })
+      injected.reviseMessage?.(14)
+      expect(fork).toHaveBeenCalledTimes(3)
+    } finally { await b.runtime.dispose() }
+  })
+
   it('resolves keyed Group sources across registration, activation, and removal', async () => {
     const b = await bench(undefined, true, false)
     try {
