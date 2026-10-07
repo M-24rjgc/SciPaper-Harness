@@ -67,6 +67,8 @@ it('chooses effort, edits a prior message, and opens session actions using touch
   })
   await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
   await page.getByText('What shall we work on today?', { exact: true }).waitFor()
+  const productTitle = (await page.title()).split(' — ').at(-1)!
+  await page.locator('[data-shell-leading]').getByText(productTitle, { exact: true }).waitFor()
   const input = page.locator('[data-composer-input][contenteditable="true"]').first()
   expect(await input.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16)
   const model = page.getByRole('button', { name: /^Select model/ }).first()
@@ -108,6 +110,7 @@ it('chooses effort, edits a prior message, and opens session actions using touch
   const currentId = await selectedSession(page)
   await page.getByRole('button', { name: 'Open sidebar', exact: true }).tap()
   const drawer = page.locator('[data-mobile-sidebar][role="dialog"]')
+  expect(await drawer.getAttribute('aria-label')).toBe(productTitle)
   const currentRow = drawer.locator(`[data-key="conversation:${currentId}"]`)
   const more = currentRow.getByRole('button', { name: /^More for/ })
   expect(await more.isVisible()).toBe(true)
