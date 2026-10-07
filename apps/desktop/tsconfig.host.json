@@ -8,6 +8,7 @@
     "src"
   ],
   "references": [
+    { "path": "../../packages/client/ui-settings-general/tsconfig.host.json" },
     {
       "path": "../../packages/boot/app-boot"
     },

@@ -33,3 +33,22 @@ export interface DesktopUpdateView {
   readonly failed: boolean
   readonly opening: boolean
 }
+
+/** Private desktop presentation of the temporary remote-access lease. */
+export interface DesktopRemotePresentation {
+  readonly phase: 'idle' | 'preparing' | 'connecting' | 'ready' | 'stopping' | 'error'
+  readonly origin?: string
+  readonly pairingUrl?: string
+  readonly qrCode?: string
+  readonly expiresAt?: number
+  readonly failure?: 'download' | 'connection' | 'host' | 'unsupported'
+}
+
+/** Desktop-only operations; no renderer-selected executable, address or token. */
+export interface DesktopRemoteBridge {
+  status(): Promise<DesktopRemotePresentation>
+  start(): Promise<void>
+  refresh(): Promise<void>
+  stop(): Promise<void>
+  subscribe(listener: (state: DesktopRemotePresentation) => void): () => void
+}

@@ -31,6 +31,8 @@ The root slot composes the sidebar, main content, and right column. The sidebar 
 
 Global panels occupy the root-scoped `main` keyed slot; `conversation` is the reserved key for the Conversation. `ctx.layout.selectPanel(id)` selects a registered panel, and `null` selects the Conversation without changing the current Session. No global panel is registered by the shipped composition.
 
+At widths up to 640px, navigation uses a covering drawer with no collapsed rail or reserved column. The top bar retains the sidebar and New Session controls and the product name. Selecting a panel or Conversation, tapping the mask, or pressing Escape closes the drawer; desktop widths survive the phone presentation. The drawer traps keyboard focus and returns it to its invoking control.
+
 <a id="window-chrome-seat"></a>
 ### Window-chrome seat
 

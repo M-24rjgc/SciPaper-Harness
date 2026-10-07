@@ -59,6 +59,8 @@ The research tree (`ResearchTree.tsx`, rows derived in `treeValues.ts`) takes th
 
 Unsent conversations with text or attachments remain in the tree as drafts, with the first line of text or the attachment count. Saved text appears before its composer mounts; empty non-current conversations stay hidden. The untouched research draft remains a single New research row.
 
+Touch devices expose row actions without hovering. A touch-opened menu stays open after contact ends until selection or dismissal. Phone rows and action controls provide 44px touch targets.
+
 | Module | What it draws |
 | --- | --- |
 | `Hero.tsx` | The flask mark on the blank-session entry and the research tab |

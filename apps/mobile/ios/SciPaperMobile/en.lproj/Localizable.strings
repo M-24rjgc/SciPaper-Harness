@@ -1,0 +1,15 @@
+"随时继续你的研究" = "Continue your research, wherever you are";
+"连接电脑" = "Connect to your computer";
+"电脑" = "Computers";
+"在电脑的手机连接页面生成链接，然后在这里粘贴。电脑保持在线时，可查看会话、研究进度和文件。" = "Create a link in Mobile Access on your computer, then paste it here. Keep your computer online to view conversations, research progress and files.";
+"HTTPS 连接链接" = "HTTPS connection link";
+"连接" = "Connect";
+"最近连接" = "Recent connection";
+"移除最近连接" = "Remove recent connection";
+"请输入有效的远程 HTTPS 连接链接，不能使用本机回环地址。" = "Enter a valid remote HTTPS connection link. A loopback address cannot connect to your computer from this phone.";
+"暂时无法连接电脑" = "Cannot connect to your computer";
+"请确认电脑在线，并检查手机网络。" = "Check that your computer is online and that your phone has a network connection.";
+"连接链接已失效，或访问已被撤销。请在电脑上生成新链接。" = "This connection link has expired or access was revoked. Create a new link on your computer.";
+"连接请求未完成。请重试，或使用电脑生成的新连接链接。" = "The connection request failed. Retry or use a new connection link from your computer.";
+"重试" = "Retry";
+"重新连接" = "Connect again";

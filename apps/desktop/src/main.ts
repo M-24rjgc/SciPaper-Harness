@@ -62,6 +62,9 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+import { DesktopRemoteAccess, RemoteAccessError } from './remote-access.ts'
+import { openQuickTunnel, prepareCloudflared } from './remote-tunnel.ts'
+import QRCode from 'qrcode'
 
 app.setName('SciPaper Harness')
 app.commandLine.appendSwitch('lang', process.env.RESEARCH_WORKBENCH_LANG || 'zh-CN')
@@ -517,6 +520,7 @@ async function main(): Promise<void> {
         }, (enabled) => { analyticsEnabled = enabled })
       },
       stop: async () => {
+        await remoteAccess.stop()
         analyticsEnabled = false
         stopAccount?.()
         try { await host.stop(requireCleanStop) }
@@ -529,10 +533,32 @@ async function main(): Promise<void> {
       updateTasks: (action: 'inspect' | 'lock' | 'unlock') => host.updateTasks(action),
       inspectQuit: () => host.inspectQuit(),
       authorizeBrowser: (sessionId: string) => host.authorizeBrowser(sessionId),
+      remoteAccess: (request: Parameters<typeof host.remoteAccess>[0]) => host.remoteAccess(request),
     }
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
     else if (!shuttingDown) backendReady = state.phase === 'ready'
+  })
+
+  const remoteAccess = new DesktopRemoteAccess({
+    host: () => backend.host,
+    openTunnel: async (signal, connecting) => {
+      const cache = join(app.getPath('userData'), 'remote-tunnel')
+      const binary = await prepareCloudflared(cache, (input, init) => net.fetch(input instanceof URL ? input.href : input, init), signal)
+      try {
+        signal.throwIfAborted()
+        if (hostUrl === undefined || backend.host === undefined) throw new RemoteAccessError('host')
+        connecting()
+        const tunnel = await openQuickTunnel({ binary: binary.path, cache, hostUrl, signal })
+        return { ...tunnel, stop: async () => { try { await tunnel.stop() } finally { await binary.dispose() } } }
+      } catch (error) { await binary.dispose(); throw error }
+    },
+    qrCode: url => QRCode.toDataURL(url, { errorCorrectionLevel: 'M', margin: 2, width: 288 }),
+    publish: (state) => {
+      if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(DESKTOP_IPC.remotePresentation, state)
+      }
+    },
   })
 
   const updateErrors = new WeakMap<DesktopUpdateState, Promise<void>>()
@@ -807,6 +833,10 @@ async function main(): Promise<void> {
     assertProductSender(event)
     return readDeviceInfo()
   })
+  ipcMain.handle(DESKTOP_IPC.remoteStatus, (event) => { assertProductSender(event); return remoteAccess.state })
+  ipcMain.handle(DESKTOP_IPC.remoteStart, (event) => { assertProductSender(event); return remoteAccess.start() })
+  ipcMain.handle(DESKTOP_IPC.remoteRefresh, (event) => { assertProductSender(event); return remoteAccess.refresh() })
+  ipcMain.handle(DESKTOP_IPC.remoteStop, (event) => { assertProductSender(event); return remoteAccess.stop() })
   ipcMain.handle(DESKTOP_IPC.onboardingApiKey, async (event) => {
     assertProductSender(event)
     return (await readWelcomeState()).hasApiKey

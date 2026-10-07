@@ -61,6 +61,7 @@
 }
 
 .sidebarCol {
+  grid-column: 1;
   min-width: 0;
   overflow: hidden;
   background: var(--dsw-specific-sidebar-fill);
@@ -68,6 +69,7 @@
 }
 
 .centerCol {
+  grid-column: 2;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -269,6 +271,7 @@
  * where it is. The occupant draws its own left border.
  */
 .rightbarCol {
+  grid-column: 3;
   position: relative;
   min-width: 0;
   overflow: visible;
@@ -283,4 +286,84 @@
 
 .overlayLayer > * {
   pointer-events: auto;
+}
+
+.frame[data-mobile] {
+  box-sizing: border-box;
+  grid-template-rows: minmax(0, 1fr);
+  padding-top: calc(56px + env(safe-area-inset-top, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: none;
+}
+
+.frame[data-mobile] .sidebarCol {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--dsw-specific-sidebar-fill);
+  box-shadow: var(--dsw-elevation-prominent);
+  visibility: hidden;
+}
+
+.frame[data-mobile-sidebar-open] .sidebarCol {
+  visibility: visible;
+}
+
+.sidebarMask {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+}
+
+.frame[data-mobile] .leadingSeat {
+  inset: env(safe-area-inset-top, 0px) 0 auto;
+  height: 56px;
+  padding: 0 12px;
+  gap: 12px;
+  background: var(--dsw-alias-bg-base);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+:global([data-platform='darwin']) .frame[data-mobile] {
+  --dsh-mobile-chrome-top: 48px;
+}
+
+:global([data-platform='darwin'][data-fullscreen]) .frame[data-mobile] {
+  --dsh-mobile-chrome-top: 0px;
+}
+
+:global([data-windows-titlebar]) .frame[data-mobile] {
+  --dsh-mobile-chrome-top: var(--dsh-windows-titlebar-height);
+}
+
+:global([data-platform='darwin']) .frame[data-mobile],
+:global([data-windows-titlebar]) .frame[data-mobile] {
+  padding-top: calc(var(--dsh-mobile-chrome-top) + 56px + env(safe-area-inset-top, 0px));
+}
+
+:global([data-platform='darwin']) .frame[data-mobile] .leadingSeat,
+:global([data-windows-titlebar]) .frame[data-mobile] .leadingSeat {
+  top: calc(var(--dsh-mobile-chrome-top) + env(safe-area-inset-top, 0px));
+}
+
+:global([data-platform='darwin']) .frame[data-mobile] .sidebarCol,
+:global([data-windows-titlebar]) .frame[data-mobile] .sidebarCol,
+:global([data-platform='darwin']) .frame[data-mobile] .sidebarMask,
+:global([data-windows-titlebar]) .frame[data-mobile] .sidebarMask {
+  top: var(--dsh-mobile-chrome-top);
+}
+
+.mobileBrand {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

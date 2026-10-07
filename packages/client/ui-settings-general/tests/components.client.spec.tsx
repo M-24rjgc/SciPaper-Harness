@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GeneralSectionComponentProps } from '../src/client/GeneralSection.tsx'
 import { GeneralSection } from '../src/client/GeneralSection.tsx'
@@ -9,6 +9,8 @@ import { CloseLabel, HeaderContent, TriggerContent } from '../src/client/chrome.
 import type { TriggerContentProps } from '../src/client/chrome.tsx'
 import { SettingsDocumentAction } from '../src/client/SettingsDocumentAction.tsx'
 import { DeveloperToolsRow } from '../src/client/DeveloperToolsRow.tsx'
+import { DesktopRemoteRow } from '../src/client/DesktopRemoteRow.tsx'
+import type { DesktopRemoteView } from '../src/client/desktop-remote-source.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { SettingsDocumentStore } from '../src/client/settings-document-store.ts'
@@ -89,6 +91,30 @@ it('toggles developer tools using the accepted setting and disables duplicate wr
   finish()
   await waitFor(() => { expect(toggle.getAttribute('aria-checked')).toBe('true') })
   expect(toggle.hasAttribute('disabled')).toBe(false)
+})
+
+it('allows cancelling connection startup and removes expired pairing material without revoking connected phones', async () => {
+  vi.useFakeTimers()
+  const state = createSnapshotStore<DesktopRemoteView>({ presentation: { phase: 'preparing' }, failed: false, refreshing: false })
+  const run = vi.fn()
+  try {
+    render(<DesktopRemoteRow {...kit} t={t} useRemoteAccess={bindSnapshotSelector(state)} run={run} />)
+    fireEvent.click(screen.getByRole('button', { name: en['remote.stop'] }))
+    expect(run).toHaveBeenCalledWith('stop')
+    expect(screen.queryByRole('button', { name: en['remote.start'] })).toBeNull()
+    act(() => { state.set({ presentation: { phase: 'ready', origin: 'https://research.example',
+      pairingUrl: 'https://research.example/?pair=private', qrCode: 'data:image/png;base64,qr', expiresAt: Date.now() + 2000 },
+    failed: false, refreshing: false }) })
+    expect(screen.getByRole('img', { name: en['remote.qr'] })).toBeTruthy()
+    expect(screen.getByRole('button', { name: en['remote.copy'] }).hasAttribute('disabled')).toBe(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.getByText(en['remote.expired'])).toBeTruthy()
+    expect(screen.getByRole('button', { name: en['remote.copy'] }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: en['remote.refresh'] }))
+    expect(run).toHaveBeenLastCalledWith('refresh')
+    expect(run).toHaveBeenCalledTimes(2)
+  } finally { cleanup(); vi.useRealTimers() }
 })
 
 describe('chrome content', () => {

@@ -31,6 +31,8 @@ kind: "package-reference"
 
 全局面板占据 root 作用域的 `main` keyed slot；`conversation` 是为会话界面保留的 key。`ctx.layout.selectPanel(id)` 选中已注册面板，`null` 则选中会话界面，但不改变当前会话。默认组合不注册任何全局面板。
 
+宽度不超过 640px 时，导航采用覆盖式抽屉，不保留收起控制栏或预留列。顶栏保留侧边栏和新会话控件以及产品名称。选择面板或会话、点击遮罩或按 Escape 都会关闭抽屉；手机布局保留桌面宽度偏好。抽屉限制键盘焦点在其内部，关闭后将焦点交还唤起控件。
+
 <a id="window-chrome-seat"></a>
 ### 窗口 chrome 座
 

@@ -75,3 +75,10 @@
   align-items: center;
   justify-content: center;
 }
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

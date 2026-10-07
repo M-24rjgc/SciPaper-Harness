@@ -370,6 +370,43 @@
   color: var(--dsw-alias-label-primary);
 }
 
+@media (hover: none), (pointer: coarse) {
+  .actions {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    height: 48px;
+  }
+
+  .line,
+  .conversation .line,
+  .add .line,
+  .group .line,
+  .search {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .more,
+  .iconButton,
+  .clear {
+    width: 44px;
+    height: 44px;
+  }
+
+  .root .searchInput,
+  .form .input {
+    font-size: 16px;
+  }
+
+  .trail {
+    max-width: 30%;
+  }
+}
+
 .error {
   margin: 0;
   padding: 0 8px 6px 28px;

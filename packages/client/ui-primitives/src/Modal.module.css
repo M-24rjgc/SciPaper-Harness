@@ -127,3 +127,10 @@
   gap: 8px;
   padding: 0 24px;
 }
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .close {
+    width: 44px;
+    height: 44px;
+  }
+}

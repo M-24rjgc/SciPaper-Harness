@@ -283,3 +283,11 @@
   left: -10px;
   width: 10px;
 }
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .item,
+  .denseList .item,
+  .compactList .item {
+    min-height: 44px;
+  }
+}

@@ -15,3 +15,10 @@
 .optionName { font-size: 14px; line-height: 20px; color: var(--dsw-alias-label-primary); }
 .optionDetail { font-size: 12px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }
 .error { margin: 0; max-width: 260px; font-size: 12px; line-height: 16px; color: var(--dsw-alias-state-error-primary); overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .trigger,
+  .example {
+    min-height: 44px;
+  }
+}

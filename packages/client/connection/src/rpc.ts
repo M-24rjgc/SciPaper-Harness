@@ -6,6 +6,36 @@ import type { PeerScope } from '@deepseek-ai/dsh-typert-protocol'
 /** Correlation id minted by a caller and echoed by the Connection response. */
 export type RpcId = Branded<'rpc-id'>
 
+/** Identity of one pending, single-use remote-browser pairing invitation. */
+export type ConnectionRemotePairingId = Branded<'connection-remote-pairing-id'>
+
+/** Private pairing link returned only to the local operator. */
+export interface ConnectionRemotePairing {
+  readonly id: ConnectionRemotePairingId
+  readonly url: string
+  readonly expiresAt: number
+}
+
+/** An explicitly enabled HTTPS origin and its revocable browser access. */
+export interface ConnectionRemoteOrigin {
+  readonly origin: string
+  /**
+   * Replace any pending invitation with a fresh single-use link.
+   * @returns private link and its absolute expiry time.
+   */
+  createPairingUrl(): ConnectionRemotePairing
+  /**
+   * Withdraw an invitation without disconnecting browsers already paired.
+   * @param id - invitation returned by createPairingUrl.
+   */
+  revokePairing(id: ConnectionRemotePairingId): void
+  /**
+   * Revoke every invitation and browser cookie, then close this origin's Peer scope.
+   * @returns completion of the scope's teardown.
+   */
+  dispose(): Promise<void>
+}
+
 /**
  * Brand one validated string as a Connection correlation id.
  * @param id - validated wire identity.
@@ -201,9 +231,19 @@ export interface HostConnectionHandle {
   /**
    * Compose exact Fetch routes and the shared-channel RPC interceptor.
    * @param channel - shared channel mounted by Connection.
+   * @param peer - admitted HTTP Peer; omitted for a carrier owned by the local operator.
    * @returns Fetch handler for trusted, authenticated requests.
    */
-  createSharedFetchHandler(channel: '/api'): ConnectionFetchHandler
+  createSharedFetchHandler(channel: '/api', peer?: PeerScope): ConnectionFetchHandler
+
+  /**
+   * Enable one exact HTTPS origin behind an operator-owned loopback tunnel.
+   * No forwarded header grants trust. Disposal revokes paired browsers and their streams;
+   * Host restart requires pairing again. The caller's plugin scope owns the registration.
+   * @param origin - HTTPS root origin without credentials, path, query, or fragment.
+   * @returns revocable remote access; its pairing links must remain private.
+   */
+  registerRemoteOrigin(origin: string): ConnectionRemoteOrigin
 
   /**
    * Apply Connection's Host/Origin checks and browser authentication to

@@ -135,6 +135,7 @@ function TreeItem(props: { row: TreeRow; view: ItemView; focusable: boolean; t: 
   const action = useAction()
   const [menuOpen, setMenuOpen] = useState(false)
   const [byKeyboard, setByKeyboard] = useState(false)
+  const [hoverDismiss, setHoverDismiss] = useState(true)
   const element = useRef<HTMLDivElement>(null)
   const refocus = useRef(false)
   // Back on the row once a menu the keyboard opened closes; after the menu has put focus on its anchor.
@@ -196,13 +197,14 @@ function TreeItem(props: { row: TreeRow; view: ItemView; focusable: boolean; t: 
             action.start(work)
           }}
           portal
-          closeOnPointerLeave
+          closeOnPointerLeave={hoverDismiss}
           autoFocus={byKeyboard}
           anchor={<button
             type="button"
             tabIndex={-1}
             className={styles.more}
             aria-label={t('treeRowActions', { name: view.label })}
+            onPointerDown={(event) => { setHoverDismiss(event.pointerType !== 'touch') }}
             onClick={(event) => {
               event.stopPropagation()
               openMenu(false)

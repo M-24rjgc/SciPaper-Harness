@@ -110,3 +110,29 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+@media (max-width: 640px) {
+  .actions {
+    flex-wrap: wrap;
+    gap: 4px;
+    height: auto;
+    min-height: 44px;
+    max-width: 100%;
+  }
+
+  .action {
+    flex: none;
+    width: 44px;
+    height: 44px;
+  }
+
+  .timeStart {
+    padding-right: 4px;
+  }
+
+  .endInfo {
+    flex-wrap: wrap;
+    max-width: 100%;
+    margin-left: 0;
+  }
+}

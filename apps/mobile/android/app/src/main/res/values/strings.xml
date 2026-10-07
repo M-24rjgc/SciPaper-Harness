@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tagline">Continue your research, wherever you are</string>
+    <string name="connect_computer">Connect to your computer</string>
+    <string name="connect_hint">Create a link in Mobile Access on your computer, then paste it here. Keep your computer online to view conversations, research progress and files.</string>
+    <string name="link_hint">HTTPS connection link</string>
+    <string name="connect">Connect</string>
+    <string name="recent_connection">Recent connection</string>
+    <string name="remove_recent">Remove recent connection</string>
+    <string name="invalid_link">Enter a complete HTTPS connection link.</string>
+    <string name="https_required">Use a valid HTTPS address without a username or password.</string>
+    <string name="loopback_rejected">Use the computer\'s remote HTTPS address. A loopback address cannot connect to your computer from this phone.</string>
+    <string name="connection_failed">Cannot connect to your computer. Check that it is online and that your phone has a network connection.</string>
+    <string name="connection_refused">This connection link has expired or access was revoked. Create a new link on your computer.</string>
+    <string name="connection_http_error">The connection request failed. Retry or use a new connection link from your computer.</string>
+    <string name="certificate_failed">Cannot verify the connection certificate. Check your computer\'s HTTPS connection settings.</string>
+    <string name="retry">Retry</string>
+    <string name="reconnect">Connect again</string>
+    <string name="picker_unavailable">No file picker is available.</string>
+    <string name="preview_download_unavailable">Download the original file from the file list. This preview cannot be downloaded directly.</string>
+    <string name="external_download">Download this external file in your browser.</string>
+    <string name="downloading">Downloading file…</string>
+    <string name="download_complete">Download complete. The file is in Downloads / SciPaper.</string>
+    <string name="download_failed">Download did not finish. Check your network and try again.</string>
+    <string name="link_unavailable">Cannot open this link.</string>
+</resources>

@@ -42,7 +42,9 @@ cookie 签名密钥是 `ctx.credentials` 中由 `client-connection/browser-sessi
 
 认证之前，每个请求仍经过 `src/api-request-trust.ts`。其 `Host` 必须是 loopback，或与 `trustedHosts` 条目匹配：带端口的 `host:port` 精确匹配，不带端口的条目匹配任意端口，两侧均经 WHATWG 归一化。若附带 `Origin`，它必须等于该 Host；`sec-fetch-site: cross-site` 一律拒绝。畸形配置 authority 会让插件加载失败。这些检查防御 DNS rebinding 与跨站浏览器请求，绝不建立身份。Host/Origin 校验失败返回 403；Host 可信但未认证的请求返回 401。`dsh web --host 0.0.0.0` 仍不受支持。决策记录：[浏览器请求信任](../../../.agents/notes/implemented/architecture/2026-07-28-api-browser-trust-boundary.zh.md)与[浏览器令牌认证](../../../.agents/notes/implemented/architecture/2026-08-24-browser-token-authentication.zh.md)。
 
-每个被接纳的请求都代表同一个 Peer——操作者。`ctx.connection.operator` 就是这个 `PeerScope`：其 `ctx` 是拥有连接期注册的 Cordis scope，随 Connection 一起释放。`ctx.connection.admit(request)` 执行信任与认证检查，以拒绝状态或操作者作答；`/api` 路由与 Gateway 的 WebSocket 升级都经它接纳，每个 RPC 处理器都收到本次调用的 Peer。`OperatorPeer` 对外导出，供没有 Connection 的组合（例如 Gateway 的进程内载体）以同一约定拥有一个操作者 scope。
+被接纳的本地请求代表操作者 Peer `ctx.connection.operator`；配对的远程 origin 拥有独立的操作者 Peer。每个 Peer 的 `ctx` 是拥有其连接期注册的 Cordis scope。`ctx.connection.admit(request)` 执行信任与认证检查，返回被接纳的 Peer 或拒绝状态。`/api` 路由与 Gateway 的 WebSocket 升级使用该准入结果，每个 RPC 处理器都收到本次调用的 Peer。`OperatorPeer` 对外导出，供没有 Connection 的组合（例如 Gateway 的进程内载体）拥有同样的 scope。
+
+操作者拥有的出站隧道可以通过 `ctx.connection.registerRemoteOrigin(origin)` 启用一个精确的 HTTPS 根 origin，Host 继续只绑定 loopback。返回的 lease 创建私密的一次性配对 URL；创建新 URL 会替换待使用的邀请，`revokePairing(id)` 撤销该邀请，`remotePairingMaxAgeSeconds` 设置有效秒数（默认 300）。远程配对使用绑定 authority 的签名 `HttpOnly`、`SameSite=Strict`、`Secure` cookie 和独立 Peer scope。普通进程 token 与本地浏览器 cookie 无法认证远程 origin。隧道必须保留外部 Host 与 Origin header；转发 header 不会建立信任。释放 lease 会撤销邀请和远程 cookie，并关闭 Peer 拥有的 WebSocket 流。Host 或 Connection 重启后需要重新配对。
 
 通过认证的共享 HTTP 请求在传输请求体之前经过 `connection/request` waterfall。监听器可以拒绝新请求，或等待 `next()` 直到响应完成；释放所属 fiber 会移除准入行为。Desktop 使用此扩展点，在已批准的安装期间锁住新的 API 工作，而不取消已接纳的工作。客户端断开会中止处理函数的信号；桥接器停止写入 socket，并排空剩余响应块。WebSocket 流仍由 API Gateway 负责。
 
@@ -72,7 +74,7 @@ API Gateway Client 把内部 `$events` 逻辑流注册为唯一 generation sourc
 <a id="known-limitations-and-deferred-work"></a>
 
 - **缓冲型 `/api` 路由会把每个请求体保留在内存里**：`maxRequestBodyBytes`（默认 300 MiB，按默认 200 MiB 图片总量上限经 base64 膨胀加信封余量得出）限制普通图片与 RPC 信封。显式启用的流式路由接收带背压的分块并绕过总量上限；路由实现负责持久化、取消与存储配额。
-- **浏览器 cookie 不带 `Secure`**：当前随产品提供的传输方式是 loopback HTTP；若部署经明文网络暴露同一 authority，bearer cookie 可能在传输中泄露。
+- **普通浏览器 cookie 不带 `Secure`**：本地仍使用随产品提供的 loopback HTTP；显式注册的 HTTPS 远程 origin 使用 `Secure` cookie。
 - **没有 logout 操作**：清除浏览器 cookie 会结束单个浏览器会话；删除 owner 凭据记录并重启 `dsh` 会撤销全部会话。
 
 

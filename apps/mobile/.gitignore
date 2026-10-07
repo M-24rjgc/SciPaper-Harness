@@ -1,0 +1,9 @@
+android/.gradle/
+android/.idea/
+android/local.properties
+android/app/build/
+build/
+*.keystore
+*.p12
+ios/.build/
+ios/*.xcodeproj/xcuserdata/

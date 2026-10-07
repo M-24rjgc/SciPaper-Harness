@@ -16,6 +16,7 @@ import { installPlatformSessionPublisher } from './platform-session.ts'
 import { installOfficeEngineResolution } from './office-engine.ts'
 import { DesktopBrowserChannel, authorizedStorageKey } from './browser-control.ts'
 import * as desktopBrowserControl from './browser-control.ts'
+import { DesktopRemoteAccess } from './remote-access.ts'
 
 async function main(): Promise<void> {
   const runtimeDir = process.argv[2] as string
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
     updateTasks?: ReturnType<typeof installDesktopUpdateTaskControl>
     quitInspection?: ReturnType<typeof installDesktopQuitInspection>
     browserStorageKey?: (sessionId: string) => Promise<string>
+    remoteAccess?: DesktopRemoteAccess
   } = {}
   const send = (message: object): Promise<void> => new Promise((resolve, reject) => {
     if (!process.connected || process.send === undefined) { resolve(); return }
@@ -56,6 +58,7 @@ async function main(): Promise<void> {
   const stop = (): Promise<void> => stopping ??= (async () => {
     // Startup failure is reported by main; shutdown only owns a tree that booted.
     const running = await application.catch(() => undefined)
+    await control.remoteAccess?.dispose()
     await running?.shutdown.shutdown(0)
     browserChannel.dispose()
     officeEngine?.deregister()
@@ -65,6 +68,25 @@ async function main(): Promise<void> {
   process.on('message', (message: unknown) => {
     if (typeof message !== 'object' || message === null || !('type' in message)) return
     if (message.type === 'shutdown') { void stop(); return }
+    if (message.type === 'remote-access') {
+      if (!('requestId' in message) || !Number.isSafeInteger(message.requestId)
+        || !('action' in message)
+        || (message.action !== 'start' && message.action !== 'refresh' && message.action !== 'stop')
+        || ('origin' in message && typeof message.origin !== 'string')) return
+      const requestId = message.requestId
+      const action = message.action
+      const origin = 'origin' in message ? message.origin : undefined
+      void (async () => {
+        try {
+          if (stopping !== undefined || control.remoteAccess === undefined) throw new Error('unavailable')
+          const pairing = await control.remoteAccess.request({ action, ...(typeof origin === 'string' ? { origin } : {}) })
+          await send({ type: 'remote-access', requestId, ...(pairing === undefined ? {} : { pairing }) })
+        } catch {
+          await send({ type: 'remote-access', requestId, error: 'desktop remote: request failed' })
+        }
+      })().catch(() => { console.error('desktop remote: control response unavailable') })
+      return
+    }
     if (message.type === 'quit-inspection') {
       if (!('requestId' in message) || !Number.isSafeInteger(message.requestId)) return
       const requestId = message.requestId
@@ -115,6 +137,7 @@ async function main(): Promise<void> {
   })
   process.once('disconnect', () => { void stop() })
   const { ctx } = await application
+  control.remoteAccess = new DesktopRemoteAccess(ctx)
   control.updateTasks = installDesktopUpdateTaskControl(ctx)
   control.quitInspection = installDesktopQuitInspection(ctx)
   control.browserStorageKey = sessionId => authorizedStorageKey(ctx, sessionId)

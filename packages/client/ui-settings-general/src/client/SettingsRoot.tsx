@@ -1,6 +1,7 @@
 /**
  * Settings shell root: the sidebar-foot trigger row plus the centered modal
- * panel (figma 2552:26025, 760x500) with the section nav rail. The shell is
+ * panel and section nav rail; phone layouts fill the viewport and place
+ * section navigation above the content. The shell is
  * a pure composition face — slot-owned text (trigger label, panel title,
  * close label, sections) arrives from registrants through slots; accessible
  * names resolve from localized content (trigger: shell locale; dialog:

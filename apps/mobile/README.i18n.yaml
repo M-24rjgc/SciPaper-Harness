@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write apps/mobile/README.md
+/scipaper-mobile:
+  en: fc8fb201bdbdc6c4
+  zh: 1b158e2af8b531f4
+/scipaper-mobile/summary:
+  en: c72e2594b4f7accc
+  zh: 80e11947be592e33
+/scipaper-mobile/table-of-contents:
+  en: 7bba3dfee9b12560
+  zh: e39b52a5492991b8
+/scipaper-mobile/connection:
+  en: d0503ac8c1369556
+  zh: f271872823fd6967
+/scipaper-mobile/device-features:
+  en: 5b59b01635d11885
+  zh: dc2cac7382c375c0
+/scipaper-mobile/android-build:
+  en: 4ccee0b6e17a46d0
+  zh: 4829d5d3ef07ad9e
+/scipaper-mobile/ios-project:
+  en: 867fa93ac1ad118b
+  zh: 84f24b79d9f9f2f7
+/scipaper-mobile/limitations:
+  en: 29b8d67fdabc64aa
+  zh: f37a771c54e59b82

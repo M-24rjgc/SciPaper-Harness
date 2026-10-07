@@ -26,6 +26,9 @@ export type {
   ConnectionRpcHandler,
   ConnectionRpcHandlerResult,
   ConnectionRequestRejection,
+  ConnectionRemoteOrigin,
+  ConnectionRemotePairing,
+  ConnectionRemotePairingId,
   ConnectionRpcResult,
   ConnectionRequestBodyMode,
   ConnectionTrustRequest,
@@ -103,6 +106,8 @@ export interface ConnectionConfig {
   trustedHosts?: string[]
   /** Absolute browser-session lifetime in days. Default: 30. */
   cookieMaxAgeDays?: number
+  /** Lifetime of a single-use remote pairing invitation in seconds. Default: 300. */
+  remotePairingMaxAgeSeconds?: number
   /** Maximum buffered JSON body for every `/api` request. Default: 300 MiB. */
   maxRequestBodyBytes?: number
 }
@@ -111,6 +116,7 @@ export const Config: z<ConnectionConfig> = z.object({
   recovery: ConnectionRecoveryConfigSchema.default({}),
   trustedHosts: z.array(String).default([]),
   cookieMaxAgeDays: z.natural().min(1).default(30),
+  remotePairingMaxAgeSeconds: z.natural().min(1).max(3600).default(300),
   maxRequestBodyBytes: z.natural().min(1).default(DEFAULT_MAX_REQUEST_BODY_BYTES),
 })
 
@@ -135,13 +141,13 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
     ctx,
     trustedHosts,
     await BrowserAuth.create(ctx.root, ctx.credentials, cookieMaxAgeDays),
+    config?.remotePairingMaxAgeSeconds ?? 300,
   )
   ctx.inject(['webServer'], (webCtx) => {
     assertImageBodyCapacity(webCtx, maxRequestBodyBytes)
     webCtx.on('webserver/index-inject', (table) => {
       table.push({ kind: 'global', name: '__DSH_CONNECTION_RECOVERY__', value: recovery })
     })
-    const fetchHandler = connection.createSharedFetchHandler(API_PATH)
     const route: WebRoute = {
       kind: 'prefix',
       path: API_PATH,
@@ -152,6 +158,7 @@ export async function apply(ctx: Context, config?: ConnectionConfig): Promise<vo
           res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
+        const fetchHandler = connection.createSharedFetchHandler(API_PATH, admission.peer)
         await webCtx.waterfall('connection/request', req, res, () => bridge(req, res, fetchHandler, maxRequestBodyBytes))
       },
     }

@@ -9,12 +9,24 @@ import { syncNativeTheme } from './preload-theme.ts'
 import { syncWindowsAppearance } from './preload-windows.ts'
 import { installMandatoryUpdateOverlay } from './preload-mandatory-overlay.ts'
 import { createDesktopBrowserBridge } from './preload-browser.ts'
+import type { DesktopRemotePresentation } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 
 function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
     browser: createDesktopBrowserBridge(),
     deviceInfo: () => ipcRenderer.invoke(DESKTOP_IPC.deviceInfo) as Promise<string>,
+    remoteAccess: {
+      status: () => ipcRenderer.invoke(DESKTOP_IPC.remoteStatus) as Promise<DesktopRemotePresentation>,
+      start: () => ipcRenderer.invoke(DESKTOP_IPC.remoteStart) as Promise<void>,
+      refresh: () => ipcRenderer.invoke(DESKTOP_IPC.remoteRefresh) as Promise<void>,
+      stop: () => ipcRenderer.invoke(DESKTOP_IPC.remoteStop) as Promise<void>,
+      subscribe(listener) {
+        const handle = (_event: Electron.IpcRendererEvent, state: DesktopRemotePresentation): void => { listener(state) }
+        ipcRenderer.on(DESKTOP_IPC.remotePresentation, handle)
+        return () => { ipcRenderer.off(DESKTOP_IPC.remotePresentation, handle) }
+      },
+    },
     keyboard: {
       closeWindow: revision => ipcRenderer.invoke(DESKTOP_IPC.shortcutsCloseWindow, revision) as Promise<void>,
       subscribe: (listener) => {

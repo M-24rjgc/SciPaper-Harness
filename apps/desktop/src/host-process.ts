@@ -6,6 +6,19 @@ import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
 import type { DesktopBrowserOperation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { desktopNodeEnvironment } from './node-environment.ts'
 
+/** Private remote-access control sent to this Desktop's owned Host. */
+export interface DesktopRemoteRequest {
+  readonly action: 'start' | 'refresh' | 'stop'
+  readonly origin?: string
+}
+
+/** Private, single-use remote pairing URL; never included in public boot injections. */
+export interface DesktopRemotePairing {
+  readonly id: string
+  readonly url: string
+  readonly expiresAt: number
+}
+
 interface ReadyEvent {
   readonly type: 'ready'
   readonly url: string
@@ -37,6 +50,11 @@ interface BrowserOperationCancelEvent {
 
 type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | BrowserOperationEvent
   | BrowserOperationCancelEvent | { readonly type: 'shutdown-complete' } | {
+    readonly type: 'remote-access'
+    readonly requestId: number
+    readonly pairing?: DesktopRemotePairing
+    readonly error?: string
+  } | {
     readonly type: 'browser-authorize'
     readonly requestId: number
     readonly storageKey?: string
@@ -91,6 +109,10 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
   switch (candidate.type) {
     case 'shutdown-complete':
       return true
+    case 'remote-access':
+      return Number.isSafeInteger(candidate.requestId)
+        && (candidate.error === undefined || typeof candidate.error === 'string')
+        && (candidate.pairing === undefined || (candidate.error === undefined && isRemotePairing(candidate.pairing)))
     case 'ready':
       return typeof candidate.url === 'string'
     case 'platform-session': {
@@ -131,6 +153,19 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     default:
       return false
   }
+}
+
+function isRemotePairing(value: unknown): value is DesktopRemotePairing {
+  if (typeof value !== 'object' || value === null || !('id' in value) || !('url' in value) || !('expiresAt' in value)
+    || typeof value.id !== 'string' || value.id.length === 0 || value.id.length > 256
+    || typeof value.url !== 'string' || value.url.length > 4096
+    || typeof value.expiresAt !== 'number' || !Number.isSafeInteger(value.expiresAt) || value.expiresAt < 1) return false
+  try {
+    const url = new URL(value.url)
+    return url.protocol === 'https:' && url.username === '' && url.password === ''
+      && url.pathname === '/' && url.hash === '' && url.searchParams.size === 1
+      && (url.searchParams.get('pair')?.length ?? 0) > 0
+  } catch { return false }
 }
 
 async function exitsWithin(exit: Promise<void>, milliseconds: number): Promise<boolean> {
@@ -334,15 +369,30 @@ export class DesktopHostProcess {
     return response.storageKey
   }
 
+  /**
+   * Control the Host's remote origin and receive a private pairing invitation.
+   * @param request - start, refresh, or stop request from the owning shell.
+   * @returns private invitation for start/refresh; undefined after stop.
+   */
+  async remoteAccess(request: DesktopRemoteRequest): Promise<DesktopRemotePairing | undefined> {
+    const response = await this.control({ type: 'remote-access', ...request }, 10_000,
+      'desktop remote: control request timed out')
+    if (response.type !== 'remote-access') throw new Error('desktop remote: Host answered with a different control response')
+    if (request.action !== 'stop' && response.pairing === undefined) throw new Error('desktop remote: pairing is unavailable')
+    return response.pairing
+  }
+
   private async control(
     request: { readonly type: 'update-tasks'; readonly action: 'inspect' | 'lock' | 'unlock' }
-      | { readonly type: 'quit-inspection' } | { readonly type: 'browser-authorize'; readonly sessionId: string },
+      | { readonly type: 'quit-inspection' } | { readonly type: 'browser-authorize'; readonly sessionId: string }
+      | ({ readonly type: 'remote-access' } & DesktopRemoteRequest),
     deadlineMs: number, deadlineMessage: string,
   ): Promise<DesktopHostControlResponse> {
     const child = this.child
     if (child === undefined || !child.connected || this.failureReported || this.stopping) {
       throw new Error(`${request.type === 'update-tasks' ? 'desktop update'
-        : request.type === 'browser-authorize' ? 'desktop browser' : 'desktop quit'}: Host is unavailable`)
+        : request.type === 'browser-authorize' ? 'desktop browser'
+          : request.type === 'remote-access' ? 'desktop remote' : 'desktop quit'}: Host is unavailable`)
     }
     const requestId = this.nextControlId++
     let timer: ReturnType<typeof setTimeout> | undefined

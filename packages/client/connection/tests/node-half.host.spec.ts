@@ -127,6 +127,52 @@ function browserCookie(connection: HostConnectionHandle, authority: string): str
 }
 
 describe('connection node half', () => {
+  it('isolates a paired remote Peer from local cookies, forwarded headers, and cross-site requests', async () => {
+    const { routes, connection, dispose } = await mounted()
+    try {
+      const ordinaryCookie = browserCookie(connection, 'research.example')
+      const remote = connection.registerRemoteOrigin('https://research.example')
+      expect(() => connection.registerRemoteOrigin(remote.origin)).toThrow('already registered')
+      const headers = { host: 'research.example', origin: remote.origin }
+      expect(connection.requestRejection({ headers: { ...headers, cookie: ordinaryCookie } })).toBe(401)
+      const launch = new URL(connection.authenticatedUrl(remote.origin))
+      const launchResult = fakeResponse()
+      connection.authorizeIndex(fakeRequest(headers, `${launch.pathname}${launch.search}`), launchResult.response)
+      expect(launchResult.state.status).toBe(401)
+      const pairing = new URL(remote.createPairingUrl().url)
+      const exchanged = fakeResponse()
+      connection.authorizeIndex(fakeRequest(headers, `${pairing.pathname}${pairing.search}`), exchanged.response)
+      expect(exchanged.state.status).toBe(303)
+      const cookie = exchanged.state.headers?.['set-cookie']?.split(';', 1)[0] ?? ''
+      const authorized = { ...headers, cookie }
+      const admission = connection.admit({ headers: authorized })
+      if ('rejection' in admission) throw new Error('remote pairing was not admitted')
+      expect(admission.peer).not.toBe(connection.operator)
+      expect(connection.requestRejection({ headers: { ...authorized, origin: 'http://research.example' } })).toBe(403)
+      expect(connection.requestRejection({ headers: { ...authorized, 'sec-fetch-site': 'cross-site' } })).toBe(403)
+      expect(connection.requestRejection({ headers: { ...authorized, host: 'attacker.example',
+        'x-forwarded-host': 'research.example', 'x-forwarded-proto': 'https' } })).toBe(403)
+      expect(connection.requestRejection({ headers: { ...authorized, host: 'localhost', origin: 'http://localhost',
+        'x-forwarded-host': 'research.example', 'x-forwarded-proto': 'https' } })).toBe(401)
+      connection.rpc.intercept('/api', endpoint => endpoint === 'remote/peer', async (_endpoint, _payload, _signal, peer) =>
+        ({ ok: true, value: { peerId: peer.id } }))
+      const result = fakeResponse()
+      const body: ClientRequest = { type: 'client-request', rpcId: RpcId('remote-peer'), method: 'remote/peer', payload: {} }
+      await routes[0]!.handler(fakePost(authorized, '/api/remote/peer', body), result.response)
+      expect(result.state.status).toBe(200)
+      expect(JSON.parse(String(result.state.body))).toMatchObject({ result: { ok: true, value: { peerId: admission.peer.id } } })
+      let peerDisposed = false
+      admission.peer.ctx.effect(() => () => { peerDisposed = true }, 'test: remote Peer lifetime')
+      const stopping = remote.dispose()
+      expect(connection.requestRejection({ headers: authorized })).toBe(403)
+      await stopping
+      expect(peerDisposed).toBe(true)
+      const renewed = connection.registerRemoteOrigin(remote.origin)
+      expect(connection.requestRejection({ headers: authorized })).toBe(401)
+      await renewed.dispose()
+    } finally { await dispose() }
+  })
+
   it('runs request admission after authentication and removes it with its owning fiber', async () => {
     const { ctx, routes, connection, dispose } = await mounted()
     let admitted = 0

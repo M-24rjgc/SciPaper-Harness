@@ -28,8 +28,10 @@ import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client
 import { createSettingsShellStore } from './shell-store.ts'
 import { SettingsRoot } from './SettingsRoot.tsx'
 import { DesktopUpdateBadge } from './DesktopUpdateIndicator.tsx'
-import type { DesktopUpdateBridge } from '../types.ts'
+import type { DesktopUpdateBridge, DesktopRemoteBridge } from '../types.ts'
 import { DesktopUpdateSource } from './desktop-update-source.ts'
+import { DesktopRemoteSource } from './desktop-remote-source.ts'
+import { DesktopRemoteRow } from './DesktopRemoteRow.tsx'
 import { CloseLabel, HeaderContent, TriggerContent } from './chrome.tsx'
 import { GeneralSection } from './GeneralSection.tsx'
 import { CurrentVersionRow } from './CurrentVersionRow.tsx'
@@ -86,9 +88,19 @@ export function apply(ctx: ClientContext): void {
   }, CurrentVersionRow))
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-settings-general: dictionaries')
   const connection = ctx.get('connection') as ConnectionHandle
-  const carrier = (globalThis as typeof globalThis & { dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge } }).dshDesktop
+  const carrier = (globalThis as typeof globalThis & {
+    dshDesktop?: { protocolVersion: number; updates?: DesktopUpdateBridge; remoteAccess?: DesktopRemoteBridge }
+  }).dshDesktop
   const desktopUpdate = new DesktopUpdateSource(carrier?.protocolVersion === 1 ? carrier.updates : undefined)
   ctx.effect(() => () => { desktopUpdate.dispose() }, 'ui-settings-general: desktop update carrier')
+  if (carrier?.protocolVersion === 1 && carrier.remoteAccess !== undefined) {
+    const desktopRemote = new DesktopRemoteSource(carrier.remoteAccess)
+    ctx.effect(() => () => { desktopRemote.dispose() }, 'ui-settings-general: remote access carrier')
+    ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+      name: 'settings.general.item', id: 'remote-access', order: 80, locale: NS,
+      inject: () => ({ hooks: { remoteAccess: desktopRemote.store }, run: (action: 'start' | 'refresh' | 'stop') => { desktopRemote.run(action) } }),
+    }, DesktopRemoteRow))
+  }
   ctx.slots.inject('sidebar.toggle.badge', () => ctx.slots.register({
     name: 'sidebar.toggle.badge', locale: NS,
     inject: () => ({ hooks: { desktopUpdate: desktopUpdate.store, connectionState: connection.state } }),

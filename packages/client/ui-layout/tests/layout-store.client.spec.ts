@@ -90,6 +90,39 @@ describe('main panel selection', () => {
   const panelA = 'panel-a' as MainPanelId
   const panelB = 'panel-b' as MainPanelId
 
+  it('closes phone navigation when selecting a global page or the current Conversation', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setViewportWidth(390)
+    for (const panelId of [panelA, panelA, null, null]) {
+      actions.toggleSidebar()
+      expect(store.getSnapshot().layoutInfo.narrowExpanded).toBe(true)
+      actions.selectPanel(panelId)
+      expect(store.getSnapshot().layoutInfo.narrowExpanded).toBe(false)
+      expect(store.getSnapshot().panelInfo.activePanelId).toBe(panelId)
+    }
+  })
+
+  it('clears drawer expansion at the phone breakpoint without changing the desktop preference', () => {
+    const { store, actions } = createLayoutStore().create()
+    actions.setSidebar(400)
+    actions.setViewportWidth(640)
+    actions.toggleSidebar()
+    actions.setViewportWidth(639)
+    expect(store.getSnapshot().layoutInfo.narrowExpanded).toBe(true)
+    actions.closeMobileSidebar()
+    actions.toggleSidebar()
+    actions.setViewportWidth(641)
+    expect(store.getSnapshot().layoutInfo).toMatchObject({ sidebar: 400, narrowExpanded: false })
+    actions.toggleSidebar()
+    const tablet = store.getSnapshot()
+    actions.closeMobileSidebar()
+    expect(store.getSnapshot()).toBe(tablet)
+    actions.setViewportWidth(640)
+    expect(store.getSnapshot().layoutInfo.narrowExpanded).toBe(false)
+    actions.setViewportWidth(1920)
+    expect(store.getSnapshot().layoutInfo.sidebar).toBe(400)
+  })
+
   it('changes only panelInfo when switching panels and returning to the Conversation', () => {
     const { store, actions } = createLayoutStore().create()
     actions.setSidebar(400)

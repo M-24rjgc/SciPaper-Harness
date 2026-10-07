@@ -47,3 +47,37 @@
 .switch[aria-checked='true'] .thumb {
   transform: translateX(16px);
 }
+
+@media (max-width: 640px) and (pointer: coarse) {
+  .switch {
+    width: 44px;
+    height: 44px;
+    padding: 14px 6px;
+    background: transparent;
+  }
+
+  .switch::before {
+    content: '';
+    position: absolute;
+    top: 12px;
+    left: 4px;
+    width: 36px;
+    height: 20px;
+    border-radius: inherit;
+    corner-shape: round;
+    background: var(--dsw-alias-border-l3);
+    pointer-events: none;
+  }
+
+  .switch[aria-checked='true'] {
+    background: transparent;
+  }
+
+  .switch[aria-checked='true']::before {
+    background: var(--dsw-alias-brand-primary);
+  }
+
+  .thumb {
+    position: relative;
+  }
+}

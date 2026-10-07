@@ -329,3 +329,15 @@
   height: 12px;
   color: var(--dsw-alias-menu-icon);
 }
+
+@media (max-width: 640px) {
+  .trigger,
+  .option,
+  .cell {
+    min-height: 44px;
+  }
+
+  .searchRow .search input {
+    font-size: 16px;
+  }
+}

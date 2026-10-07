@@ -98,12 +98,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'shell.overlay': { kind: 'list'; scope: 'root' }
     /**
      * Window-chrome seat at the frame's top-left, over every main panel.
-     * Mounted only while the sidebar column is fully hidden (macOS desktop
-     * collapse; other platforms keep the rail), so the occupant can assume the
-     * frame edge is the window edge and the macOS traffic lights sit before it.
+     * Mounted in the phone navigation bar and while macOS desktop collapse
+     * fully hides the sidebar column. The frame owns platform clearance.
      * OCCUPIED by ui-sidebar's reopen/New Session controls.
      *
-     * While the seat is mounted the frame publishes
+     * While the desktop seat is mounted the frame publishes
      * `--dsh-frame-leading-clearance` (the inline inset the seat's band
      * occupies, measured from the frame's left edge); a main panel whose
      * content reaches the top-left corner pads by it so nothing lands under
@@ -122,7 +121,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export interface SidebarOwnerProps {
   /** True when the sidebar is closed (the column renders the compact control rail). */
   collapsed: boolean
-  /** Rendered column width in px (SIDEBAR_COLLAPSED when collapsed). */
+  /** Rendered sidebar or phone-drawer width in px. */
   width: number
 }
 

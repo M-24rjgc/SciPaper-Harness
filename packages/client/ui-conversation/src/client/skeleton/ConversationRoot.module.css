@@ -543,3 +543,70 @@ button.crumb:hover {
 .embeddedBody[data-content-phase='settling'] .composerSeat {
   visibility: hidden;
 }
+
+@media (max-width: 640px) {
+  .body,
+  .embeddedBody {
+    --dsh-chat-content-width: max(0px, calc(var(--dsh-conversation-column-width, 100vw) - 24px));
+    --dsh-composer-card-max-width: 100%;
+    --dsh-composer-side-clearance: 12px;
+  }
+
+  .header {
+    padding: 4px 12px 0;
+    min-height: 0;
+  }
+
+  .titleRow {
+    flex-wrap: wrap;
+    min-height: 44px;
+    row-gap: 4px;
+    padding-inline-start: 0;
+  }
+
+  .titleCluster {
+    flex-basis: 100%;
+    gap: 4px;
+  }
+
+  .headerUtilities {
+    margin-left: auto;
+  }
+
+  .headerCorner {
+    margin-right: 0;
+    margin-left: 4px;
+  }
+
+  .headerActions :global(button),
+  .headerUtilities :global(button),
+  .headerCorner :global(button) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .tabs {
+    gap: 24px;
+    margin-top: 0;
+    padding-left: 0;
+    overflow-x: auto;
+  }
+
+  .tab {
+    flex: none;
+    min-height: 44px;
+    padding: 0 4px;
+  }
+
+  .widthHandle {
+    display: none;
+  }
+
+  .heroWorkspaceRow {
+    padding-inline: 12px;
+  }
+
+  .composerHero {
+    padding-bottom: 16px;
+  }
+}

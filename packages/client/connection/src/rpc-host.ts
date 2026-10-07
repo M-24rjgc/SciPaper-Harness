@@ -12,7 +12,7 @@ import { clientRequestSchema } from './rpc-schema.ts'
 import { bridge } from './http-bridge.ts'
 import { isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
-import type { BrowserAuth } from './browser-auth.ts'
+import type { BrowserAuth, RemoteBrowserAuth } from './browser-auth.ts'
 import { OperatorPeer } from './operator-peer.ts'
 import type {
   PeerAdmission,
@@ -26,6 +26,7 @@ import type {
   ConnectionRpcHandler,
   ConnectionRpcResult,
   ConnectionRequestRejection,
+  ConnectionRemoteOrigin,
   ConnectionTrustRequest,
   HostConnectionHandle,
   HostConnectionRpc,
@@ -37,7 +38,12 @@ const ENDPOINT_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
 
 interface ConnectionRpcInterceptor {
   readonly matches: ConnectionRpcEndpointMatcher
-  readonly fetchHandler: ConnectionFetchHandler
+  readonly handler: ConnectionRpcHandler
+}
+
+interface RemoteOriginRegistration {
+  readonly auth: RemoteBrowserAuth
+  readonly peer: OperatorPeer
 }
 
 interface RegisteredFetchRoute {
@@ -65,21 +71,30 @@ export class HostConnectionService extends Service implements HostConnectionHand
   readonly operator: PeerScope
   private readonly interceptors = new Map<string, ConnectionRpcInterceptor>()
   private readonly fetchRoutes = new Map<string, RegisteredFetchRoute>()
+  private readonly remoteOrigins = new Map<string, RemoteOriginRegistration>()
 
   /**
    * Provide the Host half over the active HTTP server.
    * @param ctx - owning Connection plugin context.
    * @param trustedHosts - deployment authorities accepted by the Host/Origin fence.
    * @param browserAuth - process token and persistent browser-session owner.
+   * @param remotePairingMaxAgeSeconds - lifetime of each single-use remote invitation.
    */
   constructor(
     ctx: Context,
     private readonly trustedHosts: readonly string[],
     private readonly browserAuth: BrowserAuth,
+    private readonly remotePairingMaxAgeSeconds = 300,
   ) {
     super(ctx, 'connection')
     this.operator = new OperatorPeer(ctx)
     ctx.effect(() => () => this.operator.dispose(), 'client-connection: operator Peer')
+    ctx.effect(() => async () => {
+      const remotes = [...this.remoteOrigins.values()]
+      this.remoteOrigins.clear()
+      for (const remote of remotes) remote.auth.revoke()
+      await Promise.all(remotes.map(remote => remote.peer.dispose()))
+    }, 'client-connection: remote Peers')
   }
 
   /** Generic channel registry scoped to the Context reading this service. */
@@ -102,6 +117,11 @@ export class HostConnectionService extends Service implements HostConnectionHand
 
   /** Apply the configured Host/Origin fence, then browser authentication. */
   requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection {
+    const remote = this.remoteOriginFor(request)
+    if (remote !== undefined) {
+      if (!isTrustedApiRequest(request, [remote.auth.authority]) || !remote.auth.acceptsOrigin(request)) return 403
+      return remote.auth.isAuthenticated(request) ? undefined : 401
+    }
     if (!isTrustedApiRequest(request, this.trustedHosts)) return 403
     return this.browserAuth.isAuthenticated(request) ? undefined : 401
   }
@@ -109,12 +129,53 @@ export class HostConnectionService extends Service implements HostConnectionHand
   /** A request that passes the fence and authentication speaks for the operator. */
   admit(request: ConnectionTrustRequest): PeerAdmission {
     const rejection = this.requestRejection(request)
-    return rejection === undefined ? { peer: this.operator } : { rejection }
+    return rejection === undefined ? { peer: this.remoteOriginFor(request)?.peer ?? this.operator } : { rejection }
   }
 
   /** Authenticate an index request through the process-token exchange or cookie. */
   authorizeIndex(request: ConnectionIndexRequest, response: ConnectionIndexResponse): boolean {
+    const remote = this.remoteOriginFor(request)
+    if (remote !== undefined) {
+      if (!isTrustedApiRequest(request, [remote.auth.authority]) || !remote.auth.acceptsOrigin(request)) {
+        response.writeHead(403, { 'cache-control': 'no-store' })
+        response.end('forbidden')
+        return false
+      }
+      return remote.auth.authorizeIndex(request, response)
+    }
     return this.browserAuth.authorizeIndex(request, response)
+  }
+
+  /** @inheritdoc */
+  registerRemoteOrigin(origin: string): ConnectionRemoteOrigin {
+    const auth = this.browserAuth.createRemoteOrigin(origin, this.remotePairingMaxAgeSeconds)
+    if (this.remoteOrigins.has(auth.authority)) {
+      throw new Error('client-connection: remote origin is already registered')
+    }
+    const peer = new OperatorPeer(this.ctx)
+    const registration: RemoteOriginRegistration = { auth, peer }
+    const dispose = this.ctx.effect(() => {
+      this.remoteOrigins.set(auth.authority, registration)
+      return async () => {
+        auth.revoke()
+        if (this.remoteOrigins.get(auth.authority) === registration) this.remoteOrigins.delete(auth.authority)
+        await peer.dispose()
+      }
+    }, 'client-connection: remote origin')
+    return {
+      origin: auth.origin,
+      createPairingUrl: () => auth.createPairingUrl(),
+      revokePairing: (id) => { auth.revokePairing(id) },
+      dispose: async () => {
+        auth.revoke()
+        if (this.remoteOrigins.get(auth.authority) === registration) this.remoteOrigins.delete(auth.authority)
+        await dispose()
+      },
+    }
+  }
+
+  private remoteOriginFor(request: ConnectionTrustRequest): RemoteOriginRegistration | undefined {
+    return [...this.remoteOrigins.values()].find(remote => remote.auth.matches(request))
   }
 
   /** Add this process's launch token to the clean application URL. */
@@ -125,10 +186,12 @@ export class HostConnectionService extends Service implements HostConnectionHand
   /**
    * Compose one shared-channel Fetch handler from exact routes and its interceptor.
    * @param channel - shared channel mounted by Connection.
+   * @param peer - already admitted Peer; local owned carriers default to the operator.
    * @returns Fetch handler that selects one owner or returns 404.
    */
   createSharedFetchHandler(
     channel: '/api',
+    peer: PeerScope = this.operator,
   ): ConnectionFetchHandler {
     return {
       requestBodyMode: ({ method, url }) => {
@@ -144,7 +207,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
         if (endpoint === undefined || interceptor === undefined || !interceptor.matches(endpoint)) {
           return Promise.resolve(new Response('not found', { status: 404 }))
         }
-        return interceptor.fetchHandler.fetch(request)
+        return rpcFetchHandler(channel, interceptor.handler, peer).fetch(request)
       },
     }
   }
@@ -174,7 +237,6 @@ export class HostConnectionService extends Service implements HostConnectionHand
     handler: ConnectionRpcHandler,
   ): () => Promise<void> {
     assertChannel(channel)
-    const fetchHandler = rpcFetchHandler(channel, handler, this.operator)
     const route: WebRoute = {
       kind: 'prefix',
       path: channel,
@@ -185,7 +247,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
           res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden')
           return
         }
-        await bridge(req, res, fetchHandler)
+        await bridge(req, res, rpcFetchHandler(channel, handler, admission.peer))
       },
     }
     return owner.effect(
@@ -205,7 +267,7 @@ export class HostConnectionService extends Service implements HostConnectionHand
     }
     const interceptor: ConnectionRpcInterceptor = {
       matches,
-      fetchHandler: rpcFetchHandler(channel, handler, this.operator),
+      handler,
     }
     return owner.effect(() => {
       if (this.interceptors.has(channel)) {

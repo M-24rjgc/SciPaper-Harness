@@ -20,6 +20,7 @@
     { "path": "../../packages/workspace/workspace" },
     { "path": "../../packages/skill/skill-office" },
     { "path": "../../packages/util/home-paths" },
+    { "path": "../../packages/util/values" },
     { "path": "../../packages/skill/tool-workspace-dependencies" },
     {
       "path": "../cli"

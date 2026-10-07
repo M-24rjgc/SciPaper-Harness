@@ -3,7 +3,7 @@
 import type { GlobalStandardProps, RenderOpts } from '@deepseek-ai/dsh-client-ui-slots'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { AppFrame } from '../src/client/AppFrame.tsx'
 import type { AppFrameProps } from '../src/client/AppFrame.tsx'
 import type { MainPanelId, RightbarOwnerProps, SidebarOwnerProps } from '../src/client/index.ts'
@@ -66,6 +66,12 @@ function mountFrame(windowWidth = frameWidth) {
   const slotCalls: { key: string; props: object; options: RenderOpts | undefined }[] = []
   const renderSlot: AppFrameProps['renderSlot'] = (key, owner, options) => {
     slotCalls.push({ key, props: owner, options })
+    if (key === 'shell.leading') return <div data-testid={`${key}-content`}>
+      <button onClick={() => { instance.actions.toggleSidebar() }}>Open navigation</button>
+    </div>
+    if (key === 'sidebar') return <div data-testid={`${key}-content`}>
+      <button onClick={() => { instance.actions.selectPanel(null) }}>Selected conversation</button>
+    </div>
     return <div data-testid={`${key}-content`} data-entry-key={options?.entryKey} />
   }
   const useSessions: AppFrameProps['useSessions'] = sel => sel({
@@ -317,7 +323,7 @@ describe('AppFrame normal width concessions', () => {
     expect(instance.getSnapshot().layoutInfo).toMatchObject({ rightbarShown: true, rightbar: 864 })
     act(() => { instance.actions.closeRightbar() })
     resize(455)
-    expect(tracks(frame)).toEqual([56, 0])
+    expect(tracks(frame)).toEqual([0, 0])
     resize(1920)
     expect(tracks(frame)).toEqual([420, 0])
   })
@@ -523,6 +529,51 @@ describe('AppFrame right panel presentation', () => {
     expect(instance.getSnapshot().layoutInfo.rightbar).toBe(410)
     expect(rightOwner().width).toBe(410)
     expect(tracks(frame)[1]).toBe(0)
+  })
+})
+
+describe('AppFrame phone navigation', () => {
+  it('opens a covering drawer without shrinking or remounting the main content, then restores focus on dismissal', () => {
+    frameWidth = 390
+    const { frame, instance, getByRole, getByTestId, sidebarOwner } = mountFrame()
+    const main = getByTestId('main-content')
+    const sidebarContent = getByTestId('sidebar-content')
+    const open = getByRole('button', { name: 'Open navigation' })
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(frame.querySelector('[data-mobile-sidebar]')?.getAttribute('aria-hidden')).toBe('true')
+    open.focus()
+    expect(document.activeElement).toBe(open)
+    fireEvent.click(open)
+    const drawer = getByRole('dialog')
+    expect(drawer.contains(document.activeElement)).toBe(true)
+    expect(sidebarOwner()).toEqual({ collapsed: false, width: 280 })
+    expect(tracks(frame)).toEqual([0, 0])
+    expect(getByTestId('main-content')).toBe(main)
+    expect(main.parentElement?.inert).toBe(true)
+    expect(frame.querySelector('[data-side="sidebar"]')).toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(instance.getSnapshot().layoutInfo.narrowExpanded).toBe(false)
+    expect(document.activeElement).toBe(open)
+    expect(main.parentElement?.inert).toBe(false)
+    expect(getByTestId('sidebar-content')).toBe(sidebarContent)
+    fireEvent.click(open)
+    fireEvent.click(frame.querySelector('[data-mobile-sidebar-mask]')!)
+    expect(instance.getSnapshot().layoutInfo.narrowExpanded).toBe(false)
+    expect(document.activeElement).toBe(open)
+  })
+
+  it('dismisses after selecting even the current Conversation and retains wide-screen sidebar widths', () => {
+    frameWidth = 390
+    const { frame, instance, getByRole, sidebarOwner } = mountFrame()
+    act(() => { instance.actions.setSidebar(420) })
+    fireEvent.click(getByRole('button', { name: 'Open navigation' }))
+    expect(sidebarOwner().width).toBe(346)
+    fireEvent.click(getByRole('button', { name: 'Selected conversation' }))
+    expect(instance.getSnapshot().layoutInfo.narrowExpanded).toBe(false)
+    expect(tracks(frame)).toEqual([0, 0])
+    resize(1920)
+    expect(tracks(frame)[0]).toBe(420)
+    expect(frame.querySelector('[data-mobile-sidebar-mask]')).toBeNull()
   })
 })
 

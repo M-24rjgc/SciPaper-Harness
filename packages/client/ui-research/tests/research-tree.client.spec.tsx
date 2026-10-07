@@ -481,6 +481,19 @@ describe('the keyboard', () => {
     expect(document.activeElement).toBe(row(`add:${sparse.id}`))
   })
 
+  it('keeps a touch-opened row menu available after the contact leaves the trigger', () => {
+    vi.useFakeTimers()
+    mount({ current: 's-cite' })
+    const more = within(row(R(sparse))).getByRole('button', { name: /的更多操作$/ })
+    fireEvent.pointerDown(more, { pointerType: 'touch' })
+    fireEvent.click(more)
+    fireEvent.pointerOut(more, { pointerType: 'touch', relatedTarget: document.body })
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(menuItems()).toEqual([zh.treeRename, zh.folderReveal, zh.treeRemove])
+    fireEvent.pointerDown(document.body)
+    expect(menuItems()).toEqual([])
+  })
+
   it('opens a row\'s menu from the keyboard and comes back to the row, and leaves keys inside the row\'s own controls alone', async () => {
     const tree = mount({ current: 's-cite' })
     const target = row(R(sparse))

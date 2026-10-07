@@ -416,3 +416,42 @@
 .activity { display: flex; align-items: center; flex: none; }
 .activity:empty { display: none; }
 .activityExpanded { flex: 1; min-width: 0; }
+
+@media (max-width: 640px) {
+  .card {
+    gap: 8px;
+    font-size: max(16px, var(--dsh-content-font-size, 14px));
+    line-height: max(24px, calc(24px + var(--dsh-content-font-delta, 0px)));
+  }
+
+  .scroll {
+    max-height: min(var(--dsh-composer-text-max-height), 30dvh);
+  }
+
+  .row {
+    gap: 4px 8px;
+    padding: 0 8px 6px;
+  }
+
+  .tools,
+  .modes,
+  .trailing,
+  .standardControls {
+    gap: 4px;
+  }
+
+  .add,
+  .primary {
+    width: 44px;
+    height: 44px;
+  }
+
+  .primary {
+    transform: none;
+  }
+
+  .select,
+  .retry {
+    min-height: 44px;
+  }
+}

@@ -281,6 +281,7 @@ function bench(options: BenchOptions = {}) {
   const layout = new LayoutController({
     selectPanel: vi.fn(), retainMainPanels: vi.fn(),
     setSidebar: vi.fn(), toggleSidebar: vi.fn(), setViewportWidth: vi.fn(),
+    closeMobileSidebar: vi.fn(),
     setRightbar: vi.fn(),
     setInitialRightbarWidth: vi.fn(), openRightbar: vi.fn(), closeRightbar: vi.fn(),
   }, () => true, createSnapshotStore({ activePanelId: null }))

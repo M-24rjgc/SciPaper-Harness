@@ -91,6 +91,77 @@ afterEach(() => {
 })
 
 describe('BrowserAuth', () => {
+  it('exchanges one remote invitation for a Secure cookie and refuses local authentication on that origin', async () => {
+    const auth = await createAuth(new RecordCredentials())
+    const remote = auth.createRemoteOrigin('https://research.example', 300)
+    const local = exchange(auth, 'research.example')
+    expect(remote.isAuthenticated(request('/', 'research.example', { cookie: local.cookie }))).toBe(false)
+    const refused = response()
+    remote.authorizeIndex(request(new URL(local.launchUrl).search, 'research.example'), refused.value)
+    expect(refused.state.status).toBe(401)
+    const pairing = remote.createPairingUrl()
+    const paired = response()
+    remote.authorizeIndex(request(new URL(pairing.url).search, 'research.example'), paired.value)
+    expect(paired.state.status).toBe(303)
+    expect(paired.state.headers?.['location']).toBe('./')
+    expect(paired.state.headers?.['referrer-policy']).toBe('no-referrer')
+    const serialized = paired.state.headers?.['set-cookie'] ?? ''
+    expect(serialized).toMatch(/; HttpOnly; SameSite=Strict; Secure$/u)
+    const cookie = serialized.split(';', 1)[0]!
+    const admitted = request('/', 'research.example', { cookie })
+    expect(remote.isAuthenticated(admitted)).toBe(true)
+    expect(remote.isAuthenticated(request('/', 'research.example:443', { cookie }))).toBe(true)
+    expect(auth.isAuthenticated(admitted)).toBe(false)
+    expect(remote.isAuthenticated(request('/', 'other.example', { cookie }))).toBe(false)
+    const reused = response()
+    remote.authorizeIndex(request(new URL(pairing.url).search, 'research.example'), reused.value)
+    expect(reused.state.status).toBe(401)
+    remote.revoke()
+    expect(remote.isAuthenticated(admitted)).toBe(false)
+    expect(() => remote.createPairingUrl()).toThrow('revoked')
+    const replacement = auth.createRemoteOrigin('https://research.example', 300)
+    expect(replacement.isAuthenticated(admitted)).toBe(false)
+  })
+
+  it('expires, replaces, and withdraws pending remote invitations', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-07T00:00:00Z') })
+    const auth = await createAuth(new RecordCredentials(), 1)
+    const remote = auth.createRemoteOrigin('https://research.example:8443', 5)
+    const first = remote.createPairingUrl()
+    const replacement = remote.createPairingUrl()
+    const replaced = response()
+    remote.authorizeIndex(request(new URL(first.url).search, 'research.example:8443'), replaced.value)
+    expect(replaced.state.status).toBe(401)
+    remote.revokePairing(first.id)
+    const accepted = response()
+    remote.authorizeIndex(request(new URL(replacement.url).search, 'research.example:8443'), accepted.value)
+    expect(accepted.state.status).toBe(303)
+    const cookie = accepted.state.headers?.['set-cookie']?.split(';', 1)[0] ?? ''
+    const withdrawn = remote.createPairingUrl()
+    remote.revokePairing(withdrawn.id)
+    const revoked = response()
+    remote.authorizeIndex(request(new URL(withdrawn.url).search, 'research.example:8443'), revoked.value)
+    expect(revoked.state.status).toBe(401)
+    const expires = remote.createPairingUrl()
+    vi.advanceTimersByTime(5000)
+    const expired = response()
+    remote.authorizeIndex(request(new URL(expires.url).search, 'research.example:8443'), expired.value)
+    expect(expired.state.status).toBe(401)
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000)
+    expect(remote.isAuthenticated(request('/', 'research.example:8443', { cookie }))).toBe(false)
+  })
+
+  it('rejects remote origins with plaintext, loopback, credentials, or URL mounts', async () => {
+    const auth = await createAuth(new RecordCredentials())
+    for (const origin of ['http://research.example', 'https://127.0.0.1', 'https://localhost',
+      'https://[::1]', 'https://user:secret@research.example', 'https://research.example/path',
+      'https://research.example/?token=x', 'https://research.example/#fragment']) {
+      expect(() => auth.createRemoteOrigin(origin, 300)).toThrow('non-loopback HTTPS root origin')
+    }
+    expect(() => auth.createRemoteOrigin('https://research.example', 0)).toThrow('lifetime')
+    expect(() => auth.createRemoteOrigin('https://research.example', 3601)).toThrow('lifetime')
+  })
+
   it('mints one process token and a persistent authority-bound cookie', async () => {
     const store = new RecordCredentials()
     const processOwner = {}

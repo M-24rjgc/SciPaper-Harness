@@ -30,6 +30,13 @@ server.listen(0, '127.0.0.1', () => {
   process.send({ type: 'ready', url: 'http://127.0.0.1:' + server.address().port + '/?token=fixture' })
 })
 process.on('message', message => {
+  if (message.type === 'remote-access') {
+    process.send({ type: 'remote-access', requestId: message.requestId,
+      ...message.action === 'stop' ? {}
+        : message.origin === 'https://failure.example' ? { error: 'desktop remote: request failed' }
+          : { pairing: { id: 'private-pairing-id', url: 'https://research.example/?pair=private-token', expiresAt: Date.now() + 300000 } } })
+    return
+  }
   if (message.type === 'browser-authorize') {
     process.send({ type: 'browser-authorize', requestId: message.requestId,
       ...message.sessionId === 'unknown' ? { error: 'desktop browser: conversation is unavailable' }
@@ -84,6 +91,18 @@ afterEach(async () => {
     }
     rmSync(resolved, { recursive: true })
   }
+})
+
+it('controls remote access through the owned Host IPC without adding pairing data to readiness', async () => {
+  const host = hostProcess(projectWithHost())
+  const ready = await host.start()
+  expect(ready.url).not.toContain('private-token')
+  expect(await host.remoteAccess({ action: 'start', origin: 'https://research.example' })).toMatchObject({
+    id: 'private-pairing-id', url: 'https://research.example/?pair=private-token',
+  })
+  expect(await host.remoteAccess({ action: 'refresh' })).toMatchObject({ id: 'private-pairing-id' })
+  await expect(host.remoteAccess({ action: 'start', origin: 'https://failure.example' })).rejects.toThrow('desktop remote: request failed')
+  expect(await host.remoteAccess({ action: 'stop' })).toBeUndefined()
 })
 
 describe('desktop host process', () => {

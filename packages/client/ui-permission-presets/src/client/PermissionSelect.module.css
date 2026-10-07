@@ -100,3 +100,9 @@
 .chevronOpen {
   transform: rotate(180deg);
 }
+
+@media (max-width: 640px) {
+  .trigger {
+    min-height: 44px;
+  }
+}
