@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { desktopBuildVersionPrefix } from '../scripts/desktop-build-version.mjs'
 
 const { verifyDesktopRuntime } = vi.hoisted(() => ({
   verifyDesktopRuntime: vi.fn<(root: string, expected: string) => Promise<void>>(async () => undefined),
@@ -54,9 +55,10 @@ describe('packaged runtime verification', () => {
     ) as { version: string }).version
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     verifyDesktopRuntime.mockClear()
+    const buildVersion = `${desktopBuildVersionPrefix(productVersion)}20260921.1`
     const config = createElectronBuilderConfig(
-      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: `${productVersion}.20260921.1` }, 'win32', 'x64')
-    expect(config.extraMetadata).toMatchObject({ version: `${productVersion}.20260921.1` })
+      { ...ENVIRONMENT, DSH_DESKTOP_BUILD_VERSION: buildVersion }, 'win32', 'x64')
+    expect(config.extraMetadata).toMatchObject({ version: buildVersion })
     await config.afterPack(CONTEXT as never)
     expect(verifyDesktopRuntime.mock.calls[0]?.[1]).toBe(productVersion)
   })

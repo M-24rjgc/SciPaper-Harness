@@ -1,5 +1,5 @@
 diff --git a/index.js b/index.js
-index 23384ea16b..7859401727 100644
+index 23384ea..c2fa9ab 100644
 --- a/index.js
 +++ b/index.js
 @@ -53,12 +53,13 @@ class Extractor {
@@ -21,13 +21,35 @@ index 23384ea16b..7859401727 100644
            }
 -
 +
-@@ -74,6 +75,34 @@ class Extractor {
+@@ -74,6 +75,56 @@ class Extractor {
      })
    }
 -
 +
 +  async assertBoundPath (candidate, entry, visited = new Set()) {
-+    const relative = path.relative(this.opts.dir, candidate)
++    let relative = path.relative(this.opts.dir, candidate)
++    if (path.isAbsolute(relative) || relative.split(path.sep).includes('..')) {
++      // A Windows short path or directory alias may name the same extraction root.
++      // Only rebase an ancestor that resolves exactly to that root, then inspect its descendants.
++      let ancestor = candidate
++      const suffix = []
++      while (true) {
++        try {
++          const canonical = await fs.realpath(ancestor)
++          if (path.relative(this.opts.dir, canonical) === '') {
++            candidate = path.join(this.opts.dir, ...suffix)
++            break
++          }
++        } catch (error) {
++          if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error
++        }
++        const parent = path.dirname(ancestor)
++        if (parent === ancestor) break
++        suffix.unshift(path.basename(ancestor))
++        ancestor = parent
++      }
++      relative = path.relative(this.opts.dir, candidate)
++    }
 +    if (path.isAbsolute(relative) || relative.split(path.sep).includes('..')) {
 +      throw new Error(`Out of bound path "${candidate}" found while processing file ${entry.fileName}`)
 +    }
@@ -57,7 +79,7 @@ index 23384ea16b..7859401727 100644
    async extractEntry (entry) {
      /* istanbul ignore if */
      if (this.canceled) {
-@@ -118,14 +147,28 @@ class Extractor {
+@@ -118,14 +169,28 @@ class Extractor {
        mkdirOptions.mode = procMode
      }
      debug('mkdir', { dir: destDir, ...mkdirOptions })

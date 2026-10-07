@@ -90,6 +90,16 @@ describe('installed ZIP extraction security patch', () => {
     expect(await readFile(join(output, 'target/nested/child.txt'), 'utf8')).toBe('inside')
   })
 
+  it('accepts an internal directory target spelled through an alias of the extraction root', async () => {
+    const { root, output, archive } = await fixture([{ name: 'link/nested/child.txt', content: 'inside' }])
+    const alias = join(root, 'output-alias')
+    await mkdir(join(output, 'target'))
+    await symlink(output, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    await symlink(join(alias, 'target'), join(output, 'link'), process.platform === 'win32' ? 'junction' : 'dir')
+    await extract(archive, { dir: alias })
+    expect(await readFile(join(output, 'target/nested/child.txt'), 'utf8')).toBe('inside')
+  })
+
   it('preserves nested files and overwrites ordinary files', async () => {
     const { output, archive } = await fixture([
       { name: 'nested/target.txt', content: 'before' },

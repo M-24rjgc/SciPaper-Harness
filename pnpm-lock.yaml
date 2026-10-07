@@ -48,7 +48,7 @@ patchedDependencies:
   '@fortune-sheet/react@1.0.4': 2932e52e79afcd4ced08cfa123b5eded786c85043da32f622f3e80af6fc96c37
   '@yao-pkg/pkg@6.21.0': 75891fc22b277c145cafeab83e41baf4a70f5b8fe6dc0801c6a0b922d7ee88c7
   exceljs@4.4.0: c1bf8ac8f319dab382f08e3a669b715e691d46c703ac5a4163eb383fbedd1d48
-  extract-zip@2.0.1: 1a542923fa06b2e96cd75a88bbf1957b06089ad2dfd3f76ad430231b584f00f5
+  extract-zip@2.0.1: 90169c3548014622a7e8309bdf318111c6496e4be21b75e4298a7313689e64a5
   http-cache-semantics@4.2.0: 19855d18000bb9881aec5a350085c2b9fbf7da9f93bf4233f0e930fdea784a5c
   node-pty@1.2.0-beta.15: b40ae545608897914bd25fb009c97eeac478c34e8a910298ddcb01b746534bb0
   sprintf-js@1.1.3: 6980554b9d5a702c91bcb37ad3e032675943fa17073d155f1f758bdc806a6fa5
@@ -144,7 +144,7 @@ importers:
         version: 10.0.0
       extract-zip:
         specifier: ^2.0.1
-        version: 2.0.1(patch_hash=1a542923fa06b2e96cd75a88bbf1957b06089ad2dfd3f76ad430231b584f00f5)(supports-color@9.4.0)
+        version: 2.0.1(patch_hash=90169c3548014622a7e8309bdf318111c6496e4be21b75e4298a7313689e64a5)(supports-color@9.4.0)
       fast-check:
         specifier: ^4.8.0
         version: 4.8.0
@@ -731,7 +731,7 @@ importers:
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
       extract-zip:
         specifier: ^2.0.1
-        version: 2.0.1(patch_hash=1a542923fa06b2e96cd75a88bbf1957b06089ad2dfd3f76ad430231b584f00f5)(supports-color@9.4.0)
+        version: 2.0.1(patch_hash=90169c3548014622a7e8309bdf318111c6496e4be21b75e4298a7313689e64a5)(supports-color@9.4.0)
       js-yaml:
         specifier: ^4.3.2
         version: 4.3.2
@@ -10732,7 +10732,7 @@ importers:
         version: link:../../../vendor/schemastery
       extract-zip:
         specifier: ^2.0.1
-        version: 2.0.1(patch_hash=1a542923fa06b2e96cd75a88bbf1957b06089ad2dfd3f76ad430231b584f00f5)(supports-color@9.4.0)
+        version: 2.0.1(patch_hash=90169c3548014622a7e8309bdf318111c6496e4be21b75e4298a7313689e64a5)(supports-color@9.4.0)
       fast-xml-parser:
         specifier: ^5.3.6
         version: 5.11.1
@@ -26909,7 +26909,7 @@ snapshots:
 
   extend@3.0.2: {}
 
-  extract-zip@2.0.1(patch_hash=1a542923fa06b2e96cd75a88bbf1957b06089ad2dfd3f76ad430231b584f00f5)(supports-color@9.4.0):
+  extract-zip@2.0.1(patch_hash=90169c3548014622a7e8309bdf318111c6496e4be21b75e4298a7313689e64a5)(supports-color@9.4.0):
     dependencies:
       debug: 4.4.3(supports-color@9.4.0)
       get-stream: 5.2.0

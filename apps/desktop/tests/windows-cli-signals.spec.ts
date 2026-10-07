@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs'
 import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { ExecFileOptions } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import ts from 'typescript'
@@ -18,6 +19,35 @@ let probe: string
 let electron: string
 let entry: string
 
+/** Await compilation or terminate its owned command tree before fixture cleanup. */
+async function compileConsoleProbe(command: string, args: readonly string[], options: ExecFileOptions): Promise<void> {
+  const compilation = execute(command, args, options)
+  let termination: Promise<unknown> | undefined
+  let expired = false
+  const timer = setTimeout(() => {
+    if (compilation.child.exitCode !== null || compilation.child.signalCode !== null || compilation.child.pid === undefined) return
+    expired = true
+    termination = execute('taskkill.exe', ['/PID', String(compilation.child.pid), '/T', '/F'], {
+      windowsHide: true, timeout: 5_000,
+    }).catch((error: unknown) => {
+      compilation.child.kill()
+      throw error
+    })
+    // Retain the rejection for the finally await without leaving it unobserved while compilation drains.
+    void termination.catch(() => {})
+  }, 45_000)
+  try {
+    await compilation
+    if (expired) throw new Error('Console fixture compiler exceeded 45000ms')
+  } catch (error) {
+    if (expired) throw new Error('Console fixture compiler exceeded 45000ms', { cause: error })
+    throw error
+  } finally {
+    clearTimeout(timer)
+    await termination
+  }
+}
+
 describe.skipIf(process.platform !== 'win32')('Windows Electron console signals', () => {
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-cli-console-科研-'))
@@ -26,7 +56,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
     if (programFiles === undefined || process.env.ComSpec === undefined) throw new Error('Windows compiler environment is unavailable')
     const vswhere = join(programFiles, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
     const vs = (await execute(vswhere, ['-latest', '-products', '*', '-requires',
-      'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim()
+      'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true, timeout: 5_000 })).stdout.trim()
     probe = join(root, 'console-probe.exe')
     const compile = join(root, 'compile.cmd')
     await copyFile(new URL('fixtures/cli-console-probe.cpp', import.meta.url), join(root, 'console-probe.cpp'))
@@ -35,7 +65,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
       'if errorlevel 1 exit /b %errorlevel%',
       'cl /nologo /std:c++17 /EHsc /MT /W4 /WX console-probe.cpp /Foconsole.obj /Feconsole-probe.exe', '',
     ].join('\r\n'))
-    try { await execute(process.env.ComSpec, ['/d', '/v:off', '/c', 'compile.cmd'], { cwd: root, windowsHide: true,
+    try { await compileConsoleProbe(process.env.ComSpec, ['/d', '/v:off', '/c', 'compile.cmd'], { cwd: root, windowsHide: true,
       env: { ...process.env, DSH_CONSOLE_TEST_VCVARS: join(vs, 'VC/Auxiliary/Build/vcvars64.bat').replaceAll('%', '%%') } }) }
     catch (error) {
       const output = typeof error === 'object' && error !== null
@@ -62,7 +92,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
       "writeFileSync(ready, 'ready')",
       'setInterval(() => {}, 1000)', '',
     ].join('\n'))
-  })
+  }, 60_000)
 
   afterAll(async () => {
     if (root === undefined) return
@@ -76,10 +106,10 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
     const ready = join(root, signal + '.ready')
     const report = join(root, signal + '.report')
     let failure: unknown
-    try { await execute(probe, [electron, entry, marker, ready, report, event], { windowsHide: true }) }
+    try { await execute(probe, [electron, entry, marker, ready, report, event], { windowsHide: true, timeout: 35_000 }) }
     catch (error) { failure = error }
     const observed = existsSync(report) ? await readFile(report, 'utf8') : 'Console probe exited before reporting.'
     expect(failure, observed).toBeUndefined()
     expect(await readFile(marker, 'utf8')).toBe(signal)
-  })
+  }, 40_000)
 })

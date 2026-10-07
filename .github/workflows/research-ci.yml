@@ -62,6 +62,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build research product
         run: pnpm run build:research
+      - name: Prepare native process and packaging dependencies
+        run: |
+          pnpm run build:native-system
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm exec tsc -b native/system/packages/entry
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Research, harness lifecycle and desktop regressions
         run: >-
           pnpm exec vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000

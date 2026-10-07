@@ -6,8 +6,11 @@ import { dirname, join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
+import { pnpmInvocation } from '../../../../scripts/pnpm-invocation.ts'
 
 const packageRoot = resolve(import.meta.dirname, '..')
+const repositoryRoot = resolve(packageRoot, '../../..')
+const workspacePnpm = join(repositoryRoot, 'node_modules/pnpm/bin/pnpm.cjs')
 const bundlePath = join(packageRoot, 'lib/client.js')
 const pdfChunkPath = join(packageRoot, 'lib/client.pdf.js')
 const require = createRequire(import.meta.url)
@@ -24,26 +27,27 @@ const licenseNames = [
   'wasm/LICENSE_QCMS',
 ] as const
 
-function run(command: string, args: string[], cwd: string, timeout: number): string {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout })
+function run(command: string, args: string[], cwd: string, timeout: number, env?: NodeJS.ProcessEnv): string {
+  const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout })
   expect(result.error).toBeUndefined()
   expect(result.signal, result.stderr).toBeNull()
   expect(result.status, result.stderr).toBe(0)
   return result.stdout
 }
 
-function runPnpm(args: string[], cwd: string, timeout: number): string {
-  const entrypoint = process.env.npm_execpath
-  if (entrypoint === undefined || entrypoint === '') {
-    if (process.platform === 'win32') throw new Error('npm_execpath is required to run pnpm on Windows')
-    return run('pnpm', args, cwd, timeout)
-  }
-  return /\.[cm]?js$/iu.test(entrypoint)
-    ? run(process.execPath, [entrypoint, ...args], cwd, timeout)
-    : run(entrypoint, args, cwd, timeout)
+function runPnpm(args: string[], cwd: string, timeout: number, env: NodeJS.ProcessEnv = process.env): string {
+  const invocation = pnpmInvocation(args, { ...env, npm_execpath: env.npm_execpath || workspacePnpm })
+  return run(invocation.command, invocation.args, cwd, timeout, env)
 }
 
 describe('published document preview licenses', () => {
+  it('runs workspace pnpm without a lifecycle entrypoint', ({ task }) => {
+    const env = { ...process.env }
+    Reflect.deleteProperty(env, 'npm_execpath')
+    const manifest = JSON.parse(readFileSync(join(repositoryRoot, 'package.json'), 'utf8')) as { packageManager: string }
+    expect(runPnpm(['--version'], packageRoot, task.timeout, env).trim()).toBe(manifest.packageManager.split('@')[1])
+  })
+
   it.skipIf(!existsSync(bundlePath))('keeps bundled licenses in the packed lazy chunks', ({ task }) => {
     expect(existsSync(pdfChunkPath)).toBe(true)
     const output = mkdtempSync(join(tmpdir(), 'dsh-document-preview-pack-'))

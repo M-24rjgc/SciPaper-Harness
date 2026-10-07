@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { copyFile, mkdtemp, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, it, vi } from 'vitest'
-import { createFlockEntryLoader } from '../scripts/flock-entry.ts'
+import { createFlockEntryLoader, flockAddonBuilt } from '../scripts/flock-entry.ts'
 
 type Entry = Awaited<ReturnType<ReturnType<typeof createFlockEntryLoader>>>
 
@@ -28,6 +28,41 @@ function quietStderr(): () => void {
   const spy = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
   return () => { spy.mockRestore() }
 }
+
+it.each(['glibc', 'musl'] as const)('accepts the built %s flock addon without unrelated tools or another libc', async (libc) => {
+  const root = await mkdtemp(join(tmpdir(), 'flock-host-addon-'))
+  try {
+    const metadata = join(root, 'prebuilds.json')
+    await writeFile(metadata, JSON.stringify({ binaries: [
+      { tool: 'landlock-run', kind: 'static-musl', path: 'bin/landlock-run' },
+      { tool: 'flock', kind: 'node-api', libc: 'glibc', path: 'bin/glibc/system.node' },
+      { tool: 'flock', kind: 'node-api', libc: 'musl', path: 'bin/musl/system.node' },
+    ] }))
+    await mkdir(join(root, 'bin', libc), { recursive: true })
+    await writeFile(join(root, 'bin', libc, 'system.node'), '')
+    expect(flockAddonBuilt(metadata, libc)).toBe(true)
+    expect(flockAddonBuilt(metadata, libc === 'glibc' ? 'musl' : 'glibc')).toBe(false)
+    expect(flockAddonBuilt(metadata, undefined)).toBe(false)
+  } finally { await rm(root, { recursive: true }) }
+})
+
+it('requires the declared macOS flock addon rather than another native tool', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'flock-host-addon-'))
+  try {
+    const metadata = join(root, 'prebuilds.json')
+    await writeFile(metadata, JSON.stringify({ binaries: [
+      { tool: 'flock', kind: 'node-api', path: 'bin/system.node' },
+    ] }))
+    expect(flockAddonBuilt(metadata, undefined)).toBe(false)
+    await mkdir(join(root, 'bin'))
+    await writeFile(join(root, 'bin', 'system.node'), '')
+    expect(flockAddonBuilt(metadata, undefined)).toBe(true)
+    await writeFile(metadata, JSON.stringify({ binaries: [
+      { tool: 'other', kind: 'node-api', path: 'bin/system.node' },
+    ] }))
+    expect(flockAddonBuilt(metadata, undefined)).toBe(false)
+  } finally { await rm(root, { recursive: true }) }
+})
 
 it('returns the imported entry without building and memoizes it', async () => {
   const used = steps()

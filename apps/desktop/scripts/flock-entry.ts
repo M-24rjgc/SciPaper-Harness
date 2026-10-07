@@ -20,7 +20,7 @@ const BUILD_COMMAND_TEXT = BUILD_COMMANDS.map(args => `pnpm ${args.join(' ')}`).
 export interface FlockEntryLoaderSteps {
   /** Import `@deepseek-ai/node-addon-system/flock`; rejects with `ERR_MODULE_NOT_FOUND` while its `lib/` is unbuilt. */
   readonly importEntry: () => Promise<FlockEntry>
-  /** Whether every binary the host platform package declares in `prebuilds.json` exists. */
+  /** Whether the flock addon for the current host's platform and libc exists. */
   readonly hostAddonBuilt: () => boolean
   /** Compile the host addon and emit the entry's JavaScript; rejects when a build fails. */
   readonly build: () => Promise<void>
@@ -55,6 +55,20 @@ export function createFlockEntryLoader(steps: FlockEntryLoaderSteps): () => Prom
   }
 }
 
+/**
+ * Check the declared flock addon without requiring other tools or libc variants.
+ * @param prebuilds - Host platform package's prebuild metadata path.
+ * @param libc - Linux libc selected by the Node runtime; undefined for macOS.
+ * @returns Whether the selected flock addon is declared and present.
+ */
+export function flockAddonBuilt(prebuilds: string, libc: 'glibc' | 'musl' | undefined): boolean {
+  const manifest = JSON.parse(readFileSync(prebuilds, 'utf8')) as {
+    readonly binaries: readonly { readonly tool: string; readonly kind: string; readonly path: string; readonly libc?: string }[]
+  }
+  const required = manifest.binaries.filter(binary => binary.tool === 'flock' && binary.kind === 'node-api' && binary.libc === libc)
+  return required.length > 0 && required.every(binary => existsSync(join(dirname(prebuilds), binary.path)))
+}
+
 function hostAddonBuilt(): boolean {
   const { platform, arch } = process
   // flock itself rejects other platforms; the probe only reports missing builds for supported ones.
@@ -67,8 +81,9 @@ function hostAddonBuilt(): boolean {
     if ((error as NodeJS.ErrnoException).code !== 'MODULE_NOT_FOUND') throw error
     return false
   }
-  const manifest = JSON.parse(readFileSync(prebuilds, 'utf8')) as { readonly binaries: readonly { readonly path: string }[] }
-  return manifest.binaries.every(binary => existsSync(join(dirname(prebuilds), binary.path)))
+  const report = platform === 'linux'
+    ? process.report.getReport() as { header: { glibcVersionRuntime?: string } } : undefined
+  return flockAddonBuilt(prebuilds, report === undefined ? undefined : report.header.glibcVersionRuntime ? 'glibc' : 'musl')
 }
 
 async function buildNativeSystem(): Promise<void> {

@@ -85,6 +85,7 @@ function runPnpm(args: readonly string[]): Promise<void> {
       '--expose-internals',
       PNPM,
       `--config.registry=${registry}`,
+      '--config.network-concurrency=4',
       `--config.store-dir=${STORE_ROOT}`,
       '--config.enable-global-virtual-store=false',
       `--config.userconfig=${userConfig}`,
