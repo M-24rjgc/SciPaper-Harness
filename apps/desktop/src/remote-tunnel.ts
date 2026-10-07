@@ -4,11 +4,30 @@ import { createHash, randomUUID } from 'node:crypto'
 import { chmod, lstat, mkdir, mkdtemp, readFile, rename, unlink, rmdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { setTimeout as delay } from 'node:timers/promises'
 import { RemoteAccessError, type RemoteTunnel } from './remote-access.ts'
 
 const VERSION = '2026.10.0'
 const MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 const runFile = promisify(execFile)
+
+/** Wait for the public route's unauthenticated Host fence before offering pairing. */
+export async function waitForPublicTunnel(origin: string, fetcher: typeof fetch, signal: AbortSignal): Promise<void> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    signal.throwIfAborted()
+    try {
+      const response = await fetcher(`${origin}/`, { credentials: 'omit', redirect: 'manual', cache: 'no-store',
+        signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]) })
+      signal.throwIfAborted()
+      // No origin is admitted yet: this exact response comes from our Host fence.
+      // A relay error page or redirect must not be presented as a ready connection.
+      if (response.status === 403 && await response.text() === 'forbidden') return
+      await response.body?.cancel().catch(() => undefined)
+    } catch { signal.throwIfAborted() }
+    if (attempt < 5) await delay(1000, undefined, { signal })
+  }
+  throw new RemoteAccessError('connection')
+}
 
 /** Release artifact selected by the carrier, never by a product document. */
 export function cloudflaredArtifact(platform = process.platform, arch = process.arch): { name: string; sha256: string; archive: boolean } {

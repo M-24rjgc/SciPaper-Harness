@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DesktopRemoteAccess, RemoteAccessError, type RemoteHost, type RemoteTunnel, type RemotePairing } from '../src/remote-access.ts'
-import { cloudflaredArtifact } from '../src/remote-tunnel.ts'
+import { cloudflaredArtifact, waitForPublicTunnel } from '../src/remote-tunnel.ts'
 import type { DesktopRemotePresentation } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 
 function fixture() {
@@ -116,3 +116,23 @@ it('pins supported carrier artifacts and rejects other platforms', () => {
   expect(cloudflaredArtifact('darwin', 'x64').archive).toBe(true)
   expect(() => cloudflaredArtifact('linux', 'x64')).toThrow(RemoteAccessError)
 })
+
+it('waits through relay provisioning, checks the Host fence, and sends no credentials', async () => {
+  const fetcher = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(new Response('provisioning', { status: 503 }))
+    .mockResolvedValueOnce(new Response('forbidden', { status: 403 }))
+  const pending = waitForPublicTunnel('https://example.trycloudflare.com', fetcher, new AbortController().signal)
+  await pending
+  expect(fetcher).toHaveBeenLastCalledWith('https://example.trycloudflare.com/',
+    expect.objectContaining({ credentials: 'omit', redirect: 'manual', cache: 'no-store' }))
+})
+
+it('refuses a relay error page as readiness and permits cancelling the public check', async () => {
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response('relay denied', { status: 403 }))
+  const rejected = expect(waitForPublicTunnel('https://example.trycloudflare.com', fetcher, new AbortController().signal))
+    .rejects.toMatchObject({ kind: 'connection' })
+  await rejected
+  const abort = new AbortController()
+  abort.abort()
+  await expect(waitForPublicTunnel('https://example.trycloudflare.com', fetcher, abort.signal)).rejects.toBeDefined()
+}, 10_000)

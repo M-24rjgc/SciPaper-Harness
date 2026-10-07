@@ -63,7 +63,7 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DesktopRemoteAccess, RemoteAccessError } from './remote-access.ts'
-import { openQuickTunnel, prepareCloudflared } from './remote-tunnel.ts'
+import { openQuickTunnel, prepareCloudflared, waitForPublicTunnel } from './remote-tunnel.ts'
 import QRCode from 'qrcode'
 
 app.setName('SciPaper Harness')
@@ -540,16 +540,19 @@ async function main(): Promise<void> {
     else if (!shuttingDown) backendReady = state.phase === 'ready'
   })
 
+  const remoteFetch: typeof fetch = (input, init) => net.fetch(input instanceof URL ? input.href : input, init)
   const remoteAccess = new DesktopRemoteAccess({
     host: () => backend.host,
     openTunnel: async (signal, connecting) => {
       const cache = join(app.getPath('userData'), 'remote-tunnel')
-      const binary = await prepareCloudflared(cache, (input, init) => net.fetch(input instanceof URL ? input.href : input, init), signal)
+      const binary = await prepareCloudflared(cache, remoteFetch, signal)
       try {
         signal.throwIfAborted()
         if (hostUrl === undefined || backend.host === undefined) throw new RemoteAccessError('host')
         connecting()
         const tunnel = await openQuickTunnel({ binary: binary.path, cache, hostUrl, signal })
+        try { await waitForPublicTunnel(tunnel.origin, remoteFetch, signal) }
+        catch (error) { await tunnel.stop(); throw error }
         return { ...tunnel, stop: async () => { try { await tunnel.stop() } finally { await binary.dispose() } } }
       } catch (error) { await binary.dispose(); throw error }
     },
