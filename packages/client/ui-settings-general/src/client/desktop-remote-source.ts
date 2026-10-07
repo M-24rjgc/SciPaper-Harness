@@ -11,6 +11,7 @@ export interface DesktopRemoteView {
 
 /** Detaches subscriptions and ignores late asynchronous answers after disposal. */
 export class DesktopRemoteSource {
+  /** Current carrier presentation and action state for subscribed settings views. */
   readonly store = createSnapshotStore<DesktopRemoteView>({ presentation: { phase: 'idle' }, failed: false, refreshing: false })
   private live = true
   private received = false
@@ -27,7 +28,10 @@ export class DesktopRemoteSource {
     }, () => { if (this.live && !this.received) this.store.set({ ...this.store.getSnapshot(), failed: true }) })
   }
 
-  /** Cancel stays available during startup; the main process serializes ownership. */
+  /**
+   * Dispatch a carrier action; cancel stays available while startup is pending.
+   * @param action - remote access operation serialized by the main process.
+   */
   run(action: 'start' | 'refresh' | 'stop'): void {
     if (!this.live || (action === 'refresh' && this.store.getSnapshot().refreshing)) return
     this.store.set({ ...this.store.getSnapshot(), failed: false, refreshing: action === 'refresh' })

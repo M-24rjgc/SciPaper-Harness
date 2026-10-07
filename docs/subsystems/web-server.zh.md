@@ -70,9 +70,19 @@ Host `ctx.connection` members consumed by transport-independent adapters.
 /**
  * Compose exact Fetch routes and the shared-channel RPC interceptor.
  * @param channel - shared channel mounted by Connection.
+ * @param peer - admitted HTTP Peer; omitted for a carrier owned by the local operator.
  * @returns Fetch handler for trusted, authenticated requests.
  */
-createSharedFetchHandler(channel: '/api'): ConnectionFetchHandler
+createSharedFetchHandler(channel: '/api', peer?: PeerScope): ConnectionFetchHandler
+
+/**
+ * Enable one exact HTTPS origin behind an operator-owned loopback tunnel.
+ * No forwarded header grants trust. Disposal revokes paired browsers and their streams;
+ * Host restart requires pairing again. The caller's plugin scope owns the registration.
+ * @param origin - HTTPS root origin without credentials, path, query, or fragment.
+ * @returns revocable remote access; its pairing links must remain private.
+ */
+registerRemoteOrigin(origin: string): ConnectionRemoteOrigin
 
 /**
  * Apply Connection's Host/Origin checks and browser authentication to

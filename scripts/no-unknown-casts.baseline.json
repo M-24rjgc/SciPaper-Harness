@@ -413,9 +413,6 @@
   "packages/bundle/web-app/tests/web-app.spec.ts": {
     "603938cefaa75059bc3902dedc4cd5cbfb2d6d3f6e56bb3cd89788e21ece0389": 1
   },
-  "packages/client/connection/src/browser-auth.ts": {
-    "98acffd14d7c77e3412ce5a7d8e9c555b66de76eb12c14d4b22b251684b60447": 1
-  },
   "packages/client/connection/src/rpc-schema.ts": {
     "21827725b3bf3a544927f354c5443228176a36e5926a26cc8640a59ba3eca717": 1,
     "afa692cdc0fd53b274f5d276d34ea54141b26bee0c5d67055a2fdb056dc398fe": 1,

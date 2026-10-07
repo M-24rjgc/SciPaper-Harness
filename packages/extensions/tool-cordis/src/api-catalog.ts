@@ -727,10 +727,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
-        signature: 'createSharedFetchHandler(channel: \'/api\'): ConnectionFetchHandler',
+        signature: 'createSharedFetchHandler(channel: \'/api\', peer?: PeerScope): ConnectionFetchHandler',
         description: 'Compose exact Fetch routes and the shared-channel RPC interceptor.',
-        parameters: [{ name: 'channel', description: 'shared channel mounted by Connection.' }],
+        parameters: [{ name: 'channel', description: 'shared channel mounted by Connection.' }, { name: 'peer', description: 'admitted HTTP Peer; omitted for a carrier owned by the local operator.' }],
         returns: 'Fetch handler for trusted, authenticated requests.',
+      },
+      {
+        signature: 'registerRemoteOrigin(origin: string): ConnectionRemoteOrigin',
+        description: 'Enable one exact HTTPS origin behind an operator-owned loopback tunnel. No forwarded header grants trust. Disposal revokes paired browsers and their streams; Host restart requires pairing again. The caller\'s plugin scope owns the registration.',
+        parameters: [{ name: 'origin', description: 'HTTPS root origin without credentials, path, query, or fragment.' }],
+        returns: 'revocable remote access; its pairing links must remain private.',
       },
       {
         signature: 'requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection',
@@ -5314,6 +5320,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ConnectionIndexResponse',
     declaration: 'export interface ConnectionIndexResponse {\n    writeHead(status: number, headers?: Readonly<Record<string, string>>): unknown;\n    end(body?: string): unknown;\n}',
+  },
+  {
+    name: 'ConnectionRemoteOrigin',
+    declaration: 'export interface ConnectionRemoteOrigin {\n    readonly origin: string;\n    createPairingUrl(): ConnectionRemotePairing;\n    revokePairing(id: ConnectionRemotePairingId): void;\n    dispose(): Promise<void>;\n}',
+  },
+  {
+    name: 'ConnectionRemotePairing',
+    declaration: 'export interface ConnectionRemotePairing {\n    readonly id: ConnectionRemotePairingId;\n    readonly url: string;\n    readonly expiresAt: number;\n}',
+  },
+  {
+    name: 'ConnectionRemotePairingId',
+    declaration: 'export type ConnectionRemotePairingId = Branded<\'connection-remote-pairing-id\'>;',
   },
   {
     name: 'ConnectionRequestBodyMode',

@@ -884,6 +884,7 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   PeerScope: 'Peer scope contract is owned by packages/typert/protocol/src/types.ts',
   ConnectionIndexRequest: 'frontend authentication request is owned by packages/client/connection/src/rpc.ts',
   ConnectionIndexResponse: 'frontend authentication response is owned by packages/client/connection/src/rpc.ts',
+  ConnectionRemoteOrigin: 'revocable HTTPS pairing lease is owned by packages/client/connection/README.md and src/rpc.ts',
   Profile: 'resolved profile layers are owned by packages/boot/app-boot/README.md',
   PatchOptions: 'Include patch entries are owned by vendor/include (vendored upstream)',
   McpResourceProvider: 'scoped resource provider is owned by packages/mcp/mcp-resources/README.md',

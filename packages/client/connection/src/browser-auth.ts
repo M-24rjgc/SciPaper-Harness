@@ -346,7 +346,9 @@ interface PendingRemotePairing {
 
 /** Single-use pairing and signed Secure cookies for one process-scoped HTTPS origin. */
 export class RemoteBrowserAuth {
+  /** Exact HTTPS origin enabled by the local operator. */
   readonly origin: string
+  /** Public hostname and optional port used to bind remote cookies. */
   readonly authority: string
   private readonly grantId = encodeBase64Url(randomBytes(SECRET_BYTES))
   private pending: PendingRemotePairing | undefined
@@ -417,7 +419,10 @@ export class RemoteBrowserAuth {
     return { id: pending.id, url: url.href, expiresAt: pending.expiresAt }
   }
 
-  /** @param id - pending invitation identity to withdraw. */
+  /**
+   * Withdraw the matching pending invitation without revoking paired browsers.
+   * @param id - pending invitation identity to withdraw.
+   */
   revokePairing(id: ConnectionRemotePairingId): void {
     if (this.pending?.id === id) this.pending = undefined
   }

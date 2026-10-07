@@ -88,7 +88,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'selectPanel(panelId: MainPanelId | null): void',
-        description: 'Select a global central panel without changing the current Session.',
+        description: 'Select a global central panel without changing the current Session; dismiss the phone navigation drawer after a valid selection.',
         parameters: [{ name: 'panelId', description: 'registered main key, or null to show the Conversation.' }],
         throws: ['if the selected main key is not registered; preserves the current selection.'],
       },
