@@ -681,7 +681,7 @@ function clientInputFile(id: string): string {
 }
 
 /** Chain tsc's emitted maps into any Client bundle that consumes `lib/types`. */
-function tscSourceMapPlugin() {
+function tscSourceMapPlugin(): TsdownPlugin {
   return {
     name: 'dsh-tsc-sourcemap',
     async load(id: string) {
