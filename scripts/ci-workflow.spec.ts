@@ -32,6 +32,13 @@ describe('CI workflow', () => {
     expect(steps[nativePreparation]?.run).toEqual(expect.stringContaining('pnpm exec tsc -b native/system/packages/entry'))
     expect(steps[nativePreparation]?.run).toEqual(expect.stringContaining('if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'))
     expect(steps[nativePreparation]).not.toHaveProperty('continue-on-error', true)
+    const consolePreparation = steps.findIndex(step => step.name === 'Prepare Windows console-test executable')
+    expect(consolePreparation).toBeGreaterThan(nativePreparation)
+    expect(consolePreparation).toBeLessThan(steps.findIndex(step => step === regressions))
+    expect(steps[consolePreparation]).toMatchObject({
+      if: 'runner.os == \'Windows\'', run: 'pnpm --dir apps/desktop exec node -p "require(\'electron\')"',
+    })
+    expect(steps[consolePreparation]).not.toHaveProperty('continue-on-error', true)
     expect(regressions?.run).toEqual(expect.stringContaining('--hookTimeout=30000'))
     for (const owner of ['packages/jobs', 'packages/shell/pwsh-local', 'packages/shell/tool-bash',
       'packages/sandbox/sandbox-windows-acl', 'packages/session-query/session-log-export', 'packages/web',

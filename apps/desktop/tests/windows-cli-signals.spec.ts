@@ -55,8 +55,23 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
     const programFiles = process.env['ProgramFiles(x86)']
     if (programFiles === undefined || process.env.ComSpec === undefined) throw new Error('Windows compiler environment is unavailable')
     const vswhere = join(programFiles, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
-    const vs = (await execute(vswhere, ['-latest', '-products', '*', '-requires',
-      'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true, timeout: 5_000 })).stdout.trim()
+    const discoveryStarted = performance.now()
+    let vs: string
+    try {
+      vs = (await execute(vswhere, ['-latest', '-products', '*', '-requires',
+        'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], {
+        windowsHide: true, timeout: 30_000,
+      })).stdout.trim()
+    } catch (error) {
+      const field = (name: string): string => typeof error === 'object' && error !== null && name in error
+        ? String(Reflect.get(error, name)) : 'unavailable'
+      throw new Error(`Visual Studio discovery failed after ${Math.round(performance.now() - discoveryStarted)}ms (deadline=30000ms): `
+        + `code=${field('code')}; signal=${field('signal')}; killed=${field('killed')}\n`
+        + `stdout:\n${field('stdout')}\nstderr:\n${field('stderr')}`, { cause: error })
+    }
+    if (vs === '' || !existsSync(join(vs, 'VC/Auxiliary/Build/vcvars64.bat'))) {
+      throw new Error(`Visual Studio discovery returned no usable x64 C++ installation: ${JSON.stringify(vs)}`)
+    }
     probe = join(root, 'console-probe.exe')
     const compile = join(root, 'compile.cmd')
     await copyFile(new URL('fixtures/cli-console-probe.cpp', import.meta.url), join(root, 'console-probe.cpp'))
@@ -92,7 +107,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
       "writeFileSync(ready, 'ready')",
       'setInterval(() => {}, 1000)', '',
     ].join('\n'))
-  }, 60_000)
+  }, 90_000)
 
   afterAll(async () => {
     if (root === undefined) return

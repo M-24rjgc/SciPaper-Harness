@@ -68,6 +68,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm exec tsc -b native/system/packages/entry
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare Windows console-test executable
+        if: runner.os == 'Windows'
+        run: pnpm --dir apps/desktop exec node -p "require('electron')"
       - name: Research, harness lifecycle and desktop regressions
         run: >-
           pnpm exec vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
