@@ -45,6 +45,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2025]
+        include:
+          - os: ubuntu-24.04
+            workers: 2
+            consoleExclude: ''
+          - os: windows-2025
+            workers: 1
+            consoleExclude: --exclude=apps/desktop/tests/windows-cli-signals.spec.ts
     runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     defaults:
@@ -71,9 +78,14 @@ jobs:
       - name: Prepare Windows console-test executable
         if: runner.os == 'Windows'
         run: pnpm --dir apps/desktop exec node -p "require('electron')"
+      - name: Windows console signal regressions
+        if: runner.os == 'Windows'
+        run: >-
+          pnpm exec vitest run --maxWorkers=1 --testTimeout=30000 --hookTimeout=30000
+          apps/desktop/tests/windows-cli-signals.spec.ts
       - name: Research, harness lifecycle and desktop regressions
         run: >-
-          pnpm exec vitest run --maxWorkers=2 --testTimeout=30000 --hookTimeout=30000
+          pnpm exec vitest run --maxWorkers=${{ matrix.workers }} ${{ matrix.consoleExclude }} --testTimeout=30000 --hookTimeout=30000
           packages/research/workbench
           packages/bundle/research-app
           packages/bundle/research-knowledge-bundle

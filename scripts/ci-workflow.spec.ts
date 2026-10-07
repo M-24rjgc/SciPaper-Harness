@@ -62,6 +62,43 @@ describe('CI workflow', () => {
     }
   })
 
+  it('isolates mandatory Windows console signals from bulk regression workers', () => {
+    const research = workflowJob(loadWorkflow('.github/workflows/research-ci.yml'), 'research')
+    if (!isRecord(research.strategy) || !isRecord(research.strategy.matrix)
+      || !Array.isArray(research.strategy.matrix.include) || !Array.isArray(research.steps)) {
+      throw new TypeError('Research CI must define platform worker budgets and ordered steps')
+    }
+    const lanes = research.strategy.matrix.include.filter(isRecord)
+    expect(lanes).toEqual([
+      { os: 'ubuntu-24.04', workers: 2, consoleExclude: '' },
+      { os: 'windows-2025', workers: 1, consoleExclude: '--exclude=apps/desktop/tests/windows-cli-signals.spec.ts' },
+    ])
+    const steps = research.steps.filter(isRecord)
+    const preparation = steps.findIndex(step => step.name === 'Prepare Windows console-test executable')
+    const signals = steps.findIndex(step => step.name === 'Windows console signal regressions')
+    const bulk = steps.findIndex(step => step.name === 'Research, harness lifecycle and desktop regressions')
+    expect(signals).toBeGreaterThan(preparation)
+    expect(bulk).toBeGreaterThan(signals)
+    expect(steps[signals]).toMatchObject({
+      if: 'runner.os == \'Windows\'',
+      run: 'pnpm exec vitest run --maxWorkers=1 --testTimeout=30000 --hookTimeout=30000 apps/desktop/tests/windows-cli-signals.spec.ts',
+    })
+    expect(steps[signals]).not.toHaveProperty('continue-on-error', true)
+    expect(steps[signals]).not.toHaveProperty('timeout-minutes')
+    expect(steps[bulk]).not.toHaveProperty('continue-on-error', true)
+    const command = steps[bulk]?.run
+    if (typeof command !== 'string') throw new TypeError('Bulk regressions must define a test command')
+    for (const lane of lanes) {
+      const rendered = command.replace(/\$\{\{[^}]+\}\}/gu, selector => String(evaluateRunsOn(selector, { matrix: lane })))
+      expect(rendered).toContain(`--maxWorkers=${String(lane.workers)}`)
+      expect(rendered).toContain('--testTimeout=30000 --hookTimeout=30000')
+      expect(rendered.match(/--exclude=\S+/gu) ?? []).toEqual(lane.os === 'windows-2025'
+        ? ['--exclude=apps/desktop/tests/windows-cli-signals.spec.ts'] : [])
+      expect(rendered).toContain('packages/attachment/attachment-local')
+      expect(rendered).toContain('apps/desktop/tests')
+    }
+  })
+
   it('prepares confinement before Node compatibility smokes', () => {
     const job = workflowJob(loadWorkflow('.github/workflows/ci.yml'), 'node-compat')
     if (!Array.isArray(job.steps)) throw new TypeError('Node compatibility job must define steps')
