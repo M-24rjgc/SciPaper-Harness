@@ -710,7 +710,7 @@ function tscSourceMapPlugin(): TsdownPlugin {
         map.sourcesContent = await Promise.all(sources.map(async source =>
           await readFile(resolvePath(dirname(mapPath), sourceRoot, source), 'utf8')))
       }
-      return { code: code.replace(SOURCEMAP_COMMENT, ''), map }
+      return { code: code.replace(SOURCEMAP_COMMENT, ''), map: JSON.stringify(map) }
     },
   }
 }
