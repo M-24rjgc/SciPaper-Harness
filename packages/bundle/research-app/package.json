@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-research-app",
   "description": "SciPaper research workspace and modular research agent composition",
-  "version": "0.2.0-alpha.9",
+  "version": "0.3.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

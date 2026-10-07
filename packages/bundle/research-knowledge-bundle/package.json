@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-research-knowledge-bundle",
   "description": "Research knowledge graphs shared by all research modes",
-  "version": "0.2.0-alpha.9",
+  "version": "0.3.0",
   "type": "module",
   "license": "MIT",
   "icon": "./icon.svg",

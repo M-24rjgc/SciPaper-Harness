@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-session-format-v4-to-v5",
   "description": "Session V4 to V5 execution identity migration",
-  "version": "0.2.0-alpha.9",
+  "version": "0.3.0",
   "publishConfig": {
     "access": "public"
   },
