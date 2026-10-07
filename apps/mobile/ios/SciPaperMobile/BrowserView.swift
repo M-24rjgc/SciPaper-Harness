@@ -5,8 +5,11 @@ import UniformTypeIdentifiers
 struct BrowserView: UIViewRepresentable {
     let url: URL
     let onDisconnect: () -> Void
+    let onCleanNavigation: (URL) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(origin: ConnectionPolicy.origin(url)!, onDisconnect: onDisconnect) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(initialURL: url, onDisconnect: onDisconnect, onCleanNavigation: onCleanNavigation)
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -21,9 +24,11 @@ struct BrowserView: UIViewRepresentable {
         return web
     }
 
+    // Connection identity owns navigation; projecting a clean URL does not reload the WebView.
     func updateUIView(_ view: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
+        coordinator.close()
         view.stopLoading()
         view.navigationDelegate = nil
         view.uiDelegate = nil
@@ -32,12 +37,26 @@ struct BrowserView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
         let origin: String
         let onDisconnect: () -> Void
+        let onCleanNavigation: (URL) -> Void
+        var retryURL: URL?
         weak var web: WKWebView?
         var destinations: [ObjectIdentifier: URL] = [:]
 
-        init(origin: String, onDisconnect: @escaping () -> Void) {
-            self.origin = origin
+        init(initialURL: URL, onDisconnect: @escaping () -> Void, onCleanNavigation: @escaping (URL) -> Void) {
+            self.origin = ConnectionPolicy.origin(initialURL)!
             self.onDisconnect = onDisconnect
+            self.onCleanNavigation = onCleanNavigation
+            self.retryURL = initialURL
+        }
+
+        func close() {
+            retryURL = nil
+            web = nil
+        }
+
+        private func observeMainNavigation(_ url: URL?) {
+            guard retryURL != nil, let url, ConnectionPolicy.cleanAppPage(url, origin) else { return }
+            retryURL = URL(string: origin + "/")
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -46,6 +65,7 @@ struct BrowserView: UIViewRepresentable {
             if action.targetFrame?.isMainFrame == false && ConnectionPolicy.ownedBlob(url, origin) {
                 decisionHandler(.allow)
             } else if ConnectionPolicy.sameOrigin(url, origin) {
+                if action.targetFrame?.isMainFrame == true { observeMainNavigation(url) }
                 decisionHandler(action.shouldPerformDownload ? .download : .allow)
             } else {
                 decisionHandler(.cancel)
@@ -61,6 +81,7 @@ struct BrowserView: UIViewRepresentable {
                   ConnectionPolicy.sameOrigin(url, origin) || (!response.isForMainFrame && ConnectionPolicy.ownedBlob(url, origin)) else {
                 decisionHandler(.cancel); return
             }
+            if response.isForMainFrame { observeMainNavigation(url) }
             if response.isForMainFrame, let status = (response.response as? HTTPURLResponse)?.statusCode, status >= 400 {
                 decisionHandler(.cancel)
                 showConnectionError(message: status == 401 || status == 403
@@ -79,11 +100,23 @@ struct BrowserView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            observeMainNavigation((error as NSError).userInfo[NSURLErrorFailingURLErrorKey] as? URL)
             showConnectionError()
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            observeMainNavigation(webView.url)
             showConnectionError()
+        }
+
+        func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
+            observeMainNavigation(webView.url)
+        }
+
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            guard web === webView, let url = webView.url, ConnectionPolicy.cleanAppPage(url, origin) else { return }
+            observeMainNavigation(url)
+            onCleanNavigation(url)
         }
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
@@ -136,7 +169,7 @@ struct BrowserView: UIViewRepresentable {
             let alert = UIAlertController(title: NSLocalizedString("暂时无法连接电脑", comment: "Connection failure"),
                 message: NSLocalizedString(message, comment: "Connection failure explanation"), preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: NSLocalizedString("重试", comment: "Retry"), style: .default) { [weak self] _ in
-                guard let self, let target = URL(string: self.origin + "/") else { return }
+                guard let self, let target = self.retryURL else { return }
                 self.web?.load(URLRequest(url: target))
             })
             alert.addAction(UIAlertAction(title: NSLocalizedString("重新连接", comment: "Connect again"), style: .cancel) { [weak self] _ in self?.onDisconnect() })

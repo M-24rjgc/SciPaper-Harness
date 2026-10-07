@@ -78,7 +78,7 @@ describe('desktop macOS release signature', () => {
         sign: true,
         writeUpdateInfo: false,
       },
-      publish: { provider: 'github', owner: 'M-24rjgc', repo: 'SciPaper-Harness', releaseType: 'prerelease' },
+      publish: { provider: 'github', owner: 'M-24rjgc', repo: 'SciPaper-Harness' },
     })
     expect(typeof config.artifactBuildCompleted).toBe('function')
   })
@@ -99,7 +99,7 @@ describe('desktop macOS release signature', () => {
   })
 
   it('validates Windows signing without requiring macOS identifiers for a Windows target', async () => {
-    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     expect(() => createElectronBuilderConfig({
       DSH_DESKTOP_APP_ID: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
       DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
@@ -117,7 +117,7 @@ describe('desktop macOS release signature', () => {
       DSH_DESKTOP_TARGET_PLATFORM: 'win32',
       DSH_DESKTOP_UNSIGNED: '1',
     }, 'win32', 'x64')
-    expect(portablePath(config.directories.output)).toContain('/targets/win-x64/unsigned-artifacts')
+    expect(portablePath(config.directories.output)).toMatch(/\/\.desktop-build\/u\/[a-f0-9]{16}$/u)
     expect(portablePath(config.nsis.include)).toMatch(/\/scripts\/installer\.nsh$/u)
     expect(config).toMatchObject({
       win: { forceCodeSigning: false, signtoolOptions: { sign: undefined } },

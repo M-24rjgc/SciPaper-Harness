@@ -98,6 +98,19 @@ export interface DshDesktopProductApi {
 export const SCHEME = 'dsh-app'
 
 /**
+ * Accept only bundled application entry documents; resources and Host routes receive no Desktop privileges.
+ * @param address - document URL or serialized origin used for permission checks.
+ * @returns whether the address names the application entry without credentials, a port or query parameters.
+ */
+export function isDesktopApplicationDocument(address: string): boolean {
+  try {
+    const url = new URL(address)
+    return url.protocol === `${SCHEME}:` && url.hostname === 'app' && url.username === '' && url.password === ''
+      && url.port === '' && url.search === '' && ['', '/', '/index.html'].includes(url.pathname)
+  } catch { return false }
+}
+
+/**
  * Reject IPC outside the allowed Desktop document origins.
  * @param event - IPC caller whose frame URL supplies the origin.
  * @param hostnames - Desktop document hosts allowed for this operation.
@@ -106,7 +119,8 @@ export function assertDesktopSender(event: IpcMainInvokeEvent, hostnames: readon
   const senderFrame = event.senderFrame
   if (senderFrame === null) throw new Error('dsh desktop: rejected IPC without a sender frame')
   const url = new URL(senderFrame.url)
-  if (url.protocol !== `${SCHEME}:` || !hostnames.includes(url.hostname)) {
+  if (url.protocol !== `${SCHEME}:` || !hostnames.includes(url.hostname)
+    || (url.hostname === 'app' && !isDesktopApplicationDocument(senderFrame.url))) {
     throw new Error('dsh desktop: rejected IPC from an unowned renderer')
   }
 }

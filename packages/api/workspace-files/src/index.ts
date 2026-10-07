@@ -253,7 +253,7 @@ export class WorkspaceFiles extends TypertRemoteService {
    * Read a complete regular file or one byte range without text decoding.
    * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
    * @param path - target path, absolute or workspace-relative; relative to the base file's directory when provided.
-   * @param options - optional base file and range; without a range the complete-file cap applies.
+   * @param options - base file, optional document confinement, and byte range; without a range the complete-file cap applies.
    * @param signal - caller cancellation.
    * @returns native bytes with the file's version and size at the preceding stat, byte offset, and EOF marker.
    */
@@ -266,8 +266,15 @@ export class WorkspaceFiles extends TypertRemoteService {
   ): Promise<WorkspaceFileBytes> {
     const fs = await this.fileSystem(workspaceFileScope)
     const window = options.range === undefined ? undefined : this.resolveWindow(options.range, path)
-    const resolved = options.baseFile === undefined ? path : await this.relativePath(fs, workspaceFileScope, options.baseFile, path, signal)
-    const { target, info } = await this.locateFile(fs, workspaceFileScope, resolved, signal)
+    if (options.confineToDocument === true && options.baseFile === undefined) {
+      throw new RemoteError('gateway/bad-request', 'Document confinement requires a base file', {})
+    }
+    const related = options.baseFile === undefined ? { path, documentRoot: undefined }
+      : await this.relativePath(fs, workspaceFileScope, options.baseFile, path, options.confineToDocument === true, signal)
+    const { target, info } = await this.locateFile(fs, workspaceFileScope, related.path, signal)
+    if (related.documentRoot !== undefined && !fs.contains(related.documentRoot, target)) {
+      throw new RemoteError('workspace-file/outside-document', `"${path}" is outside the document resource directory`, { path })
+    }
     if (window !== undefined) {
       const { offset, length } = window
       const data = await fs.readByteRange(target, window, signal)
@@ -374,8 +381,8 @@ export class WorkspaceFiles extends TypertRemoteService {
   }
 
   private async relativePath(
-    fs: FileSystem, scope: WorkspaceFileScope, baseFile: string, path: string, signal: AbortSignal,
-  ): Promise<string> {
+    fs: FileSystem, scope: WorkspaceFileScope, baseFile: string, path: string, confineToDocument: boolean, signal: AbortSignal,
+  ): Promise<{ path: string; documentRoot: FsTarget | undefined }> {
     const relative = path.replace(/\\/g, '/')
     if (relative.length === 0 || relative.startsWith('/') || /^[a-z][a-z\d+.-]*:/iu.test(relative) || relative.includes(NUL)) {
       throw new RemoteError('gateway/bad-request', 'path must be relative when baseFile is provided', {})
@@ -383,7 +390,12 @@ export class WorkspaceFiles extends TypertRemoteService {
     const { target } = await this.locateFile(fs, scope, baseFile, signal)
     const absolute = fs.processPath(target)
     const paths = absolute.startsWith('/') ? posix : win32
-    return paths.resolve(paths.dirname(absolute), relative)
+    let documentRoot: FsTarget | undefined
+    if (confineToDocument) {
+      const workspace = await fs.resolve(scope.workspaceRoot, { signal })
+      documentRoot = fs.contains(workspace, target) ? workspace : await fs.resolve(paths.dirname(absolute), { signal })
+    }
+    return { path: paths.resolve(paths.dirname(absolute), relative), documentRoot }
   }
 
   /** Apply the page defaults and caps here, so the request never carries them implicitly. */

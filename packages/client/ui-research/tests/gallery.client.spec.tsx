@@ -80,6 +80,20 @@ const submitSave = (detail: HTMLElement): void => {
 }
 
 describe('the figure gallery panel', () => {
+  it.each(['javascript:alert(1)', 'data:text/html,unsafe', 'file:///private/paper.pdf', 'relative/paper'])
+  ('keeps figures visible without activating non-Web paper or source links: %s', async (link) => {
+    const h = harness(project())
+    const view = render(<Gallery {...h.props} />)
+    const response = page([figure('bad-link', { paper: link })])
+    response.source = { ...SOURCE, repository: link }
+    await answer(h.searches[0], response)
+    fireEvent.click(view.getByRole('button', { name: /Figure bad-link/ }))
+    expect(view.getByRole('article', { name: 'Figure bad-link' })).toBeDefined()
+    expect(view.queryByRole('link', { name: zh.galleryOpenPaper })).toBeNull()
+    expect(view.queryByRole('link', { name: '来自 Top-Conf Figure Gallery' })).toBeNull()
+    expect(view.getByText('来自 Top-Conf Figure Gallery')).toBeDefined()
+  })
+
   it('shows an example research\'s figures with their papers, and saves nothing into it', async () => {
     const shipped = { ...project(), example: true }
     const h = harness(shipped)

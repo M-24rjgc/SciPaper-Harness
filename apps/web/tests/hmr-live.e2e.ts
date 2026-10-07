@@ -11,6 +11,7 @@ import type { Fiber } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessHandle, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { readClientBuildRecord } from '../../../scripts/client-build-environment.ts'
+import { pnpmInvocation } from '../../../scripts/pnpm-invocation.ts'
 import { REPO_ROOT } from './support.ts'
 
 const CLIENT_ARTIFACT_PATTERNS = [
@@ -105,17 +106,25 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   let watcher: SubprocessHandle | undefined
   let host: SubprocessHandle | undefined
   let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
+  let watcherOutput = ''
+  const recordWatcherOutput = (chunk: Buffer): void => {
+    watcherOutput = (watcherOutput + chunk.toString()).slice(-32_000)
+  }
   const failures: unknown[] = []
   try {
     subprocessFiber = await subprocessCtx.plugin(LocalSubprocessRuntime)
     // Watchers only: the built `dsh web` below is the server under test, and the
     // built tree is this lane's precondition rather than something to rebuild.
+    const pnpm = pnpmInvocation(['run', 'dev:web', '--skip-build', '--no-serve'])
     watcher = subprocessCtx.subprocess.spawn(spawnSpec(
-      ['pnpm', 'run', 'dev:web', '--skip-build', '--no-serve'],
+      [pnpm.command, ...pnpm.args],
       REPO_ROOT,
       { ...clientBuildEnvironment },
     ))
+    watcher.stdout?.on('data', recordWatcherOutput)
+    watcher.stderr?.on('data', recordWatcherOutput)
     await waitForOutput(watcher, /dev-web: watching/, 'pnpm run dev:web --skip-build --no-serve')
+    watcherOutput = ''
     host = subprocessCtx.subprocess.spawn(spawnSpec(
       [process.execPath, binPath, 'web', '--no-open', '--port', '0'],
       world,
@@ -132,8 +141,10 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     const page = await browser.newPage()
     const pageErrors: string[] = []
     page.on('pageerror', error => pageErrors.push(String(error)))
+    const eventResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/plugins/events')
     await page.goto(baseUrl, { waitUntil: 'load' })
     await page.getByText(oldText, { exact: true }).waitFor({ timeout: 15_000 })
+    expect((await eventResponse).status()).toBe(200)
     const pageIdentity = await page.evaluate(() => {
       // In-page code: an import would not survive serialization, and the page
       // entropy source available in every context is getRandomValues.
@@ -143,15 +154,23 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     })
 
     await writeFile(sourcePath, updatedSource)
+    await expect.poll(async () => (await readFile(join(REPO_ROOT, 'packages/client/ui-conversation/lib/types/client/locales.js'), 'utf8')).includes(newText), {
+      timeout: 20_000,
+    }).toBe(true)
+    await expect.poll(async () => (await readFile(join(REPO_ROOT, 'packages/client/ui-conversation/lib/client.js'), 'utf8')).includes(newText), {
+      timeout: 20_000,
+    }).toBe(true)
     await page.getByText(newText, { exact: true }).waitFor({ timeout: 30_000 })
     expect(await page.evaluate(() => (window as Window & { __dshHmrPageIdentity?: string }).__dshHmrPageIdentity))
       .toBe(pageIdentity)
     expect(pageErrors).toEqual([])
   } catch (error) {
-    failures.push(error)
+    failures.push(new Error(`HMR watcher output:\n${watcherOutput}`, { cause: error }))
   } finally {
     await writeFile(sourcePath, originalSource).catch((error: unknown) => failures.push(error))
     if (watcher !== undefined) await stopTree(watcher).catch((error: unknown) => failures.push(error))
+    watcher?.stdout?.off('data', recordWatcherOutput)
+    watcher?.stderr?.off('data', recordWatcherOutput)
     if (host !== undefined) await stopTree(host).catch((error: unknown) => failures.push(error))
     await browser?.close().catch((error: unknown) => failures.push(error))
     await subprocessFiber?.dispose().catch((error: unknown) => failures.push(error))

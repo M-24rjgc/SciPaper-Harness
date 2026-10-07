@@ -504,8 +504,8 @@ export interface ConnectionRecoveryConfig {
 
 ## `@deepseek-ai/dsh-client-hmr`
 
-- `inject`: `clientModules` · `webServer`
-- `source`: [`packages/client/hmr/src/index.ts:30`](../packages/client/hmr/src/index.ts)
+- `inject`: `clientModules` · `webServer` · `connection`
+- `source`: [`packages/client/hmr/src/index.ts:31`](../packages/client/hmr/src/index.ts)
 
 ```ts config-catalog
 /** Plugin config, validated by the same-named schemastery schema. */

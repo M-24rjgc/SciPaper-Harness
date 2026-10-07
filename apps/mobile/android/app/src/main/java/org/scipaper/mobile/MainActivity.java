@@ -64,7 +64,7 @@ public final class MainActivity extends Activity {
     private WebView browser;
     private EditText address;
     private TextView validation;
-    private String connectedOrigin;
+    private ConnectionNavigation connection;
     private boolean pairingHistoryPending;
     private boolean tlsBlocked;
     private ValueCallback<Uri[]> fileSelection;
@@ -148,7 +148,6 @@ public final class MainActivity extends Activity {
 
     private void showConnect() {
         closeBrowser();
-        connectedOrigin = null;
         root.removeAllViews();
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -229,10 +228,10 @@ public final class MainActivity extends Activity {
         }
         if (address != null) address.setText("");
         closeBrowser();
-        connectedOrigin = ConnectionPolicy.origin(validated);
+        connection = new ConnectionNavigation(validated);
         pairingHistoryPending = validated.getRawQuery() != null || validated.getRawFragment() != null;
         tlsBlocked = false;
-        getPreferences(MODE_PRIVATE).edit().putString("recentOrigin", connectedOrigin).apply();
+        getPreferences(MODE_PRIVATE).edit().putString("recentOrigin", connectedOrigin()).apply();
         root.removeAllViews();
         connectionBanner = new LinearLayout(this);
         connectionBanner.setOrientation(LinearLayout.VERTICAL);
@@ -263,33 +262,45 @@ public final class MainActivity extends Activity {
     }
 
     private final class BrowserClient extends WebViewClient {
+        @Override public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            if (view == browser && connection != null) connection.observedNavigation(url);
+        }
         @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (view != browser) return true;
             String target = request.getUrl().toString();
-            if (ConnectionPolicy.sameOrigin(connectedOrigin, target)) return false;
-            if (!request.isForMainFrame() && ConnectionPolicy.ownedBlob(connectedOrigin, target)) return false;
+            if (ConnectionPolicy.sameOrigin(connectedOrigin(), target)) {
+                if (request.isForMainFrame()) connection.observedNavigation(target);
+                return false;
+            }
+            if (!request.isForMainFrame() && ConnectionPolicy.ownedBlob(connectedOrigin(), target)) return false;
             if (request.isForMainFrame() && request.hasGesture()) openExternal(target);
             return true;
         }
         @Override public void onPageFinished(WebView view, String url) {
             if (view != browser) return;
-            if (ConnectionPolicy.sameOrigin(connectedOrigin, url)) {
+            if (ConnectionPolicy.sameOrigin(connectedOrigin(), url)) {
+                connection.observedNavigation(url);
                 CookieManager.getInstance().flush();
                 // Drop the pairing entry once the Host redirects to its normal client address.
-                Uri uri = Uri.parse(url);
-                if (pairingHistoryPending && uri.getQueryParameter("pair") == null
-                        && uri.getQueryParameter("token") == null && uri.getFragment() == null) {
+                if (pairingHistoryPending && ConnectionPolicy.cleanAppPage(connectedOrigin(), url)) {
                     view.clearHistory();
                     pairingHistoryPending = false;
                 }
             }
         }
         @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-            if (view == browser && request.isForMainFrame() && !tlsBlocked) showConnectionError(getString(R.string.connection_failed));
+            if (view == browser && request.isForMainFrame()) {
+                connection.observedNavigation(request.getUrl().toString());
+                if (!tlsBlocked) showConnectionError(getString(R.string.connection_failed));
+            }
         }
         @Override public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse response) {
-            if (view == browser && request.isForMainFrame()) showConnectionError(getString(
+            if (view == browser && request.isForMainFrame()) {
+                connection.observedNavigation(request.getUrl().toString());
+                showConnectionError(getString(
                     response.getStatusCode() == 401 || response.getStatusCode() == 403
                             ? R.string.connection_refused : R.string.connection_http_error));
+            }
         }
         @Override public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
             handler.cancel();
@@ -302,7 +313,7 @@ public final class MainActivity extends Activity {
 
     private final class BrowserChrome extends WebChromeClient {
         @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
-            if (!ConnectionPolicy.sameOrigin(connectedOrigin, view.getUrl())) return false;
+            if (!ConnectionPolicy.sameOrigin(connectedOrigin(), view.getUrl())) return false;
             if (fileSelection != null) fileSelection.onReceiveValue(null);
             fileSelection = callback;
             Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -330,7 +341,7 @@ public final class MainActivity extends Activity {
             popup.setWebViewClient(new WebViewClient() {
                 @Override public boolean shouldOverrideUrlLoading(WebView window, WebResourceRequest request) {
                     String target = request.getUrl().toString();
-                    if (browser != null && ConnectionPolicy.sameOrigin(connectedOrigin, target)) browser.loadUrl(target);
+                    if (browser != null && ConnectionPolicy.sameOrigin(connectedOrigin(), target)) browser.loadUrl(target);
                     else openExternal(target);
                     popups.remove(popup);
                     popup.destroy();
@@ -367,13 +378,13 @@ public final class MainActivity extends Activity {
     }
 
     private void download(String url, String agent, String disposition, String mime, long length) {
-        if (!ConnectionPolicy.sameOrigin(connectedOrigin, url)) {
+        if (!ConnectionPolicy.sameOrigin(connectedOrigin(), url)) {
             toast(getString(url.startsWith("blob:") ? R.string.preview_download_unavailable : R.string.external_download));
             return;
         }
         String filename = URLUtil.guessFileName(url, disposition, mime).replaceAll("[\\\\/\\p{Cntrl}]", "_");
         String cookie = CookieManager.getInstance().getCookie(url);
-        String downloadOrigin = connectedOrigin;
+        String downloadOrigin = connectedOrigin();
         toast(getString(R.string.downloading));
         new Thread(() -> {
             Uri output = null;
@@ -445,7 +456,8 @@ public final class MainActivity extends Activity {
         retry.setOnClickListener(view -> {
             connectionBanner.setVisibility(View.GONE);
             tlsBlocked = false;
-            browser.loadUrl(connectedOrigin + "/");
+            String target = connection == null ? null : connection.retryUrl();
+            if (browser != null && target != null) browser.loadUrl(target);
         });
         actions.addView(retry);
         Button change = button(getString(R.string.reconnect), false);
@@ -469,15 +481,19 @@ public final class MainActivity extends Activity {
     }
 
     private void closeBrowser() {
+        if (connection != null) { connection.close(); connection = null; }
         if (fileSelection != null) { fileSelection.onReceiveValue(null); fileSelection = null; }
         for (WebView popup : popups) popup.destroy();
         popups.clear();
         if (browser == null) return;
-        browser.stopLoading();
-        if (browser.getParent() instanceof ViewGroup parent) parent.removeView(browser);
-        browser.destroy();
+        WebView previous = browser;
         browser = null;
+        previous.stopLoading();
+        if (previous.getParent() instanceof ViewGroup parent) parent.removeView(previous);
+        previous.destroy();
     }
+
+    private String connectedOrigin() { return connection == null ? null : connection.origin(); }
 
     private TextView text(String value, int size, int color) {
         TextView text = new TextView(this);

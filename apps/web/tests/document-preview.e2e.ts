@@ -37,6 +37,36 @@ async function successShot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(SHOT_DIR, `${name}-${MODE}-${process.pid}.png`), fullPage: true })
 }
 
+/** Native Windows clipboard uses CRLF; preserve all content and final line breaks when comparing text. */
+async function clipboardText(page: Page): Promise<string> {
+  return (await page.evaluate(() => navigator.clipboard.readText())).replaceAll('\r\n', '\n')
+}
+
+/** The permission controls and iframe share the document body's available height. */
+async function htmlPreviewInsets(iframe: Locator): Promise<{
+  top: number
+  right: number
+  bottom: number
+  left: number
+  controlsOverflow: number
+}> {
+  return await iframe.evaluate((node) => {
+    const host = node.closest('[data-textpreview-body]')
+    if (!(host instanceof HTMLElement)) throw new Error('HTML preview body is unavailable')
+    const controls = host.querySelector('[data-html-preview-controls]')
+    if (!(controls instanceof HTMLElement)) throw new Error('Interactive preview controls are unavailable')
+    const outer = host.getBoundingClientRect()
+    const frame = node.getBoundingClientRect()
+    return {
+      top: Math.round(frame.top - controls.getBoundingClientRect().bottom),
+      right: Math.round(outer.right - frame.right),
+      bottom: Math.round(outer.bottom - frame.bottom),
+      left: Math.round(frame.left - outer.left),
+      controlsOverflow: Math.max(0, controls.scrollWidth - controls.clientWidth),
+    }
+  })
+}
+
 /** Check the visible loader group against the document body's center. */
 async function expectDocumentLoading(preview: Locator): Promise<void> {
   const loading = preview.getByRole('status', { name: 'Rendering document...', exact: true })
@@ -666,11 +696,13 @@ else process.exit(1);
         '<!doctype html><link rel="stylesheet" href="./local.css">',
         '<h1>HTML smoke</h1><p id="result">pending</p><p id="local-result">pending</p><p id="parent-result">pending</p>',
         '<img src="https://preview.invalid/developer-tools.png" width="1" height="1" alt="">',
-        '<p id="outside-result">pending</p>',
         '<script>document.getElementById("result").textContent="INLINE_OK";',
         'try{parent.document.documentElement.setAttribute("data-document-preview-escape","true");document.getElementById("parent-result").textContent="parent-accessible"}',
         'catch(error){const result=document.getElementById("parent-result");result.textContent="parent-blocked";result.dataset.error=error.name}</script>',
         '<script src="./local.js"></script>',
+      ].join('\n')),
+      writeFile(join(cwd, 'outside-assets.html'), [
+        '<!doctype html><h1>Outside dependency</h1><p id="outside-result">pending</p>',
         `<script src="${outsideReference}"></script>`,
       ].join('\n')),
       writeFile(join(cwd, 'local.js'), 'document.getElementById("local-result").textContent="LOCAL_JS_OK";'),
@@ -853,38 +885,47 @@ else process.exit(1);
     await expect.poll(() => settings.getByRole('switch', { name: 'Show coding view' }).getAttribute('aria-checked')).toBe('true')
     await successShot(page, 'developer-tools-setting')
     await settings.getByRole('button', { name: 'Close', exact: true }).click()
+    expect(await iframe.getAttribute('sandbox')).toBe('')
+    expect(await basicHtml.locator('#result').innerText()).toBe('pending')
+    expect(await basicHtml.locator('#local-result').innerText()).toBe('pending')
+    expect(previewNetworkRequests).toBe(0)
+    await preview.getByRole('button', { name: 'Enable interactive preview', exact: true }).click()
     await expect.poll(() => iframe.getAttribute('sandbox')).toBe('allow-scripts')
     expect(await iframe.getAttribute('sandbox')).toBe('allow-scripts')
-    expect(await iframe.evaluate((node) => {
-      const host = node.closest('[data-textpreview-body]')
-      if (!(host instanceof HTMLElement)) throw new Error('HTML preview body is unavailable')
-      const outer = host.getBoundingClientRect()
-      const frame = node.getBoundingClientRect()
-      return {
-        top: Math.round(frame.top - outer.top),
-        right: Math.round(outer.right - frame.right),
-        bottom: Math.round(outer.bottom - frame.bottom),
-        left: Math.round(frame.left - outer.left),
-      }
-    })).toEqual({ top: 0, right: 0, bottom: 0, left: 0 })
+    expect(await htmlPreviewInsets(iframe)).toEqual({ top: 0, right: 0, bottom: 0, left: 0, controlsOverflow: 0 })
     const html = page.frameLocator('[data-html-preview]')
     await html.getByRole('heading', { name: 'HTML smoke', exact: true }).waitFor({ timeout: 15_000 })
     await expect.poll(() => html.locator('#result').innerText()).toBe('INLINE_OK')
     await expect.poll(() => html.locator('img[src="https://preview.invalid/developer-tools.png"]')
       .evaluate(node => (node as HTMLImageElement).naturalWidth)).toBe(1)
     await expect.poll(() => html.locator('#local-result').innerText()).toBe('LOCAL_JS_OK')
-    await expect.poll(() => html.locator('#outside-result').innerText()).toBe('OUTSIDE_JS_OK')
     await expect.poll(() => html.locator('#local-result').evaluate(node => getComputedStyle(node).color)).toBe('rgb(12, 34, 56)')
     await expect.poll(() => html.locator('#parent-result').innerText()).toBe('parent-blocked')
     expect(await html.locator('#parent-result').getAttribute('data-error')).toBe('SecurityError')
     expect(await page.locator('html').getAttribute('data-document-preview-escape')).toBeNull()
     expect(previewNetworkRequests).toBe(1)
+    const previousViewport = page.viewportSize()
+    try {
+      for (const viewport of [{ width: 1680, height: 360 }, { width: 844, height: 390 }]) {
+        await page.setViewportSize(viewport)
+        await expect.poll(() => htmlPreviewInsets(iframe)).toEqual({ top: 0, right: 0, bottom: 0, left: 0, controlsOverflow: 0 })
+        await successShot(page, `html-${viewport.width}x${viewport.height}`)
+      }
+    } finally {
+      if (previousViewport !== null) await page.setViewportSize(previousViewport)
+    }
     const beforeStyleSave = await iframe.getAttribute('src')
     await writeFile(join(cwd, 'local.css'), '#local-result { color: rgb(56, 34, 12); }')
+    await expect.poll(() => iframe.getAttribute('sandbox')).toBe('')
+    expect(await html.locator('#local-result').innerText()).toBe('pending')
+    await preview.getByRole('button', { name: 'Enable interactive preview', exact: true }).click()
     await expect.poll(() => html.locator('#local-result').evaluate(node => getComputedStyle(node).color)).toBe('rgb(56, 34, 12)')
     expect(await iframe.getAttribute('src')).not.toBe(beforeStyleSave)
     const beforeScriptSave = await iframe.getAttribute('src')
     await writeFile(join(cwd, 'local.js'), 'document.getElementById("local-result").textContent="LOCAL_JS_REFRESHED";')
+    await expect.poll(() => iframe.getAttribute('sandbox')).toBe('')
+    expect(await html.locator('#local-result').innerText()).toBe('pending')
+    await preview.getByRole('button', { name: 'Enable interactive preview', exact: true }).click()
     await expect.poll(() => html.locator('#local-result').innerText()).toBe('LOCAL_JS_REFRESHED')
     expect(await iframe.getAttribute('src')).not.toBe(beforeScriptSave)
     await page.getByRole('tab', { name: /Trajectory/ }).click()
@@ -893,6 +934,9 @@ else process.exit(1);
     await expect.poll(() => iframe.getAttribute('sandbox')).toBe('')
     expect(await page.getByText('LIGHTHOUSE', { exact: true }).count()).toBeGreaterThan(0)
     await scaffold.ctx.settings.update('ui-settings', { enabled: true })
+    expect(await iframe.getAttribute('sandbox')).toBe('')
+    expect(await html.locator('#result').innerText()).toBe('pending')
+    await preview.getByRole('button', { name: 'Enable interactive preview', exact: true }).click()
     await expect.poll(() => iframe.getAttribute('sandbox')).toBe('allow-scripts')
     await expect.poll(() => html.locator('#result').innerText()).toBe('INLINE_OK')
     await successShot(page, 'html')
@@ -902,11 +946,23 @@ else process.exit(1);
       `- Sandbox: ${await iframe.getAttribute('sandbox')}`,
       `- Inline script: ${await html.locator('#result').innerText()}`,
       `- Local script after save: ${await html.locator('#local-result').innerText()}`,
-      `- Outside-workspace script: ${await html.locator('#outside-result').innerText()}`,
       `- Local stylesheet after save: ${await html.locator('#local-result').evaluate(node => getComputedStyle(node).color)}`,
       `- Parent access: ${await html.locator('#parent-result').innerText()} (${await html.locator('#parent-result').getAttribute('data-error')})`,
       `- Parent unchanged: ${String(await page.locator('html').getAttribute('data-document-preview-escape') === null)}`,
     ].join('\n'))
+
+    await openFile('outside-assets.html')
+    const outsideHtml = page.frameLocator('[data-html-preview]')
+    await outsideHtml.getByRole('heading', { name: 'Outside dependency', exact: true }).waitFor()
+    expect(await preview.locator('[data-html-preview]').getAttribute('sandbox')).toBe('')
+    expect(await outsideHtml.locator('#outside-result').innerText()).toBe('pending')
+    await preview.getByRole('button', { name: 'Enable interactive preview', exact: true }).click()
+    await expect.poll(() => preview.getByRole('alert').innerText()).toBe('This HTML document could not be previewed.')
+    expect(await preview.locator('[data-html-preview]').count()).toBe(0)
+    await preview.getByRole('button', { name: 'Disable interactive preview', exact: true }).click()
+    await outsideHtml.getByRole('heading', { name: 'Outside dependency', exact: true }).waitFor()
+    expect(await outsideHtml.locator('#outside-result').innerText()).toBe('pending')
+    sections.push(['## HTML permission', '', '- Automatic scripts: disabled', '- Outside-workspace dependency: refused'].join('\n'))
 
     await openFile('smoke.pdf')
     const canvas = preview.getByRole('img', { name: 'PDF page 1', exact: true })
@@ -1242,7 +1298,7 @@ else process.exit(1);
     await copyCode.hover()
     await page.getByRole('tooltip', { name: 'Copy', exact: true }).waitFor()
     await copyCode.click()
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codeLines.join('\n'))
+    await expect.poll(() => clipboardText(page)).toBe(codeLines.join('\n'))
     sections.push([
       '## Code paging', '',
       `- Viewer: ${await viewer.innerText()}`,
@@ -1285,21 +1341,21 @@ else process.exit(1);
     await sheetOverlay.click({ position: { x: 500, y: 110 } })
     await expect.poll(() => formulaInput.innerText()).toBe('=C3/B3')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('80.0%\n')
+    await expect.poll(() => clipboardText(page)).toBe('80.0%\n')
     await sheetTabs.getByText('公式与格式', { exact: true }).click()
     await expect.poll(() => excel.locator('.fortune-name-box').innerText()).toBe('A1')
     await sheetOverlay.click({ position: { x: 140, y: 30 } })
     await expect.poll(() => formulaInput.innerText()).toBe('46281')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('2026-09-16\n')
+    await expect.poll(() => clipboardText(page)).toBe('2026-09-16\n')
     await sheetOverlay.click({ position: { x: 70, y: 30 } })
     await expect.poll(() => formulaInput.innerText()).toBe('=_xlfn.XLOOKUP(1,{1},{42})')
     expect(await formulaInput.getAttribute('contenteditable')).toBe('false')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('42\n')
+    await expect.poll(() => clipboardText(page)).toBe('42\n')
     await page.keyboard.type('999')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('42\n')
+    await expect.poll(() => clipboardText(page)).toBe('42\n')
     await successShot(page, 'excel-cached-formula')
     await openFile('chart-budget.xlsx')
     await sheetTabs.getByText('季度预算', { exact: true }).waitFor({ state: 'visible' })
@@ -1309,7 +1365,7 @@ else process.exit(1);
     await sheetOverlay.click({ position: { x: 500, y: 110 } })
     await expect.poll(() => formulaInput.innerText()).toBe('=C3/B3')
     await page.keyboard.press('ControlOrMeta+C')
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('80.0%\n')
+    await expect.poll(() => clipboardText(page)).toBe('80.0%\n')
     await successShot(page, 'excel-chart-notice')
     await openFile('meeting.xlsx')
     await sheetTabs.getByText('会议信息', { exact: true }).waitFor({ state: 'visible' })
@@ -1343,7 +1399,7 @@ else process.exit(1);
       expect(await formulaInput.locator('img').count()).toBe(0)
       await excel.locator('.fortune-sheet-overlay').click({ position: { x: 70, y: 30 } })
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`${copied}\n`)
+      await expect.poll(() => clipboardText(page)).toBe(`${copied}\n`)
       const clipboardTable = excel.locator('#fortune-copy-content table')
       expect(await clipboardTable.locator('td').textContent()).toBe(copied)
       expect(await clipboardTable.locator('img').count()).toBe(0)
@@ -1376,11 +1432,11 @@ else process.exit(1);
       await excel.locator('.fortune-sheet-overlay').click({ position: { x: 70, y: 30 } })
       await expect.poll(() => excel.locator('.fortune-fx-input').innerText()).toBe('00123')
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('00123\n')
+      await expect.poll(() => clipboardText(page)).toBe('00123\n')
       await page.keyboard.press('ArrowRight')
       await page.keyboard.press('ArrowRight')
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('=SUM(1,2)\n')
+      await expect.poll(() => clipboardText(page)).toBe('=SUM(1,2)\n')
       await viewer.click()
       await page.getByRole('menuitem', { name: 'Plain text', exact: true }).click()
       await expect.poll(() => preview.locator('[data-textpreview-line]').count()).toBe(2)
@@ -1393,7 +1449,7 @@ else process.exit(1);
       await expect.poll(() => excel.locator('.fortune-fx-input').innerText()).toBe('00999')
       await excel.locator('.fortune-sheet-overlay').click({ position: { x: 70, y: 30 } })
       await page.keyboard.press('ControlOrMeta+C')
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('00999\n')
+      await expect.poll(() => clipboardText(page)).toBe('00999\n')
       await successShot(page, `excel-${extension}`)
     }
     sections.push(['## Delimited spreadsheets', '',

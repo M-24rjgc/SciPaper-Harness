@@ -31,13 +31,15 @@ kind: "package-reference"
 |---|---|---|
 | `stat(path)` | `WorkspaceFileStat { absolutePath, version, bytes? }` | 一个普通文件的身份、版本与大小，不含内容 |
 | `read(path, { offset?, limit? })` | `WorkspaceFileText` = stat + `{ offset, text, lines, eof }` | UTF-8 文本文件的一个行窗口；`lines` 计行数，使单个空行与越过文件末尾的页可区分 |
-| `readBytes(path, { range?, baseFile? })` | `WorkspaceFileBytes` = stat + `{ offset, data, eof }` | 以 `Uint8Array` 返回完整文件或有界字节范围；可从另一个文件所在目录解析目标 |
+| `readBytes(path, { range?, baseFile?, confineToDocument? })` | `WorkspaceFileBytes` = stat + `{ offset, data, eof }` | 以 `Uint8Array` 返回完整文件或有界字节范围；可从另一个文件所在目录解析目标 |
 | `list(path)` | `WorkspaceDirectoryListing { path, entries, truncated }` | 一个目录的直接子项 |
 | `changes(path)` | `WorkspaceFileWatchFrame` 流 | 订阅就绪确认，随后为单个文件或目录直接子项的失效通知 |
 
 ### 寻址与路径
 
 `read`、`readBytes` 与 `stat` 接受绝对路径或相对于所选 Session 工作区根的路径。组合文件系统决定路径是否可读；本服务不额外要求文件读取限定于工作区。`readBytes` 携带 `options.baseFile` 时，从基准文件所在目录解析相对目标 `path`，基准文件或目标文件位于工作区外时同样适用。基准文件本身接受绝对路径或工作区相对路径。两个文件执行相同的普通文件检查；目标为空、绝对路径、URL 或含 NUL 时拒绝。文件结果报告文件系统执行环境中的绝对路径。`list` 仍限定于工作区，并以相对于该根的路径报告被列举目录。`changes` 使用相同的路径解析：文件监听沿用文件读取权限，目录监听仍限定于工作区。
+
+传入 `confineToDocument: true` 时必须提供基准文件。基准文件在 Session 工作区内时，关联资源必须解析到该工作区内；基准文件在工作区外时，关联资源必须解析到该文件所在目录内。检查使用解析后的文件系统目标，因此目录链接不能扩大范围。完整文件读取和字节窗口读取都在读取前执行此检查；普通文件读取仍沿用文件系统权限。
 
 ### 分页
 
@@ -70,7 +72,7 @@ kind: "package-reference"
 
 ### 失败
 
-每种失败都是一个带类型化 details 的 `RemoteError` 代码，声明于 [`src/types.ts`](src/types.ts)：`workspace-file/not-found`、`workspace-file/outside-workspace`（目录列举或监听）、`workspace-file/watch-unsupported`（监听初始化失败）、`workspace-file/too-large`（带 `limit`，即适用的页、窗口或完整文件上限）、`workspace-file/not-text`、`workspace-file/not-regular-file`（`kind` 为 `directory`、`symlink` 或 `other`）以及 `workspace-file/not-directory`（`kind` 为 `file`、`symlink` 或 `other`）。调用方按代码分支，绝不按消息文本。
+每种失败都是一个带类型化 details 的 `RemoteError` 代码，声明于 [`src/types.ts`](src/types.ts)：`workspace-file/not-found`、`workspace-file/outside-workspace`（目录列举或监听）、`workspace-file/outside-document`（受限的关联资源）、`workspace-file/watch-unsupported`（监听初始化失败）、`workspace-file/too-large`（带 `limit`，即适用的页、窗口或完整文件上限）、`workspace-file/not-text`、`workspace-file/not-regular-file`（`kind` 为 `directory`、`symlink` 或 `other`）以及 `workspace-file/not-directory`（`kind` 为 `file`、`symlink` 或 `other`）。调用方按代码分支，绝不按消息文本。
 
 ### Client 文件资源
 

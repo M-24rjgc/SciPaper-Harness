@@ -33,7 +33,7 @@
     "diff": "^9.0.0",
     "react-dom": "^18.2.0",
     "anser": "^2.3.5",
-    "katex": "^0.16.47",
+    "katex": "^0.19.0",
     "micromark-core-commonmark": "^2.0.3",
     "micromark-util-character": "^2.1.1",
     "micromark-util-classify-character": "^2.0.1",

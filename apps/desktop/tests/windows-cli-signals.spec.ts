@@ -3,7 +3,7 @@
 import { execFile } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { existsSync } from 'node:fs'
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -20,22 +20,28 @@ let entry: string
 
 describe.skipIf(process.platform !== 'win32')('Windows Electron console signals', () => {
   beforeAll(async () => {
-    root = await mkdtemp(join(tmpdir(), 'dsh-cli-console-'))
+    root = await mkdtemp(join(tmpdir(), 'dsh-cli-console-科研-'))
     electron = require('electron') as string
     const programFiles = process.env['ProgramFiles(x86)']
     if (programFiles === undefined || process.env.ComSpec === undefined) throw new Error('Windows compiler environment is unavailable')
     const vswhere = join(programFiles, 'Microsoft Visual Studio', 'Installer', 'vswhere.exe')
     const vs = (await execute(vswhere, ['-latest', '-products', '*', '-requires',
       'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], { windowsHide: true })).stdout.trim()
-    const quote = (value: string) => '"' + value.replaceAll('%', '%%') + '"'
     probe = join(root, 'console-probe.exe')
     const compile = join(root, 'compile.cmd')
-    await writeFile(compile, ['@echo off', 'call ' + quote(join(vs, 'VC/Auxiliary/Build/vcvars64.bat')) + ' >nul',
+    await copyFile(new URL('fixtures/cli-console-probe.cpp', import.meta.url), join(root, 'console-probe.cpp'))
+    // ASCII batch contents and relative compiler inputs keep Unicode paths in native cwd/environment arguments.
+    await writeFile(compile, ['@echo off', 'call "%DSH_CONSOLE_TEST_VCVARS%" >nul',
       'if errorlevel 1 exit /b %errorlevel%',
-      'cl /nologo /std:c++17 /EHsc /MT /W4 /WX ' + quote(join(import.meta.dirname, 'fixtures/cli-console-probe.cpp'))
-        + ' /Fo' + quote(join(root, 'console.obj')) + ' /Fe' + quote(probe), '',
+      'cl /nologo /std:c++17 /EHsc /MT /W4 /WX console-probe.cpp /Foconsole.obj /Feconsole-probe.exe', '',
     ].join('\r\n'))
-    await execute(process.env.ComSpec, ['/d', '/v:off', '/c', compile], { windowsHide: true })
+    try { await execute(process.env.ComSpec, ['/d', '/v:off', '/c', 'compile.cmd'], { cwd: root, windowsHide: true,
+      env: { ...process.env, DSH_CONSOLE_TEST_VCVARS: join(vs, 'VC/Auxiliary/Build/vcvars64.bat').replaceAll('%', '%%') } }) }
+    catch (error) {
+      const output = typeof error === 'object' && error !== null
+        ? ['stdout', 'stderr'].map(field => field in error ? String(Reflect.get(error, field)) : '').join('\n') : ''
+      throw new Error(`Console fixture compilation failed:\n${output}`, { cause: error })
+    }
     // Only TypeScript is erased; the child has no source-loader hook that could change signal handling.
     const source = await readFile(new URL('../../desktop-host/src/windows-cli-signals.ts', import.meta.url), 'utf8')
     const code = ts.transpileModule(source, {

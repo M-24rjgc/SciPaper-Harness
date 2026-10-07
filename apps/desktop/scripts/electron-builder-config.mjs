@@ -55,7 +55,6 @@ export function createElectronBuilderConfig(
   if (unsigned && resolvedPlatform !== 'win32') throw new Error('desktop package: unsigned builds require Windows')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS) resolveMacOSNotarizationEnvironment(env)
   const buildPaths = desktopTargetBuildPaths(resolveDesktopBuildTarget(env, hostPlatform, hostArch))
@@ -108,6 +107,7 @@ export function createElectronBuilderConfig(
     electronFuses: { runAsNode: true },
     beforeBuild: async () => {
       if (resolvedPlatform !== 'win32') return true
+      installWindowsDirectoryInstaller()
       await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
         fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
         '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
@@ -230,6 +230,6 @@ export function createElectronBuilderConfig(
       differentialPackage: true,
     },
     detectUpdateChannel: false,
-    publish: { ...SCIPAPER_RELEASES, provider: 'github', releaseType: 'prerelease' },
+    publish: { ...SCIPAPER_RELEASES, provider: 'github', releaseType: buildVersion.includes('-') ? 'prerelease' : 'release' },
   }
 }

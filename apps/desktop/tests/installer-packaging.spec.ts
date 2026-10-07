@@ -1,9 +1,11 @@
 import { tmpdir } from 'node:os'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { Arch, Platform } from 'electron-builder'
 import { Packager } from 'app-builder-lib'
 import { describe, expect, it, vi } from 'vitest'
+import * as buildVersion from '../scripts/desktop-build-version.mjs'
+import { desktopTargetBuildPaths } from '../scripts/desktop-build-paths.mjs'
 
 const { execute } = vi.hoisted(() => ({ execute: vi.fn(async () => undefined) }))
 vi.mock('node:child_process', async (importOriginal) => {
@@ -13,6 +15,17 @@ vi.mock('node:child_process', async (importOriginal) => {
 })
 
 describe('installer preparation preserves application dependencies', () => {
+  it.each([
+    ['0.3.0', 'release'], ['0.3.0-test.20261007.1', 'prerelease'], ['0.3.0-alpha.1', 'prerelease'],
+  ])('publishes resolved build %s as %s', async (version, releaseType) => {
+    const selected = vi.spyOn(buildVersion, 'resolveDesktopBuildVersion').mockReturnValue(version)
+    try {
+      const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+      const config = createElectronBuilderConfig({ DSH_DESKTOP_UNSIGNED: '1' }, 'win32', 'x64')
+      expect(config.publish).toMatchObject({ provider: 'github', releaseType })
+    } finally { selected.mockRestore() }
+  })
+
   it.each(['win32', 'darwin'] as const)('requires platform signing credentials without depending on upstream policy on %s', async (platform) => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     expect(() => createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.example.installer',
@@ -77,7 +90,8 @@ describe('installer preparation preserves application dependencies', () => {
       DSH_DESKTOP_UNSIGNED_RUN_ID: 'trial-4',
     }, 'win32', 'x64')
     expect(config.artifactName).toBe('scipaper-harness-${version}-${os}-${arch}.${ext}')
-    expect(config.directories.output).toContain(join('unsigned-artifacts', 'runs', 'trial-4'))
+    expect(dirname(config.directories.output)).toBe(desktopTargetBuildPaths('win-x64').unsignedRuns)
+    expect(basename(config.directories.output)).toMatch(/^[a-f0-9]{16}$/u)
   })
 
   it('packages every preload entry point the shell loads', async () => {

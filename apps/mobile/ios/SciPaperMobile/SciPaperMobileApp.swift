@@ -10,6 +10,7 @@ struct ConnectionView: View {
     @AppStorage("recentOrigin") private var recentOrigin = ""
     @State private var pairingLink = ""
     @State private var connection: URL?
+    @State private var connectionID = UUID()
     @State private var error = ""
     private var dark: Bool { colorScheme == .dark }
     private var teal: Color { dark ? Color(red: 123 / 255, green: 196 / 255, blue: 187 / 255)
@@ -26,8 +27,14 @@ struct ConnectionView: View {
     var body: some View {
         Group {
             if let url = connection {
+                let activeConnectionID = connectionID
                 NavigationStack {
-                    BrowserView(url: url, onDisconnect: { connection = nil })
+                    BrowserView(url: url, onDisconnect: {
+                        if connectionID == activeConnectionID { connection = nil }
+                    }, onCleanNavigation: { cleanURL in
+                        if connectionID == activeConnectionID { connection = cleanURL }
+                    })
+                        .id(connectionID)
                         .navigationTitle("SciPaper").navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .navigationBarLeading) {
@@ -80,6 +87,8 @@ struct ConnectionView: View {
         pairingLink = ""
         error = ""
         recentOrigin = origin
+        // Each accepted link owns a new WebView, navigation policy and history.
+        connectionID = UUID()
         connection = url
     }
 }

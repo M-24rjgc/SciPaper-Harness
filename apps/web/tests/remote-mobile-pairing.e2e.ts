@@ -16,9 +16,9 @@ interface HttpReply {
   readonly body: string
 }
 
-function call(port: number, path: string, headers: Record<string, string>, body?: string): Promise<HttpReply> {
+function call(port: number, path: string, headers: Record<string, string>, body?: string, method?: 'HEAD'): Promise<HttpReply> {
   return new Promise((resolve, reject) => {
-    const outgoing = request({ hostname: '127.0.0.1', port, path, method: body === undefined ? 'GET' : 'POST',
+    const outgoing = request({ hostname: '127.0.0.1', port, path, method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers, agent: false }, (response) => {
       const chunks: Buffer[] = []
       response.on('data', (chunk: Buffer) => { chunks.push(chunk) })
@@ -149,6 +149,8 @@ it('pairs a remote origin through HTTP, preserves RPC and stream authentication,
   const authorized = { ...headers, cookie }
   expect((await requestRemote('/', authorized)).status).toBe(200)
   expect((await requestRemote('/api/llm/listProviders', headers)).status).toBe(401)
+  expect((await requestRemote('/plugins/events', headers)).status).toBe(401)
+  expect((await call(port, '/plugins/events', authorized, undefined, 'HEAD')).status).toBe(200)
   expect((await requestRemote('/api/llm/listProviders', { ...authorized, origin: lease.origin.replace('https:', 'http:') })).status).toBe(403)
   expect((await call(port, '/api/llm/listProviders', { ...authorized, host: 'attacker.example' })).status).toBe(403)
   const rpc = await requestRemote('/api/llm/listProviders', { ...authorized, 'content-type': 'application/json' },
@@ -166,6 +168,7 @@ it('pairs a remote origin through HTTP, preserves RPC and stream authentication,
   await lease.dispose()
   expect((await closed)[0]).toBe(1001)
   expect((await requestRemote('/api/llm/listProviders', authorized)).status).toBe(403)
+  expect((await requestRemote('/plugins/events', authorized)).status).toBe(403)
   const replacement = connection.registerRemoteOrigin(lease.origin)
   onTestFinished(() => replacement.dispose())
   expect((await requestRemote('/api/llm/listProviders', authorized)).status).toBe(401)

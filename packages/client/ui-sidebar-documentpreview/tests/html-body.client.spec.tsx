@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /** HTML iframe ownership follows file identity and bytes, not locale or wrapping changes. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindSnapshotSelector, stubConfigForm } from '@deepseek-ai/dsh-client-test-runtime'
 import { DeveloperToolsPreference } from '@deepseek-ai/dsh-client-ui-settings/src/client/developer-tools.ts'
@@ -15,7 +15,7 @@ import { textFace } from '../src/client/face.ts'
 import { HtmlBody } from '../src/client/html/HtmlBody.tsx'
 import type { HtmlBodyProps } from '../src/client/html/HtmlBody.tsx'
 import { htmlBodyDefinition } from '../src/client/html/index.ts'
-import { en } from '../src/client/html/locales.ts'
+import { en, zh } from '../src/client/html/locales.ts'
 import { ADDRESS, ABSOLUTE_PATH, SESSION, TAB_ID, documentSlots, harness } from './fixtures.client.ts'
 
 const translations: ReadonlyMap<string, string> = new Map(Object.entries(en))
@@ -62,6 +62,47 @@ function props(text = '<p>hello</p>'): HtmlBodyProps {
 const utf8 = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text)
 
 describe('HtmlBody', () => {
+  it.each([en, zh])('requires the localized interactive action before reading or executing a document', async (dictionary) => {
+    const localized = new Map(Object.entries(dictionary))
+    const readRelated = vi.fn<HtmlBodyProps['readRelated']>().mockResolvedValue({ ok: true, value: {
+      absolutePath: '/workspace/app.js', version: 'v1', offset: 0, eof: true, data: utf8('window.ready=true'),
+    } })
+    const initial = { ...props('<script src="./app.js"></script><p>Document</p>'), readRelated }
+    render(<HtmlBody {...initial} t={key => localized.get(key) ?? key} />)
+    expect(screen.getByTitle(dictionary.frame).getAttribute('sandbox')).toBe('')
+    expect(screen.getByText(dictionary.interactiveNotice)).toBeDefined()
+    expect(initial.readRelated).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: dictionary.enableInteractive }))
+    const frame = await screen.findByTitle(dictionary.frame)
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(screen.getByRole('button', { name: dictionary.disableInteractive }).getAttribute('aria-pressed')).toBe('true')
+    expect(initial.readRelated).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: dictionary.disableInteractive }))
+    expect(frame.isConnected).toBe(false)
+    expect(screen.getByTitle(dictionary.frame).getAttribute('sandbox')).toBe('')
+    expect(revoke).toHaveBeenCalledOnce()
+  })
+
+  it('cancels preparation on withdrawal and cannot publish a late related-file result', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<HtmlBodyProps['readRelated']>>>()
+    const readRelated = vi.fn<HtmlBodyProps['readRelated']>().mockReturnValue(pending.promise)
+    const initial = { ...props('<script src="./app.js"></script>'), readRelated }
+    render(<HtmlBody {...initial} />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
+    const signal = readRelated.mock.calls[0]?.[2]
+    expect(signal?.aborted).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: en.disableInteractive }))
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
+    await act(async () => { pending.resolve({ ok: true, value: {
+      absolutePath: '/workspace/app.js', version: 'v1', offset: 0, eof: true, data: utf8('window.ready=true'),
+    } }) })
+    expect(create).not.toHaveBeenCalled()
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
+    expect(initial.setResources).toHaveBeenLastCalledWith([])
+  })
+
   it.each(['css', 'js'] as const)('reloads the HTML when only its %s resource changes', async (extension) => {
     const h = harness()
     const previewProps = h.props()
@@ -87,7 +128,7 @@ describe('HtmlBody', () => {
     const data = utf8(extension === 'css'
       ? '<link rel="stylesheet" href="./asset.css"><p>HTML content</p>'
       : '<p>HTML content</p><script src="./asset.js"></script>')
-    h.bytes.mockResolvedValue({ ok: true, value: { absolutePath: ABSOLUTE_PATH, version: 'root-v1', data, offset: 0, eof: true } })
+    h.bytes.mockImplementation(async () => ({ ok: true, value: { absolutePath: ABSOLUTE_PATH, version: 'root-v1', data: data.slice(), offset: 0, eof: true } }))
     const readRelated = vi.fn<HtmlBodyProps['readRelated']>().mockResolvedValue({ ok: true, value: {
       absolutePath: `/workspace/asset.${extension}`, version: 'asset-v1', offset: 0, eof: true,
       data: utf8(extension === 'css' ? 'body { color: red }' : 'window.loaded = true'),
@@ -103,6 +144,10 @@ describe('HtmlBody', () => {
       expect(screen.getByTitle(en.frame)).toBeDefined()
       expect(h.instance.getSnapshot().byTab[TAB_ID]).toMatchObject({ loading: false, resourcesDirty: false })
     })
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
+    expect(readRelated).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
+    await waitFor(() => { expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('allow-scripts') })
     const previous = screen.getByTitle(en.frame)
     const reads = h.bytes.mock.calls.length
     const relatedReads = readRelated.mock.calls.length
@@ -114,8 +159,12 @@ describe('HtmlBody', () => {
       data: utf8(extension === 'css' ? 'body { color: blue }' : 'window.loaded = false'),
     } })
     act(() => { dependency.set(metadata('asset-v2')) })
-    await waitFor(() => { expect(screen.getByTitle(en.frame)).not.toBe(previous) })
+    await waitFor(() => { expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('') })
+    expect(previous.isConnected).toBe(false)
     expect(h.bytes).toHaveBeenCalledTimes(reads + 1)
+    expect(readRelated).toHaveBeenCalledTimes(relatedReads)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
+    await waitFor(() => { expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('allow-scripts') })
     expect(readRelated).toHaveBeenCalledTimes(relatedReads + 1)
     expect(h.instance.getSnapshot().byTab[TAB_ID]?.version).toBe('root-v1')
     expect(h.read).not.toHaveBeenCalled()
@@ -123,7 +172,7 @@ describe('HtmlBody', () => {
     view.rerender(preview())
     const staticFrame = screen.getByTitle(en.frame)
     expect(staticFrame.getAttribute('sandbox')).toBe('')
-    expect(release).toHaveBeenCalledOnce()
+    expect(release).toHaveBeenCalledTimes(2)
     act(() => { dependency.set(metadata('asset-v3')) })
     expect(screen.getByTitle(en.frame)).toBe(staticFrame)
     expect(h.bytes).toHaveBeenCalledTimes(reads + 1)
@@ -147,6 +196,8 @@ describe('HtmlBody', () => {
     expect(create).not.toHaveBeenCalled()
     const scripted = props('<p>Advanced</p><script>window.ready=true</script>')
     view.rerender(<HtmlBody {...scripted} />)
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     const advanced = await screen.findByTitle(en.frame)
     expect(advanced).not.toBe(frame)
     expect(advanced.getAttribute('name')).toBe(`dsh-sidebar-html-${TAB_ID}`)
@@ -177,8 +228,17 @@ describe('HtmlBody', () => {
     expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
     expect(readRelated).not.toHaveBeenCalled()
     act(() => { host.publish({ value: { enabled: true } }) })
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
+    expect(readRelated).not.toHaveBeenCalled()
+    expect(screen.getByText(en.interactiveNotice)).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     const advanced = await screen.findByTitle(en.frame)
     expect(advanced.getAttribute('sandbox')).toBe('allow-scripts')
+    expect(readRelated).toHaveBeenCalledOnce()
+    act(() => { host.publish({ value: { enabled: false } }) })
+    expect(advanced.isConnected).toBe(false)
+    act(() => { host.publish({ value: { enabled: true } }) })
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
     expect(readRelated).toHaveBeenCalledOnce()
     view.unmount()
   })
@@ -186,6 +246,7 @@ describe('HtmlBody', () => {
   it('renders a Blob iframe with only scripts allowed, keeping it mounted for unrelated props', async () => {
     const initial = props()
     const view = render(<HtmlBody {...initial} />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     const iframe = await screen.findByTitle(en.frame)
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts')
     expect(iframe.getAttribute('src')).toBe('blob:https://preview.invalid/1')
@@ -200,21 +261,27 @@ describe('HtmlBody', () => {
 
   it('destroys the old frame and revokes its Blob when bytes or source file change', async () => {
     const view = render(<HtmlBody {...props()} />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     const first = await screen.findByTitle(en.frame)
     const changed = props('<p>changed</p>')
     view.rerender(<HtmlBody {...changed} />)
-    expect(await screen.findByTitle(en.frame)).not.toBe(first)
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
     expect(first.isConnected).toBe(false)
     expect(revoke).toHaveBeenCalledWith('blob:https://preview.invalid/1')
-    view.rerender(<HtmlBody {...changed} resourceAddress="dsh-resource://file/session/html/other.html" />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     await screen.findByTitle(en.frame)
+    view.rerender(<HtmlBody {...changed} resourceAddress="dsh-resource://file/session/html/other.html" />)
+    expect(screen.getByTitle(en.frame).getAttribute('sandbox')).toBe('')
     expect(revoke).toHaveBeenCalledWith('blob:https://preview.invalid/2')
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
+    await screen.findByTitle(en.frame)
     view.unmount()
     expect(revoke).toHaveBeenCalledWith('blob:https://preview.invalid/3')
   })
 
   it('reports invalid bytes and Blob creation failures without leaving a previous frame running', async () => {
     const view = render(<HtmlBody {...props()} />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     await screen.findByTitle(en.frame)
     view.rerender(<HtmlBody {...props()} content={{ kind: 'bytes', data: new Uint8Array([255]) }} />)
     expect((await screen.findByRole('alert')).textContent).toBe(en.failed)
@@ -222,6 +289,7 @@ describe('HtmlBody', () => {
     expect(revoke).toHaveBeenCalledWith('blob:https://preview.invalid/1')
     create.mockImplementationOnce(() => { throw new Error('Blob unavailable') })
     view.rerender(<HtmlBody {...props('different')} />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     expect((await screen.findByRole('alert')).textContent).toBe(en.failed)
   })
 
@@ -241,6 +309,8 @@ describe('HtmlBody', () => {
       readRelated: bytes,
     } as unknown as HtmlBodyProps
     const view = render(<HtmlBody {...initial} />)
+    expect(bytes).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     expect(bytes).toHaveBeenCalledOnce()
     expect(bytes).toHaveBeenCalledWith(initial.resourceAddress, './app.js', expect.any(AbortSignal))
     const readSignal = bytes.mock.calls[0]?.[2] as AbortSignal
@@ -264,6 +334,8 @@ describe('HtmlBody', () => {
       readRelated: bytes,
     } as unknown as HtmlBodyProps
     render(<HtmlBody {...initial} />)
+    expect(bytes).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     expect(screen.getByRole('status').getAttribute('aria-label')).toBe(en.loading)
     expect(screen.getByRole('status').hasAttribute('data-document-loading')).toBe(true)
     expect(create).not.toHaveBeenCalled()
@@ -285,6 +357,7 @@ describe('HtmlBody', () => {
       useResource, readRelated: bytes,
     } as unknown as HtmlBodyProps
     const view = render(<HtmlBody {...initial} />)
+    fireEvent.click(screen.getByRole('button', { name: en.enableInteractive }))
     const iframe = await screen.findByTitle(en.frame)
     useResource.mockReturnValue({ value: { version: 'v2' } })
     view.rerender(<HtmlBody {...initial} />)

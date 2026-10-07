@@ -438,7 +438,7 @@ Host Remote file reads and workspace directory observations over the composed fi
  * Read a complete regular file or one byte range without text decoding.
  * @param workspaceFileScope - header-derived workspace root for the Session identity on the wire.
  * @param path - target path, absolute or workspace-relative; relative to the base file's directory when provided.
- * @param options - optional base file and range; without a range the complete-file cap applies.
+ * @param options - base file, optional document confinement, and byte range; without a range the complete-file cap applies.
  * @param signal - caller cancellation.
  * @returns native bytes with the file's version and size at the preceding stat, byte offset, and EOF marker.
  */

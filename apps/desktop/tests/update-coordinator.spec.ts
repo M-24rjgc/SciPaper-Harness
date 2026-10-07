@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AppUpdater } from 'electron-updater'
+import { ElectronHttpExecutor } from 'electron-updater/out/electronHttpExecutor.js'
+import { GitHubProvider } from 'electron-updater/out/providers/GitHubProvider.js'
+import { SemVer } from 'semver'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import { parseDesktopRelease } from '../src/release.ts'
 import type { DesktopUpdateState } from '../src/ipc.ts'
@@ -45,9 +48,9 @@ describe('desktop release metadata', () => {
 })
 
 const coordinators: InstanceType<typeof DesktopUpdateCoordinator>[] = []
-afterEach(() => { for (const item of coordinators.splice(0)) item.dispose() })
+afterEach(() => { for (const item of coordinators.splice(0)) item.dispose(); vi.restoreAllMocks() })
 
-function fixture() {
+function fixture(currentVersion = '1.1.0-alpha.1') {
   const events = new EventEmitter()
   const checkForUpdates = vi.fn(async () => ({
     isUpdateAvailable: true,
@@ -66,13 +69,47 @@ function fixture() {
   const updater = Object.assign(events, { checkForUpdates, downloadUpdate, quitAndInstall }) as unknown as AppUpdater
   const coordinator = new DesktopUpdateCoordinator(
     (state) => { states.push(state); return state },
-    beforeRestart, updater, () => true, () => '1.1.0-alpha.1', downloadResult,
+    beforeRestart, updater, () => true, () => currentVersion, downloadResult,
   )
   coordinators.push(coordinator)
   return { coordinator, updater, events, states, checkForUpdates, downloadUpdate, quitAndInstall, beforeRestart, downloadResult }
 }
 
 describe('desktop update coordinator', () => {
+  it.each([
+    { currentVersion: '0.3.0', nextVersion: '0.3.1', channel: 'latest', allowPrerelease: false },
+    { currentVersion: '0.2.0-alpha.9.20261007.1', nextVersion: '0.3.0', channel: 'alpha', allowPrerelease: true },
+  ])('resolves $currentVersion to $nextVersion through the shipped GitHub provider', async ({ currentVersion, nextVersion, channel, allowPrerelease }) => {
+    const f = fixture(currentVersion)
+    Object.defineProperty(f.updater, 'currentVersion', { value: new SemVer(currentVersion) })
+    const executor = new ElectronHttpExecutor()
+    const requests: string[] = []
+    const feed = `<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom">
+      <entry><title>Preview</title><link href="https://github.com/review/fixture/releases/tag/v0.4.0-alpha.1"/><content>Preview</content></entry>
+      <entry><title>Release</title><link href="https://github.com/review/fixture/releases/tag/v${nextVersion}"/><content>Release</content></entry></feed>`
+    const request = vi.spyOn(executor, 'request').mockImplementation(async (options) => {
+      const path = options.path ?? ''
+      requests.push(path)
+      if (path === '/review/fixture/releases.atom') return feed
+      if (path === '/review/fixture/releases/latest') return JSON.stringify({ tag_name: `v${nextVersion}` })
+      if (path === `/review/fixture/releases/download/v${nextVersion}/latest.yml`) {
+        return `version: ${nextVersion}\nfiles:\n - url: fixture.exe\n   sha512: fixture\npath: fixture.exe\nsha512: fixture\n`
+      }
+      if (path === `/review/fixture/releases/download/v${nextVersion}/alpha.yml`) throw new Error('Fixture channel is absent')
+      throw new Error(`Unexpected fixture request: ${path}`)
+    })
+    const provider = new GitHubProvider({ provider: 'github', owner: 'review', repo: 'fixture' }, f.updater,
+      { platform: 'win32', executor, isUseMultipleRangeRequest: true })
+    // Stable clients select GitHub's stable release; previews retain their selected channel.
+    if (allowPrerelease) request.mockImplementationOnce(async () => feed.replace(/<entry><title>Preview<\/title>.*?<\/entry>\n/u, ''))
+    f.checkForUpdates.mockImplementation(async () => ({ isUpdateAvailable: true, updateInfo: await provider.getLatestVersion() }))
+    expect(await f.coordinator.check(true)).toEqual({ phase: 'available', version: nextVersion })
+    expect(f.updater).toMatchObject({ channel, allowPrerelease, allowDowngrade: false })
+    expect(requests).toContain(`/review/fixture/releases/download/v${nextVersion}/latest.yml`)
+    if (allowPrerelease) expect(requests).toContain(`/review/fixture/releases/download/v${nextVersion}/alpha.yml`)
+    else expect(requests).toContain('/review/fixture/releases/latest')
+  })
+
   it('keeps safe preparation diagnostics separate and clears them on an explicit retry', async () => {
     const f = fixture()
     await f.coordinator.check()

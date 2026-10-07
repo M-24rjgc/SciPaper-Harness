@@ -2,14 +2,15 @@
  * Node half of the HMR plugin: bundle watches follow the graph, stat changes
  * report through clientModuleHost.rebuilt, and everything dies with the fiber.
  */
-import { EventEmitter } from 'node:events'
-import type { ServerResponse, IncomingMessage } from 'node:http'
+import { IncomingMessage, ServerResponse } from 'node:http'
+import { Socket } from 'node:net'
 import { mkdtempSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import { Context } from '@deepseek-ai/cordis'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { OperatorPeer } from '@deepseek-ai/dsh-client-connection'
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import type { ClientArtifactBaseline, ClientModuleRegistry, WebBootGraph } from '@deepseek-ai/dsh-client-modules'
 import type { WebRoute, WebServer } from '@deepseek-ai/dsh-host-webserver'
 import { apply, Config, EVENTS_ENDPOINT, inject } from '../src/index.ts'
@@ -91,6 +92,7 @@ function fakeHttpServer(routes: WebRoute[]): WebServer {
 
 async function mount(clientModuleHost: FakeHost, webServer: WebServer) {
   const ctx = new Context()
+  const peer = provideConnection(ctx)
   ctx.provide('clientModules', clientModuleHost)
   ctx.provide('webServer', webServer)
   const fiber = ctx.plugin(
@@ -98,10 +100,67 @@ async function mount(clientModuleHost: FakeHost, webServer: WebServer) {
     { pollIntervalMs: POLL_MS },
   )
   await fiber.await()
+  fiber.ctx.effect(() => () => peer.dispose(), 'fixture operator Peer')
   return fiber
 }
 
+function provideConnection(ctx: Context): OperatorPeer {
+  const peer = new OperatorPeer(ctx)
+  ctx.provide('connection', { admit: () => ({ peer }) } as never)
+  return peer
+}
+
+/** A real response surface with controlled writes and no network socket. */
+function recordingResponse(write: (line: string) => boolean): { response: ServerResponse; destroyed: MockInstance<ServerResponse['destroy']> } {
+  const response = new ServerResponse(new IncomingMessage(new Socket()))
+  vi.spyOn(response, 'writeHead').mockImplementation(() => response)
+  vi.spyOn(response, 'write').mockImplementation(chunk => write(String(chunk)))
+  const destroyed = vi.spyOn(response, 'destroy').mockImplementation(() => {
+    response.emit('close')
+    return response
+  })
+  return { response, destroyed }
+}
+
 describe('hmr node half', () => {
+  it('keeps only the latest complete graph while a subscriber waits for drain', async () => {
+    const first = join(dir, 'first.js')
+    const latest = join(dir, 'latest.js')
+    writeFileSync(first, 'first')
+    writeFileSync(latest, 'latest')
+    const rows = new Map<string, string>()
+    const host = fakeClientModuleHost(rows)
+    const routes: WebRoute[] = []
+    const fiber = await mount(host, fakeHttpServer(routes))
+    const lines: string[] = []
+    let writable = false
+    const { response } = recordingResponse((line) => { lines.push(line); return line.startsWith(':') || writable })
+    try {
+      await routes[0]!.handler({ method: 'GET' } as IncomingMessage, response)
+      expect(lines).toHaveLength(2)
+      rows.set('first', first)
+      host.fireGraphChanged()
+      rows.clear()
+      rows.set('latest', latest)
+      host.fireGraphChanged()
+      expect(lines).toHaveLength(2)
+
+      writable = true
+      response.emit('drain')
+      expect(lines).toHaveLength(3)
+      const frame = JSON.parse(lines[2]!.slice(6)) as { graph: WebBootGraph }
+      expect(frame.graph.entries.map(row => row.id)).toEqual(['latest'])
+      await fiber.dispose()
+      expect(response.listenerCount('drain')).toBe(0)
+      expect(response.listenerCount('error')).toBe(0)
+      host.fireGraphChanged()
+      response.emit('drain')
+      expect(lines).toHaveLength(3)
+    } finally {
+      await fiber.dispose()
+    }
+  })
+
   it('watches graph bundles, ignores map-only changes, and unwatches on dispose', async () => {
     const bundle = join(dir, 'a.js')
     writeFileSync(bundle, 'v1')
@@ -264,6 +323,7 @@ it('broadcasts the desired graph without waiting for Host activation or cleanup'
   const routes: WebRoute[] = []
   ctx.provide('clientModules', host)
   ctx.provide('webServer', fakeHttpServer(routes))
+  provideConnection(ctx)
   let release!: () => void
   let cleaned!: () => void
   let started!: () => void
@@ -285,12 +345,9 @@ it('broadcasts the desired graph without waiting for Host activation or cleanup'
   const route = routes[0]!
   const connect = async () => {
     const lines: string[] = []
-    const response = Object.assign(new EventEmitter(), {
-      writeHead: vi.fn(), write: (line: string) => { lines.push(line) },
-      destroy: vi.fn(), end: vi.fn(),
-    })
-    await route.handler({ method: 'GET' } as IncomingMessage, response as unknown as ServerResponse)
-    return { lines, response }
+    const { response, destroyed } = recordingResponse((line) => { lines.push(line); return true })
+    await route.handler({ method: 'GET' } as IncomingMessage, response)
+    return { lines, response, destroyed }
   }
   try {
     const first = await connect()
@@ -328,8 +385,8 @@ it('broadcasts the desired graph without waiting for Host activation or cleanup'
     await fiber.dispose()
     host.fireGraphChanged()
     expect(second.lines).toHaveLength(3)
-    expect(second.response.destroy).toHaveBeenCalledOnce()
-    expect(third.response.destroy).toHaveBeenCalledOnce()
+    expect(second.destroyed).toHaveBeenCalledOnce()
+    expect(third.destroyed).toHaveBeenCalledOnce()
   } finally {
     release()
     cleaned()

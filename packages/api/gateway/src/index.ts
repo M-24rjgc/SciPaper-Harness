@@ -368,6 +368,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
     }
 
     try {
+      prepared.invocation.signal.throwIfAborted()
       return await Reflect.apply(prepared.method, prepared.receiver, prepared.args) as unknown
     } catch (error) {
       if (prepared.invocation.signal.aborted) throw remoteCancelled(prepared.endpoint, error)
@@ -403,6 +404,7 @@ export class TypertGatewayService extends Service implements TypertGateway {
     }
     let source: unknown
     try {
+      prepared.invocation.signal.throwIfAborted()
       source = Reflect.apply(prepared.method, prepared.receiver, prepared.args) as unknown
     } catch (error) {
       await prepared.invocation.close()

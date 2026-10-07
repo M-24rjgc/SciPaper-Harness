@@ -13,6 +13,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type imports carry the clientModules/webServer Context merges.
 import type { ClientArtifactBaseline } from '@deepseek-ai/dsh-client-modules'
+import type { PeerAdmission } from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { PluginsEventFrame } from './events.ts'
 import { EVENTS_ENDPOINT } from './events.ts'
@@ -24,7 +25,7 @@ export { EVENTS_ENDPOINT } from './events.ts'
 export const name = 'client-hmr'
 
 /** Required services: the client graph and Web route registry. */
-export const inject = ['clientModules', 'webServer']
+export const inject = ['clientModules', 'webServer', 'connection']
 
 /** Plugin config, validated by the same-named schemastery schema. */
 export interface Config {
@@ -36,9 +37,75 @@ export const Config: z<Config> = z.object({
   pollIntervalMs: z.number().step(1).min(1).default(500),
 })
 
+const SSE_HEADERS = {
+  'content-type': 'text/event-stream',
+  'cache-control': 'no-cache',
+  'connection': 'keep-alive',
+}
+
 /** Serialize one frame as an SSE data line. */
 function sseData(frame: PluginsEventFrame): string {
   return `data: ${JSON.stringify(frame)}\n\n`
+}
+
+/** One admitted graph subscriber, retaining at most the latest snapshot behind backpressure. */
+class GraphSubscriber {
+  private pending: string | undefined
+  private blocked = false
+  private closed = false
+  private releasePeer: (() => Promise<void>) | undefined
+  private readonly finished = Promise.withResolvers<undefined>()
+
+  constructor(private readonly response: ServerResponse, private readonly removed: () => void) {
+    response.once('close', this.onClose)
+    response.on('error', this.onError)
+    response.on('drain', this.onDrain)
+  }
+
+  bind(peer: Extract<PeerAdmission, { readonly peer: object }>['peer']): void {
+    this.releasePeer = peer.ctx.effect(() => () => this.close(), 'client-hmr: admitted graph subscriber')
+  }
+
+  send(line: string, latestGraph: string): void {
+    if (this.closed) return
+    if (this.blocked) {
+      this.pending = latestGraph
+      return
+    }
+    try { this.blocked = !this.response.write(line) }
+    catch { void this.close() }
+  }
+
+  close(): Promise<void> {
+    if (!this.closed) {
+      this.closed = true
+      this.pending = undefined
+      this.response.off('drain', this.onDrain)
+      this.removed()
+      this.response.destroy()
+    }
+    return this.finished.promise.then(() => undefined)
+  }
+
+  private readonly onDrain = (): void => {
+    if (this.closed) return
+    this.blocked = false
+    const line = this.pending
+    this.pending = undefined
+    if (line !== undefined) this.send(line, line)
+  }
+
+  private readonly onError = (): void => { void this.close() }
+
+  private readonly onClose = (): void => {
+    this.closed = true
+    this.pending = undefined
+    this.response.off('drain', this.onDrain)
+    this.response.off('error', this.onError)
+    this.removed()
+    this.finished.resolve(undefined)
+    void this.releasePeer?.()
+  }
 }
 
 type WatchedBundleStat = Omit<ClientArtifactBaseline, 'path'>
@@ -156,25 +223,25 @@ export function apply(ctx: Context, config: Config): void {
   }, 'client-hmr: bundle watches')
 
   // --- /plugins/events SSE channel ----------------------------------------
-  const connections = new Set<ServerResponse>()
+  const connections = new Set<GraphSubscriber>()
+  const currentGraph = (): string => sseData({ type: 'graph', graph: ctx.clientModules.graph() })
 
   const publishGraph = (): void => {
-    const line = sseData({ type: 'graph', graph: ctx.clientModules.graph() })
-    for (const res of connections) res.write(line)
+    const line = currentGraph()
+    for (const client of connections) client.send(line, line)
   }
 
-  const connect = (res: ServerResponse): void => {
-    res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache',
-      'connection': 'keep-alive',
-    })
+  const connect = (res: ServerResponse, peer: Extract<PeerAdmission, { readonly peer: object }>['peer']): void => {
+    const client = new GraphSubscriber(res, () => { connections.delete(client) })
+    try { client.bind(peer) }
+    catch { void client.close(); return }
+    connections.add(client)
+    res.writeHead(200, SSE_HEADERS)
     // Comment line on open so clients/proxies see a live channel even when
     // no rebuild ever happens; EventSource frame parsing skips it naturally.
-    res.write(': connected\n\n')
-    connections.add(res)
-    res.write(sseData({ type: 'graph', graph: ctx.clientModules.graph() }))
-    res.on('close', () => { connections.delete(res) })
+    const graph = currentGraph()
+    client.send(': connected\n\n', graph)
+    client.send(graph, graph)
   }
 
   ctx.effect(() => {
@@ -182,6 +249,12 @@ export function apply(ctx: Context, config: Config): void {
       kind: 'exact',
       path: EVENTS_ENDPOINT,
       handler: (req, res) => {
+        const admission = ctx.connection.admit(req)
+        if ('rejection' in admission) {
+          res.writeHead(admission.rejection, { 'cache-control': 'no-store' })
+          res.end(admission.rejection === 401 ? 'unauthorized' : 'forbidden')
+          return
+        }
         // Named routes match ahead of the carrier's method gate; keep the old
         // global 405 semantics for non-GET hits on this endpoint.
         if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -189,19 +262,25 @@ export function apply(ctx: Context, config: Config): void {
           res.end()
           return
         }
-        connect(res)
+        if (req.method === 'HEAD') {
+          res.writeHead(200, SSE_HEADERS)
+          res.end()
+          return
+        }
+        connect(res, admission.peer)
       },
     })
     const unsubscribeGraph = ctx.clientModules.onGraphChanged(publishGraph)
     const unsubscribe = ctx.clientModules.onRebuilt((id, rev) => {
       const line = sseData({ type: 'rebuilt', id, rev })
-      for (const res of connections) res.write(line)
+      const graph = currentGraph()
+      for (const client of connections) client.send(line, graph)
     })
-    return () => {
+    return async () => {
       unsubscribeGraph()
       unsubscribe()
       disposeRoute()
-      for (const res of connections) res.destroy()
+      await Promise.all([...connections].map(client => client.close()))
       connections.clear()
     }
   }, 'client-hmr: /plugins/events channel')

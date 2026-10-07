@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DesktopRemoteAccess, RemoteAccessError, type RemoteHost, type RemoteTunnel, type RemotePairing } from '../src/remote-access.ts'
-import { cloudflaredArtifact, waitForPublicTunnel } from '../src/remote-tunnel.ts'
+import { cloudflaredArtifact, cloudflaredEnvironment, waitForPublicTunnel } from '../src/remote-tunnel.ts'
 import type { DesktopRemotePresentation } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 
 function fixture() {
@@ -115,6 +115,21 @@ it('pins supported carrier artifacts and rejects other platforms', () => {
   expect(cloudflaredArtifact('darwin', 'arm64').archive).toBe(true)
   expect(cloudflaredArtifact('darwin', 'x64').archive).toBe(true)
   expect(() => cloudflaredArtifact('linux', 'x64')).toThrow(RemoteAccessError)
+})
+
+it('gives the tunnel only OS paths, proxy and TLS settings without credentials or runtime hooks', () => {
+  const environment = {
+    PATH: 'system-path', SystemRoot: 'windows-root', TMPDIR: 'private-temp', LANG: 'zh_CN.UTF-8',
+    https_proxy: 'https://proxy.example', NO_PROXY: 'localhost', SSL_CERT_FILE: 'trusted-ca.pem',
+    DEEPSEEK_API_KEY: 'model-secret', AWS_SECRET_ACCESS_KEY: 'cloud-secret', GH_TOKEN: 'release-secret',
+    DSH_LAUNCH_ENVIRONMENT: 'credential-snapshot', NODE_OPTIONS: '--require untrusted.js',
+    NODE_PATH: 'untrusted-modules', TUNNEL_ORIGIN_CERT: 'untrusted-cert', CLOUDFLARED_CONFIG: 'untrusted-config',
+  }
+  const selected = cloudflaredEnvironment(environment)
+  expect(selected).toEqual({ PATH: 'system-path', SystemRoot: 'windows-root', TMPDIR: 'private-temp', LANG: 'zh_CN.UTF-8',
+    https_proxy: 'https://proxy.example', NO_PROXY: 'localhost', SSL_CERT_FILE: 'trusted-ca.pem' })
+  selected.PATH = 'changed'
+  expect(environment.PATH).toBe('system-path')
 })
 
 it('waits through relay provisioning, checks the Host fence, and sends no credentials', async () => {

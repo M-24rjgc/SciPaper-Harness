@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The shipped Web composition mounts this transport for live plugin changes. During development, a bundle watcher also supplies code rebuilds. Disabling the transport stops graph delivery to open pages.
+The shipped Web composition mounts this transport for live plugin changes. During development, a bundle watcher also supplies code rebuilds. Disabling the transport stops graph delivery to open pages. The graph stream applies Connection's Host/Origin checks and browser authentication before sending any graph; each subscriber belongs to the admitted Peer, whose disposal stops delivery and waits for its response to close. Authenticated `HEAD` requests return headers without opening a stream. Backpressure retains only the latest complete graph, which includes the revisions of coalesced rebuild notices.
 
 ### Starting the reload chain
 

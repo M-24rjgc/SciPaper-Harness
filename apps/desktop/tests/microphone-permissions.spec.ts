@@ -25,6 +25,31 @@ it('allows only audio checks from the owned primary application frame', () => {
   expect(f.check(f.primary, 'media', 'dsh-app://app', { ...details, mediaType: 'video' })).toBe(false)
   expect(f.check(f.primary, 'clipboard-sanitized-write', 'dsh-app://app', details)).toBe(true)
 })
+it('denies unrelated permissions and clipboard writes from unowned documents or subframes', () => {
+  const f = fixture(), checked = { isMainFrame: true, mediaType: 'audio' as const }
+  const requested = { isMainFrame: true, requestingUrl: 'dsh-app://app/' }
+  const done = vi.fn()
+  for (const permission of ['geolocation', 'notifications', 'midi', 'midiSysex', 'clipboard-read', 'fullscreen'] as const) {
+    expect(f.check(f.primary, permission, 'dsh-app://app', checked)).toBe(false)
+    f.request(f.primary, permission, done, requested)
+    expect(done).toHaveBeenLastCalledWith(false)
+  }
+  for (const caller of [null, {} as WebContents]) {
+    expect(f.check(caller, 'clipboard-sanitized-write', 'dsh-app://app', checked)).toBe(false)
+  }
+  expect(f.check(f.primary, 'clipboard-sanitized-write', 'https://example.com', checked)).toBe(false)
+  expect(f.check(f.primary, 'clipboard-sanitized-write', 'dsh-app://app', { ...checked, isMainFrame: false })).toBe(false)
+  f.request({} as WebContents, 'clipboard-sanitized-write', done, requested)
+  expect(done).toHaveBeenLastCalledWith(false)
+  f.request(f.primary, 'clipboard-sanitized-write', done, { ...requested, isMainFrame: false })
+  expect(done).toHaveBeenLastCalledWith(false)
+  f.request(f.primary, 'clipboard-sanitized-write', done, { ...requested, requestingUrl: 'https://example.com/' })
+  expect(done).toHaveBeenLastCalledWith(false)
+  f.request(f.primary, 'media', done, { ...requested, requestingUrl: 'dsh-app://app/api/file?path=report.html', mediaTypes: ['audio'] })
+  expect(done).toHaveBeenLastCalledWith(false)
+  f.request(f.primary, 'clipboard-sanitized-write', done, requested)
+  expect(done).toHaveBeenLastCalledWith(true)
+})
 it.each(['not-determined', 'granted', 'denied', 'restricted', 'unknown'] as const)(
   'reports existing macOS microphone authorization for %s', (status) => {
     const f = fixture()

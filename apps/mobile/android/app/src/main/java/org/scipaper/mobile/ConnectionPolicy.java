@@ -74,4 +74,12 @@ public final class ConnectionPolicy {
     public static boolean ownedBlob(String origin, String target) {
         return target != null && target.startsWith("blob:") && sameOrigin(origin, target.substring(5));
     }
+
+    /** Only the same HTTPS origin's root without query or fragment can retire a pairing URL. */
+    public static boolean cleanAppPage(String origin, String target) {
+        if (!sameOrigin(origin, target)) return false;
+        URI uri = requireRemoteHttps(target);
+        return (uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath()))
+                && uri.getRawQuery() == null && uri.getRawFragment() == null;
+    }
 }

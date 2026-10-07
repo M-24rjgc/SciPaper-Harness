@@ -191,7 +191,7 @@ it('rebinds policy updates and reloads to a replacement Windows main window', ()
   setup('win32')
   const previous = window
   window = fakeWindow()
-  window.webContents.mainFrame.url = 'dsh-app://app/?recovery=1#home'
+  window.webContents.mainFrame.url = 'dsh-app://app/'
   ui!.sync()
   expect(previous.webContents.listenerCount('did-finish-load')).toBe(0)
   expect(window.webContents.send.mock.calls.at(-1)).toMatchObject([MANDATORY_IPC.state, { policy: { blocking: true } }])

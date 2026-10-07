@@ -55,7 +55,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Resource linking failed' }
 $taskSources = @(& rg --files (Join-Path $taskAndroidRoot 'app\src\main\java') $taskGenerated -g '*.java')
 & $taskJavac --release 17 -encoding UTF-8 -classpath $taskApi -d $taskClasses @taskSources
 if ($LASTEXITCODE -ne 0) { throw 'Android Java compilation failed' }
-& $taskJavac --release 17 -encoding UTF-8 -d $taskTestClasses (Join-Path $taskAndroidRoot 'app\src\main\java\org\scipaper\mobile\ConnectionPolicy.java') (Join-Path $taskAndroidRoot 'tests\ConnectionPolicyTest.java')
+& $taskJavac --release 17 -encoding UTF-8 -d $taskTestClasses (Join-Path $taskAndroidRoot 'app\src\main\java\org\scipaper\mobile\ConnectionPolicy.java') (Join-Path $taskAndroidRoot 'app\src\main\java\org\scipaper\mobile\ConnectionNavigation.java') (Join-Path $taskAndroidRoot 'tests\ConnectionPolicyTest.java')
 if ($LASTEXITCODE -ne 0) { throw 'Connection policy test compilation failed' }
 & $taskJava -classpath $taskTestClasses org.scipaper.mobile.ConnectionPolicyTest
 if ($LASTEXITCODE -ne 0) { throw 'Connection policy tests failed' }
@@ -79,7 +79,7 @@ try {
     } elseif (!$env:SCIPAPER_SIGNING_PASSWORD) {
         throw 'Set SCIPAPER_SIGNING_PASSWORD for the supplied signing store.'
     }
-    if (!$OutputPath) { $OutputPath = Join-Path $taskMobileRoot 'build\SciPaper-Android-0.1.0-preview.1.apk' }
+    if (!$OutputPath) { $OutputPath = Join-Path $taskMobileRoot 'build\SciPaper-Android-0.3.0.apk' }
     $taskSignedApk = Join-Path $taskBuildRoot 'signed.apk'
     & $taskJava -classpath ($taskToolsClasses + ';' + $taskPackagerClasspath) AssembleApk $taskResourceApk (Join-Path $taskDex 'classes.dex') $SigningStore (Join-Path $taskBuildRoot 'unsigned.apk') $taskSignedApk
     if ($LASTEXITCODE -ne 0) { throw 'APK packaging or signature verification failed' }

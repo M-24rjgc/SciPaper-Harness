@@ -51,4 +51,9 @@ enum ConnectionPolicy {
         guard url.absoluteString.hasPrefix("blob:"), let embedded = URL(string: String(url.absoluteString.dropFirst(5))) else { return false }
         return sameOrigin(embedded, origin)
     }
+
+    static func cleanAppPage(_ url: URL, _ origin: String) -> Bool {
+        guard sameOrigin(url, origin), let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return false }
+        return (parts.path.isEmpty || parts.path == "/") && parts.query == nil && parts.fragment == nil
+    }
 }

@@ -184,7 +184,7 @@ it('discovers client-preset packages the shell links, excluding loader-delivered
   }
 })
 
-it('rebuilds a client-plugin bundle after its source changes', async () => {
+it('selects the Client face and rebuilds when emitted input changes', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-dev-web-watch-'))
   let bundles: TsdownBundle[] = []
   try {
@@ -192,14 +192,28 @@ it('rebuilds a client-plugin bundle after its source changes', async () => {
     await writeFile(join(root, 'package.json'), JSON.stringify({ name: '@dsh-test/dev-web-watch', private: true, type: 'module' }))
     await writeFile(join(root, 'tsdown.config.ts'), `
 import { defineConfig } from 'tsdown'
-export default defineConfig({
-  entry: { client: 'src.ts' }, outDir: 'lib', format: 'cjs', platform: 'browser', dts: false, clean: false,
-  outputOptions: { entryFileNames: 'client.js' },
+import { clientBundle } from ${JSON.stringify(new URL('../packages/client/tsdown.client.ts', import.meta.url).href)}
+export default defineConfig(({ env }) => {
+  if (env?.DSH_BUILD_FACE !== 'client') throw new Error('watch build must select the Client face')
+  const configs = clientBundle('@deepseek-ai/dsh-client-ui-conversation', [])({ env })
+  const client = configs.find(config => config.platform === 'browser')
+  const sourceMap = client?.plugins.find(plugin => plugin.name === 'dsh-tsc-sourcemap')
+  if (!sourceMap) throw new Error('the Client preset must provide its emitted-source loader')
+  return {
+    entry: { client: 'lib/types/client.js' }, outDir: 'lib', format: 'cjs', platform: 'browser', dts: false, clean: false,
+    inputOptions: { resolve: { conditionNames: ['browser', 'import', 'default'] } },
+    plugins: [sourceMap],
+    outputOptions: { entryFileNames: 'client.js' },
+  }
 })
 `)
-    const sourcePath = join(root, 'src.ts')
+    const sourcePath = join(root, 'lib/types/client.js')
     const bundlePath = join(root, 'lib/client.js')
+    await mkdir(join(root, 'lib/types'), { recursive: true })
     await writeFile(sourcePath, 'export const version = "watch-v1"\n')
+    await writeFile(`${sourcePath}.map`, JSON.stringify({
+      version: 3, file: 'client.js', sources: ['client.js'], sourcesContent: ['export const version = "watch-v1"'], names: [], mappings: '',
+    }))
     bundles = await watchClientPlugins(root, ['.'], 50)
     expect(await readFile(bundlePath, 'utf8')).toContain('watch-v1')
 

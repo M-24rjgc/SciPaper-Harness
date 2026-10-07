@@ -17,6 +17,9 @@
   ],
   "references": [
     {
+      "path": "../connection/tsconfig.host.json"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {

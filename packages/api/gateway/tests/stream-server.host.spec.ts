@@ -1,11 +1,14 @@
 import { once } from 'node:events'
 import { createServer, type Server } from 'node:http'
+import { connect as connectTcp } from 'node:net'
+import type { Duplex } from 'node:stream'
 import { Context } from '@deepseek-ai/cordis'
 import { remoteErrorOf, type PeerId, type PeerScope } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import WebSocket from 'ws'
 import {
   RemoteStreamMuxServer,
+  rejectRemoteStreamUpgrade,
   type RemoteStreamFailureMapper,
   type RemoteStreamOpener,
 } from '../src/stream-server.ts'
@@ -27,6 +30,42 @@ afterEach(async () => {
 })
 
 describe('Remote stream mux server carrier lifecycle', () => {
+  it.each([401, 403] as const)('writes a complete %i rejection and releases a TCP peer that withholds its close', async (status) => {
+    const http = createServer()
+    let accepted: Duplex | undefined
+    http.on('upgrade', (_request, socket) => {
+      accepted = socket
+      rejectRemoteStreamUpgrade(socket, status)
+    })
+    await new Promise<void>((resolve) => { http.listen(0, '127.0.0.1', resolve) })
+    const address = http.address()
+    if (address === null || typeof address === 'string') throw new Error('fixture HTTP server has no TCP port')
+    const client = connectTcp({ host: '127.0.0.1', port: address.port, allowHalfOpen: true })
+    let response = ''
+    client.on('data', (chunk) => { response += String(chunk) })
+    try {
+      await once(client, 'connect')
+      const ended = once(client, 'end')
+      client.write(upgradeRequest(address.port))
+      await ended
+      const reason = status === 401 ? 'Unauthorized' : 'Forbidden'
+      expect(response).toBe([
+        `HTTP/1.1 ${String(status)} ${reason}`,
+        'Connection: close',
+        'Content-Type: text/plain; charset=utf-8',
+        `Content-Length: ${String(reason.length)}`,
+        '',
+        reason.toLowerCase(),
+      ].join('\r\n'))
+      await vi.waitFor(() => { expect(accepted?.destroyed).toBe(true) })
+      expect(client.writableEnded).toBe(false)
+    } finally {
+      client.destroy()
+      accepted?.destroy()
+      await closeHttp(http)
+    }
+  })
+
   it('sends WebSocket Ping control frames without application messages', async () => {
     const entry = await startMux(async (_endpoint, _payload, _uplink, _peer, control) => waitForAbort(control.signal), 20)
     const client = await connect(entry.url)
@@ -192,17 +231,20 @@ describe('Remote stream mux server carrier lifecycle', () => {
 
   it('leaves a failed stream silent once its socket is no longer open', async () => {
     const opened = Promise.withResolvers<undefined>()
+    const fail = Promise.withResolvers<undefined>()
     const entry = await startMux(async () => {
       opened.resolve(undefined)
+      await fail.promise
       throw new Error('fixture opener failure')
     })
     const client = await connect(entry.url)
     const frames = collectFrames(client)
     const serverSocket = acceptedSocket(entry.mux)
-    Object.defineProperty(serverSocket, 'readyState', { configurable: true, value: WebSocket.CLOSING })
     try {
       client.send(openFrame('silent'))
       await opened.promise
+      Object.defineProperty(serverSocket, 'readyState', { configurable: true, value: WebSocket.CLOSING })
+      fail.resolve(undefined)
       // The failure path awaits nothing before it inspects the socket, so one
       // macrotask hop drains every microtask it can schedule.
       await new Promise<void>((resolve) => { setImmediate(resolve) })
@@ -258,6 +300,55 @@ describe('Remote stream mux server carrier lifecycle', () => {
 })
 
 describe('Remote stream mux server Peer binding', () => {
+  it('revokes Host streams and refuses new opens and uplink while a peer ignores the close handshake', async () => {
+    const peer = await fixturePeer()
+    const started = Promise.withResolvers<undefined>()
+    let resources = 0
+    const inputs: unknown[] = []
+    const opened = vi.fn(async (_endpoint: string, _payload: unknown, uplink: AsyncIterable<unknown>) => (async function *() {
+      resources += 1
+      started.resolve(undefined)
+      try {
+        for await (const value of uplink) {
+          inputs.push(value)
+          yield value
+        }
+      } finally {
+        resources -= 1
+      }
+    })())
+    const entry = await startMux(opened, 2_000, 262_144, peer)
+    const url = new URL(entry.url)
+    const client = connectTcp({ host: url.hostname, port: Number(url.port), allowHalfOpen: true })
+    try {
+      await once(client, 'connect')
+      const handshake = once(client, 'data')
+      client.write(upgradeRequest(Number(url.port)))
+      expect(String((await handshake)[0])).toContain('101 Switching Protocols')
+      const serverSocket = acceptedSocket(entry.mux)
+      client.write(maskedText(openFrame('active')))
+      await started.promise
+      expect(resources).toBe(1)
+
+      await peer.dispose()
+      expect(resources).toBe(0)
+      expect(serverSocket.readyState).toBe(WebSocket.CLOSING)
+      // The raw client keeps parsing text possible without acknowledging the Host's close frame.
+      const received = countMessages(serverSocket)
+      client.write(Buffer.concat([
+        maskedText(openFrame('after-revocation')),
+        maskedText(itemFrame('active', 'after-revocation')),
+      ]))
+      await vi.waitFor(() => { expect(received.count).toBe(2) })
+      expect(opened).toHaveBeenCalledTimes(1)
+      expect(resources).toBe(0)
+      expect(inputs).toEqual([])
+    } finally {
+      client.destroy()
+      await peer.dispose()
+    }
+  })
+
   it('closes an upgrade at once when the admitted Peer scope is already disposed', async () => {
     const peer = await fixturePeer()
     await peer.dispose()
@@ -571,6 +662,34 @@ function failWrites(serverSocket: WebSocket): void {
 
 function openFrame(streamId: string, endpoint = 'fixture/follow'): string {
   return JSON.stringify({ type: 'open', streamId, endpoint, payload: {} })
+}
+
+function upgradeRequest(port: number): string {
+  return [
+    'GET /api/remote.mux HTTP/1.1',
+    `Host: 127.0.0.1:${String(port)}`,
+    'Connection: Upgrade',
+    'Upgrade: websocket',
+    'Sec-WebSocket-Version: 13',
+    'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+    '',
+    '',
+  ].join('\r\n')
+}
+
+/** A small masked RFC 6455 text frame for a client that does not acknowledge close frames. */
+function maskedText(text: string): Buffer {
+  const payload = Buffer.from(text)
+  if (payload.byteLength > 125) throw new RangeError('fixture text frame exceeds the small-frame encoding')
+  const mask = Buffer.from([1, 2, 3, 4])
+  const frame = Buffer.alloc(6 + payload.byteLength)
+  frame[0] = 0x81
+  frame[1] = 0x80 | payload.byteLength
+  mask.copy(frame, 2)
+  for (let index = 0; index < payload.byteLength; index++) {
+    frame[6 + index] = (payload[index] as number) ^ (mask[index % 4] as number)
+  }
+  return frame
 }
 
 function itemFrame(streamId: string, value?: unknown): string {

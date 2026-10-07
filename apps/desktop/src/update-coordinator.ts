@@ -66,8 +66,9 @@ export class DesktopUpdateCoordinator {
     }
     this.updater.autoDownload = false
     this.updater.autoInstallOnAppQuit = false
-    this.updater.channel = /^\d+\.\d+\.\d+-([0-9A-Za-z-]+)/u.exec(currentVersion())?.[1] ?? 'latest'
-    this.updater.allowPrerelease = true
+    const prereleaseChannel = /^\d+\.\d+\.\d+-([0-9A-Za-z-]+)/u.exec(currentVersion())?.[1]
+    this.updater.channel = prereleaseChannel ?? 'latest'
+    this.updater.allowPrerelease = prereleaseChannel !== undefined
     // Selecting a channel can enable downgrade in electron-updater.
     this.updater.allowDowngrade = false
     this.updater.on('download-progress', this.onProgress)

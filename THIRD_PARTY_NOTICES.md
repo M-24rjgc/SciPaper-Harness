@@ -142,6 +142,10 @@ External packages installed for runtime use or distributed inside the prebuilt b
 
 pnpm applies local patches to the following packages at install time, so shipped artifacts carry modified copies; each patch file is the complete record of the modification:
 
+- `uuid@8.3.2` — [`patches/uuid@8.3.2.patch`](patches/uuid@8.3.2.patch)
+- `sprintf-js@1.1.3` — [`patches/sprintf-js@1.1.3.patch`](patches/sprintf-js@1.1.3.patch)
+- `extract-zip@2.0.1` — [`patches/extract-zip@2.0.1.patch`](patches/extract-zip@2.0.1.patch)
+- `http-cache-semantics@4.2.0` — [`patches/http-cache-semantics@4.2.0.patch`](patches/http-cache-semantics@4.2.0.patch)
 - `@earendil-works/pi-ai@0.87.1` — [`patches/@earendil-works__pi-ai@0.87.1.patch`](patches/@earendil-works__pi-ai@0.87.1.patch)
 - `@electron/osx-sign@1.3.3` — [`patches/@electron__osx-sign@1.3.3.patch`](patches/@electron__osx-sign@1.3.3.patch)
 - `@fortune-sheet/core@1.0.4` — [`patches/@fortune-sheet__core@1.0.4.patch`](patches/@fortune-sheet__core@1.0.4.patch)
@@ -229,6 +233,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`esbuild`](https://github.com/evanw/esbuild) | MIT |
 | [`eslint-plugin-sonarjs`](https://github.com/SonarSource/SonarJS) | LGPL-3.0-only |
 | [`fast-check`](https://github.com/dubzzz/fast-check) | MIT |
+| [`http-cache-semantics`](https://github.com/kornelski/http-cache-semantics) | BSD-2-Clause |
 | [`http-server`](https://github.com/http-party/http-server) | MIT |
 | [`istanbul-lib-report`](https://github.com/istanbuljs/istanbuljs) | BSD-3-Clause |
 | [`jscpd`](https://github.com/kucherenko/jscpd) | MIT |
@@ -244,8 +249,10 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`publint`](https://github.com/publint/publint) | MIT |
 | [`smol-toml`](https://github.com/squirrelchat/smol-toml) | BSD-3-Clause |
 | [`spdx-expression-parse`](https://github.com/jslicense/spdx-expression-parse.js) | MIT |
+| [`sprintf-js`](https://github.com/alexei/sprintf.js) | BSD-3-Clause |
 | [`tar`](https://github.com/isaacs/node-tar) | BlueOak-1.0.0 |
 | [`tsdown`](https://github.com/rolldown/tsdown) | MIT |
+| [`uuid`](https://github.com/uuidjs/uuid) | MIT |
 | [`vite`](https://github.com/vitejs/vite) | MIT |
 | [`vite-tsconfig-paths`](https://github.com/aleclarson/vite-tsconfig-paths) | MIT |
 | [`vitepress`](https://github.com/vuejs/vitepress) | MIT |

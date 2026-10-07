@@ -46,7 +46,7 @@ tab 使用 `fileAddressFor` 构造的 Session 地址，携带相对或绝对路�
 <a id="how-it-reads"></a>
 ## 怎么读
 
-Web 和桌面端均通过代码工作工具选择 HTML 预览策略。渲染器从插件组装层接收 `interactivePreview`。关闭时，将经 DOMPurify 清理的完整静态文档放入不授予沙箱权限的 iframe：CSP 禁止脚本、外部资源、连接、表单和嵌套框架；所有 `href` 和 `xlink:href` 属性、刷新指令及声明式 Shadow DOM 均在重新解析前被移除。行内样式和 data 图片仍可显示，不读取关联文件。开启时使用下述支持脚本的 Blob 预览。切换模式会卸载之前的框架并中止其待处理关联文件读取。静态预览释放 CSS/JS 的 Resource 订阅，根文件继续监听。其他文档格式保持各自策略。
+Web 和桌面端的 HTML 均从静态预览开始。代码工作工具仅使**启用交互预览**按钮可用；选中该文档的操作后，脚本才会运行。操作说明文档脚本可以访问网络，仅适用于可信文档。替换文件或文件字节后，需重新选择启用。关闭交互预览或代码工作工具会卸载脚本框架，并中止其待处理关联文件读取。静态预览将经 DOMPurify 清理的完整文档放入不授予沙箱权限的 iframe：CSP 禁止脚本、外部资源、连接、表单和嵌套框架；所有 `href` 和 `xlink:href` 属性、刷新指令及声明式 Shadow DOM 均在重新解析前被移除。行内样式和 data 图片仍可显示。静态模式不读取关联文件，释放 CSS/JS 的 Resource 订阅，根文件继续监听。其他文档格式保持各自策略。
 
 两种 HTML 模式均将 iframe 初始名称设为 `dsh-sidebar-html-<tab-id>`，供 Desktop 快捷键路由关联目标。这种关联不授予预览访问父文档的权限。
 
@@ -57,7 +57,7 @@ Web 和桌面端均通过代码工作工具选择 HTML 预览策略。渲染器�
 - **完整字节** —— PDF、HTML、常见图片和表格调用 `remote.workspaceFiles.readBytes(sessionId, path, {}, signal)`。二进制 Remote 直接返回 `data: Uint8Array<ArrayBuffer>`，供 `{ kind: 'bytes', data }` 使用。Host 的 `maxFileBytes` 上限拒绝超大文件，不截断。PDF 和表格渲染器在传给 Worker 前复制保留的字节，使 Preview 缓冲区仍可使用。字节仅保存在临时视图状态中，绝不进入持久布局或 Session JSONL。加载模式变化会淘汰先前结果。
 - **重新载入** —— 手动重新载入仅让当前 Preview tab 通过自己的 Remote 回调重读，保留滚动偏好并淘汰旧请求。`ResourceGroup` 成员变化后，自动刷新使用相同回调。各成员首次元数据仅建立基线，不触发重新载入或首读版本对账；后续在读取期间收到的变化仍会留待下一次刷新。读取既不刷新共享元数据，也不清除其它 tab 的提示。
 
-开启代码工作工具时，HTML 以贴合正文四边的 Blob iframe 运行，沙箱属性严格为 `sandbox="allow-scripts"`，不含 `allow-same-origin`；脚本无法访问父应用的源或文件读取接口。渲染器通过注入的 Remote 回调，加载直接声明的相对 `.js` 经典脚本和 `.css` 样式表；固定安全上限为单个资源 4 MiB、总计 32 MiB、64 个不同资源。Host 代码解析关联路径，带 `baseFile` 的 `readBytes` 返回原生字节。依赖 Resource 在读取返回后加入，使用返回的 `absolutePath`，失败时则使用字符串类型的 `error.details.path`；没有 Host 路径时，Client 不自行猜测。在渲染器内部，base64 仅用于把 iframe 引导载荷嵌入脚本文本。`<base href>` 将依赖解析交给浏览器，HTTPS 资源也由浏览器处理。本地模块 import、CSS `url()`/`@import` 和动态 `fetch` 不使用 Host 文件访问。读取失败、无效 UTF-8 或超出上限都使预览失败，不发布部分资源包。替换或卸载文档会释放其 Blob URL。
+为当前文档启用交互预览后，HTML 在占满剩余正文的 Blob iframe 中运行，沙箱属性严格为 `sandbox="allow-scripts"`，不含 `allow-same-origin`；脚本无法访问父应用的源或文件读取接口。渲染器通过注入的 Remote 回调，加载直接声明的相对 `.js` 经典脚本和 `.css` 样式表；固定安全上限为单个资源 4 MiB、总计 32 MiB、64 个不同资源。带 `baseFile` 和 `confineToDocument: true` 的 `readBytes` 返回原生字节；Host 将工作区内文档的依赖限制在工作区内，工作区外文档的依赖限制在源文档目录内，并检查符号链接解析后的目标。依赖 Resource 在读取返回后加入，使用返回的 `absolutePath`，失败时则使用字符串类型的 `error.details.path`；没有 Host 路径时，Client 不自行猜测。在渲染器内部，base64 仅用于把 iframe 引导载荷嵌入脚本文本。`<base href>` 将依赖解析交给浏览器，HTTPS 资源也由浏览器处理。本地模块 import、CSS `url()`/`@import` 和动态 `fetch` 不使用 Host 文件访问。读取失败、无效 UTF-8 或超出上限都使预览失败，不发布部分资源包。替换或卸载文档会释放其 Blob URL。
 
 PNG、JPEG、GIF、WebP、BMP、ICO 和 SVG 通过 Blob URL 在 `<img>` 静态图片上下文中渲染，带 12px 内边距和圆角。图片默认适应宽度，但不会放大小于面板的内容；100% 使用图片的固有 CSS 像素宽度。共享缩放控件可产生横向和纵向滚动，但不提供拖拽平移。缩放不会替换 `<img>` 或 Blob URL，因此动画图片会继续播放。位图超过固有尺寸后可能变虚，SVG 则继续使用浏览器的矢量渲染路径。SVG 标记绝不进入应用 DOM 或 iframe，因此其中的脚本无法执行，也无法访问父页面。替换或卸载图片会撤销其 Blob URL。
 

@@ -686,6 +686,9 @@ function tscSourceMapPlugin() {
     name: 'dsh-tsc-sourcemap',
     async load(id: string) {
       if (!id.includes(TYPES_MARKER) || !id.endsWith('.js') || !existsSync(`${id}.map`)) return null
+      // Custom load results bypass the bundler's automatic disk-read watch registration.
+      this.addWatchFile(id)
+      this.addWatchFile(`${id}.map`)
       const code = await readFile(id, 'utf8')
       const mapPath = `${id}.map`
       const map = JSON.parse(await readFile(mapPath, 'utf8')) as {

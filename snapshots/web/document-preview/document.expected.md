@@ -29,10 +29,14 @@
 - Sandbox: allow-scripts
 - Inline script: INLINE_OK
 - Local script after save: LOCAL_JS_REFRESHED
-- Outside-workspace script: OUTSIDE_JS_OK
 - Local stylesheet after save: rgb(56, 34, 12)
 - Parent access: parent-blocked (SecurityError)
 - Parent unchanged: true
+
+## HTML permission
+
+- Automatic scripts: disabled
+- Outside-workspace dependency: refused
 
 ## PDF
 

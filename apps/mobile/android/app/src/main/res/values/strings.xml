@@ -2,7 +2,7 @@
 <resources>
     <string name="tagline">Continue your research, wherever you are</string>
     <string name="connect_computer">Connect to your computer</string>
-    <string name="connect_hint">Create a link in Mobile Access on your computer, then paste it here. Keep your computer online to view conversations, research progress and files.</string>
+    <string name="connect_hint">Create a link in Mobile Access on your computer, then paste it here. Keep your computer online and Android System WebView up to date to view conversations, research progress and files.</string>
     <string name="link_hint">HTTPS connection link</string>
     <string name="connect">Connect</string>
     <string name="recent_connection">Recent connection</string>

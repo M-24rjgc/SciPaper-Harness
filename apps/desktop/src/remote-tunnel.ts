@@ -10,6 +10,19 @@ import { RemoteAccessError, type RemoteTunnel } from './remote-access.ts'
 const VERSION = '2026.10.0'
 const MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 const runFile = promisify(execFile)
+const TUNNEL_ENVIRONMENT_NAMES = new Set([
+  'PATH', 'SYSTEMROOT', 'WINDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'TMPDIR',
+  'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+])
+
+/**
+ * Give the tunnel OS, proxy and TLS trust settings without Harness credentials or runtime hooks.
+ * @param environment - Desktop process environment.
+ * @returns a detached environment containing only the tunnel's supported infrastructure settings.
+ */
+export function cloudflaredEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(environment).filter(([name]) => TUNNEL_ENVIRONMENT_NAMES.has(name.toUpperCase())))
+}
 
 /** Wait for the public route's unauthenticated Host fence before offering pairing. */
 export async function waitForPublicTunnel(origin: string, fetcher: typeof fetch, signal: AbortSignal): Promise<void> {
@@ -121,7 +134,7 @@ export async function openQuickTunnel(options: {
   const run = await mkdtemp(join(options.cache, 'lease-'))
   const config = join(run, 'config.yml')
   await writeFile(config, '{}\n', { flag: 'wx', mode: 0o600 })
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(TUNNEL_|CLOUDFLARED_|NO_AUTOUPDATE$)/i.test(key)))
+  const env = cloudflaredEnvironment(process.env)
   const child = spawn(options.binary, ['tunnel', '--config', config, '--no-autoupdate', '--protocol', 'http2',
     '--edge-ip-version', '4', '--loglevel', 'info', '--metrics', '127.0.0.1:0',
     '--url', local.origin], { cwd: run, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })

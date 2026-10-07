@@ -233,6 +233,7 @@
     { "path": "./packages/host/product-telemetry-otel" },
     { "path": "./packages/boot/config-editor" },
     { "path": "./packages/client/connection/tsconfig.host.json" },
+    { "path": "./packages/client/hmr" },
     { "path": "./packages/skill/skill-office" },
     { "path": "./packages/skill/tool-workspace-dependencies" },
     { "path": "./packages/browser-use/browser-use" },

@@ -31,13 +31,14 @@ import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-vi
 import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
 import { DesktopBackendController } from './backend-controller.ts'
-import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
+import { DESKTOP_IPC, SCHEME, assertDesktopSender, isDesktopApplicationDocument, type DesktopUpdateState } from './ipc.ts'
 import { readDeviceInfo } from './device-info.ts'
 import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
+import { DesktopWebRequestAuthorization } from './web-request-authorization.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
@@ -312,13 +313,15 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     }
   })
   window.webContents.on('will-navigate', (event, url) => {
-    const destination = new URL(url)
-    const current = new URL(window.webContents.getURL())
-    if (destination.protocol !== `${SCHEME}:`
-      && !(destination.protocol === 'http:' && destination.origin === current.origin)) {
+    if (!isDesktopApplicationDocument(url)) {
       event.preventDefault()
-      if (['http:', 'https:'].includes(destination.protocol)) void shell.openExternal(url)
+      if (URL.canParse(url) && ['http:', 'https:'].includes(new URL(url).protocol)) {
+        void shell.openExternal(url).catch(() => { /* A browser-launch failure cannot replace the application document. */ })
+      }
     }
+  })
+  window.webContents.on('will-redirect', (event, url, _inPlace, isMainFrame) => {
+    if (isMainFrame && !isDesktopApplicationDocument(url)) event.preventDefault()
   })
   return window
 }
@@ -422,6 +425,7 @@ async function main(): Promise<void> {
   })
   const appPreload = fileURLToPath(new URL('./preload-app.cjs', import.meta.url))
   const applicationUrl = `${SCHEME}://app/`
+  const webAuthorization = new DesktopWebRequestAuthorization()
   let hostUrl: string | undefined
   let hostCookie: string | undefined
   const browserGuests = new DesktopBrowserGuests(() => hostUrl, activeProject)
@@ -700,7 +704,7 @@ async function main(): Promise<void> {
     // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
     // flow keeps its own taskbar and Dock attention instead.
     if (!isMandatory()) await windowShown()
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- A quit can begin while the show is awaited.
+    // A quit can begin while the show is awaited.
     if (quitting) return state
     return updates.install(version)
   }
@@ -723,7 +727,9 @@ async function main(): Promise<void> {
       if (backend.host === undefined || hostUrl === undefined || hostCookie === undefined) {
         return Promise.resolve(new Response(null, { status: 503 }))
       }
-      return forwardWebRequest(request, hostUrl, hostCookie)
+      const admitted = webAuthorization.admit(request)
+      if (admitted === undefined) return Promise.resolve(new Response(null, { status: 403 }))
+      return forwardWebRequest(admitted, hostUrl, hostCookie)
     }
     return Promise.resolve(new Response(null, { status: 404 }))
   })
@@ -735,8 +741,9 @@ async function main(): Promise<void> {
   app.on('will-quit', () => { shortcuts.dispose() })
 
   ipcMain.handle(DESKTOP_IPC.boot, async (event) => {
-    assertDesktopSender(event, ['app'])
+    assertProductSender(event)
     await startup
+    assertProductSender(event)
     if (backend.host === undefined || hostUrl === undefined) throw new Error('Desktop Host is unavailable')
     return { injections, streamBaseUrl: new URL(hostUrl).origin }
   })
@@ -771,7 +778,14 @@ async function main(): Promise<void> {
     return browserGuests.clearWorkspaceData(event.sender, storageKey, sessionId, lease)
   })
 
-  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*'] }, (details, callback) => {
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['dsh-app://app/*', 'ws://127.0.0.1/*'] }, (details, callback) => {
+    if (new URL(details.url).protocol === `${SCHEME}:`) {
+      const owner = mainWindow?.webContents
+      const owned = owner !== undefined && details.webContentsId === owner.id && details.frame === owner.mainFrame
+        && isDesktopApplicationDocument(owner.mainFrame.url)
+      callback({ requestHeaders: webAuthorization.authorizeHeaders(details.requestHeaders, owned) })
+      return
+    }
     if (hostUrl === undefined || hostCookie === undefined || details.webContentsId !== mainWindow?.webContents.id) {
       callback({})
       return
@@ -779,6 +793,11 @@ async function main(): Promise<void> {
     const target = new URL(hostUrl)
     const requested = new URL(details.url)
     if (requested.host !== target.host) { callback({}); return }
+    const owner = mainWindow?.webContents
+    if (owner === undefined || details.frame !== owner.mainFrame || !isDesktopApplicationDocument(owner.mainFrame.url)) {
+      callback({ cancel: true })
+      return
+    }
     const headers = Object.fromEntries(Object.entries(details.requestHeaders).map(([name, value]) => [name.toLowerCase(), value]))
     if (headers.origin !== 'dsh-app://app') { callback({ cancel: true }); return }
     callback({ requestHeaders: { ...headers, origin: target.origin, cookie: hostCookie, 'sec-fetch-site': 'same-origin' } })
@@ -787,7 +806,7 @@ async function main(): Promise<void> {
   const assertMainApplication = (event: IpcMainInvokeEvent): BrowserWindow => {
     const owner = mainWindow
     if (owner === undefined || event.sender !== owner.webContents || event.senderFrame !== owner.webContents.mainFrame
-      || !event.senderFrame.url.startsWith('dsh-app://app/')) throw new Error('Rejected Platform command')
+      || !isDesktopApplicationDocument(event.senderFrame.url)) throw new Error('Rejected Platform command')
     return owner
   }
   ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {
@@ -806,12 +825,13 @@ async function main(): Promise<void> {
   ipcMain.handle(PLATFORM_IPC.close, (event) => { assertMainApplication(event); platformView.close() })
   // Only the main window may synchronize its palette with the native material.
   ipcMain.on(DESKTOP_IPC.nativeThemeSet, (event, source: unknown) => {
-    if (mainWindow === undefined || event.sender !== mainWindow.webContents) return
+    if (mainWindow === undefined || event.sender !== mainWindow.webContents
+      || event.senderFrame !== mainWindow.webContents.mainFrame || !isDesktopApplicationDocument(event.senderFrame.url)) return
     if (source === 'light' || source === 'dark' || source === 'system') nativeTheme.themeSource = source
   })
   ipcMain.handle(DESKTOP_IPC.localeBootstrap, async (event) => {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame
-      || new URL(event.senderFrame.url).origin !== new URL(applicationUrl).origin) {
+      || !isDesktopApplicationDocument(event.senderFrame.url)) {
       throw new Error('desktop welcome: rejected locale request from an unowned frame')
     }
     if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
@@ -820,7 +840,7 @@ async function main(): Promise<void> {
   ipcMain.on(DESKTOP_IPC.localeChanged, (event, next: unknown) => {
     const window = mainWindow
     if (window === undefined || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
-      || typeof next !== 'string') return
+      || !isDesktopApplicationDocument(event.senderFrame.url) || typeof next !== 'string') return
     const current = resolveDesktopStartupLocale(next, systemLanguages)
     if (current.id === locale.id) return
     locale = current
@@ -848,7 +868,7 @@ async function main(): Promise<void> {
     const window = mainWindow
     if (window === undefined || window.isDestroyed() || event.sender !== window.webContents
       || event.senderFrame !== window.webContents.mainFrame
-      || !event.senderFrame.url.startsWith(`${SCHEME}://app/`) || typeof active !== 'boolean') return
+      || !isDesktopApplicationDocument(event.senderFrame.url) || typeof active !== 'boolean') return
     window.setMinimumSize(active ? 960 : 520, 600)
     if (active) {
       const { width, height } = window.getBounds()
@@ -1110,7 +1130,7 @@ async function main(): Promise<void> {
     ipcMain.on(DESKTOP_IPC.windowsAppearance, (event, language: unknown, color: unknown, symbolColor: unknown) => {
       if (mainWindow === undefined || event.sender !== mainWindow.webContents
         || event.senderFrame !== mainWindow.webContents.mainFrame) return
-      if (!event.senderFrame.url.startsWith(`${SCHEME}://app/`)) return
+      if (!isDesktopApplicationDocument(event.senderFrame.url)) return
       if (typeof language === 'string' && /^[a-zA-Z]+(?:-[a-zA-Z0-9]+)*$/u.test(language)) {
         windowsLanguage = language
       }

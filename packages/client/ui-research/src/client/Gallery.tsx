@@ -8,6 +8,7 @@ import type { GalleryFigure, GalleryPage, ResearchProject } from '@deepseek-ai/d
 import type { GallerySearchRequest, WorkbenchProps } from './contract.ts'
 import { ActionError, useAction } from './Action.tsx'
 import { galleryImageUrl, type Translate } from './format.ts'
+import { safeLink } from './mapValues.ts'
 import type { ResearchKey } from './locales.ts'
 import styles from './Gallery.module.css'
 
@@ -90,6 +91,7 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
   const save = (figure: GalleryFigure, label: string): Promise<unknown> =>
     props.run({ action: 'fetch-reference-figures', projectId: project.id, galleryIds: [figure.id], label })
   const facet = (name: keyof GalleryPage['facets']): [string, number][] => Object.entries(page?.facets[name] ?? {})
+  const sourceLink = safeLink(page?.source.repository)
   return <section className={styles.root}>
     <p className={styles.intro}>{t('galleryIntro')}</p>
     <form className={styles.filters} role="search" onSubmit={submit}>
@@ -137,7 +139,11 @@ export function Gallery(props: WorkbenchProps & { project: ResearchProject }): R
       </li>
     })}</ul>
     {page && figures.length < page.total && <button type="button" className={styles.more} disabled={pending} onClick={() => { load(active, figures.length) }}>{t('galleryMore')}</button>}
-    {page && <p className={styles.status}><a href={page.source.repository} target="_blank" rel="noreferrer">{t('gallerySource', { name: page.source.name })}</a></p>}
+    {page && <p className={styles.status}>
+      {sourceLink !== undefined
+        ? <a href={sourceLink} target="_blank" rel="noopener noreferrer">{t('gallerySource', { name: page.source.name })}</a>
+        : t('gallerySource', { name: page.source.name })}
+    </p>}
   </section>
 }
 
@@ -158,13 +164,14 @@ function Detail(props: DetailProps): ReactNode {
   const authors = figure.authors.length > SHOWN_AUTHORS ? t('authorsMore', { names: named, n: figure.authors.length - SHOWN_AUTHORS }) : named
   const tier = tierOf(figure)
   const onSave = props.onSave
+  const paperLink = safeLink(figure.paper)
   return <article className={styles.detail} aria-label={figure.title}>
     <img className={styles.large} src={galleryImageUrl(figure.id)} alt={figure.title} />
     <div className={styles.info}>
       <h3>{figure.title}</h3>
       <p>{authors}</p>
       <p className={styles.meta}>{venueName(figure.venue)} {figure.year} · {patternName(figure.pattern, t)}{tier && ` · ${t(TIER_KEYS[tier])}`}</p>
-      <a href={figure.paper} target="_blank" rel="noreferrer">{t('galleryOpenPaper')}</a>
+      {paperLink !== undefined && <a href={paperLink} target="_blank" rel="noopener noreferrer">{t('galleryOpenPaper')}</a>}
       {onSave && <form className={styles.save} onSubmit={(event) => { event.preventDefault(); saving.start(() => onSave(label)) }}>
         <label>{t('galleryLabel')}<input value={label} required pattern="[a-z0-9]+(-[a-z0-9]+)*" onChange={(event) => { setLabel(event.target.value) }} /></label>
         <button type="submit" disabled={saving.pending}>{t('gallerySave')}</button>

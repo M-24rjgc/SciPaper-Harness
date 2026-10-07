@@ -75,6 +75,8 @@ export interface WorkspaceByteReadOptions {
   readonly range?: WorkspaceByteRange
   /** Base file, absolute or workspace-relative; resolve the relative target from its directory. */
   readonly baseFile?: string
+  /** Require a base file and confine related reads to its workspace, or its directory when outside that workspace. */
+  readonly confineToDocument?: boolean
 }
 
 /**
@@ -158,6 +160,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace-file/not-found': { readonly path: string }
     /** The directory listing or watch path resolves outside the Session's workspace root. */
     'workspace-file/outside-workspace': { readonly path: string }
+    /** A related file resolves outside the document's workspace or external containing directory. */
+    'workspace-file/outside-document': { readonly path: string }
     /** The requested page exceeds the configured byte cap; nothing is returned. */
     'workspace-file/too-large': { readonly path: string; readonly limit: number }
     /** The content read so far is not decodable UTF-8 text, or the page carries NUL bytes. */

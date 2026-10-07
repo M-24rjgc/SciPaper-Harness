@@ -83,8 +83,18 @@ jobs:
           packages/ssh/ssh
           packages/ssh/remote-workspace-presets
           packages/web
-          apps/desktop/tests/project-manager.spec.ts
+          packages/api/gateway
+          packages/api/workspace-files
+          packages/client/connection
+          packages/client/hmr
+          packages/client/ui-sidebar-documentpreview
+          packages/mcp/mcp-client
+          packages/attachment/attachment-local
+          packages/util/http-proxy
+          apps/desktop/tests
           scripts/ci-workflow.spec.ts
           scripts/ci-compatible-selfhosted.spec.ts
           scripts/verify-default-product-isolation.spec.ts
           scripts/check-workspace-constraints.spec.ts
+          scripts/security-dependency-patches.spec.ts
+          scripts/dev-web.spec.ts

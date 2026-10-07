@@ -179,25 +179,19 @@ export function probeFreePort(): Promise<number> {
 }
 
 /**
- * Drive the hero's workspace picker through the composed directory dialog
- * until the live composer unlocks. A fresh world has no Workspace, so the boot
- * lands in the Workspace-trigger view state (startup auto-selection has nothing to
- * select); every scenario that types into the composer must connect one
- * first. With nothing to list, activating the composer surface raises the dialog directly —
- * adding a workspace is the picker's only entry. The directory is staged here
- * and adopted through the path editor, which is idempotent across the repeated
- * connects a scenario may make; creating a folder from inside the dialog (the
- * product's other half of the same route) is covered by
- * workspace-management.e2e.ts. The default name 'workspace' keeps the session
- * header cwd at <root>/workspace, the materialization proof several scenarios
- * assert.
+ * Open the hero's workspace/project menu, choose its local-folder action,
+ * and adopt a staged directory through the composed path editor. The menu
+ * also offers SSH workspaces. This flow finishes when the composer is editable.
+ * The default name keeps the session header cwd at `<root>/workspace`;
+ * creating the folder within the picker is covered by workspace-management.e2e.ts.
  * @param page - the page under test.
  * @param root - host directory the workspace folder is staged in (the scaffold's `workspaceCwd`).
  * @param name - folder name staged and adopted as the workspace.
  */
 export async function connectFreshWorkspace(page: Page, root: string, name = 'workspace'): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  await page.getByRole('textbox', { name: 'Choose workspace' }).click()
+  await page.getByRole('textbox', { name: /^(?:Choose workspace|Choose project)$/ }).click()
+  await page.getByRole('menuitem', { name: 'Add workspace…', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Select Workspace Directory' })
   await dialog.waitFor({ timeout: 10_000 })
   await dialog.getByRole('button', { name: 'Edit path' }).click()
@@ -207,15 +201,14 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
   await dialog.getByRole('button', { name: 'Open', exact: true }).click()
   // The pick connected the workspace: the blank session's live composer
   // replaces the locked placeholder and enables.
-  await page.locator('[data-composer-input][contenteditable="true"][data-placeholder="Describe what you want to build, / commands, @ files or sessions"]')
+  await page.locator('[data-composer-input][contenteditable="true"]')
     .waitFor({ timeout: 15_000 })
 }
 
 /**
- * {@link connectFreshWorkspace} over a page that advertises
- * {@link ZH_BROWSER_LOCALE}: the English helper's anchors assume the locale
- * most other scenarios boot, so a scenario that deliberately keeps zh needs
- * the localized picker copy.
+ * {@link connectFreshWorkspace} using the localized menu and directory flow
+ * on a page that advertises {@link ZH_BROWSER_LOCALE}. A caller with an
+ * unavailable model can wait for the composer without requiring it to be editable.
  * @param page - the browser page under test.
  * @param root - workspace parent directory.
  * @param name - directory created under `root` and connected.
@@ -223,7 +216,8 @@ export async function connectFreshWorkspace(page: Page, root: string, name = 'wo
  */
 export async function connectFreshWorkspaceZh(page: Page, root: string, name = 'workspace', modelAvailable = true): Promise<void> {
   mkdirSync(join(root, name), { recursive: true })
-  await page.getByRole('textbox', { name: '选择工作区' }).click()
+  await page.getByRole('textbox', { name: /^(?:选择工作区|选择项目)$/ }).click()
+  await page.getByRole('menuitem', { name: '添加工作区…', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '选择工作区目录' })
   await dialog.waitFor({ timeout: 10_000 })
   await dialog.getByRole('button', { name: '编辑路径' }).click()
@@ -232,7 +226,7 @@ export async function connectFreshWorkspaceZh(page: Page, root: string, name = '
   await pathInput.press('Enter')
   await dialog.getByRole('button', { name: '打开', exact: true }).click()
   const editable = modelAvailable ? '[contenteditable="true"]' : ''
-  await page.locator(`[data-composer-input]${editable}[data-placeholder="描述你想要构建的内容, / 调用指令, @ 文件或对话"]`)
+  await page.locator(`[data-composer-input]${editable}`)
     .waitFor({ timeout: 15_000 })
 }
 

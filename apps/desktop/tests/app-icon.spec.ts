@@ -29,6 +29,7 @@ describe('the app icon', () => {
     const favicon = readFileSync(new URL('../../web/public/favicon.svg', import.meta.url), 'utf8')
     expect(favicon).toBe(readFileSync(new URL('../icons/icon-small.svg', import.meta.url), 'utf8'))
     const manifest = JSON.parse(readFileSync(new URL('../../web/public/manifest.webmanifest', import.meta.url), 'utf8')) as { icons: { src: string }[] }
-    for (const { src } of manifest.icons) expect(existsSync(new URL(`../../web/public${src}`, import.meta.url))).toBe(true)
+    const manifestUrl = new URL('../../web/public/manifest.webmanifest', import.meta.url)
+    for (const { src } of manifest.icons) expect(existsSync(new URL(src, manifestUrl))).toBe(true)
   })
 })

@@ -35,7 +35,7 @@ export function apply(ctx: Context): void {
         hooks: { interactivePreview: ctx.configForms.developerTools.enabled },
         readRelated: (address, relativePath, signal) => {
           const file = hostFileOf(address)
-          return ctx.remote.workspaceFiles.readBytes(file.sessionId, relativePath, { baseFile: file.path }, signal)
+          return ctx.remote.workspaceFiles.readBytes(file.sessionId, relativePath, { baseFile: file.path, confineToDocument: true }, signal)
         },
       }),
     }, HtmlBody,

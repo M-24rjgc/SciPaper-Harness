@@ -865,10 +865,9 @@ describe('Typert Remote streams', () => {
 
     const abortedBeforeIteration = new AbortController()
     abortedBeforeIteration.abort(new Error('cancelled before iteration'))
-    const preCancelled = await ctx.typertGateway.stream({
+    await expect(ctx.typertGateway.stream({
       namespace: 'feed', method: 'sync', args: { label: 'ignored' }, signal: abortedBeforeIteration.signal,
-    })
-    await expect(collect(preCancelled)).rejects.toThrow('Remote invocation "feed/sync" was aborted')
+    })).rejects.toThrow('Remote invocation "feed/sync" was aborted')
   })
 
   it('keeps unary and stream invocation modes distinct', async () => {

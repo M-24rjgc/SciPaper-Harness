@@ -58,11 +58,16 @@ it('limits product documents to update status and a native confirmation action',
   expect(electron.ipcRenderer.off).toHaveBeenCalledWith(DESKTOP_IPC.updatesPresentation, handler)
 })
 
-it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'https://shell/startup.html', 'http://example.com/'])('exposes only the carrier marker to %s', async (url) => {
+it.each(['dsh-app://shell/plugin-manager.html', 'dsh-app://other/index.html', 'https://shell/startup.html', 'http://example.com/',
+  'dsh-app://app/api/file?path=report.html', 'dsh-app://app/assets/document.html', 'dsh-app://app/?pair=invitation',
+  'dsh-app://user@app/', 'dsh-app://app:1234/'])('exposes only the carrier marker to %s', async (url) => {
   vi.stubGlobal('location', new URL(url))
   await import('../src/preload-app.ts')
   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith('dshDesktop', { protocolVersion: 1 })
   expect(electron.ipcRenderer.on.mock.calls.some(([channel]) => channel === DESKTOP_IPC.browserOpenRequested)).toBe(false)
+  for (const bridge of ['dshOnboarding', '__DSH_DIRECTORY_PICKER__', '__DSH_HOST_PATHS__', 'dshDesktopBoot', 'dshPlatform', '__DSH_LOCALE__']) {
+    expect(electron.contextBridge.exposeInMainWorld.mock.calls.some(([name]) => name === bridge)).toBe(false)
+  }
 })
 
 it('reads the local machine description only from the application main frame', async () => {
@@ -190,6 +195,7 @@ it('withholds the product API from same-origin child frames', async () => {
   vi.stubGlobal('process', { ...process, isMainFrame: false })
   await import('../src/preload-app.ts')
   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith('dshDesktop', { protocolVersion: 1 })
+  expect(electron.contextBridge.exposeInMainWorld.mock.calls).toHaveLength(1)
 })
 
 it('forwards only the approved browser storage clear operation to the main process', async () => {

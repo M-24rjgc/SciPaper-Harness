@@ -30,6 +30,29 @@ public final class ConnectionPolicyTest {
         check(ConnectionPolicy.ownedBlob("https://research.example", "blob:https://research.example/preview-id"));
         check(!ConnectionPolicy.ownedBlob("https://research.example", "blob:https://evil.example/preview-id"));
         check(!ConnectionPolicy.ownedBlob("https://research.example", "blob:null/preview-id"));
+        check(ConnectionPolicy.cleanAppPage("https://research.example", "https://research.example:443/"));
+        check(!ConnectionPolicy.cleanAppPage("https://research.example", "https://research.example/?pair=private-value"));
+        check(!ConnectionPolicy.cleanAppPage("https://research.example", "https://research.example/#section"));
+        check(!ConnectionPolicy.cleanAppPage("https://research.example", "https://research.example/other"));
+        check(!ConnectionPolicy.cleanAppPage("https://research.example", "https://other.example/"));
+
+        String initial = "https://research.example/?pair=private-value";
+        ConnectionNavigation navigation = new ConnectionNavigation(ConnectionPolicy.requireRemoteHttps(initial));
+        check(initial.equals(navigation.retryUrl()));
+        navigation.observedNavigation(initial);
+        check(initial.equals(navigation.retryUrl()));
+        navigation.observedNavigation("https://other.example/");
+        navigation.observedNavigation("blob:https://research.example/preview-id");
+        check(initial.equals(navigation.retryUrl()));
+        // A redirected clean page can subsequently fail before committing; retry must not reuse the consumed link.
+        navigation.observedNavigation("https://research.example/");
+        check("https://research.example/".equals(navigation.retryUrl()));
+        navigation.observedNavigation(initial);
+        check("https://research.example/".equals(navigation.retryUrl()));
+        navigation.close();
+        check(navigation.retryUrl() == null);
+        navigation.observedNavigation("https://research.example/");
+        check(navigation.retryUrl() == null);
         System.out.println("Connection policy passed: HTTPS origins, token removal and navigation isolation.");
     }
     private static void require(String value, String expected) {

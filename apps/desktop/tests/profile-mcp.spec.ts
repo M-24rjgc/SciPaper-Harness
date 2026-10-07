@@ -34,7 +34,7 @@ it('retains one shared resource consumer in the Desktop Web profile', () => {
   }
 })
 
-it('adds desktop computer use to an existing research profile without dropping custom bundles', () => {
+it('adds Desktop research defaults to an existing profile without dropping custom bundles', () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-profile-cua-'))
   try {
     const profileDir = join(home, 'profiles', 'desktop')
@@ -46,7 +46,8 @@ it('adds desktop computer use to an existing research profile without dropping c
     const bundles = readProfileManifest('SciPaper desktop', profileDir).dsh?.profile?.bundles
     expect(bundles).toEqual([
       '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-research-app',
-      '@deepseek-ai/dsh-computer-use-cua-bundle', '@deepseek-ai/dsh-web-search-exa-bundle',
+      '@deepseek-ai/dsh-computer-use-cua-bundle', '@deepseek-ai/dsh-experimental-schedule-bundle',
+      '@deepseek-ai/dsh-research-knowledge-bundle', '@deepseek-ai/dsh-web-search-exa-bundle',
     ])
     createPluginProfile(profileDir)
     expect(readProfileManifest('SciPaper desktop', profileDir).dsh?.profile?.bundles).toEqual(bundles)

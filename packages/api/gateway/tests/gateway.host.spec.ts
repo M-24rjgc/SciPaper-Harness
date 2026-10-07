@@ -1027,11 +1027,12 @@ describe('TypertGatewayService', () => {
     if (invalid.ok) throw new Error('invalid Remote payload unexpectedly succeeded')
     expect(invalid.error.message).toMatch(/exactly one plain-object args field/)
 
-    await expect(handler('goals/maybe', { args: {} }, signal)).resolves.toMatchObject({
+    const subsequentSignal = new AbortController().signal
+    await expect(handler('goals/maybe', { args: {} }, subsequentSignal)).resolves.toMatchObject({
       ok: true,
       value: undefined,
     })
-    await expect(handler('goals/maybe', { args: { value: null } }, signal)).resolves.toMatchObject({
+    await expect(handler('goals/maybe', { args: { value: null } }, subsequentSignal)).resolves.toMatchObject({
       ok: true,
       value: null,
     })

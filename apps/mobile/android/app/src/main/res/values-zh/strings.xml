@@ -2,7 +2,7 @@
 <resources>
     <string name="tagline">随时继续你的研究</string>
     <string name="connect_computer">连接电脑</string>
-    <string name="connect_hint">在电脑的手机连接页面生成链接，然后在这里粘贴。电脑保持在线时，可查看会话、研究进度和文件。</string>
+    <string name="connect_hint">在电脑的手机连接页面生成链接，然后在这里粘贴。请保持电脑在线，并及时更新 Android System WebView，以查看会话、研究进度和文件。</string>
     <string name="link_hint">HTTPS 连接链接</string>
     <string name="connect">连接</string>
     <string name="recent_connection">最近连接</string>

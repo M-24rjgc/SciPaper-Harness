@@ -27,7 +27,10 @@ describe('CI workflow', () => {
     const regressions = steps.find(step => step.name === 'Research, harness lifecycle and desktop regressions')
     expect(regressions?.run).toEqual(expect.stringContaining('--hookTimeout=30000'))
     for (const owner of ['packages/jobs', 'packages/shell/pwsh-local', 'packages/shell/tool-bash',
-      'packages/sandbox/sandbox-windows-acl', 'packages/session-query/session-log-export', 'packages/web']) {
+      'packages/sandbox/sandbox-windows-acl', 'packages/session-query/session-log-export', 'packages/web',
+      'packages/api/gateway', 'packages/api/workspace-files', 'packages/client/connection', 'packages/client/hmr',
+      'packages/client/ui-sidebar-documentpreview', 'packages/mcp/mcp-client', 'packages/attachment/attachment-local',
+      'packages/util/http-proxy', 'apps/desktop/tests']) {
       expect(regressions?.run).toEqual(expect.stringContaining(owner))
     }
     const staticChecks = workflowJob(workflow, 'static')

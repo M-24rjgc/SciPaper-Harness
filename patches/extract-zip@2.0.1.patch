@@ -1,0 +1,90 @@
+diff --git a/index.js b/index.js
+index 23384ea16b..7859401727 100644
+--- a/index.js
++++ b/index.js
+@@ -53,12 +53,13 @@ class Extractor {
+         const destDir = path.dirname(path.join(this.opts.dir, entry.fileName))
+-
++
+         try {
++          await this.assertBoundPath(destDir, entry)
+           await fs.mkdir(destDir, { recursive: true })
+-
++
+           const canonicalDestDir = await fs.realpath(destDir)
+           const relativeDestDir = path.relative(this.opts.dir, canonicalDestDir)
+-
++
+-          if (relativeDestDir.split(path.sep).includes('..')) {
++          if (path.isAbsolute(relativeDestDir) || relativeDestDir.split(path.sep).includes('..')) {
+             throw new Error(`Out of bound path "${canonicalDestDir}" found while processing file ${entry.fileName}`)
+           }
+-
++
+@@ -74,6 +75,34 @@ class Extractor {
+     })
+   }
+-
++
++  async assertBoundPath (candidate, entry, visited = new Set()) {
++    const relative = path.relative(this.opts.dir, candidate)
++    if (path.isAbsolute(relative) || relative.split(path.sep).includes('..')) {
++      throw new Error(`Out of bound path "${candidate}" found while processing file ${entry.fileName}`)
++    }
++
++    let current = this.opts.dir
++    const parts = relative.split(path.sep).filter(Boolean)
++    for (let index = 0; index < parts.length; index++) {
++      current = path.join(current, parts[index])
++      let existing
++      try {
++        existing = await fs.lstat(current)
++      } catch (error) {
++        if (error.code !== 'ENOENT') throw error
++        return path.join(current, ...parts.slice(index + 1))
++      }
++      if (!existing.isSymbolicLink()) continue
++      if (visited.has(current)) throw new Error(`Symlink cycle while processing file ${entry.fileName}`)
++      const linkPath = current
++      visited.add(linkPath)
++      const target = path.resolve(path.dirname(current), await fs.readlink(current))
++      current = await this.assertBoundPath(target, entry, visited)
++      visited.delete(linkPath)
++    }
++    return current
++  }
++
+   async extractEntry (entry) {
+     /* istanbul ignore if */
+     if (this.canceled) {
+@@ -118,14 +147,28 @@ class Extractor {
+       mkdirOptions.mode = procMode
+     }
+     debug('mkdir', { dir: destDir, ...mkdirOptions })
++    await this.assertBoundPath(destDir, entry)
+     await fs.mkdir(destDir, mkdirOptions)
+     if (isDir) return
+-
++
++    if (!symlink) {
++      let existing
++      try {
++        existing = await fs.lstat(dest)
++      } catch (error) {
++        if (error.code !== 'ENOENT') throw error
++      }
++      if (existing && existing.isSymbolicLink()) {
++        throw new Error(`Out of bound path "${dest}" found while processing file ${entry.fileName}`)
++      }
++    }
++
+     debug('opening read stream', dest)
+     const readStream = await promisify(this.zipfile.openReadStream.bind(this.zipfile))(entry)
+-
++
+     if (symlink) {
+       const link = await getStream(readStream)
++      await this.assertBoundPath(path.resolve(path.dirname(dest), link), entry)
+       debug('creating symlink', link, dest)
+       await fs.symlink(link, dest)
+     } else {

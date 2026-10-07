@@ -1,6 +1,7 @@
 /** Static or interactive HTML in an opaque iframe, without parent application access. */
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { DocumentPreviewProps } from '../document/contract.ts'
@@ -16,7 +17,7 @@ import css from './HtmlBody.module.css'
 /** Standard document inputs plus this renderer's dictionary. */
 export type HtmlBodyProps = DocumentPreviewProps & PropsLocale<'documentHtml'> & InjectFace<HtmlBodyInjected>
 
-/** Related-file reader and accepted preview mode supplied by the plugin. */
+/** Related-file reader and availability of the per-document interactive action. */
 export interface HtmlBodyInjected {
   hooks: { interactivePreview: ObservableSnapshot<boolean> }
   /** Ordinary Remote callback bound by this renderer's Slot inject. */
@@ -76,16 +77,35 @@ function HtmlFrame({ data, resourceAddress, readRelated, addResource, setResourc
 export function HtmlBody({
   content, resourceAddress, readRelated, useTabInfo, useInteractivePreview, addResource, setResources, t,
 }: HtmlBodyProps): ReactNode {
-  const interactivePreview = useInteractivePreview(value => value)
+  const interactiveAvailable = useInteractivePreview(value => value)
+  const data = content.kind === 'bytes' ? content.data : undefined
+  const [accepted, setAccepted] = useState<{ readonly address: string; readonly data: Uint8Array<ArrayBuffer> }>()
+  const interactive = interactiveAvailable && data !== undefined
+    && accepted?.address === resourceAddress && accepted.data === data
   const { tab } = useTabInfo()
   useEffect(() => {
-    if (!interactivePreview) setResources([])
-  }, [interactivePreview, setResources])
+    setAccepted(undefined)
+  }, [data, resourceAddress, interactiveAvailable])
+  useEffect(() => {
+    if (!interactive) setResources([])
+  }, [interactive, setResources])
   if (content.kind !== 'bytes') return null
   const frameName = `dsh-sidebar-html-${tab.id}`
-  if (!interactivePreview) return <BasicHtmlFrame data={content.data} frameName={frameName} t={t} />
-  return <HtmlFrame key={resourceAddress} data={content.data} resourceAddress={resourceAddress}
-    readRelated={readRelated} signal={tab.signal} frameName={frameName} addResource={addResource} setResources={setResources} t={t} />
+  return <div className={css.preview}>
+    {interactiveAvailable && <div className={css.controls} data-html-preview-controls>
+      <p className={css.notice}>{t('interactiveNotice')}</p>
+      <Button variant="outline" aria-pressed={interactive} onClick={() => {
+        setAccepted(interactive ? undefined : { address: resourceAddress, data: content.data })
+      }}>{t(interactive ? 'disableInteractive' : 'enableInteractive')}</Button>
+    </div>}
+    <div className={css.body}>
+      {interactive
+        ? <HtmlFrame key={resourceAddress} data={content.data} resourceAddress={resourceAddress}
+          readRelated={readRelated} signal={tab.signal} frameName={frameName}
+          addResource={addResource} setResources={setResources} t={t} />
+        : <BasicHtmlFrame data={content.data} frameName={frameName} t={t} />}
+    </div>
+  </div>
 }
 
 /** Static preview mounts a separate browsing context so a mode change retires running scripts. */

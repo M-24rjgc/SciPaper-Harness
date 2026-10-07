@@ -187,6 +187,7 @@ export async function watchClientPlugins(
   const bundles = await build({
     cwd: root,
     workspace: [...pluginDirs],
+    env: { DSH_BUILD_FACE: 'client' },
     watch: true,
     hooks: {
       'build:done': ({ options }) => {

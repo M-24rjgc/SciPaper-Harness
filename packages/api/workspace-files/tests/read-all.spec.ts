@@ -69,6 +69,54 @@ describe('workspaceFiles.readBytes — complete files', () => {
 })
 
 describe('workspaceFiles.readBytes — base file', () => {
+  it('confines document dependencies while allowing shared assets inside the workspace', async () => {
+    await mkdir(join(harness.workspace, 'nested'))
+    await writeFile(join(harness.workspace, 'nested/page.html'), 'page')
+    await writeFile(join(harness.workspace, 'shared.js'), 'shared')
+    await writeFile(join(harness.outside, 'private.js'), 'synthetic outside resource')
+    const files = harness.endpoint()
+    const read = vi.spyOn(harness.ctx.fs, 'readBytes')
+    const options = { baseFile: 'nested/page.html', confineToDocument: true }
+    expect(Buffer.from((await files.readBytes(harness.scope, '../shared.js', options, signal())).data).toString()).toBe('shared')
+    read.mockClear()
+    await expect(files.readBytes(harness.scope, '../../outside/private.js', options, signal()))
+      .rejects.toMatchObject({ code: 'workspace-file/outside-document' })
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('confines an explicitly opened external document to its own directory', async () => {
+    await writeFile(join(harness.outside, 'page.html'), 'page')
+    await writeFile(join(harness.outside, 'app.js'), 'app')
+    await writeFile(join(harness.workspace, 'other.js'), 'other')
+    const files = harness.endpoint()
+    const options = { baseFile: join(harness.outside, 'page.html'), confineToDocument: true }
+    expect(Buffer.from((await files.readBytes(harness.scope, 'app.js', options, signal())).data).toString()).toBe('app')
+    await expect(files.readBytes(harness.scope, '../workspace/other.js', options, signal()))
+      .rejects.toMatchObject({ code: 'workspace-file/outside-document' })
+  })
+
+  it('checks the resolved directory of document dependencies before full or ranged reads', async () => {
+    await writeFile(join(harness.workspace, 'page.html'), 'page')
+    await writeFile(join(harness.outside, 'app.js'), 'synthetic outside resource')
+    await symlink(harness.outside, join(harness.workspace, 'linked'), process.platform === 'win32' ? 'junction' : 'dir')
+    const files = harness.endpoint()
+    const read = vi.spyOn(harness.ctx.fs, 'readBytes')
+    const rangeRead = vi.spyOn(harness.ctx.fs, 'readByteRange')
+    for (const range of [undefined, { offset: 0, length: 1 }]) {
+      await expect(files.readBytes(harness.scope, 'linked/app.js', {
+        baseFile: 'page.html', confineToDocument: true, ...range === undefined ? {} : { range },
+      }, signal())).rejects.toMatchObject({ code: 'workspace-file/outside-document' })
+    }
+    expect(read).not.toHaveBeenCalled()
+    expect(rangeRead).not.toHaveBeenCalled()
+  })
+
+  it('requires a base file for document-confined reads', async () => {
+    await writeFile(join(harness.workspace, 'app.js'), 'app')
+    await expect(harness.endpoint().readBytes(harness.scope, 'app.js', { confineToDocument: true }, signal()))
+      .rejects.toMatchObject({ code: 'gateway/bad-request' })
+  })
+
   it('resolves relative paths from the base file directory on the Host', async () => {
     await mkdir(join(harness.workspace, 'nested'))
     await writeFile(join(harness.workspace, 'nested/base.txt'), 'base')

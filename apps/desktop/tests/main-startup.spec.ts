@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import type { MenuItemConstructorOptions, MessageBoxOptions } from 'electron'
 import { DESKTOP_IPC, type DesktopUpdateState } from '../src/ipc.ts'
 import { MANDATORY_IPC } from '../src/mandatory-update-ipc.ts'
+import { PLATFORM_IPC } from '../src/platform-ipc.ts'
 import { DesktopHostFatalError, DesktopHostUncleanExitError } from '../src/host-process.ts'
 import { en, zh } from '../src/locale.ts'
 import { DesktopUpdatePreparationError } from '../src/update-error.ts'
@@ -496,6 +497,42 @@ describe('desktop main startup', () => {
     expect((await handler(new Request('dsh-app://unknown/update-dialog.html'))).status).toBe(404)
   })
 
+  it('requires native main-frame proof for Host forwarding and never forwards that private proof', async () => {
+    await readyForUpdate()
+    const { DESKTOP_REQUEST_AUTH_HEADER } = await import('../src/web-request-authorization.ts')
+    const web = await import('../src/web-document.ts')
+    vi.mocked(web.forwardWebRequest).mockResolvedValue(new Response('synthetic'))
+    try {
+      const handler = harness.protocolHandle.mock.calls[0]![1]
+      const sendHeaders = harness.socketHeaders.mock.calls[0]![1] as (
+        details: { url: string; webContentsId: number; frame: unknown; requestHeaders: Record<string, string> },
+        callback: (result: { requestHeaders: Record<string, string> }) => void,
+      ) => void
+      const contents = harness.windows[0]!.webContents
+      const callback = vi.fn<(result: { requestHeaders: Record<string, string> }) => void>()
+      const details = { url: 'dsh-app://app/api/file?path=synthetic.js', webContentsId: contents.id,
+        frame: contents.mainFrame, requestHeaders: { 'X-Dsh-Desktop-Frame': 'forged' } }
+      sendHeaders(details, callback)
+      const native = callback.mock.lastCall![0].requestHeaders
+      await handler(new Request(details.url, { headers: native }))
+      const forwarded = vi.mocked(web.forwardWebRequest).mock.lastCall![0]
+      expect(forwarded.headers.has(DESKTOP_REQUEST_AUTH_HEADER)).toBe(false)
+      vi.mocked(web.forwardWebRequest).mockClear()
+      for (const foreign of [{ url: 'about:srcdoc' }, { url: 'dsh-app://app/api/research/drawio/index.html' }, null]) {
+        sendHeaders({ ...details, frame: foreign, requestHeaders: native }, callback)
+        const headers = callback.mock.lastCall![0].requestHeaders
+        expect(headers).not.toHaveProperty(DESKTOP_REQUEST_AUTH_HEADER)
+        expect((await handler(new Request(details.url, { headers }))).status).toBe(403)
+      }
+      expect((await handler(new Request('dsh-app://app/api/file?path=worker.js'))).status).toBe(403)
+      expect((await handler(new Request('dsh-app://app/plugins/events'))).status).toBe(403)
+      expect(web.forwardWebRequest).not.toHaveBeenCalled()
+      await handler(new Request('dsh-app://app/plugins/@scope/plugin/client.chunk.js?rev=012345abcdef'))
+      await handler(new Request('dsh-app://app/api/research/drawio/index.html?embed=1'))
+      expect(web.forwardWebRequest).toHaveBeenCalledTimes(2)
+    } finally { vi.mocked(web.forwardWebRequest).mockReset() }
+  })
+
   it('installs hidden native DevTools shortcuts in the macOS application menu', async () => {
     vi.stubGlobal('process', { ...process, platform: 'darwin' })
     await readyForUpdate()
@@ -690,7 +727,7 @@ describe('desktop main startup', () => {
   it('accepts product IPC only from the current application top frame in the owned main window', async () => {
     await readyForUpdate()
     const sender = harness.windows[0]!.webContents
-    for (const channel of [DESKTOP_IPC.updatesStatus, DESKTOP_IPC.deviceInfo]) {
+    for (const channel of [DESKTOP_IPC.updatesStatus, DESKTOP_IPC.deviceInfo, DESKTOP_IPC.remoteStatus]) {
       const handler = harness.handlers.get(channel)!
       expect(() => handler({ sender, senderFrame: sender.mainFrame })).not.toThrow()
       for (const event of [
@@ -700,6 +737,8 @@ describe('desktop main startup', () => {
       ]) expect(() => handler(event)).toThrow('unowned renderer')
       const original = sender.mainFrame.url
       sender.mainFrame.url = 'http://127.0.0.1:40000/'
+      expect(() => handler({ sender, senderFrame: sender.mainFrame })).toThrow('unowned renderer')
+      sender.mainFrame.url = 'dsh-app://app/api/file?path=report.html'
       expect(() => handler({ sender, senderFrame: sender.mainFrame })).toThrow('unowned renderer')
       sender.mainFrame.url = original
     }
@@ -918,7 +957,7 @@ describe('desktop main startup', () => {
     } finally { harness.app.name = originalName }
   })
 
-  it('attaches Host socket credentials only to the owned application origin and window', async () => {
+  it('attaches Host socket credentials only to the owned application entry main frame', async () => {
     await import('../src/main.ts')
     await harness.preparing.promise
     harness.prepared.resolve()
@@ -926,11 +965,13 @@ describe('desktop main startup', () => {
     harness.hosts[0]!.ready.resolve()
     await Promise.resolve(invoke(DESKTOP_IPC.boot))
     const handler = harness.socketHeaders.mock.calls[0]![1] as (
-      details: { url: string; webContentsId: number; requestHeaders: Record<string, string> },
+      details: { url: string; webContentsId: number; frame: unknown; requestHeaders: Record<string, string> },
       callback: (result: unknown) => void,
     ) => void
     const callback = vi.fn()
-    const details = { url: 'ws://127.0.0.1:3080/api/remote.mux', webContentsId: 42, requestHeaders: { Origin: 'dsh-app://app' } }
+    const contents = harness.windows[0]!.webContents
+    const details = { url: 'ws://127.0.0.1:3080/api/remote.mux', webContentsId: 42, frame: contents.mainFrame,
+      requestHeaders: { Origin: 'dsh-app://app' } }
     handler(details, callback)
     expect(callback).toHaveBeenLastCalledWith({ requestHeaders: {
       origin: 'http://127.0.0.1:3080', cookie: 'test-cookie', 'sec-fetch-site': 'same-origin',
@@ -941,6 +982,16 @@ describe('desktop main startup', () => {
     expect(callback).toHaveBeenLastCalledWith({})
     handler({ ...details, url: 'ws://127.0.0.1:9999/api/remote.mux' }, callback)
     expect(callback).toHaveBeenLastCalledWith({})
+    for (const frame of [{ url: 'dsh-app://app/api/research/drawio/index.html' }, { url: 'about:srcdoc' }, null]) {
+      handler({ ...details, frame }, callback)
+      expect(callback).toHaveBeenLastCalledWith({ cancel: true })
+    }
+    const current = contents.mainFrame.url
+    try {
+      contents.mainFrame.url = 'dsh-app://app/api/file?path=synthetic.html'
+      handler(details, callback)
+      expect(callback).toHaveBeenLastCalledWith({ cancel: true })
+    } finally { contents.mainFrame.url = current }
   })
 
   it('shares login key discovery with onboarding and rejects foreign renderers', async () => {
@@ -952,6 +1003,24 @@ describe('desktop main startup', () => {
     harness.hosts.at(-1)!.fetch.mockResolvedValueOnce(Response.json({ hasApiKey: false }))
     await expect(handler(event)).resolves.toBe(false)
     await expect(handler({ ...event, sender: {} })).rejects.toThrow()
+  })
+
+  it('refuses non-entry main documents and child frames for Platform and locale IPC', async () => {
+    await readyForUpdate()
+    const contents = harness.windows[0]!.webContents
+    const event = { sender: contents, senderFrame: contents.mainFrame }
+    const closePlatform = harness.handlers.get(PLATFORM_IPC.close)!
+    const bootstrapLocale = harness.handlers.get(DESKTOP_IPC.localeBootstrap)!
+    expect(closePlatform(event)).toBeUndefined()
+    await vi.waitFor(async () => { expect(await bootstrapLocale(event)).toHaveProperty('languages') })
+    expect(() => closePlatform({ ...event, senderFrame: { url: 'dsh-app://app/' } })).toThrow('Rejected Platform command')
+    await expect(bootstrapLocale({ ...event, senderFrame: { url: 'dsh-app://app/' } })).rejects.toThrow('unowned frame')
+    const current = contents.mainFrame.url
+    try {
+      contents.mainFrame.url = 'dsh-app://app/api/file?path=synthetic.html'
+      expect(() => closePlatform(event)).toThrow('Rejected Platform command')
+      await expect(bootstrapLocale(event)).rejects.toThrow('unowned frame')
+    } finally { contents.mainFrame.url = current }
   })
 
   it('enlarges only an active onboarding window and keeps its size after completion', async () => {
@@ -996,7 +1065,12 @@ describe('desktop main startup', () => {
     const handler = harness.handlers.get(DESKTOP_IPC.boot)!
     await expect(handler({ senderFrame: { url: 'https://other.example/' } })).rejects.toThrow('unowned renderer')
     let settled = false
-    const boot = Promise.resolve(handler({ senderFrame: { url: 'dsh-app://app/' } })).then((value) => { settled = true; return value })
+    const sender = harness.windows[0]!.webContents
+    for (const rejected of [{ sender: {}, senderFrame: sender.mainFrame },
+      { sender, senderFrame: { url: 'dsh-app://app/' } }]) {
+      await expect(handler(rejected)).rejects.toThrow('unowned renderer')
+    }
+    const boot = Promise.resolve(handler({ sender, senderFrame: sender.mainFrame })).then((value) => { settled = true; return value })
     await Promise.resolve()
     expect(settled).toBe(false)
     expect(harness.windows[0]!.urls).toEqual(['dsh-app://app/'])
@@ -1034,7 +1108,7 @@ describe('desktop main startup', () => {
     expect(harness.menu).not.toHaveBeenCalled()
   })
 
-  it('opens message links externally while retaining same-origin application navigation', async () => {
+  it('opens HTTP message links externally and limits primary documents to the bundled application entries', async () => {
     await readyForUpdate()
     const window = harness.windows[0]!
     const openWindow = window.webContents.setWindowOpenHandler.mock.calls[0]![0] as
@@ -1048,10 +1122,32 @@ describe('desktop main startup', () => {
     expect(external.preventDefault).toHaveBeenCalledOnce()
     expect(harness.openExternal).toHaveBeenCalledWith('https://example.com/document')
     harness.openExternal.mockClear()
-    const internal = { preventDefault: vi.fn() }
-    window.webContents.emit('will-navigate', internal, 'dsh-app://app/session/task-1')
-    expect(internal.preventDefault).not.toHaveBeenCalled()
+    for (const address of ['dsh-app://app/', 'dsh-app://app/index.html', 'dsh-app://app/#section']) {
+      const internal = { preventDefault: vi.fn() }
+      window.webContents.emit('will-navigate', internal, address)
+      expect(internal.preventDefault).not.toHaveBeenCalled()
+    }
+    for (const address of ['dsh-app://app/api/file?path=report.html', 'dsh-app://app/session/task-1',
+      'dsh-app://app/assets/document.html', 'dsh-app://shell/mandatory-update.html', 'dsh-app://app:1234/',
+      'dsh-app://user@app/', 'dsh-app://app/?pair=invitation', 'javascript:alert(1)']) {
+      const blocked = { preventDefault: vi.fn() }
+      window.webContents.emit('will-navigate', blocked, address)
+      expect(blocked.preventDefault).toHaveBeenCalledOnce()
+    }
     expect(harness.openExternal).not.toHaveBeenCalled()
+    const redirect = { preventDefault: vi.fn() }
+    window.webContents.emit('will-redirect', redirect, 'dsh-app://app/api/file?path=report.html', false, true)
+    expect(redirect.preventDefault).toHaveBeenCalledOnce()
+    const externalRedirect = { preventDefault: vi.fn() }
+    window.webContents.emit('will-redirect', externalRedirect, 'https://example.com/document', false, true)
+    expect(externalRedirect.preventDefault).toHaveBeenCalledOnce()
+    expect(harness.openExternal).not.toHaveBeenCalled()
+    const entryRedirect = { preventDefault: vi.fn() }
+    window.webContents.emit('will-redirect', entryRedirect, 'dsh-app://app/', false, true)
+    expect(entryRedirect.preventDefault).not.toHaveBeenCalled()
+    const childRedirect = { preventDefault: vi.fn() }
+    window.webContents.emit('will-redirect', childRedirect, 'https://example.com/document', false, false)
+    expect(childRedirect.preventDefault).not.toHaveBeenCalled()
   })
 
   async function readyForUpdate() {

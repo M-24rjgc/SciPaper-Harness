@@ -12,7 +12,7 @@ import { newProject } from '@deepseek-ai/dsh-research-workbench/src/project.ts'
 import { commandSchema } from '@deepseek-ai/dsh-research-workbench/src/schema.ts'
 import type { ArtifactId, ArtifactRecord, ResearchCommand, ResearchProject, ResearchResponse } from '@deepseek-ai/dsh-research-workbench/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import { diagramTitle, ResearchDiagramTab } from '../src/client/Diagram.tsx'
+import { diagramEditorOrigin, diagramTitle, ResearchDiagramTab } from '../src/client/Diagram.tsx'
 import type { SessionDirectories } from '../src/client/contract.ts'
 import type { ResearchTabProps } from '../src/client/Tabs.tsx'
 import type { Translate } from '../src/client/format.ts'
@@ -92,20 +92,50 @@ function mount(project: ResearchProject | undefined, options: {
 const settle = async (): Promise<void> => { await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0) }) }) }
 
 /** The editor's frame, a way to post a message from it, and what the tab posted to it. */
-interface Frame { frame: HTMLIFrameElement; post: (data: unknown, source?: unknown) => void; posted: unknown[] }
+interface Frame {
+  frame: HTMLIFrameElement
+  post: (data: unknown, source?: unknown, origin?: string) => void
+  posted: unknown[]
+  targets: string[]
+}
 
 function editor(view: ReturnType<typeof render>): Frame {
   const frame = view.getByTitle(zh.diagram) as HTMLIFrameElement
   const posted: unknown[] = []
+  const targets: string[] = []
   const window_ = frame.contentWindow!
-  window_.postMessage = ((message: unknown) => { posted.push(message) }) as typeof window_.postMessage
-  const post = (data: unknown, source: unknown = frame.contentWindow): void => {
-    act(() => { window.dispatchEvent(new MessageEvent('message', { data, source: source as Window })) })
+  window_.postMessage = ((message: unknown, target: string) => { posted.push(message); targets.push(target) }) as typeof window_.postMessage
+  const post = (data: unknown, source: unknown = frame.contentWindow, origin = window.location.origin): void => {
+    act(() => { window.dispatchEvent(new MessageEvent('message', { data, source: source as Window, origin })) })
   }
-  return { frame, post, posted }
+  return { frame, post, posted, targets }
 }
 
 describe('the draw.io editor tab', () => {
+  it('uses exact Web and Desktop origins without treating a custom protocol as an opaque origin', () => {
+    expect(diagramEditorOrigin('https://research.example:8443/path')).toBe('https://research.example:8443')
+    expect(diagramEditorOrigin('http://127.0.0.1:19387/')).toBe('http://127.0.0.1:19387')
+    expect(diagramEditorOrigin('dsh-app://app/')).toBe('dsh-app://app')
+    expect(diagramEditorOrigin('dsh-app://foreign/')).toBeUndefined()
+    expect(diagramEditorOrigin('file:///app/index.html')).toBeUndefined()
+  })
+
+  it('refuses init and save from another origin in the same editor window', async () => {
+    const { view, commands } = mount(research())
+    await settle()
+    const { frame, post, posted, targets } = editor(view)
+    for (const origin of ['https://other.example', 'null', '']) {
+      post({ event: 'init' }, frame.contentWindow, origin)
+      post({ event: 'save', xml: '<mxfile>untrusted</mxfile>' }, frame.contentWindow, origin)
+      post({ event: 'autosave', xml: '<mxfile>untrusted</mxfile>' }, frame.contentWindow, origin)
+    }
+    expect(posted).toEqual([])
+    expect(commands.map(command => command.action)).toEqual(['read-artifact'])
+    post({ event: 'init' })
+    expect(posted).toHaveLength(1)
+    expect(targets).toEqual([window.location.origin])
+  })
+
   it('names its chip after the file', () => {
     expect(diagramTitle(ADDRESS)).toBe('architecture.drawio')
     expect(diagramTitle('dsh-resource://file/absolute/C:/r/a%20b.drawio')).toBe('a b.drawio')

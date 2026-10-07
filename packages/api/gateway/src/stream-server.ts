@@ -70,14 +70,14 @@ export class RemoteStreamMuxServer {
    */
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, peer: PeerScope): void {
     this.server.handleUpgrade(req, socket, head, (websocket) => {
-      const release = bindPeer(websocket, peer)
+      const bound: BoundStreamOpener = (endpoint, payload, uplink, control) =>
+        this.open(endpoint, payload, uplink, peer, control)
+      const connection = new RemoteStreamMuxConnection(websocket, bound, this.failure, this.streamInboxBytes)
+      const release = bindPeer(websocket, peer, () => connection.stop(new Error('Remote stream Peer left')))
       if (release === undefined) return
       this.missedHeartbeats.set(websocket, 0)
       websocket.on('pong', () => { this.missedHeartbeats.set(websocket, 0) })
       this.startHeartbeat()
-      const bound: BoundStreamOpener = (endpoint, payload, uplink, control) =>
-        this.open(endpoint, payload, uplink, peer, control)
-      const connection = new RemoteStreamMuxConnection(websocket, bound, this.failure, this.streamInboxBytes)
       const done = connection.run()
       this.connections.add(done)
       void done.then(() => {
@@ -135,6 +135,7 @@ interface ActiveStream {
 class RemoteStreamMuxConnection {
   private readonly streams = new Map<string, ActiveStream>()
   private writes = Promise.resolve()
+  private stopped = false
 
   constructor(
     private readonly socket: WebSocket,
@@ -148,6 +149,7 @@ class RemoteStreamMuxConnection {
       this.socket.once('close', resolve)
       this.socket.once('error', () => { this.socket.terminate() })
       this.socket.on('message', (data, isBinary) => {
+        if (this.stopped || this.socket.readyState !== WebSocket.OPEN) return
         if (isBinary) {
           this.socket.close(1003, 'text messages required')
           return
@@ -160,8 +162,14 @@ class RemoteStreamMuxConnection {
       })
     })
     await closed
+    await this.stop(new Error('Remote stream socket closed'))
+  }
+
+  /** Refuse new frames synchronously and wait for every active Host iterator to stop. */
+  async stop(reason: Error): Promise<void> {
+    this.stopped = true
     const active = [...this.streams.values()]
-    for (const stream of active) stream.stop(new Error('Remote stream socket closed'))
+    for (const stream of active) stream.stop(reason)
     await Promise.all(active.map(stream => stream.done))
   }
 
@@ -403,17 +411,22 @@ class UplinkInbox implements AsyncIterable<unknown>, AsyncIterator<unknown> {
 }
 
 /**
- * Close the socket when the Peer's scope is disposed. A scope that is already
- * disposed leaves no Peer for the socket to speak for, so the socket closes now.
+ * Peer disposal refuses all further frames and stops Host streams before waiting
+ * for the WebSocket close handshake. An already disposed Peer owns no streams.
  * @returns the registration's disposer, or `undefined` when the socket was closed.
  */
-function bindPeer(websocket: WebSocket, peer: PeerScope): (() => unknown) | undefined {
+function bindPeer(websocket: WebSocket, peer: PeerScope, stop: () => Promise<void>): (() => unknown) | undefined {
   try {
     return peer.ctx.effect(
-      () => () => { websocket.close(1001, 'peer left') },
+      () => async () => {
+        const stopped = stop()
+        websocket.close(1001, 'peer left')
+        await stopped
+      },
       'api-gateway: Remote stream socket bound to its Peer',
     )
   } catch {
+    void stop()
     websocket.close(1001, 'peer left')
     return undefined
   }
@@ -426,7 +439,8 @@ function rawText(data: RawData): string {
 }
 
 /**
- * Reject an upgrade without transferring socket ownership to ws.
+ * Reject an upgrade and destroy its socket after the complete response is written.
+ * A rejected peer cannot retain the upgraded socket by withholding its TCP close.
  * @param socket - carrier socket that receives the HTTP rejection.
  * @param status - authentication or browser-trust rejection status.
  */
@@ -440,5 +454,5 @@ export function rejectRemoteStreamUpgrade(socket: Duplex, status: 401 | 403): vo
     `Content-Length: ${String(Buffer.byteLength(body))}`,
     '',
     body,
-  ].join('\r\n'))
+  ].join('\r\n'), () => { socket.destroy() })
 }

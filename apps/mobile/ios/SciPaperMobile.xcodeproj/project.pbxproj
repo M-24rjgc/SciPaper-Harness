@@ -49,8 +49,8 @@
         E00000000000000000000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000004); runOnlyForDeploymentPostprocessing = 0;};
         F00000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (F00000000000000000000003,F00000000000000000000004); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
         F00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (F00000000000000000000005,F00000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
-        F00000000000000000000003 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 16.4; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug;};
-        F00000000000000000000004 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 16.4; SWIFT_COMPILATION_MODE = wholemodule;}; name = Release;};
+        F00000000000000000000003 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.4; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug;};
+        F00000000000000000000004 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.4; SWIFT_COMPILATION_MODE = wholemodule;}; name = Release;};
         F00000000000000000000005 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = SciPaperMobile/Info.plist; PRODUCT_BUNDLE_IDENTIFIER = org.scipaper.mobile; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug;};
         F00000000000000000000006 = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = SciPaperMobile/Info.plist; PRODUCT_BUNDLE_IDENTIFIER = org.scipaper.mobile; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release;};
     };

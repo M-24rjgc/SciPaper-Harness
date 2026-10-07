@@ -22,6 +22,18 @@ const BLANK_DIAGRAM = '<mxfile><diagram name="Architecture"><mxGraphModel><root>
 /** The offline editor the host serves once the draw.io component is installed. */
 const EDITOR_URL = '/api/research/drawio/index.html?embed=1&proto=json&offline=1&local=1&saveAndExit=0&noExitBtn=1&libraries=1'
 
+/**
+ * The application origin that owns the offline editor and its messages.
+ * @param applicationUrl - current top-level application URL.
+ * @returns exact HTTP(S) or Desktop application origin; other carriers are refused.
+ */
+export function diagramEditorOrigin(applicationUrl: string): string | undefined {
+  const url = new URL(applicationUrl)
+  if (url.protocol === 'https:' || url.protocol === 'http:') return url.origin
+  if (url.protocol === 'dsh-app:' && url.host === 'app') return 'dsh-app://app'
+  return undefined
+}
+
 /** Whether a path is absolute on POSIX, on a Windows drive, or as a UNC share. */
 function isAbsolute(path: string): boolean {
   return path.startsWith('/') || path.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(path)
@@ -133,6 +145,7 @@ function DiagramFile(props: ResearchTabProps & { project: ResearchProject; path:
  */
 function Editor(props: ResearchTabProps & { xml: string; onSave?: ((xml: string) => Promise<void>) | undefined }): ReactNode {
   const { t } = props
+  const editorOrigin = diagramEditorOrigin(window.location.href)
   const installed = props.useResearch(s => s.snapshot?.components.find(component => component.id === 'drawio')?.installed === true)
   const frame = useRef<HTMLIFrameElement>(null)
   const [installs, setInstalls] = useState(0)
@@ -158,10 +171,12 @@ function Editor(props: ResearchTabProps & { xml: string; onSave?: ((xml: string)
     const listener = (event: MessageEvent): void => {
       const view = frame.current?.contentWindow
       if (view === null || view === undefined || event.source !== view) return
+      if (editorOrigin === undefined || event.origin !== editorOrigin) return
       let message: unknown
       try { message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data } catch { return }
       if (!message || typeof message !== 'object' || !('event' in message)) return
-      if (message.event === 'init') view.postMessage(JSON.stringify({ action: 'load', xml: props.xml || BLANK_DIAGRAM, autosave: onSave.current === undefined ? 0 : 1 }), '*')
+      if (message.event === 'init') view.postMessage(JSON.stringify({ action: 'load', xml: props.xml || BLANK_DIAGRAM,
+        autosave: onSave.current === undefined ? 0 : 1 }), editorOrigin)
       if (!('xml' in message) || typeof message.xml !== 'string') return
       const xml = message.xml
       const state = saving.current
@@ -182,7 +197,7 @@ function Editor(props: ResearchTabProps & { xml: string; onSave?: ((xml: string)
       if (state.pending !== undefined) flush(state.pending)
       state.pending = undefined
     }
-  }, [props.xml])
+  }, [props.xml, editorOrigin])
   const install = (): void => {
     installing.start(async () => {
       await props.install('drawio')
