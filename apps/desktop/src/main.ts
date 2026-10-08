@@ -64,7 +64,8 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 import { DesktopRemoteAccess, RemoteAccessError } from './remote-access.ts'
-import { openQuickTunnel, prepareCloudflared, waitForPublicTunnel } from './remote-tunnel.ts'
+import { appendDiagnostics, openQuickTunnel, prepareCloudflared, waitForPublicTunnel } from './remote-tunnel.ts'
+import { proxyTunnelFetch, type RouteClient } from './remote-routes.ts'
 import QRCode from 'qrcode'
 
 app.setName('SciPaper Harness')
@@ -545,17 +546,38 @@ async function main(): Promise<void> {
   })
 
   const remoteFetch: typeof fetch = (input, init) => net.fetch(input instanceof URL ? input.href : input, init)
+  // Ways to reach the public tunnel address, in rotation: the system's own proxy settings and rules through
+  // Chromium, direct HTTP/1.1, the same system proxy over HTTP/1.1, and Chromium with no proxy at all.
+  let directSession: Promise<Electron.Session> | undefined
+  const publicRouteClients: readonly RouteClient[] = [
+    { name: 'system-proxy', fetch: remoteFetch },
+    { name: 'direct-http1', fetch: (input, init) => fetch(input, init) },
+    { name: 'proxy-http1', fetch: proxyTunnelFetch(url => session.defaultSession.resolveProxy(url)) },
+    { name: 'direct-chromium', fetch: async (input, init) => {
+      directSession ??= (async () => {
+        const isolated = session.fromPartition('remote-route-direct')
+        await isolated.setProxy({ mode: 'direct' })
+        return isolated
+      })()
+      return (await directSession).fetch(input instanceof URL ? input.href : input, init)
+    } },
+  ]
   const remoteAccess = new DesktopRemoteAccess({
     host: () => backend.host,
     openTunnel: async (signal, connecting) => {
       const cache = join(app.getPath('userData'), 'remote-tunnel')
+      let diagnostics = Promise.resolve()
+      const note = (line: string): void => {
+        diagnostics = diagnostics.then(() => appendDiagnostics(join(cache, 'diagnostics.log'), line))
+      }
       const binary = await prepareCloudflared(cache, remoteFetch, signal)
       try {
         signal.throwIfAborted()
         if (hostUrl === undefined || backend.host === undefined) throw new RemoteAccessError('host')
         connecting()
-        const tunnel = await openQuickTunnel({ binary: binary.path, cache, hostUrl, signal })
-        try { await waitForPublicTunnel(tunnel.origin, remoteFetch, signal) }
+        note(`system proxy decision for tunnel traffic: ${await session.defaultSession.resolveProxy('https://trycloudflare.com').catch(() => 'unknown')}`)
+        const tunnel = await openQuickTunnel({ binary: binary.path, cache, hostUrl, signal, note })
+        try { await waitForPublicTunnel(tunnel.origin, publicRouteClients, signal, note) }
         catch (error) { await tunnel.stop(); throw error }
         return { ...tunnel, stop: async () => { try { await tunnel.stop() } finally { await binary.dispose() } } }
       } catch (error) { await binary.dispose(); throw error }

@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DesktopRemoteAccess, RemoteAccessError, type RemoteHost, type RemoteTunnel, type RemotePairing } from '../src/remote-access.ts'
-import { cloudflaredArtifact, cloudflaredEnvironment, waitForPublicTunnel } from '../src/remote-tunnel.ts'
+import { appendDiagnostics, cloudflaredArtifact, cloudflaredEnvironment, openQuickTunnel, waitForPublicTunnel, type QuickTunnelOptions } from '../src/remote-tunnel.ts'
+import { proxyFromDecision, proxyTunnelFetch, type RouteClient } from '../src/remote-routes.ts'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import type { DesktopRemotePresentation } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 
 function fixture() {
@@ -132,25 +141,163 @@ it('gives the tunnel only OS paths, proxy and TLS settings without credentials o
   expect(environment.PATH).toBe('system-path')
 })
 
+const ORIGIN = 'https://example.trycloudflare.com'
+const clientOf = (name: string, fetcher: typeof fetch): RouteClient => ({ name, fetch: fetcher })
+
 it('waits through relay provisioning, checks the Host fence, and sends no credentials', async () => {
-  // The web server's own login page answers 401 at `/`; only the fenced `/api` route says 403 `forbidden`.
   const fetcher = vi.fn<typeof fetch>()
     .mockResolvedValueOnce(new Response('provisioning', { status: 503 }))
-    .mockResolvedValueOnce(new Response('dsh web authentication required', { status: 401 }))
     .mockResolvedValueOnce(new Response('forbidden', { status: 403 }))
-  const pending = waitForPublicTunnel('https://example.trycloudflare.com', fetcher, new AbortController().signal)
-  await pending
-  expect(fetcher).toHaveBeenCalledTimes(3)
-  expect(fetcher).toHaveBeenLastCalledWith('https://example.trycloudflare.com/api/remote-ready',
+  await waitForPublicTunnel(ORIGIN, [clientOf('only', fetcher)], new AbortController().signal)
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(fetcher).toHaveBeenLastCalledWith(`${ORIGIN}/api/remote-ready`,
     expect.objectContaining({ credentials: 'omit', redirect: 'manual', cache: 'no-store' }))
 })
 
-it('refuses a relay error page as readiness and permits cancelling the public check', async () => {
+it('rotates through the clients until one reaches the Host fence, noting each attempt', async () => {
+  // The web server's own login page answers 401 at `/`; only the fenced `/api` route says 403 `forbidden`.
+  const broken = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('net::ERR_CONNECTION_CLOSED'))
+  const login = vi.fn<typeof fetch>().mockResolvedValue(new Response('dsh web authentication required', { status: 401 }))
+  const good = vi.fn<typeof fetch>().mockResolvedValue(new Response('forbidden', { status: 403 }))
+  const notes: string[] = []
+  await waitForPublicTunnel(ORIGIN, [clientOf('system-proxy', broken), clientOf('login', login), clientOf('direct', good)],
+    new AbortController().signal, line => notes.push(line))
+  expect([broken.mock.calls.length, login.mock.calls.length, good.mock.calls.length]).toEqual([1, 1, 1])
+  expect(notes).toEqual([
+    expect.stringContaining('system-proxy: net::ERR_CONNECTION_CLOSED'),
+    expect.stringContaining('login: unexpected answer HTTP 401'),
+    expect.stringContaining('public route ready via direct on attempt 3'),
+  ])
+  expect(notes.join('\n')).not.toContain('trycloudflare')
+}, 10_000)
+
+it('names a failure without a message and gives up once every client has had its turns', async () => {
+  const mute = vi.fn<typeof fetch>().mockRejectedValue('closed')
+  const relay = vi.fn<typeof fetch>().mockResolvedValue(new Response('relay denied', { status: 403 }))
+  const notes: string[] = []
+  await expect(waitForPublicTunnel(ORIGIN, [clientOf('mute', mute), clientOf('relay', relay)], new AbortController().signal,
+    line => notes.push(line))).rejects.toMatchObject({ kind: 'connection' })
+  expect([mute.mock.calls.length, relay.mock.calls.length]).toEqual([2, 2])
+  expect(notes[0]).toContain('mute: failed')
+  await expect(waitForPublicTunnel(ORIGIN, [], new AbortController().signal)).rejects.toMatchObject({ kind: 'connection' })
+}, 15_000)
+
+it('permits cancelling the public check', async () => {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response('relay denied', { status: 403 }))
-  const rejected = expect(waitForPublicTunnel('https://example.trycloudflare.com', fetcher, new AbortController().signal))
-    .rejects.toMatchObject({ kind: 'connection' })
-  await rejected
   const abort = new AbortController()
   abort.abort()
-  await expect(waitForPublicTunnel('https://example.trycloudflare.com', fetcher, abort.signal)).rejects.toBeDefined()
-}, 10_000)
+  await expect(waitForPublicTunnel(ORIGIN, [clientOf('only', fetcher)], abort.signal)).rejects.toBeDefined()
+  const midway = new AbortController()
+  const hung = vi.fn<typeof fetch>().mockImplementation(async () => { midway.abort(); throw new TypeError('aborted') })
+  await expect(waitForPublicTunnel(ORIGIN, [clientOf('hung', hung)], midway.signal)).rejects.toBeDefined()
+})
+
+it('keeps the newest diagnostics and never lets a write failure escape', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'diagnostics-'))
+  try {
+    const file = join(folder, 'diagnostics.log')
+    await appendDiagnostics(file, 'first')
+    await appendDiagnostics(file, 'second')
+    expect(readFileSync(file, 'utf8').trimEnd().split('\n').map(line => line.slice(25))).toEqual(['first', 'second'])
+    await appendDiagnostics(file, 'third', 60)
+    expect(readFileSync(file, 'utf8').length).toBeLessThanOrEqual(60)
+    expect(readFileSync(file, 'utf8')).toContain('third')
+    await expect(appendDiagnostics(join(folder, 'missing', 'diagnostics.log'), 'lost')).resolves.toBeUndefined()
+  } finally { rmSync(folder, { recursive: true, force: true }) }
+})
+
+/** A stand-in cloudflared whose output and exit the test scripts. */
+function fakeProcess(script: (child: EventEmitter & { stdout: PassThrough; stderr: PassThrough }) => void): ChildProcess {
+  const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(() => {
+    queueMicrotask(() => child.emit('close', 0))
+    return true
+  }) })
+  queueMicrotask(() => { script(child) })
+  return child as unknown as ChildProcess
+}
+
+describe('quick tunnel plans', () => {
+  const registered = (child: { stderr: PassThrough }): void => {
+    child.stderr.write('INF https://quiet-fox-9.trycloudflare.com\nINF Registered tunnel connection connIndex=0\n')
+  }
+  const closesAtOnce = (child: EventEmitter): void => { child.emit('close', 1) }
+  const options = (cache: string, spawnProcess: typeof spawn, extra: Partial<QuickTunnelOptions> = {}): QuickTunnelOptions =>
+    ({ binary: 'cloudflared', cache, hostUrl: 'http://127.0.0.1:4321', signal: new AbortController().signal, spawnProcess,
+      planTimeoutMs: 40, ...extra })
+
+  it('moves to the next plan when one cannot register, and reports which plan worked', async () => {
+    const cache = mkdtempSync(join(tmpdir(), 'plans-'))
+    try {
+      const children = [fakeProcess(closesAtOnce), fakeProcess(registered)]
+      const launcher = vi.fn((..._arguments: unknown[]) => children.shift()!) as unknown as typeof spawn
+      const notes: string[] = []
+      const tunnel = await openQuickTunnel(options(cache, launcher, { note: line => notes.push(line) }))
+      expect(tunnel.origin).toBe('https://quiet-fox-9.trycloudflare.com')
+      const flags = (launcher as unknown as { mock: { calls: [string, string[]][] } }).mock.calls.map(call => call[1].join(' '))
+      expect(flags[0]).toContain('--protocol http2 --edge-ip-version 4')
+      expect(flags[1]).toContain('--protocol quic --edge-ip-version 4')
+      expect(notes).toEqual([expect.stringContaining('http2/ip4 did not register'), expect.stringContaining('registered with quic/ip4')])
+      await tunnel.stop()
+    } finally { rmSync(cache, { recursive: true, force: true }) }
+  })
+
+  it('tries the automatic address family last, and fails after every plan has had its turn', async () => {
+    const cache = mkdtempSync(join(tmpdir(), 'plans-'))
+    try {
+      const silent = (): ChildProcess => fakeProcess(() => {})
+      const launcher = vi.fn((..._arguments: unknown[]) => silent()) as unknown as typeof spawn
+      await expect(openQuickTunnel(options(cache, launcher))).rejects.toMatchObject({ kind: 'connection' })
+      const calls = (launcher as unknown as { mock: { calls: [string, string[]][] } }).mock.calls
+      expect(calls).toHaveLength(3)
+      expect(calls[2]![1].join(' ')).toContain('--protocol http2 --edge-ip-version auto')
+    } finally { rmSync(cache, { recursive: true, force: true }) }
+  })
+
+  it('stops at once when cancelled, and refuses a Host that is not loopback', async () => {
+    const cache = mkdtempSync(join(tmpdir(), 'plans-'))
+    try {
+      const launcher = vi.fn() as unknown as typeof spawn
+      const abort = new AbortController()
+      abort.abort()
+      await expect(openQuickTunnel(options(cache, launcher, { signal: abort.signal }))).rejects.toMatchObject({ kind: 'connection' })
+      await expect(openQuickTunnel(options(cache, launcher, { hostUrl: 'http://example.test:80' }))).rejects.toMatchObject({ kind: 'host' })
+      expect(launcher).not.toHaveBeenCalled()
+    } finally { rmSync(cache, { recursive: true, force: true }) }
+  })
+})
+
+describe('proxy tunnel client', () => {
+  it('reads the first usable proxy from a Chromium proxy decision', () => {
+    expect(proxyFromDecision('PROXY 127.0.0.1:7897; DIRECT')).toEqual({ host: '127.0.0.1', port: 7897 })
+    expect(proxyFromDecision('DIRECT; HTTPS proxy.example:8443')).toEqual({ host: 'proxy.example', port: 8443 })
+    expect(proxyFromDecision('PROXY [::1]:3128')).toEqual({ host: '::1', port: 3128 })
+    expect(proxyFromDecision('DIRECT')).toBeUndefined()
+    expect(proxyFromDecision('SOCKS5 127.0.0.1:1080')).toBeUndefined()
+    expect(proxyFromDecision('PROXY host:99999')).toBeUndefined()
+  })
+
+  it('refuses addresses and decisions it cannot relay', async () => {
+    const direct = proxyTunnelFetch(async () => 'DIRECT')
+    await expect(direct('https://example.test/')).rejects.toThrow('no proxy')
+    await expect(direct(new URL('https://example.test/'))).rejects.toThrow('no proxy')
+    await expect(direct(new Request('https://example.test/'))).rejects.toThrow('no proxy')
+    await expect(proxyTunnelFetch(async () => 'PROXY 127.0.0.1:1')('http://example.test/')).rejects.toThrow('https only')
+  })
+
+  it('reports a proxy that refuses the tunnel, or is not listening', async () => {
+    const refusing = createServer()
+    refusing.on('connect', (_request, socket) => { socket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n') })
+    await new Promise<void>(resolve => refusing.listen(0, '127.0.0.1', resolve))
+    try {
+      const port = (refusing.address() as AddressInfo).port
+      await expect(proxyTunnelFetch(async () => `PROXY 127.0.0.1:${String(port)}`)('https://example.test/'))
+        .rejects.toThrow('CONNECT answered 502')
+      const idle = createServer()
+      await new Promise<void>(resolve => idle.listen(0, '127.0.0.1', resolve))
+      const free = (idle.address() as AddressInfo).port
+      await new Promise<void>(resolve => idle.close(() => { resolve() }))
+      await expect(proxyTunnelFetch(async () => `PROXY 127.0.0.1:${String(free)}`)('https://example.test/',
+        { signal: new AbortController().signal })).rejects.toBeDefined()
+    } finally { await new Promise<void>(resolve => refusing.close(() => { resolve() })) }
+  })
+})

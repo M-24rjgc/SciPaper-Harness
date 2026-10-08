@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { setTimeout as delay } from 'node:timers/promises'
 import { RemoteAccessError, type RemoteTunnel } from './remote-access.ts'
+import type { RouteClient } from './remote-routes.ts'
 
 const VERSION = '2026.10.0'
 const MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
@@ -32,22 +33,62 @@ export function cloudflaredEnvironment(environment: NodeJS.ProcessEnv): NodeJS.P
  */
 const PUBLIC_PROBE_PATH = '/api/remote-ready'
 
-/** Wait for the public route's unauthenticated Host fence before offering pairing. */
-export async function waitForPublicTunnel(origin: string, fetcher: typeof fetch, signal: AbortSignal): Promise<void> {
-  for (let attempt = 0; attempt < 6; attempt++) {
+/** Probes made through each client before the check gives up. */
+const PROBES_PER_CLIENT = 2
+
+/**
+ * Wait for the public route's unauthenticated Host fence before offering pairing.
+ *
+ * The check rotates through the given clients, one per attempt, because no single way of reaching
+ * the address works on every machine: Chromium's HTTP/2 client behind a local proxy (reproduced with
+ * Mihomo/Clash) fails with `net::ERR_CONNECTION_CLOSED` on a route that answers normally over HTTP/1.1,
+ * a direct connection fails where only the proxy reaches the internet, and the reverse.
+ * @param origin - the public tunnel origin.
+ * @param clients - the ways to reach it, most faithful to the system's own settings first.
+ * @param signal - cancels the check.
+ * @param note - receives one short diagnostic line per attempt, never an address.
+ */
+export async function waitForPublicTunnel(origin: string, clients: readonly RouteClient[], signal: AbortSignal,
+  note: (line: string) => void = () => {}): Promise<void> {
+  const attempts = Math.max(1, clients.length) * PROBES_PER_CLIENT
+  for (let attempt = 0; attempt < attempts; attempt++) {
     signal.throwIfAborted()
+    const client = clients[attempt % clients.length]
+    if (client === undefined) break
+    const started = Date.now()
     try {
-      const response = await fetcher(`${origin}${PUBLIC_PROBE_PATH}`, { credentials: 'omit', redirect: 'manual', cache: 'no-store',
+      const response = await client.fetch(`${origin}${PUBLIC_PROBE_PATH}`, { credentials: 'omit', redirect: 'manual', cache: 'no-store',
         signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]) })
       signal.throwIfAborted()
       // No origin is admitted yet: this exact response comes from our Host fence.
       // A relay error page or redirect must not be presented as a ready connection.
-      if (response.status === 403 && await response.text() === 'forbidden') return
+      if (response.status === 403 && await response.text() === 'forbidden') {
+        note(`public route ready via ${client.name} on attempt ${String(attempt + 1)} (${String(Date.now() - started)} ms)`)
+        return
+      }
+      note(`${client.name}: unexpected answer HTTP ${String(response.status)} (${String(Date.now() - started)} ms)`)
       await response.body?.cancel().catch(() => undefined)
-    } catch { signal.throwIfAborted() }
-    if (attempt < 5) await delay(1000, undefined, { signal })
+    } catch (error) {
+      signal.throwIfAborted()
+      note(`${client.name}: ${error instanceof Error ? error.message : 'failed'} (${String(Date.now() - started)} ms)`)
+    }
+    if (attempt < attempts - 1) await delay(1000, undefined, { signal })
   }
   throw new RemoteAccessError('connection')
+}
+/**
+ * Append one line to the local connection diagnostics, keeping only the newest bytes. The carrier
+ * never logs tunnel output, so this is the only record of which route or plan worked; it holds timings
+ * and error names, never an address or a credential, and its failure never affects the connection.
+ * @param file - the log path.
+ * @param line - one short diagnostic line.
+ * @param limit - the most bytes kept.
+ */
+export async function appendDiagnostics(file: string, line: string, limit = 65_536): Promise<void> {
+  try {
+    const previous = await readFile(file, 'utf8').catch(() => '')
+    await writeFile(file, `${previous}${new Date().toISOString()} ${line}\n`.slice(-limit), { mode: 0o600 })
+  } catch { /* diagnostics are best effort */ }
 }
 
 /** Release artifact selected by the carrier, never by a product document. */
@@ -130,22 +171,69 @@ export async function prepareCloudflared(cache: string, fetcher: typeof fetch, s
   } catch (error) { await dispose(); throw error }
 }
 
-/** Keeps the Host bound to loopback and preserves the public Host header for authorization. */
-export async function openQuickTunnel(options: {
+/** One way of asking cloudflared to reach Cloudflare's edge. */
+interface TunnelPlan {
+  readonly protocol: 'http2' | 'quic'
+  readonly ipVersion: '4' | 'auto'
+}
+
+/**
+ * Edge connection plans tried in order. HTTP/2 over IPv4 is what works behind most proxies and TUN
+ * setups; QUIC (UDP) reaches the edge where TCP 7844 is filtered; the last lets cloudflared choose the
+ * address family for networks whose IPv4 path is the broken one.
+ */
+const TUNNEL_PLANS: readonly TunnelPlan[] = [
+  { protocol: 'http2', ipVersion: '4' },
+  { protocol: 'quic', ipVersion: '4' },
+  { protocol: 'http2', ipVersion: 'auto' },
+]
+
+/** Registration normally takes seconds; a plan that has not registered by now is replaced by the next one. */
+const PLAN_TIMEOUT_MS = 30_000
+
+/** Options for {@link openQuickTunnel}. */
+export interface QuickTunnelOptions {
   binary: string
   cache: string
   hostUrl: string
   signal: AbortSignal
-}): Promise<RemoteTunnel> {
+  /** Receives one short diagnostic line per plan; never an address or a credential. */
+  note?: (line: string) => void
+  /** Process launcher, replaceable in tests. */
+  spawnProcess?: typeof spawn
+  /** Per-plan registration limit, replaceable in tests. */
+  planTimeoutMs?: number
+}
+
+/** Keeps the Host bound to loopback and preserves the public Host header for authorization. */
+export async function openQuickTunnel(options: QuickTunnelOptions): Promise<RemoteTunnel> {
   const local = new URL(options.hostUrl)
   if (local.protocol !== 'http:' || local.hostname !== '127.0.0.1' || local.port === '') throw new RemoteAccessError('host')
+  const note = options.note ?? (() => {})
+  let failure: unknown = new RemoteAccessError('connection')
+  for (const plan of TUNNEL_PLANS) {
+    if (options.signal.aborted) break
+    const started = Date.now()
+    try {
+      const tunnel = await openTunnelOnce(options, local.origin, plan)
+      note(`tunnel registered with ${plan.protocol}/ip${plan.ipVersion} (${String(Date.now() - started)} ms)`)
+      return tunnel
+    } catch (error) {
+      failure = error
+      note(`tunnel ${plan.protocol}/ip${plan.ipVersion} did not register (${String(Date.now() - started)} ms)`)
+    }
+  }
+  throw failure
+}
+
+async function openTunnelOnce(options: QuickTunnelOptions, origin: string, plan: TunnelPlan): Promise<RemoteTunnel> {
   const run = await mkdtemp(join(options.cache, 'lease-'))
   const config = join(run, 'config.yml')
   await writeFile(config, '{}\n', { flag: 'wx', mode: 0o600 })
   const env = cloudflaredEnvironment(process.env)
-  const child = spawn(options.binary, ['tunnel', '--config', config, '--no-autoupdate', '--protocol', 'http2',
-    '--edge-ip-version', '4', '--loglevel', 'info', '--metrics', '127.0.0.1:0',
-    '--url', local.origin], { cwd: run, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = (options.spawnProcess ?? spawn)(options.binary, ['tunnel', '--config', config, '--no-autoupdate', '--protocol', plan.protocol,
+    '--edge-ip-version', plan.ipVersion, '--loglevel', 'info', '--metrics', '127.0.0.1:0',
+    '--url', origin], { cwd: run, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
   let exited = false
   const closed = new Promise<void>((resolve) => {
     child.once('close', () => { exited = true; resolve() })
@@ -163,28 +251,28 @@ export async function openQuickTunnel(options: {
   let timer: ReturnType<typeof setTimeout> | undefined
   let abort = (): void => {}
   try {
-    const origin = await new Promise<string>((resolve, reject) => {
-      let publicOrigin: string | undefined
+    const publicOrigin = await new Promise<string>((resolve, reject) => {
+      let found: string | undefined
       let connected = false
       let tail = ''
       const accept = (chunk: Buffer): void => {
         tail = (tail + chunk.toString('utf8')).slice(-16_384)
         const match = /https:\/\/([a-z0-9]+(?:-[a-z0-9]+)*\.trycloudflare\.com)(?![a-z0-9.-])/i.exec(tail)
-        if (match !== null) publicOrigin = `https://${match[1]}`
+        if (match !== null) found = `https://${match[1]}`
         if (tail.includes('Registered tunnel connection')) connected = true
-        if (connected && publicOrigin !== undefined) resolve(publicOrigin)
+        if (connected && found !== undefined) resolve(found)
       }
       child.stdout.on('data', accept)
       child.stderr.on('data', accept)
       child.once('error', () => { reject(new RemoteAccessError('connection')) })
       child.once('close', () => { reject(new RemoteAccessError('connection')) })
-      timer = setTimeout(() => { reject(new RemoteAccessError('connection')) }, 75_000)
+      timer = setTimeout(() => { reject(new RemoteAccessError('connection')) }, options.planTimeoutMs ?? PLAN_TIMEOUT_MS)
       abort = () => { reject(new RemoteAccessError('connection')) }
       options.signal.addEventListener('abort', abort, { once: true })
       if (options.signal.aborted) abort()
     })
     options.signal.throwIfAborted()
-    return { origin, closed, stop }
+    return { origin: publicOrigin, closed, stop }
   } catch (error) { await stop(); throw error } finally {
     clearTimeout(timer)
     options.signal.removeEventListener('abort', abort)
