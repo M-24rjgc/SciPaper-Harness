@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-browser-use-runtime",
   "description": "Session-owned browser resource lifecycles and MCP integration",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publishConfig": {
     "access": "public"
   },

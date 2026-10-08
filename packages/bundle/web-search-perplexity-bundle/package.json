@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-web-search-perplexity-bundle",
   "description": "Search the web through Perplexity. An API key is required; search remains unavailable until configured.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "icon": "./icon.svg",
   "repository": {
     "type": "git",

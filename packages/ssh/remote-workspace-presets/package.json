@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-remote-workspace-presets",
   "description": "Verified SSH workspaces and dynamically mounted remote Agent presets",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publishConfig": {
     "access": "public"
   },
