@@ -171,6 +171,19 @@ export async function prepareCloudflared(cache: string, fetcher: typeof fetch, s
   } catch (error) { await dispose(); throw error }
 }
 
+/** The part of a launched cloudflared the carrier uses; a real child process satisfies it. */
+export interface TunnelProcess {
+  readonly stdout: { on(event: 'data', listener: (chunk: Buffer) => void): unknown }
+  readonly stderr: { on(event: 'data', listener: (chunk: Buffer) => void): unknown }
+  once(event: 'close' | 'error', listener: () => void): unknown
+  kill(signal: 'SIGTERM' | 'SIGKILL'): unknown
+}
+
+/** Starts cloudflared with piped output and no console window. */
+export type TunnelLauncher = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) => TunnelProcess
+
+const launchProcess: TunnelLauncher = (command, args, options) =>
+  spawn(command, args, { ...options, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
 /** One way of asking cloudflared to reach Cloudflare's edge. */
 interface TunnelPlan {
   readonly protocol: 'http2' | 'quic'
@@ -200,7 +213,7 @@ export interface QuickTunnelOptions {
   /** Receives one short diagnostic line per plan; never an address or a credential. */
   note?: (line: string) => void
   /** Process launcher, replaceable in tests. */
-  spawnProcess?: typeof spawn
+  launch?: TunnelLauncher
   /** Per-plan registration limit, replaceable in tests. */
   planTimeoutMs?: number
 }
@@ -231,9 +244,9 @@ async function openTunnelOnce(options: QuickTunnelOptions, origin: string, plan:
   const config = join(run, 'config.yml')
   await writeFile(config, '{}\n', { flag: 'wx', mode: 0o600 })
   const env = cloudflaredEnvironment(process.env)
-  const child = (options.spawnProcess ?? spawn)(options.binary, ['tunnel', '--config', config, '--no-autoupdate', '--protocol', plan.protocol,
+  const child = (options.launch ?? launchProcess)(options.binary, ['tunnel', '--config', config, '--no-autoupdate', '--protocol', plan.protocol,
     '--edge-ip-version', plan.ipVersion, '--loglevel', 'info', '--metrics', '127.0.0.1:0',
-    '--url', origin], { cwd: run, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    '--url', origin], { cwd: run, env })
   let exited = false
   const closed = new Promise<void>((resolve) => {
     child.once('close', () => { exited = true; resolve() })

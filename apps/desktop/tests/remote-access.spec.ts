@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { DesktopRemoteAccess, RemoteAccessError, type RemoteHost, type RemoteTunnel, type RemotePairing } from '../src/remote-access.ts'
-import { appendDiagnostics, cloudflaredArtifact, cloudflaredEnvironment, openQuickTunnel, waitForPublicTunnel, type QuickTunnelOptions } from '../src/remote-tunnel.ts'
+import { appendDiagnostics, cloudflaredArtifact, cloudflaredEnvironment, openQuickTunnel, waitForPublicTunnel, type QuickTunnelOptions, type TunnelLauncher, type TunnelProcess } from '../src/remote-tunnel.ts'
 import { proxyFromDecision, proxyTunnelFetch, type RouteClient } from '../src/remote-routes.ts'
-import { spawn, type ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -207,35 +206,42 @@ it('keeps the newest diagnostics and never lets a write failure escape', async (
 })
 
 /** A stand-in cloudflared whose output and exit the test scripts. */
-function fakeProcess(script: (child: EventEmitter & { stdout: PassThrough; stderr: PassThrough }) => void): ChildProcess {
-  const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(() => {
-    queueMicrotask(() => child.emit('close', 0))
-    return true
-  }) })
+function fakeProcess(script: (child: TunnelProcess & { stderr: PassThrough; emit: EventEmitter['emit'] }) => void): TunnelProcess {
+  const emitter = new EventEmitter()
+  const child = {
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    once: (event: 'close' | 'error', listener: () => void) => emitter.once(event, listener),
+    emit: emitter.emit.bind(emitter),
+    kill: vi.fn(() => { queueMicrotask(() => emitter.emit('close', 0)); return true }),
+  }
   queueMicrotask(() => { script(child) })
-  return child as unknown as ChildProcess
+  return child
 }
 
 describe('quick tunnel plans', () => {
   const registered = (child: { stderr: PassThrough }): void => {
     child.stderr.write('INF https://quiet-fox-9.trycloudflare.com\nINF Registered tunnel connection connIndex=0\n')
   }
-  const closesAtOnce = (child: EventEmitter): void => { child.emit('close', 1) }
-  const options = (cache: string, spawnProcess: typeof spawn, extra: Partial<QuickTunnelOptions> = {}): QuickTunnelOptions =>
-    ({ binary: 'cloudflared', cache, hostUrl: 'http://127.0.0.1:4321', signal: new AbortController().signal, spawnProcess,
+  const closesAtOnce = (child: { emit: EventEmitter['emit'] }): void => { child.emit('close', 1) }
+  /** A launcher handing out the given processes in order, then silent ones, and recording each command line. */
+  const launcherOf = (processes: TunnelProcess[]): { launch: TunnelLauncher; commands: string[] } => {
+    const commands: string[] = []
+    return { commands, launch: (_command, args) => { commands.push(args.join(' ')); return processes.shift() ?? fakeProcess(() => {}) } }
+  }
+  const options = (cache: string, launch: TunnelLauncher, extra: Partial<QuickTunnelOptions> = {}): QuickTunnelOptions =>
+    ({ binary: 'cloudflared', cache, hostUrl: 'http://127.0.0.1:4321', signal: new AbortController().signal, launch,
       planTimeoutMs: 40, ...extra })
 
   it('moves to the next plan when one cannot register, and reports which plan worked', async () => {
     const cache = mkdtempSync(join(tmpdir(), 'plans-'))
     try {
-      const children = [fakeProcess(closesAtOnce), fakeProcess(registered)]
-      const launcher = vi.fn((..._arguments: unknown[]) => children.shift()!) as unknown as typeof spawn
+      const { launch, commands } = launcherOf([fakeProcess(closesAtOnce), fakeProcess(registered)])
       const notes: string[] = []
-      const tunnel = await openQuickTunnel(options(cache, launcher, { note: line => notes.push(line) }))
+      const tunnel = await openQuickTunnel(options(cache, launch, { note: line => notes.push(line) }))
       expect(tunnel.origin).toBe('https://quiet-fox-9.trycloudflare.com')
-      const flags = (launcher as unknown as { mock: { calls: [string, string[]][] } }).mock.calls.map(call => call[1].join(' '))
-      expect(flags[0]).toContain('--protocol http2 --edge-ip-version 4')
-      expect(flags[1]).toContain('--protocol quic --edge-ip-version 4')
+      expect(commands[0]).toContain('--protocol http2 --edge-ip-version 4')
+      expect(commands[1]).toContain('--protocol quic --edge-ip-version 4')
       expect(notes).toEqual([expect.stringContaining('http2/ip4 did not register'), expect.stringContaining('registered with quic/ip4')])
       await tunnel.stop()
     } finally { rmSync(cache, { recursive: true, force: true }) }
@@ -244,28 +250,25 @@ describe('quick tunnel plans', () => {
   it('tries the automatic address family last, and fails after every plan has had its turn', async () => {
     const cache = mkdtempSync(join(tmpdir(), 'plans-'))
     try {
-      const silent = (): ChildProcess => fakeProcess(() => {})
-      const launcher = vi.fn((..._arguments: unknown[]) => silent()) as unknown as typeof spawn
-      await expect(openQuickTunnel(options(cache, launcher))).rejects.toMatchObject({ kind: 'connection' })
-      const calls = (launcher as unknown as { mock: { calls: [string, string[]][] } }).mock.calls
-      expect(calls).toHaveLength(3)
-      expect(calls[2]![1].join(' ')).toContain('--protocol http2 --edge-ip-version auto')
+      const { launch, commands } = launcherOf([])
+      await expect(openQuickTunnel(options(cache, launch))).rejects.toMatchObject({ kind: 'connection' })
+      expect(commands).toHaveLength(3)
+      expect(commands[2]).toContain('--protocol http2 --edge-ip-version auto')
     } finally { rmSync(cache, { recursive: true, force: true }) }
   })
 
   it('stops at once when cancelled, and refuses a Host that is not loopback', async () => {
     const cache = mkdtempSync(join(tmpdir(), 'plans-'))
     try {
-      const launcher = vi.fn() as unknown as typeof spawn
+      const { launch, commands } = launcherOf([])
       const abort = new AbortController()
       abort.abort()
-      await expect(openQuickTunnel(options(cache, launcher, { signal: abort.signal }))).rejects.toMatchObject({ kind: 'connection' })
-      await expect(openQuickTunnel(options(cache, launcher, { hostUrl: 'http://example.test:80' }))).rejects.toMatchObject({ kind: 'host' })
-      expect(launcher).not.toHaveBeenCalled()
+      await expect(openQuickTunnel(options(cache, launch, { signal: abort.signal }))).rejects.toMatchObject({ kind: 'connection' })
+      await expect(openQuickTunnel(options(cache, launch, { hostUrl: 'http://example.test:80' }))).rejects.toMatchObject({ kind: 'host' })
+      expect(commands).toHaveLength(0)
     } finally { rmSync(cache, { recursive: true, force: true }) }
   })
 })
-
 describe('proxy tunnel client', () => {
   it('reads the first usable proxy from a Chromium proxy decision', () => {
     expect(proxyFromDecision('PROXY 127.0.0.1:7897; DIRECT')).toEqual({ host: '127.0.0.1', port: 7897 })
