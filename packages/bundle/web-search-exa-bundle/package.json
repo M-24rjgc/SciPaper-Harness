@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-web-search-exa-bundle",
   "description": "Search the web through Exa. An API key is required; search remains unavailable until configured.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "icon": "./icon.svg",
   "repository": {
     "type": "git",
