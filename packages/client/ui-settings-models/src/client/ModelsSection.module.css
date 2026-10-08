@@ -519,12 +519,19 @@
 .modelReasoning {
   grid-column: 1 / -1;
   border: 0;
-  padding: 0;
+  padding: 8px 4px 2px;
   margin: 0;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.reasoningPresets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
 }
 
 .reasoningLevel {

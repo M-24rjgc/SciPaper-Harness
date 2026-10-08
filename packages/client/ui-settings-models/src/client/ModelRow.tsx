@@ -84,6 +84,9 @@ export function ModelRow(props: ModelRowProps): ReactNode {
           <IconTrashOutlineRegular size={14} />
         </button>
       </div>
+      {props.inputField === 'input' && <ModelReasoning
+        model={model} position={position} disabled={disabled} t={t} onChange={props.onChange}
+      />}
       {props.expanded
         ? (
           <div className={styles['modelAdvanced']}>
@@ -107,9 +110,6 @@ export function ModelRow(props: ModelRowProps): ReactNode {
               model={model} field={props.inputField} position={position}
               fallback={props.inputFallback} disabled={disabled || props.inputLoading === true} t={t} onChange={props.onChange}
             />
-            {props.inputField === 'input' && <ModelReasoning
-              model={model} position={position} disabled={disabled} t={t} onChange={props.onChange}
-            />}
           </div>
         )
         : null}
