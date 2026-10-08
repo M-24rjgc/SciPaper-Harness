@@ -133,12 +133,15 @@ it('gives the tunnel only OS paths, proxy and TLS settings without credentials o
 })
 
 it('waits through relay provisioning, checks the Host fence, and sends no credentials', async () => {
+  // The web server's own login page answers 401 at `/`; only the fenced `/api` route says 403 `forbidden`.
   const fetcher = vi.fn<typeof fetch>()
     .mockResolvedValueOnce(new Response('provisioning', { status: 503 }))
+    .mockResolvedValueOnce(new Response('dsh web authentication required', { status: 401 }))
     .mockResolvedValueOnce(new Response('forbidden', { status: 403 }))
   const pending = waitForPublicTunnel('https://example.trycloudflare.com', fetcher, new AbortController().signal)
   await pending
-  expect(fetcher).toHaveBeenLastCalledWith('https://example.trycloudflare.com/',
+  expect(fetcher).toHaveBeenCalledTimes(3)
+  expect(fetcher).toHaveBeenLastCalledWith('https://example.trycloudflare.com/api/remote-ready',
     expect.objectContaining({ credentials: 'omit', redirect: 'manual', cache: 'no-store' }))
 })
 

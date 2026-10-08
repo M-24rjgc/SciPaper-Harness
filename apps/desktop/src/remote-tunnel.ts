@@ -24,12 +24,20 @@ export function cloudflaredEnvironment(environment: NodeJS.ProcessEnv): NodeJS.P
   return Object.fromEntries(Object.entries(environment).filter(([name]) => TUNNEL_ENVIRONMENT_NAMES.has(name.toUpperCase())))
 }
 
+/**
+ * The fenced API route probed for readiness. Connection's `/api` prefix route
+ * answers an unadmitted Host with 403 `forbidden` before any routing; `/` is
+ * behind the web server's own authentication page, which answers 401 and so
+ * could never be told apart from a relay page by this check.
+ */
+const PUBLIC_PROBE_PATH = '/api/remote-ready'
+
 /** Wait for the public route's unauthenticated Host fence before offering pairing. */
 export async function waitForPublicTunnel(origin: string, fetcher: typeof fetch, signal: AbortSignal): Promise<void> {
   for (let attempt = 0; attempt < 6; attempt++) {
     signal.throwIfAborted()
     try {
-      const response = await fetcher(`${origin}/`, { credentials: 'omit', redirect: 'manual', cache: 'no-store',
+      const response = await fetcher(`${origin}${PUBLIC_PROBE_PATH}`, { credentials: 'omit', redirect: 'manual', cache: 'no-store',
         signal: AbortSignal.any([signal, AbortSignal.timeout(8_000)]) })
       signal.throwIfAborted()
       // No origin is admitted yet: this exact response comes from our Host fence.
