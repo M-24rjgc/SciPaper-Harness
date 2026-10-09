@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-computer-use-cua-driver-native",
   "description": "Optional computer-use provider embedding the Cua Driver native npm SDK",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publishConfig": {
     "access": "public"
   },

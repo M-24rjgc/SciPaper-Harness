@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-computer-use-cua-bundle",
   "description": "Optional desktop computer control through the Cua Driver",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "icon": "./icon.svg",
   "repository": {
     "type": "git",
