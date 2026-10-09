@@ -51,10 +51,11 @@ export class DesktopUpdateOverlays {
     window.once('closed', () => { parent.off('move', follow); parent.off('resize', follow) })
     let ready = false
     const show = (): void => {
-      if (ready && !window.isDestroyed() && !parent.isDestroyed() && parent.isVisible()) window.show()
+      if (ready && !window.isDestroyed() && !parent.isDestroyed() && parent.isVisible() && !parent.isMinimized()) window.show()
     }
     parent.on('show', show)
-    window.once('closed', () => { parent.off('show', show) })
+    parent.on('restore', show)
+    window.once('closed', () => { parent.off('show', show); parent.off('restore', show) })
     window.once('ready-to-show', () => { ready = true; show() })
     window.setMenu(null)
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))

@@ -153,7 +153,7 @@ it('shows fallback progress and error details when the shell omits optional fiel
   } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }
 })
 
-it('draws a progress bar that follows the download, stays full while verifying, and is absent otherwise', async () => {
+it('keeps the verified download full until installation, then shows preparation without a fabricated percentage', async () => {
   const f = fixture()
   try {
     await f.emit(available)
@@ -174,6 +174,12 @@ it('draws a progress bar that follows the download, stays full while verifying, 
     expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100')
     f.view.rerender(<f.Indicator dictionary={en} />)
     expect(screen.getByRole('progressbar', { name: 'Update download progress' })).toBeTruthy()
+    await f.emit({ phase: 'ready', version: available.version })
+    expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100')
+    expect(screen.getByRole('button', { name: 'Install and Restart' }).getAttribute('aria-disabled')).toBe('false')
+    await f.emit({ phase: 'installing', version: available.version })
+    expect(screen.getByRole('progressbar').hasAttribute('aria-valuenow')).toBe(false)
+    expect(screen.getByRole('progressbar').getAttribute('data-indeterminate')).toBe('true')
     await f.emit({ phase: 'error', version: available.version, failure: 'download' })
     expect(screen.queryByRole('progressbar')).toBeNull()
   } finally { f.view.unmount(); f.status.resolve({ phase: 'idle' }) }

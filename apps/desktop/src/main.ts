@@ -36,6 +36,7 @@ import { readDeviceInfo } from './device-info.ts'
 import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+import { waitForUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, authenticateWebHost, forwardWebRequest } from './web-document.ts'
 import { DesktopWebRequestAuthorization } from './web-request-authorization.ts'
@@ -716,6 +717,8 @@ async function main(): Promise<void> {
   )
 
   const updateSchedule = new DesktopUpdateSchedule(updates, resolveDesktopUpdateScheduleConfig(process.env))
+  const updateWindowWait = new AbortController()
+  app.once('will-quit', () => { updateWindowWait.abort() })
 
   const downloadUpdate = async (version: string): Promise<DesktopUpdateState> => {
     void track('desktop_upgrade_click', {})
@@ -723,19 +726,13 @@ async function main(): Promise<void> {
     const state = await updates.download(version)
     if (state.phase !== 'ready' || quitting) return state
     // Only a completed user-driven download opens this prompt; cancelling installation does not reopen it.
-    // A confirmation on a hidden window would go unseen, so it waits for the next show; the mandatory
+    // A confirmation on a hidden window would go unseen, so it waits for show or restore; the mandatory
     // flow keeps its own taskbar and Dock attention instead.
-    if (!isMandatory()) await windowShown()
+    if (!isMandatory() && !await waitForUpdateWindow(currentDialogWindow(), updateWindowWait.signal)) return state
     // A quit can begin while the show is awaited.
     if (quitting) return state
     return updates.install(version)
   }
-  const windowShown = (): Promise<void> => new Promise((resolve) => {
-    const window = currentDialogWindow()
-    if (window === undefined || window.isDestroyed() || window.isVisible()) { resolve(); return }
-    window.once('show', () => { resolve() })
-    window.once('closed', () => { resolve() })
-  })
 
   protocol.handle(SCHEME, (request) => {
     const url = new URL(request.url)
@@ -1352,6 +1349,7 @@ async function main(): Promise<void> {
   const finishQuit = (): void => {
     quitting = true
     shuttingDown = true
+    updateWindowWait.abort()
     updateJournal?.action('quit-requested')
     quitConfirmation.dispose()
     backgroundNotice?.dispose()

@@ -9,12 +9,13 @@ vi.mock('electron', () => ({ BrowserWindow: function (options: object) { return 
 afterEach(() => { vi.restoreAllMocks() })
 
 function visibilityFixture(visible = true) {
-  const visibility = { visible }
+  const visibility = { visible, minimized: false }
   const parent: ParentFixture & Pick<BrowserWindow, 'isVisible'> = Object.assign(new EventEmitter(), {
     getContentBounds: () => ({ x: 0, y: 0, width: 1000, height: 700 }),
     webContents: Object.assign(new EventEmitter(), { insertCSS: vi.fn(async () => 'blur'), removeInsertedCSS: vi.fn(async () => {}) }),
     isDestroyed: (): boolean => false,
     isVisible: () => visibility.visible,
+    isMinimized: () => visibility.minimized,
   })
   const window = Object.assign(new EventEmitter(), {
     destroyed: false,
@@ -62,6 +63,22 @@ it('waits for both a visible parent and a ready document, in either order', asyn
     window.destroyed = true
     window.emit('closed')
   }
+})
+
+it('shows a loaded confirmation when a minimized parent is restored without a show event', () => {
+  const { parent, window, visibility } = visibilityFixture(false)
+  visibility.minimized = true
+  window.emit('ready-to-show')
+  expect(window.show).not.toHaveBeenCalled()
+  visibility.visible = true
+  parent.emit('show')
+  expect(window.show).not.toHaveBeenCalled()
+  visibility.minimized = false
+  parent.emit('restore')
+  expect(window.show).toHaveBeenCalledOnce()
+  window.destroyed = true
+  window.emit('closed')
+  expect(parent.listenerCount('restore')).toBe(0)
 })
 
 it('does not show or change parent styles when closed before its document is ready', async () => {

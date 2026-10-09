@@ -67,10 +67,11 @@ export function DesktopUpdateIndicator({ wide, hidden, t, view, onOpen }: {
   const label = failed ? retryLabel : copy.label
   const error = failed || state?.phase === 'error'
   const busy = opening || (state !== undefined && BUSY_PHASES.has(state.phase))
-  // The bar follows the download, stays full while the file is verified, and is gone once an error or any other phase takes over.
+  // A prepared download stays complete; restart preparation has no measured percentage.
   const barPercent = state === undefined || failed ? undefined
     : state.phase === 'downloading' ? Math.min(100, Math.max(0, state.percent ?? 0))
-      : state.phase === 'verifying' ? 100 : undefined
+      : state.phase === 'verifying' || state.phase === 'ready' ? 100 : undefined
+  const preparing = !failed && state?.phase === 'installing'
   return <Tooltip label={failed ? retryLabel : copy.detail} side="top">
     <button type="button" className={css.indicator}
       aria-label={label} aria-disabled={busy} onClick={() => { if (!busy) onOpen() }}>
@@ -79,9 +80,11 @@ export function DesktopUpdateIndicator({ wide, hidden, t, view, onOpen }: {
           : busy ? <IconLoadingOutlineRegular className={css.spinner} size={14} /> : <IconDownloadOutlineRegular size={14} />}
       </span>
       <span>{label}</span>
-      {barPercent !== undefined && <span role="progressbar" aria-label={t('desktop.update.progressBar')}
-        aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(barPercent)} className={css.track}>
-        <span className={css.fill} style={{ inlineSize: `${barPercent}%` }} />
+      {(barPercent !== undefined || preparing) && <span role="progressbar"
+        aria-label={t(preparing ? 'desktop.update.installing' : 'desktop.update.progressBar')}
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={barPercent === undefined ? undefined : Math.round(barPercent)}
+        className={css.track} data-indeterminate={preparing || undefined}>
+        <span className={css.fill} style={{ inlineSize: preparing ? '35%' : `${barPercent}%` }} />
       </span>}
     </button>
   </Tooltip>

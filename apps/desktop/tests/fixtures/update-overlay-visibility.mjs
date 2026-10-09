@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { app, BrowserWindow } from 'electron'
 import { DesktopUpdateOverlays } from '../../lib/types/update-overlay.js'
+import { waitForUpdateWindow } from '../../lib/types/update-window.js'
 
 const directory = fileURLToPath(new URL('../../.desktop-build/qualification/', import.meta.url))
 mkdirSync(directory, { recursive: true })
@@ -74,6 +75,40 @@ async function main() {
 
   try {
     await app.whenReady()
+    if (process.platform === 'win32') {
+      const parent = new BrowserWindow({ show: false, width: 800, height: 600 })
+      windows.push(parent)
+      await parent.loadURL('data:text/html,<h1>Update readiness</h1>')
+      parent.showInactive()
+      const minimized = once(parent, 'minimize')
+      parent.minimize()
+      await minimized
+      assert.equal(parent.isVisible(), false)
+      let shown = false
+      const onShow = () => { shown = true }
+      parent.on('show', onShow)
+      const restoreListeners = parent.listenerCount('restore')
+      const waiting = waitForUpdateWindow(parent, new AbortController().signal)
+      const overlay = new DesktopUpdateOverlays().create(parent, undefined, 'Update ready', false)
+      windows.push(overlay)
+      const ready = once(overlay, 'ready-to-show')
+      await overlay.loadURL('data:text/html,<h1>Install and restart</h1>')
+      await ready
+      assert.equal(overlay.isVisible(), false)
+      const restored = once(parent, 'restore')
+      parent.restore()
+      await restored
+      assert.equal(await waiting, true)
+      assert.equal(shown, false, 'Windows restore must exercise the missing show-event regression')
+      assert.equal(overlay.isVisible(), true)
+      const closed = once(overlay, 'closed')
+      overlay.destroy()
+      await closed
+      parent.off('show', onShow)
+      assert.equal(parent.listenerCount('restore'), restoreListeners)
+      parent.destroy()
+      console.log('Windows minimized download resumes on restore and reveals its confirmation')
+    }
     await qualify(true)
     await qualify(false)
     await qualify(true, true)

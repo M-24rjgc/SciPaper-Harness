@@ -25,6 +25,7 @@ const fixture = await vi.hoisted(async () => {
     getContentBounds() { return { x: 10, y: 20, width: 900, height: 650 } }
     isDestroyed() { return this.destroyed }
     isVisible() { return true }
+    isMinimized() { return false }
     destroy() { this.destroyed = true; this.emit('closed') }
     setMenu() {}
   }

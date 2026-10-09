@@ -36,7 +36,7 @@ const config = join(root, 'app-update.yml')
 await writeFile(config, 'updaterCacheDirName: private-workspace-cache\n')
 const forbidden = () => { throw new Error('Qualification must not quit or relaunch through updater') }
 const updater = new updaterModule.NsisUpdater(undefined, {
-  version: '0.1.5-rc.1', name: 'workspace-update-qualification', isPackaged: true,
+  version: '0.1.5-nightly.1', name: 'workspace-update-qualification', isPackaged: true,
   appUpdateConfigPath: config, userDataPath: root, baseCachePath: root,
   whenReady: () => app.whenReady(), quit: forbidden, relaunch: forbidden, onQuit: forbidden,
 })
@@ -186,13 +186,15 @@ async function qualify() {
     await documentReady(mainWindow, `document.querySelector('[class*="frame"]') && window.dshDesktop?.updates`)
     assert.equal(mainWindow.isVisible(), true, 'Workspace qualification requires a visible application window')
     console.log('workspace qualification: workspace document ready')
-    const acknowledgeNotice = `[...document.querySelectorAll('button')].find(button => button.textContent.trim() === '继续')`
-    await press(mainWindow, acknowledgeNotice)
-    await waitFor(async () => !await mainWindow.webContents.executeJavaScript(`!!(${acknowledgeNotice})`), 'first-run notice dismissal')
+    const acknowledgeNotice = `[...document.querySelectorAll('button')].find(button => ['继续', 'Continue'].includes(button.textContent.trim()))`
+    if (await mainWindow.webContents.executeJavaScript(`!!(${acknowledgeNotice})`)) {
+      await press(mainWindow, acknowledgeNotice)
+      await waitFor(async () => !await mainWindow.webContents.executeJavaScript(`!!(${acknowledgeNotice})`), 'first-run notice dismissal')
+    }
     console.log('workspace qualification: first-run notice dismissed')
     await waitFor(async () => !await fixture.host.updateTasks('inspect'), 'workspace startup API requests to settle')
     console.log('workspace qualification: startup API requests settled')
-    const messages = resolveDesktopLocale(app.getLocale()).messages
+    let messages = resolveDesktopLocale(app.getLocale()).messages
     await screenshot(mainWindow, 'workspace.png')
     let menu
     if (process.platform === 'win32') {
@@ -203,6 +205,8 @@ async function qualify() {
         await waitFor(() => menu !== undefined, 'Windows application menu')
       } finally { Menu.prototype.popup = popup }
     } else menu = Menu.getApplicationMenu().items[0].submenu.items
+    messages = ['zh-CN', 'en-US'].map(locale => resolveDesktopLocale(locale).messages)
+      .find(candidate => menu.some(item => item.label === candidate.checkUpdatesMenu)) ?? messages
     const checkMenu = menu.find(item => item.label === messages.checkUpdatesMenu)
     assert.ok(checkMenu)
     if (interactive) {
@@ -212,7 +216,7 @@ async function qualify() {
     }
     const cases = ['real-workspace-preload-and-host']
 
-    server.select('hold-check', '0.1.5-rc.1')
+    server.select('hold-check', '0.1.5-nightly.1')
     checkMenu.click()
     await server.arrived()
     const checking = await dialogWith(messages.updateChecking)
@@ -236,27 +240,37 @@ async function qualify() {
     assert.equal(await downloadError.webContents.executeJavaScript("document.getElementById('technical-details-content').textContent"), fixture.coordinator.state.message)
     await screenshot(downloadError, 'download-error.png')
     await clickText(downloadError, messages.updateAcknowledge)
-    await documentReady(mainWindow, `document.querySelector('button[data-error="true"]')`)
+    await documentReady(mainWindow, `document.querySelector('button:is([aria-label="重试更新"], [aria-label="Retry update"])')`)
     await screenshot(mainWindow, 'retry.png')
-    await press(mainWindow, `document.querySelector('button[aria-label="收起侧边栏"]')`)
-    await documentReady(mainWindow, `document.querySelector('button[aria-label="打开侧边栏"] [role="img"][data-error="true"]')`)
+    await press(mainWindow, `document.querySelector('button:is([aria-label="收起侧边栏"], [aria-label="Collapse sidebar"])')`)
+    await documentReady(mainWindow, `document.querySelector('button:is([aria-label="打开侧边栏"], [aria-label="Open sidebar"]) [role="img"]:is([aria-label="重试更新"], [aria-label="Retry update"])')`)
     await screenshot(mainWindow, 'collapsed-error.png')
-    await press(mainWindow, `document.querySelector('button[aria-label="打开侧边栏"]')`)
-    await documentReady(mainWindow, `document.querySelector('button[data-error="true"]')`)
+    await press(mainWindow, `document.querySelector('button:is([aria-label="打开侧边栏"], [aria-label="Open sidebar"])')`)
+    await documentReady(mainWindow, `document.querySelector('button:is([aria-label="重试更新"], [aria-label="Retry update"])')`)
     cases.push('download-integrity-error-and-persistent-retry')
 
     server.select('hold-download', '0.1.6-nightly.1')
-    await press(mainWindow, `document.querySelector('button[data-error="true"]')`)
+    await press(mainWindow, `document.querySelector('button:is([aria-label="重试更新"], [aria-label="Retry update"])')`)
     await server.arrived()
     await documentReady(mainWindow, `document.querySelector('button[aria-disabled="true"]')`)
     assert.equal(BrowserWindow.getAllWindows().some(window => window.webContents.getURL() === 'dsh-app://shell/update-dialog.html'), false)
     await screenshot(mainWindow, 'downloading.png')
+    if (process.platform === 'win32') {
+      mainWindow.minimize()
+      await waitFor(() => mainWindow.isMinimized(), 'download window minimized')
+    }
     server.release()
+    if (process.platform === 'win32') {
+      await waitFor(() => fixture.coordinator.state.phase === 'ready', 'download completes while minimized')
+      assert.equal(fixture.installations.length, 0)
+      mainWindow.restore()
+    }
     const confirmation = desktopUpdateReadyConfirmation(messages, '0.1.6-nightly.1', process.platform)
     const ready = await dialogWith(confirmation.message)
     assert.equal(fixture.installations.length, 0)
     await screenshot(ready, 'install-confirmation.png')
     cases.push('sidebar-retry-direct-download-and-separate-install-dialog')
+    if (process.platform === 'win32') cases.push('minimized-download-restores-install-confirmation-without-show-event')
 
     assert.equal((await control('queue')).queued, 1)
     await clickText(ready, messages.installAndRestart)
@@ -269,7 +283,7 @@ async function qualify() {
     await clickText(changed, messages.updateAcknowledge)
     cases.push('new-task-during-idle-confirmation-refuses-install-and-preserves-work')
 
-    await press(mainWindow, `document.querySelector('button[data-error="true"]')`)
+    await press(mainWindow, `document.querySelector('button:is([aria-label="重试更新"], [aria-label="Retry update"])')`)
     const warning = await dialogWith(messages.updateActiveTasks)
     await screenshot(warning, 'active-task-warning.png')
     await clickText(warning, messages.updateLater)
@@ -337,7 +351,7 @@ async function qualify() {
     await clickText(failedStop, messages.updateAcknowledge)
     await waitFor(() => fixture.host !== stoppedHost && fixture.readyHosts.has(fixture.host), 'replacement Host after non-graceful shutdown')
     await waitFor(async () => !await fixture.host.updateTasks('inspect'), 'replacement Host ready without active work')
-    await press(mainWindow, `document.querySelector('button[data-error="true"]')`)
+    await press(mainWindow, `document.querySelector('button:is([aria-label="重试更新"], [aria-label="Retry update"])')`)
     const retryInstall = await dialogWith(confirmation.message)
     assert.equal(fixture.installations.length, 0)
     await screenshot(retryInstall, 'recovered-install-confirmation.png')
@@ -385,7 +399,7 @@ async function qualify() {
       menu: menu.map(item => item.label), phases: fixture.states.map(state => state.phase) }, null, 2) + '\n')
   } catch (error) {
     await writeFile(join(root, 'failure.txt'), String(error.stack ?? error))
-    await writeFile(join(root, 'failure-update-state.json'), JSON.stringify(fixture.coordinator?.state, null, 2))
+    await writeFile(join(root, 'failure-update-state.json'), JSON.stringify(fixture.coordinator?.state ?? null, null, 2))
     await writeFile(join(root, 'task-queries.json'), JSON.stringify(fixture.taskQueries, null, 2))
     try { await writeFile(join(root, 'failure-host-state.json'), JSON.stringify(await control('status'), null, 2)) }
     catch (diagnosticError) { await writeFile(join(root, 'failure-host-state.txt'), String(diagnosticError)) }
