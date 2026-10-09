@@ -89,12 +89,8 @@ async function observed(window, subject, operation) {
 }
 
 async function documentReady(window, expression) {
-  return observed(window, `document: ${expression}`, () => window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
-    const test = () => { if (${expression}) { observer.disconnect(); clearTimeout(timer); resolve(true); } };
-    const observer = new MutationObserver(test);
-    const timer = setTimeout(() => { observer.disconnect(); reject(new Error(${JSON.stringify(`Document condition timed out: ${expression}`)})); }, 20000);
-    observer.observe(document, { childList: true, subtree: true, attributes: true }); test();
-  })`))
+  return observed(window, `document: ${expression}`, () => waitFor(async () =>
+    Boolean(await window.webContents.executeJavaScript(`!!(${expression})`)), `document: ${expression}`))
 }
 async function windowAt(url) {
   if (process.platform === 'win32' && url === 'dsh-app://shell/mandatory-update.html') {
@@ -394,6 +390,8 @@ async function qualify() {
     checkMenu.click()
     await waitFor(() => forcedRecovery.isDestroyed(), 'mandatory recovery policy clearance')
     cases.push('mandatory-stop-recovery-preserves-block-and-requires-fresh-install-confirmation')
+    assert.equal((await control('clear')).queued, 0)
+    await waitFor(async () => !await fixture.host.updateTasks('inspect'), 'qualification tasks cleared before shutdown')
     await writeFile(join(root, 'result.json'), JSON.stringify({ realElectron: true, realHostProcess: true,
       realPreload: true, compiledMainEntry: true, installerExecuted: false, cases,
       menu: menu.map(item => item.label), phases: fixture.states.map(state => state.phase) }, null, 2) + '\n')
