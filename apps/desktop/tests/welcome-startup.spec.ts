@@ -63,6 +63,7 @@ vi.mock('electron', () => ({
     setName: vi.fn(), setPath: vi.fn(), commandLine: { appendSwitch: vi.fn() },
     getPreferredSystemLanguages: () => ['en-US'],
     on: (name: string, callback: (...args: unknown[]) => void) => { state.appListeners.set(name, callback) },
+    once: vi.fn(),
     quit: state.quit,
     exit: vi.fn(),
   },
