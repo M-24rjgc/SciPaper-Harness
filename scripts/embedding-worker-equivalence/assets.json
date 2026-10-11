@@ -1,0 +1,31 @@
+{
+  "scifact": {
+    "url": "https://scifact.s3-us-west-2.amazonaws.com/release/latest/data.tar.gz",
+    "bytes": 3115079,
+    "sha256": "11c621288d41ac144d29b13b0f8503b3820b7d6e8b1f6ff24dff335c196d76be"
+  },
+  "spiqaMetadata": {
+    "url": "https://huggingface.co/datasets/google/spiqa/resolve/1774b71511f029b82089a069d75328f25fbf0705/test-C/SPIQA_testC.json",
+    "bytes": 9293881,
+    "sha256": "d927129333b131841d14bc0dbb036086fc2f76b8031a16a7681a7a745859bc13"
+  },
+  "spiqaImages": {
+    "url": "https://huggingface.co/datasets/google/spiqa/resolve/1774b71511f029b82089a069d75328f25fbf0705/test-C/SPIQA_testC_Images.zip",
+    "bytes": 112026645,
+    "sha256": "e7978cf15d3bba367381ac2cceddbbe05f2e20c37aaecb2b33fb896537ee2ca4"
+  },
+  "models": {
+    "text": {
+      "name": "embeddinggemma-2-text-270m.litertlm",
+      "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm",
+      "bytes": 164626432,
+      "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
+    },
+    "vision": {
+      "name": "embeddinggemma-2-text-vision-440m.litertlm",
+      "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm/resolve/e301f74d5551b0c2641bd5cb4652a76239d5c5f8/embeddinggemma-2-text-vision-440m.litertlm",
+      "bytes": 387710976,
+      "sha256": "92dcbea108899e5d6e30d919b0744f90d9967e80c67a4ab5503ac16d54f62eb0"
+    }
+  }
+}

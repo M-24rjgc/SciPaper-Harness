@@ -1,0 +1,37 @@
+name: Bounded public worker vector equivalence
+on:
+  push:
+    branches: ['spike/embeddinggemma2-runtime']
+    paths:
+      - '.github/workflows/embedding-worker-equivalence.yml'
+      - 'scripts/embedding-worker-equivalence/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  paired-public-inputs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      EMBEDDING_PROBE_DIR: ${{ runner.temp }}/public-worker-equivalence
+      EMBEDDING_RUNTIME: ${{ runner.temp }}/public-equivalence-runtime
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Install fixed native wheel in isolated target
+        run: |
+          printf '%s\n' 'litert-lm-api @ https://files.pythonhosted.org/packages/c9/8f/eb7a5203be1d48440c6b8d6e6382c3f744dd6d338fe400555718b4d695a1/litert_lm_api-0.18.0-py3-none-manylinux_2_27_x86_64.whl --hash=sha256:b64e2cf6d7dcb90ff094b74af595cc5d53faa07e0889f967d15df8d3e696b53c' > "$RUNNER_TEMP/equivalence-requirements.txt"
+          python -m pip install --only-binary=:all: --no-deps --require-hashes --target "$EMBEDDING_RUNTIME" -r "$RUNNER_TEMP/equivalence-requirements.txt"
+      - name: Compare frozen public inputs across old and final workers
+        run: python scripts/embedding-worker-equivalence/probe.py
+      - name: Keep only numeric comparison and source identities
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-worker-vector-equivalence
+          path: embedding-equivalence-results/
+          if-no-files-found: warn
+          retention-days: 14

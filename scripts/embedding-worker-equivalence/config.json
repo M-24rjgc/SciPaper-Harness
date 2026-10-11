@@ -1,0 +1,53 @@
+{
+  "workerHashes": {
+    "old-worker.py": "cbe581ef9a5a730e8634a783547a365c6b17b61fd384066cf25a366240dd1eec",
+    "new-worker.py": "cbed91ab55b07526d9142c81cc0274991b872f19967769a62f3da048b0639d01"
+  },
+  "textDocumentIds": [
+    "10086360",
+    "27768226"
+  ],
+  "textQueryIds": [
+    "1062",
+    "516"
+  ],
+  "visualImages": [
+    {
+      "id": "1801.02073/2-Table1-1.png",
+      "paperId": "1801.02073",
+      "member": "SPIQA_testC_Images/1801.02073/2-Table1-1.png",
+      "bytes": 36210,
+      "sha256": "dee6af877b9448fda3cdd87e80f06e685ca6bc3cd60bcc4cc385cb7c4a15a044",
+      "width": 1260,
+      "height": 258
+    },
+    {
+      "id": "1605.07333/5-Table3-1.png",
+      "paperId": "1605.07333",
+      "member": "SPIQA_testC_Images/1605.07333/5-Table3-1.png",
+      "bytes": 36847,
+      "sha256": "4082e2ea9fcc9354c3ba002e2e50ee43d5fef87e5913424b05504d4ace6a8383",
+      "width": 570,
+      "height": 410
+    }
+  ],
+  "visualQueries": [
+    {
+      "id": "1801.02073:2",
+      "paperId": "1801.02073",
+      "index": 2,
+      "questionKey": "1004"
+    },
+    {
+      "id": "1605.07333:1",
+      "paperId": "1605.07333",
+      "index": 1,
+      "questionKey": "846"
+    }
+  ],
+  "maxAbsoluteDelta": 1e-07,
+  "minimumCosine": 0.99999999,
+  "maxInputTokens": 8192,
+  "originalTextMetricCommit": "18d83a77cc969c8d4db7d7ea03266d3f3afcc475",
+  "originalVisualMetricCommit": "3686137e0ada0b44cd6b5494a26b5aecfd7b6e9a"
+}
