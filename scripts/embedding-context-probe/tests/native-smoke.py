@@ -50,6 +50,7 @@ def main():
             diagnostic = subprocess.run(args, input=json.dumps(dict(request, inputs=[sample])), capture_output=True, text=True, timeout=120)
             payload = json.loads(diagnostic.stdout) if diagnostic.returncode == 0 else {'error': 'process-exit'}
             failures.append({'inputId': sample['inputId'], 'error': payload.get('error'), 'stderr': diagnostic.stderr[-4096:] if 'error' in payload else ''})
+        print(json.dumps({'syntheticInputs': [{key: value for key, value in row.items() if key != 'stderr'} for row in failures]}), flush=True)
         raise AssertionError({'batch': response, 'syntheticDiagnostics': failures})
     assert response['spaceId'] == request['spaceId'] and len(response['results']) == len(samples)
     for row in response['results']:

@@ -1,0 +1,79 @@
+name: Bounded scientific figure retrieval quality
+on:
+  push:
+    branches: ['spike/embeddinggemma2-runtime']
+    paths:
+      - '.github/workflows/embedding-visual-quality.yml'
+      - 'scripts/embedding-visual-quality/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: embedding-visual-quality-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  spiqa-within-paper-challenge:
+    name: SPIQA 32-query within-paper figure challenge / Linux CPU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      EVALUATION_ROOT: scripts/embedding-visual-quality
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify frozen evaluation bundle and metric unit tests
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['EVALUATION_ROOT'])
+          for name, expected in json.loads((root/'evaluation-files.json').read_text()).items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest() == expected, name
+          for name, expected in json.loads((root/'product-contracts.json').read_text()).items():
+              assert hashlib.sha256((root/'product'/name).read_bytes()).hexdigest() == expected, name
+          print('Frozen evaluation and unchanged product contracts verified')
+          PY
+          python -m unittest discover -s "$EVALUATION_ROOT" -p 'test_*.py' -v
+      - name: Install only exact pinned Linux native wheel into isolated runtime
+        run: |
+          printf '%s\n' 'litert-lm-api @ https://files.pythonhosted.org/packages/c9/8f/eb7a5203be1d48440c6b8d6e6382c3f744dd6d338fe400555718b4d695a1/litert_lm_api-0.18.0-py3-none-manylinux_2_27_x86_64.whl --hash=sha256:b64e2cf6d7dcb90ff094b74af595cc5d53faa07e0889f967d15df8d3e696b53c' > "$RUNNER_TEMP/visual-runtime-requirements.txt"
+          python -m pip install --only-binary=:all: --no-deps --no-compile --require-hashes --target "$RUNNER_TEMP/visual-runtime" -r "$RUNNER_TEMP/visual-runtime-requirements.txt"
+      - name: Download and size/hash verify frozen public vision model
+        run: |
+          python "$EVALUATION_ROOT/prepare_model.py" --manifest "$EVALUATION_ROOT/product/packages/llm/embedding-litert-lm/runtime/assets.json" --output "$RUNNER_TEMP/visual-model"
+      - name: Evaluate frozen real human-labelled scientific candidate challenge
+        run: |
+          mkdir -p visual-quality-results
+          python - <<'PY'
+          import json, os, platform, subprocess
+          from pathlib import Path
+          Path('visual-quality-results/execution.json').write_text(json.dumps({
+              'commit': os.environ['GITHUB_SHA'],
+              'run': 'https://github.com/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/'+os.environ['GITHUB_RUN_ID'],
+              'baseSpikeCommit': '18d83a77cc969c8d4db7d7ea03266d3f3afcc475',
+              'node': subprocess.check_output(['node','--version'],text=True).strip(),
+              'python': platform.python_version(),
+              'scope': 'Fixed32-query/31-paper/216-image within-paper figure evidence challenge; not page or global retrieval'
+          },indent=2)+'\n')
+          PY
+          python "$EVALUATION_ROOT/evaluate.py" \
+            --product-root "$EVALUATION_ROOT/product" \
+            --runtime "$RUNNER_TEMP/visual-runtime" \
+            --model "$RUNNER_TEMP/visual-model/embeddinggemma-2-text-vision-440m.litertlm" \
+            --work "$RUNNER_TEMP/spiqa-work" \
+            --output visual-quality-results
+      - name: Retain only ID-based quality measurements and hardware provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spiqa-within-paper-quality-linux
+          path: visual-quality-results/
+          if-no-files-found: warn
+          retention-days: 14

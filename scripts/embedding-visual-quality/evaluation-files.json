@@ -1,0 +1,12 @@
+{
+  "evaluate.py": "03f473aaf7e55d9625b85c33821acda437813df9bb58787ef0886dd69b1d857b",
+  "common.py": "50ac2104a4313b5c21bd3c8f122a0e6f9f764f4fb81360702799fcdad258df51",
+  "rank.mjs": "857dec4ee307f677ca69725244c9be7e009149adcc579979f61165a42ba2fbe0",
+  "config.json": "077f61b46ca8f5615d6b676553ad6ddd35ddc10edab5d7d9ee2ae8ededa1407b",
+  "assets.json": "d8f1646b571cf0b67e45ca3cb94b3e3e2da99bc2120603d35e308f1564e08771",
+  "frozen-selection.json": "01cd56f3f496a212c5323109a96c0436ac47f8f3c778f8a0e4f2a1da721acf98",
+  "product-contracts.json": "d6c5354ca7cb21cbad0d68a0a0e0c8b0131c03d7ec08aaf4efb20dc82097abd6",
+  "README.md": "9991cf4cb51602682e05668913bd2b2b1b0314032437a01d666e319fcf3bcffb",
+  "prepare_model.py": "ffbe69a03ae41a49aa4c49b96f71d452e485f60774e57db7a0bd3c13eee52188",
+  "test_evaluation.py": "b2c835458220461c79eb17cc4262143c68e1c6aed2b4a177e8c842e50c4a5c03"
+}

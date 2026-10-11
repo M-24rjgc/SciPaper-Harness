@@ -1,0 +1,22 @@
+{
+  "revision": "1774b71511f029b82089a069d75328f25fbf0705",
+  "license": "CC-BY-4.0",
+  "primaryLicenseSource": "https://arxiv.org/html/2407.09413#A1",
+  "assets": {
+    "card": {
+      "url": "https://huggingface.co/datasets/google/spiqa/resolve/1774b71511f029b82089a069d75328f25fbf0705/README.md",
+      "bytes": 8600,
+      "sha256": "9c0ce879ef2be0a09908121f352eb828b98c30c3f8d329c4c66db7652cb19373"
+    },
+    "metadata": {
+      "url": "https://huggingface.co/datasets/google/spiqa/resolve/1774b71511f029b82089a069d75328f25fbf0705/test-C/SPIQA_testC.json",
+      "bytes": 9293881,
+      "sha256": "d927129333b131841d14bc0dbb036086fc2f76b8031a16a7681a7a745859bc13"
+    },
+    "images": {
+      "url": "https://huggingface.co/datasets/google/spiqa/resolve/1774b71511f029b82089a069d75328f25fbf0705/test-C/SPIQA_testC_Images.zip",
+      "bytes": 112026645,
+      "sha256": "e7978cf15d3bba367381ac2cceddbbe05f2e20c37aaecb2b33fb896537ee2ca4"
+    }
+  }
+}
