@@ -43,7 +43,14 @@ def main():
     result = subprocess.run(args, input=json.dumps(request), capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, (result.returncode, result.stderr[-4096:])
     response = json.loads(result.stdout)
-    assert 'error' not in response, response
+    if 'error' in response:
+        # Only these committed synthetic fixtures are used: diagnose media independently.
+        failures = []
+        for sample in samples:
+            diagnostic = subprocess.run(args, input=json.dumps(dict(request, inputs=[sample])), capture_output=True, text=True, timeout=120)
+            payload = json.loads(diagnostic.stdout) if diagnostic.returncode == 0 else {'error': 'process-exit'}
+            failures.append({'inputId': sample['inputId'], 'error': payload.get('error'), 'stderr': diagnostic.stderr[-4096:] if 'error' in payload else ''})
+        raise AssertionError({'batch': response, 'syntheticDiagnostics': failures})
     assert response['spaceId'] == request['spaceId'] and len(response['results']) == len(samples)
     for row in response['results']:
         vector = row['vector']
