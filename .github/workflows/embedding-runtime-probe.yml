@@ -21,7 +21,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
-      EMBEDDING_PROBE_DIR: ${{ runner.temp }}/embedding-probe
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
     steps:
       - uses: actions/checkout@v6
@@ -34,6 +33,8 @@ jobs:
           printf '%s\n' 'litert-lm-api==0.18.0 --hash=sha256:b64e2cf6d7dcb90ff094b74af595cc5d53faa07e0889f967d15df8d3e696b53c --hash=sha256:eb02dc5d0fc6a894a664cfcc63e3aaf3100973ba2c9a6a7eebf4df8749a01038' > "$RUNNER_TEMP/embedding-runtime-requirements.txt"
           python -m pip install --only-binary=:all: --no-deps --require-hashes -r "$RUNNER_TEMP/embedding-runtime-requirements.txt"
       - name: Verify pinned weights and execute synthetic local-only smoke
+        env:
+          EMBEDDING_PROBE_DIR: ${{ runner.temp }}/embedding-probe
         run: python scripts/embedding-runtime-probe.py
       - name: Retain measurements without model weights
         if: always()
