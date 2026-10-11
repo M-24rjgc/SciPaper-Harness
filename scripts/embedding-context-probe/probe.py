@@ -13,7 +13,7 @@ root = Path(os.environ['EMBEDDING_PROBE_DIR'])
 root.mkdir(parents=True, exist_ok=True)
 manifest = json.loads((here / 'runtime/assets.json').read_text())
 worker = here / 'runtime/worker.py'
-expected_worker = 'cbe581ef9a5a730e8634a783547a365c6b17b61fd384066cf25a366240dd1eec'
+expected_worker = 'cbed91ab55b07526d9142c81cc0274991b872f19967769a62f3da048b0639d01'
 assert hashlib.sha256(worker.read_bytes()).hexdigest() == expected_worker
 
 def verified(asset):

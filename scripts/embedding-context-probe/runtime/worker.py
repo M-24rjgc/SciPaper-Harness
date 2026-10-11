@@ -139,7 +139,9 @@ def run(args):
                 prefix = 'task: search query | text: ' if request['purpose'] == 'query' else 'task: search result | text: '
                 contents = prefix + text
             elif item['kind'] == 'image' and variant == 'vision':
-                if item['mediaType'] not in ('image/png', 'image/jpeg', 'image/webp'):
+                if item['mediaType'] == 'image/webp':
+                    raise OSError('unsupported-image-media')
+                if item['mediaType'] not in ('image/png', 'image/jpeg'):
                     raise ValueError('image-type')
                 data = base64.b64decode(item['data'], validate=True)
                 if not data or len(data) > int(max_image):

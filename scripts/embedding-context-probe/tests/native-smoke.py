@@ -38,7 +38,12 @@ def main():
         samples.append({'inputId': 'image', 'kind': 'image', 'mediaType': 'image/png', 'data': base64.b64encode(png()).decode()})
         samples.append({'inputId': 'jpeg', 'kind': 'image', 'mediaType': 'image/jpeg', 'data': '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDlqKKK8M/VAooooAKKKKACiiigD//Z'})
         samples.append({'inputId': 'webp', 'kind': 'image', 'mediaType': 'image/webp', 'data': 'UklGRkwAAABXRUJQVlA4IEAAAABQAwCdASogACAAPm00lkekIyIhKAgAgA2JZQC29oAAQOJeAAD+7ylH/gN18WuX/+5wP+5wP+5wP4rID8Q6ugAA'})
+    unsupported = [sample for sample in samples if sample.get('mediaType') == 'image/webp']
+    samples = [sample for sample in samples if sample.get('mediaType') != 'image/webp']
     request = {'spaceId': 'native-ci-space', 'purpose': 'document', 'inputs': samples}
+    for sample in unsupported:
+        rejected_media = subprocess.run(args, input=json.dumps(dict(request, inputs=[sample])), capture_output=True, text=True, timeout=120)
+        assert json.loads(rejected_media.stdout) == {'error': 'unsupported'}
     started = time.perf_counter()
     result = subprocess.run(args, input=json.dumps(request), capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, (result.returncode, result.stderr[-4096:])
@@ -79,7 +84,7 @@ def main():
     assert json.loads(rejected.stdout) == {'error': 'invalid-input'}, rejected.stdout
     print(json.dumps({'variant': options.variant, 'memoryLimitBytes': options.memory_bytes, 'seconds': elapsed,
                       'maxInputTokens': 8192, 'rows': len(samples), 'dimensions': 768, 'cancelledProcessExited': True, 'restartVerified': True,
-                      'oversizeRejected': True, 'scope': 'synthetic plumbing only, not retrieval quality'}))
+                      'oversizeRejected': True, 'unsupportedWebpRejected': options.variant == 'vision', 'scope': 'synthetic plumbing only, not retrieval quality'}))
 
 
 if __name__ == '__main__':
