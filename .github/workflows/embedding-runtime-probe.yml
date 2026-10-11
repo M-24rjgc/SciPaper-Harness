@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/embedding-runtime-probe.yml'
       - 'scripts/embedding-runtime-probe.py'
+      - 'scripts/embedding-provider-probe/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,5 +42,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: embedding-runtime-${{ matrix.os }}
-          path: ${{ runner.temp }}/embedding-probe/text-smoke-result.json
+          path: ${{ runner.temp }}/embedding-probe/*-result*.json
           if-no-files-found: warn

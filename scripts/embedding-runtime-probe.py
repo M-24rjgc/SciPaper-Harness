@@ -82,3 +82,17 @@ for asset in ASSETS:
  except RuntimeError as e:assert 'closed' in str(e)
  result={'kind':'synthetic-plumbing-smoke-not-quality-evaluation','variant':kind,'platform':platform.platform(),'python':platform.python_version(),'runtime':importlib.metadata.version('litert-lm-api'),'backend':'cpu','threads':2,'loadSeconds':loaded,'rows':rows,'scores':scores,'truncatedDimensions':len(short),'closedEngineRejects':True,'peakRssKiB':resource.getrusage(resource.RUSAGE_SELF).ru_maxrss if resource is not None else None,'modelSha256':asset[-1]}
  results.append(result);(root/'text-smoke-result.json').write_text(json.dumps(results,ensure_ascii=False,indent=2));print(json.dumps(result,ensure_ascii=False),flush=True)
+
+# Exercise the actual product worker with OS memory bounds and process cancellation.
+import subprocess
+runtime_path=Path(__import__('importlib.util',fromlist=['find_spec']).find_spec('litert_lm').origin).parent.parent
+worker_results=[]
+for asset in ASSETS[:2]:
+ kind=asset[0]
+ args=[__import__('sys').executable,str(Path(__file__).parent/'embedding-provider-probe'/'tests'/'native-smoke.py'),'--runtime',str(runtime_path),'--model',str(root/asset[3]),'--variant',kind,'--cache',str(root/f'worker-cache-{kind}')]
+ process=subprocess.run(args,capture_output=True,text=True,timeout=420)
+ if process.returncode:
+  print(process.stdout,flush=True);print(process.stderr,flush=True)
+  raise RuntimeError(f'Product worker failed: {kind}, exit {process.returncode}')
+ result=json.loads(process.stdout);worker_results.append(result);print(json.dumps({'productWorker':result}),flush=True)
+(root/'provider-worker-result.json').write_text(json.dumps(worker_results,indent=2))
