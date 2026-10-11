@@ -1,0 +1,25 @@
+{
+  "license": {
+    "url": "https://raw.githubusercontent.com/allenai/scifact/a5254a1bf108726a1704d8e191b8a7f2225a029f/LICENSE.md",
+    "bytes": 542,
+    "sha256": "56ee69bc639cbab8f0b2e4b67091ec5e9390aa99a1d65f0a35e4274686c9a806"
+  },
+  "data": {
+    "url": "https://scifact.s3-us-west-2.amazonaws.com/release/latest/data.tar.gz",
+    "bytes": 3115079,
+    "sha256": "11c621288d41ac144d29b13b0f8503b3820b7d6e8b1f6ff24dff335c196d76be"
+  },
+  "members": {
+    "corpus": {
+      "bytes": 8307875,
+      "sha256": "b8d6c89624cb2ed74dee8938effc4f5d8bd2086887880af8110d64be4ceade62"
+    },
+    "claims_dev": {
+      "bytes": 65007,
+      "sha256": "86f0435d08fdb65d1aa41d1472684f57e6e71930626497bdf4d7a9ec1a632217"
+    }
+  },
+  "licenseRevision": "a5254a1bf108726a1704d8e191b8a7f2225a029f",
+  "claimsLicense": "CC-BY-4.0",
+  "abstractsLicense": "ODC-By-1.0"
+}

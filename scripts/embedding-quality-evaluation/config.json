@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "seed": "scipaper-scifact-quality-v1-2026-10-11",
+  "queries": 32,
+  "documents": 512,
+  "hardNegativesPerQuery": 8,
+  "batchSize": 32,
+  "maxTextBytes": 8192,
+  "batchTimeoutSeconds": 300,
+  "totalTimeoutSeconds": 3600,
+  "memoryBytes": 8589934592,
+  "threads": 2,
+  "cutoffs": [1, 5, 10, 20],
+  "split": "claims_dev",
+  "modelVariant": "text",
+  "rrfK": 60,
+  "queryPrefix": "task: search query | text: ",
+  "documentPrefix": "task: search result | text: ",
+  "normalization": "unit-768-overflow-ERROR",
+  "selection": "hash32-evidence-claims; all-gold+bm25-top8+hash-remainder512; no training or tuning"
+}
