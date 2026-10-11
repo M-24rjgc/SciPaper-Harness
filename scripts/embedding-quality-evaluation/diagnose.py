@@ -35,7 +35,7 @@ if len(sys.argv)>1 and sys.argv[1]=='--child':
     with tempfile.TemporaryFile(mode='w+b') as private_log:
         os.dup2(private_log.fileno(),1);os.dup2(private_log.fileno(),2)
         try:
-            worker.run([runtime,model,cache,'text','2','16777216','8192','8388608','32','16777216','8589934592'])
+            worker.run([runtime,model,cache,'text','2','16777216','8192','8388608','32','16777216','8589934592','8192'])
             status='complete'
         except Exception as exc:status=type(exc).__name__
         private_log.flush();private_log.seek(0);native=private_log.read(1048576)

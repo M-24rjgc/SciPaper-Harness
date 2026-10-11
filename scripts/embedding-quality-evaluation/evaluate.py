@@ -92,7 +92,7 @@ def embed(args,cfg,items,purpose,identity,deadline):
             remaining=deadline-time.monotonic()
             if remaining <= 0: raise TimeoutError('total-evaluation-timeout')
             command=[sys.executable,'-I',str(worker),str(args.runtime),str(args.model),str(args.work/'native-cache'),'text',
-                     str(cfg['threads']),'16777216',str(cfg['maxTextBytes']),'8388608',str(cfg['batchSize']),'16777216',str(cfg['memoryBytes'])]
+                     str(cfg['threads']),'16777216',str(cfg['maxTextBytes']),'8388608',str(cfg['batchSize']),'16777216',str(cfg['memoryBytes']),str(cfg['maxInputTokens'])]
             before=time.perf_counter()
             result=subprocess.run(command,input=json.dumps(request),capture_output=True,text=True,
                                   timeout=min(cfg['batchTimeoutSeconds'],remaining))

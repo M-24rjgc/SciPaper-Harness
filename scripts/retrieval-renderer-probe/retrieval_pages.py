@@ -64,7 +64,8 @@ def main():
     import pypdfium2 as pdfium
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
-    with pdfium.PdfDocument(args.source) as document:
+    document = pdfium.PdfDocument(args.source)
+    try:
         if len(document) > args.max_pages:
             raise ValueError('PDF exceeds the explicitly configured page limit')
         paths = []
@@ -99,6 +100,8 @@ def main():
             finally:
                 page.close()
         print(json.dumps(paths))
+    finally:
+        document.close()
 
 
 if __name__ == '__main__':

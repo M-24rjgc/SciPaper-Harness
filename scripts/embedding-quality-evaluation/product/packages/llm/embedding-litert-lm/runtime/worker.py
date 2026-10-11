@@ -112,7 +112,9 @@ def check_image(data, media_type, max_pixels):
 
 def run(args):
     """Read one bounded request, load the pinned runtime and emit one bounded result."""
-    runtime, model, cache, variant, threads, max_request, max_text, max_image, max_batch, max_pixels, max_memory = args
+    runtime, model, cache, variant, threads, max_request, max_text, max_image, max_batch, max_pixels, max_memory, max_tokens = args
+    if int(max_tokens) != 8192:
+        raise ValueError('unsupported-context')
     memory_guard = limit_memory(int(max_memory))
     limit = int(max_request)
     raw = sys.stdin.buffer.read(limit + 1)
@@ -128,7 +130,7 @@ def run(args):
     extra = {'vision_backend': Backend.CPU(thread_count=int(threads))} if variant == 'vision' else {}
     options = EmbeddingOptions(normalize=True, input_overflow_strategy=InputOverflowStrategy.ERROR)
     results = []
-    with EmbeddingEngine(model, backend=Backend.CPU(thread_count=int(threads)), cache_dir=cache, **extra) as engine:
+    with EmbeddingEngine(model, backend=Backend.CPU(thread_count=int(threads)), cache_dir=cache, max_input_length=int(max_tokens), **extra) as engine:
         for item in inputs:
             if item['kind'] == 'text':
                 text = item['text']

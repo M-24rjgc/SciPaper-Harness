@@ -1,0 +1,31 @@
+{
+  "runtimeVersion": "0.18.0",
+  "wheels": {
+    "linux-x64": {
+      "name": "litert_lm_api-0.18.0-py3-none-manylinux_2_27_x86_64.whl",
+      "url": "https://files.pythonhosted.org/packages/c9/8f/eb7a5203be1d48440c6b8d6e6382c3f744dd6d338fe400555718b4d695a1/litert_lm_api-0.18.0-py3-none-manylinux_2_27_x86_64.whl",
+      "bytes": 47051760,
+      "sha256": "b64e2cf6d7dcb90ff094b74af595cc5d53faa07e0889f967d15df8d3e696b53c"
+    },
+    "win32-x64": {
+      "name": "litert_lm_api-0.18.0-py3-none-win_amd64.whl",
+      "url": "https://files.pythonhosted.org/packages/2e/a4/842c858a90aac25a2ae6e4744197b22764a38fb35e45b15cf9c3b7570656/litert_lm_api-0.18.0-py3-none-win_amd64.whl",
+      "bytes": 26403380,
+      "sha256": "eb02dc5d0fc6a894a664cfcc63e3aaf3100973ba2c9a6a7eebf4df8749a01038"
+    }
+  },
+  "models": {
+    "text": {
+      "name": "embeddinggemma-2-text-270m.litertlm",
+      "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm",
+      "bytes": 164626432,
+      "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb"
+    },
+    "vision": {
+      "name": "embeddinggemma-2-text-vision-440m.litertlm",
+      "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm/resolve/e301f74d5551b0c2641bd5cb4652a76239d5c5f8/embeddinggemma-2-text-vision-440m.litertlm",
+      "bytes": 387710976,
+      "sha256": "92dcbea108899e5d6e30d919b0744f90d9967e80c67a4ab5503ac16d54f62eb0"
+    }
+  }
+}

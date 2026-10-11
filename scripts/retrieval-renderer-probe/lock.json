@@ -1,6 +1,6 @@
 {
   "python": "3.12",
-  "rendererSha256": "9965ed121fe6571a61062ab545f6c9e3c17b3942bfe263db1134089da4c254e5",
+  "rendererSha256": "cd51e627fa049b266bbdfc0ee5fda3e8fe961cc8021106220f226f10e9e4283a",
   "packages": [
     {
       "package": "pypdfium2",

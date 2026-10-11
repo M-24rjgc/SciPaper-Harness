@@ -10,12 +10,19 @@
   "totalTimeoutSeconds": 3600,
   "memoryBytes": 8589934592,
   "threads": 2,
-  "cutoffs": [1, 5, 10, 20],
+  "cutoffs": [
+    1,
+    5,
+    10,
+    20
+  ],
   "split": "claims_dev",
   "modelVariant": "text",
   "rrfK": 60,
   "queryPrefix": "task: search query | text: ",
   "documentPrefix": "task: search result | text: ",
   "normalization": "unit-768-overflow-ERROR",
-  "selection": "hash32-evidence-claims; all-gold+bm25-top8+hash-remainder512; no training or tuning"
+  "selection": "hash32-evidence-claims; all-gold+bm25-top8+hash-remainder512; no training or tuning",
+  "maxInputTokens": 8192,
+  "spaceProfile": "embeddinggemma2-search-context8192-v2"
 }

@@ -48,10 +48,22 @@ jobs:
       - name: Download and size/hash verify frozen public text model
         run: |
           python "$EVALUATION_ROOT/prepare_model.py" --manifest "$EVALUATION_ROOT/product/packages/llm/embedding-litert-lm/runtime/assets.json" --output "$RUNNER_TEMP/quality-model"
-      - name: Diagnose exact ninth frozen batch without changing inputs
+      - name: Evaluate frozen real human-labelled scientific candidate challenge
         run: |
           mkdir -p quality-results
-          python "$EVALUATION_ROOT/diagnose.py" \
+          python - <<'PY'
+          import json, os, platform, subprocess
+          from pathlib import Path
+          Path('quality-results/execution.json').write_text(json.dumps({
+              'commit': os.environ['GITHUB_SHA'],
+              'run': 'https://github.com/'+os.environ['GITHUB_REPOSITORY']+'/actions/runs/'+os.environ['GITHUB_RUN_ID'],
+              'baseSpikeCommit': '53fcc430d95a9127892009a9ef3f960322f94a5c',
+              'node': subprocess.check_output(['node','--version'],text=True).strip(),
+              'python': platform.python_version(),
+              'scope': 'Fixed enriched 32-query/512-document candidate challenge; not official or full-corpus SciFact/BEIR'
+          },indent=2)+'\n')
+          PY
+          python "$EVALUATION_ROOT/evaluate.py" \
             --product-root "$EVALUATION_ROOT/product" \
             --runtime "$RUNNER_TEMP/quality-runtime" \
             --model "$RUNNER_TEMP/quality-model/embeddinggemma-2-text-270m.litertlm" \

@@ -1,0 +1,38 @@
+name: Embedding explicit context native probe
+on:
+  push:
+    branches: ['spike/embeddinggemma2-runtime']
+    paths:
+      - '.github/workflows/embedding-context-probe.yml'
+      - 'scripts/embedding-context-probe/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: embedding-context-probe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Verify pinned assets and actual text/vision worker
+        env:
+          EMBEDDING_PROBE_DIR: ${{ runner.temp }}/embedding-context-probe
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python -I scripts/embedding-context-probe/probe.py
+      - name: Retain synthetic context and modality results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: embedding-context-${{ matrix.os }}
+          path: ${{ runner.temp }}/embedding-context-probe/context-result.json
+          if-no-files-found: warn
