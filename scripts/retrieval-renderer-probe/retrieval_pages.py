@@ -47,6 +47,20 @@ def limit_memory(max_bytes):
     raise OSError('memory-limit-unavailable')
 
 
+class BoundedOutput:
+    """Reject each encoded write before disk usage can exceed the allocation."""
+    def __init__(self, stream, maximum):
+        self.stream, self.maximum = stream, maximum
+
+    def write(self, data):
+        if self.stream.tell() + len(data) > self.maximum:
+            raise ValueError('Rendered pixels exceed output byte budget')
+        return self.stream.write(data)
+
+    def flush(self):
+        return self.stream.flush()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('source')
@@ -57,6 +71,8 @@ def main():
     parser.add_argument('--max-total-bytes', type=int, required=True)
     parser.add_argument('--max-memory-bytes', type=int, required=True)
     args = parser.parse_args()
+    if min(args.max_pages, args.max_pixels, args.max_bytes, args.max_total_bytes, args.max_memory_bytes) <= 0:
+        raise ValueError('Positive raster limits required')
     memory_guard = limit_memory(args.max_memory_bytes)
     import importlib.metadata
     if importlib.metadata.version('pypdfium2') != '4.30.0' or importlib.metadata.version('Pillow') != '12.3.0':
@@ -72,21 +88,24 @@ def main():
         total = 0
         for index in range(len(document)):
             page = document[index]
+            bitmap = image = None
             try:
                 width, height = page.get_size()
                 if width <= 0 or height <= 0 or not math.isfinite(width * height):
                     raise ValueError('Invalid PDF page geometry')
                 scale = min(1.5, math.sqrt(args.max_pixels / (width * height)))
+                while math.ceil(width * scale) * math.ceil(height * scale) > args.max_pixels:
+                    scale *= .99
                 bitmap = page.render(scale=scale)
                 image = bitmap.to_pil().convert('RGB')
-                if image.width * image.height > args.max_pixels * 1.01:
+                if image.width * image.height > args.max_pixels:
                     raise ValueError('Rendered page exceeds pixel limit')
                 target = output / ('page-%d.png' % (index + 1))
                 fd, temporary_name = tempfile.mkstemp(prefix='page-', suffix='.png', dir=output)
                 temporary = Path(temporary_name)
                 try:
                     with os.fdopen(fd, 'wb') as stream:
-                        image.save(stream, format='PNG')
+                        image.save(BoundedOutput(stream, min(args.max_bytes, args.max_total_bytes - total)), format='PNG')
                     size = temporary.stat().st_size
                     if size > args.max_bytes or total + size > args.max_total_bytes:
                         raise ValueError('Rendered pages exceed byte budget')
@@ -95,9 +114,11 @@ def main():
                 finally:
                     temporary.unlink(missing_ok=True)
                 paths.append(str(target))
-                image.close()
-                bitmap.close()
             finally:
+                if image is not None:
+                    image.close()
+                if bitmap is not None:
+                    bitmap.close()
                 page.close()
         print(json.dumps(paths))
     finally:

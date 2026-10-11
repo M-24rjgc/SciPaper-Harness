@@ -65,9 +65,22 @@ def main():
     lock = json.loads((ROOT / 'lock.json').read_text())
     digest = hashlib.sha256(RENDERER.read_bytes()).hexdigest()
     assert digest == lock['rendererSha256'], 'Renderer changed after the probe snapshot'
+    region_digest = hashlib.sha256((ROOT / 'retrieval_regions.py').read_bytes()).hexdigest()
+    assert region_digest == lock['regionRendererSha256'], 'Region renderer changed after snapshot'
+    region_test = subprocess.run([sys.executable, '-I', str(ROOT / 'test_retrieval_regions.py')], capture_output=True, text=True, timeout=120)
+    assert region_test.returncode == 0 and 'Ran 1 test' in region_test.stderr and 'OK' in region_test.stderr, region_test.stderr
     assert sys.version_info[:2] == (3, 12)
     assert importlib.metadata.version('pypdfium2') == '4.30.0'
     assert importlib.metadata.version('Pillow') == '12.3.0'
+    import io
+    module_spec = importlib.util.spec_from_file_location('renderer', RENDERER)
+    renderer = importlib.util.module_from_spec(module_spec); module_spec.loader.exec_module(renderer)
+    bounded_stream = io.BytesIO(); bounded = renderer.BoundedOutput(bounded_stream, 4)
+    bounded.write(b'abcd')
+    try:
+        bounded.write(b'e'); raise AssertionError('bounded writer accepted excess data')
+    except ValueError:
+        assert bounded_stream.getvalue() == b'abcd'
     source = output / 'synthetic.pdf'; synthetic_pdf(source)
     started = time.perf_counter()
     result = subprocess.run(arguments(source, output / 'pages'), capture_output=True, text=True, timeout=60)
@@ -77,7 +90,7 @@ def main():
     with Image.open(paths[0]) as image:
         image.load()
         width, height = image.size
-        assert image.format == 'PNG' and width * height <= 101000
+        assert image.format == 'PNG' and width * height <= 100000
         assert image.convert('RGB').getextrema() != ((255, 255), (255, 255), (255, 255))
     bytes_written = Path(paths[0]).stat().st_size
     assert bytes_written <= 1048576
@@ -105,7 +118,7 @@ def main():
         child.stdout.close(); child.stderr.close()
     repeated = subprocess.run(arguments(source, output / 'restart'), capture_output=True, text=True, timeout=60)
     assert repeated.returncode == 0 and len(json.loads(repeated.stdout)) == 1, repeated.stderr[-4096:]
-    report = {'platform': platform.platform(), 'python': platform.python_version(), 'rendererSha256': digest,
+    report = {'platform': platform.platform(), 'python': platform.python_version(), 'rendererSha256': digest, 'regionRendererSha256': region_digest, 'exactRotatedCropAndLimitsVerified': True,
               'pypdfium2': '4.30.0', 'Pillow': '12.3.0', 'memoryLimitBytes': MEMORY, 'memoryDenialVerified': True,
               'width': width, 'height': height, 'pixels': width * height, 'bytes': bytes_written, 'seconds': elapsed,
               'rejected': rejected, 'cancelledProcessExited': True, 'restartVerified': True,
