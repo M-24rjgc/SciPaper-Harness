@@ -29,7 +29,8 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install reviewed hash-locked renderer wheels only
-        run: python -m pip install --only-binary=:all: --no-deps --require-hashes -r scripts/retrieval-renderer-probe/requirements.txt
+        run: |
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r scripts/retrieval-renderer-probe/requirements.txt
       - name: Exercise the exact product renderer and OS memory cap
         env:
           RENDERER_PROBE_DIR: ${{ runner.temp }}/retrieval-renderer-probe
