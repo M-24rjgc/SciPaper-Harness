@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFile } from 'node:fs/promises'
 import sharp from 'sharp'
 import { canPassThroughNormalization, normalizeImage } from '../src/normalization.ts'
 import type { NormalizationPolicy } from '../src/normalization.ts'
@@ -290,12 +291,8 @@ describe('normalizeImage', () => {
   })
 
   it('keeps an antialiased text screenshot readable on the JPEG ladder', async () => {
-    const source = new Uint8Array(await sharp(Buffer.from(`
-      <svg width="1024" height="512" xmlns="http://www.w3.org/2000/svg">
-        <rect width="1024" height="512" fill="white"/>
-        <text x="48" y="290" font-size="170" fill="#112f4d">Readable text</text>
-      </svg>
-    `)).removeAlpha().png().toBuffer())
+    // A fixed screenshot keeps system font discovery outside image normalization.
+    const source = new Uint8Array(await readFile(new URL('./fixtures/antialiased-text.png', import.meta.url)))
 
     const normalized = await normalizeImage(source, await detectImage(source), {
       maxPixels: POLICY.maxPixels,
