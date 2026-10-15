@@ -2,10 +2,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
+import { chromium } from 'playwright'
 import type {} from '@deepseek-ai/dsh-skill'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
-import { launchWebScaffold, type WebScaffold } from './scaffold.ts'
+import { captureStableAria, launchWebScaffold, type WebScaffold } from './scaffold.ts'
+import { newEnglishPage } from './support.ts'
 
 async function writeSkill(root: string, name: string): Promise<void> {
   const bundle = join(root, name)
@@ -18,6 +20,23 @@ description: Must not enter the Web replay scaffold
 Ambient host state.
 `)
 }
+
+it('normalizes message clocks across day and year boundaries while retaining message text', async () => {
+  const browser = await chromium.launch()
+  try {
+    const page = await newEnglishPage(browser)
+    await page.setContent('<main><p>Same day 12:00</p><p>Earlier day 1/15 12:00</p><p>Earlier year 2025-1-15 12:00</p><p>中文 1月15日 12:00</p><p>中文 2025年1月15日 12:00</p><p>Ratio 1/2; experiment date 2025-1-15</p><p>Started 2026-01-01 12:00:00.001</p></main>')
+    const snapshot = await captureStableAria(page, 'main', 'clock-fixture')
+    expect(snapshot.match(/\{\{clock\}\}/g)).toHaveLength(6)
+    for (const label of ['Same day', 'Earlier day', 'Earlier year', '中文']) {
+      expect(snapshot).toContain(`${label} {{clock}}`)
+    }
+    expect(snapshot).toContain('Ratio 1/2; experiment date 2025-1-15')
+    expect(snapshot).toContain('Started 2026-01-01 {{clock}}')
+  } finally {
+    await browser.close()
+  }
+})
 
 it('isolates replay skill discovery from every ambient host root', async () => {
   const ambient = await mkdtemp(join(tmpdir(), 'dsh-web-ambient-skills-'))

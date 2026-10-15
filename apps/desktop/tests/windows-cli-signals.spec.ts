@@ -11,9 +11,12 @@ import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import ts from 'typescript'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { COVERAGE_TEST_TIMEOUT_ENV, parseCoverageTestTimeout } from '../../../scripts/coverage-partitions.ts'
 
 const execute = promisify(execFile)
 const require = createRequire(import.meta.url)
+// Compilation shares the lane's process-creation budget; local runs retain 45 seconds.
+const compilationTimeoutMs = parseCoverageTestTimeout(process.env[COVERAGE_TEST_TIMEOUT_ENV]) ?? 45_000
 let root: string | undefined
 let probe: string
 let electron: string
@@ -35,12 +38,12 @@ async function compileConsoleProbe(command: string, args: readonly string[], opt
     })
     // Retain the rejection for the finally await without leaving it unobserved while compilation drains.
     void termination.catch(() => {})
-  }, 45_000)
+  }, compilationTimeoutMs)
   try {
     await compilation
-    if (expired) throw new Error('Console fixture compiler exceeded 45000ms')
+    if (expired) throw new Error(`Console fixture compiler exceeded ${compilationTimeoutMs}ms`)
   } catch (error) {
-    if (expired) throw new Error('Console fixture compiler exceeded 45000ms', { cause: error })
+    if (expired) throw new Error(`Console fixture compiler exceeded ${compilationTimeoutMs}ms`, { cause: error })
     throw error
   } finally {
     clearTimeout(timer)
@@ -49,6 +52,7 @@ async function compileConsoleProbe(command: string, args: readonly string[], opt
 }
 
 describe.skipIf(process.platform !== 'win32')('Windows Electron console signals', () => {
+  // Discovery, fixture I/O, and owned-process termination have separate setup costs.
   beforeAll(async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-cli-console-科研-'))
     electron = require('electron') as string
@@ -107,7 +111,7 @@ describe.skipIf(process.platform !== 'win32')('Windows Electron console signals'
       "writeFileSync(ready, 'ready')",
       'setInterval(() => {}, 1000)', '',
     ].join('\n'))
-  }, 90_000)
+  }, compilationTimeoutMs + 45_000)
 
   afterAll(async () => {
     if (root === undefined) return

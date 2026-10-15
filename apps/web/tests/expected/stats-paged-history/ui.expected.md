@@ -35,7 +35,7 @@
   - button "Jump to turn 26"
   - button "Jump to turn 27"
   - button "Jump to turn 28"
-- text: m1 7/25 {{clock}}
+- text: m1 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -46,7 +46,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m2 7/25 {{clock}}
+- text: {{clock}} m2 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -57,7 +57,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m3 7/25 {{clock}}
+- text: {{clock}} m3 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -68,7 +68,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m4 7/25 {{clock}}
+- text: {{clock}} m4 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -79,7 +79,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m5 7/25 {{clock}}
+- text: {{clock}} m5 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -90,7 +90,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m6 7/25 {{clock}}
+- text: {{clock}} m6 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -101,7 +101,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m7 7/25 {{clock}}
+- text: {{clock}} m7 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -112,7 +112,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m8 7/25 {{clock}}
+- text: {{clock}} m8 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -123,7 +123,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m9 7/25 {{clock}}
+- text: {{clock}} m9 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -134,7 +134,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m10 7/25 {{clock}}
+- text: {{clock}} m10 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -145,7 +145,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m11 7/25 {{clock}}
+- text: {{clock}} m11 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -156,7 +156,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m12 7/25 {{clock}}
+- text: {{clock}} m12 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -167,7 +167,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m13 7/25 {{clock}}
+- text: {{clock}} m13 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -178,7 +178,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m14 7/25 {{clock}}
+- text: {{clock}} m14 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -189,7 +189,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m15 7/25 {{clock}}
+- text: {{clock}} m15 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -200,7 +200,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m16 7/25 {{clock}}
+- text: {{clock}} m16 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -211,7 +211,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m17 7/25 {{clock}}
+- text: {{clock}} m17 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -222,7 +222,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m18 7/25 {{clock}}
+- text: {{clock}} m18 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -233,7 +233,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m19 7/25 {{clock}}
+- text: {{clock}} m19 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -244,7 +244,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m20 7/25 {{clock}}
+- text: {{clock}} m20 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -255,7 +255,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m21 7/25 {{clock}}
+- text: {{clock}} m21 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -266,7 +266,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m22 7/25 {{clock}}
+- text: {{clock}} m22 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -277,7 +277,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m23 7/25 {{clock}}
+- text: {{clock}} m23 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -288,7 +288,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m24 7/25 {{clock}}
+- text: {{clock}} m24 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -299,7 +299,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m25 7/25 {{clock}}
+- text: {{clock}} m25 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -310,7 +310,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m26 7/25 {{clock}}
+- text: {{clock}} m26 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -321,7 +321,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m27 7/25 {{clock}}
+- text: {{clock}} m27 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -332,7 +332,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}} m28 7/25 {{clock}}
+- text: {{clock}} m28 {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -343,7 +343,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: 7/25 {{clock}}
+- text: {{clock}}
 - button "Back to bottom"
 - textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands"
