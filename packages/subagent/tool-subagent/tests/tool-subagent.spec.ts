@@ -1242,9 +1242,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
     // No Task was created for the continuable child.
     expect(ctx.jobs.list(parent.id)).toEqual([])
 
-    await vi.waitFor(() => {
-      expect(ctx.agents.get(SessionId(childId!))).toBeUndefined()
-    }, { timeout: 5_000 })
+    await expect.poll(() => ctx.agents.get(SessionId(childId!))?.id).toBeUndefined()
     // The child id names a durable session carrying its continuation descriptor.
     const loaded = await loadStoredSession(ctx.sessionPersistence, SessionId(childId!))
     expect(loaded.events.some(event => event.type === 'subagent/descriptor')).toBe(true)
@@ -1329,9 +1327,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
       kind: 'continuable',
       subagentId: survivingChildId,
     })
-    await vi.waitFor(() => {
-      expect(ctx.agents.get(survivingChildId!)).toBeUndefined()
-    }, { timeout: 5_000 })
+    await expect.poll(() => ctx.agents.get(survivingChildId!)?.id).toBeUndefined()
     const loaded = await loadStoredSession(ctx.sessionPersistence, survivingChildId!)
     expect(loaded.events.some(event => event.type === 'subagent/descriptor')).toBe(true)
     expect(loaded.events.some(event => event.type === 'assistant/message')).toBe(true)
