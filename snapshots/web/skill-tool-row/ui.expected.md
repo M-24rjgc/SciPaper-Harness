@@ -6,7 +6,7 @@
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
-- text: Load the editing-cordis-compositions skill with the skill tool, then reply DONE. {{date}} {{clock}}
+- text: Load the editing-cordis-compositions skill with the skill tool, then reply DONE. {{clock}}
 - button "Copy"
 - button "Edit and resend"
 - button "Resend"
@@ -23,7 +23,7 @@
 - button "Good response"
 - button "Bad response"
 - button "Continue from here"
-- text: {{date}} {{clock}}
+- text: {{clock}}
 - textbox "Keep going, or drop in papers and data; / for commands, @ for files or conversations"
 - button "Add files or run commands"
 - 'button "Access mode, current: Full access"': Full access

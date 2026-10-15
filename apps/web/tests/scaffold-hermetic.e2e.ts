@@ -25,13 +25,14 @@ it('normalizes message clocks across day and year boundaries while retaining mes
   const browser = await chromium.launch()
   try {
     const page = await newEnglishPage(browser)
-    await page.setContent('<main><p>Same day 12:00</p><p>Earlier day 1/15 12:00</p><p>Earlier year 2025-1-15 12:00</p><p>中文 1月15日 12:00</p><p>中文 2025年1月15日 12:00</p><p>Ratio 1/2; experiment date 2025-1-15</p></main>')
+    await page.setContent('<main><p>Same day 12:00</p><p>Earlier day 1/15 12:00</p><p>Earlier year 2025-1-15 12:00</p><p>中文 1月15日 12:00</p><p>中文 2025年1月15日 12:00</p><p>Ratio 1/2; experiment date 2025-1-15</p><p>Started 2026-01-01 12:00:00.001</p></main>')
     const snapshot = await captureStableAria(page, 'main', 'clock-fixture')
-    expect(snapshot.match(/\{\{clock\}\}/g)).toHaveLength(5)
+    expect(snapshot.match(/\{\{clock\}\}/g)).toHaveLength(6)
     for (const label of ['Same day', 'Earlier day', 'Earlier year', '中文']) {
       expect(snapshot).toContain(`${label} {{clock}}`)
     }
     expect(snapshot).toContain('Ratio 1/2; experiment date 2025-1-15')
+    expect(snapshot).toContain('Started 2026-01-01 {{clock}}')
   } finally {
     await browser.close()
   }
