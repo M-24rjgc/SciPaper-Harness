@@ -99,6 +99,10 @@ try {
     foreach ($pair in @(@($productDataPath, $roaming), @($scopePath, $roaming), @($cachePath, $local))) {
         $target = [IO.Path]::GetFullPath($pair[0])
         if ([IO.Path]::GetDirectoryName($target) -ne $pair[1] -or -not ([IO.Path]::GetFileName($target).StartsWith('Harness Installer Test ') -or [IO.Path]::GetFileName($target).StartsWith('@harness-installer-test'))) { throw 'Unexpected fixture cleanup path' }
-        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+        if ($target -eq $scopePath) {
+            $linkedProject = Join-Path $userDataPath 'linked-project'
+            if (Test-Path -LiteralPath $linkedProject) { [IO.Directory]::Delete($linkedProject) }
+        }
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse }
     }
 }
